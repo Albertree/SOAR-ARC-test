@@ -15,6 +15,270 @@ from ARCKG.comparison import compare as arckg_compare
 
 
 # ======================================================================
+# Module-level prediction helpers (shared by Generalize + Predict)
+# ======================================================================
+
+_ORTHO_TRANSFORMS = [
+    (1, 0, 0, 1),    # identity
+    (-1, 0, 0, -1),  # 180 deg
+    (0, -1, 1, 0),   # 90 deg CCW
+    (0, 1, -1, 0),   # 90 deg CW
+    (1, 0, 0, -1),   # reflect horizontal
+    (-1, 0, 0, 1),   # reflect vertical
+    (0, 1, 1, 0),    # reflect main diagonal
+    (0, -1, -1, 0),  # reflect anti-diagonal
+]
+
+
+def _find_nonzero_components(raw):
+    """Find 4-connected components of non-zero cells."""
+    h = len(raw)
+    w = len(raw[0]) if raw else 0
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if raw[r][c] == 0 or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            while queue:
+                cr, cc = queue.pop(0)
+                if (cr, cc) in visited:
+                    continue
+                visited.add((cr, cc))
+                comp.append((cr, cc, raw[cr][cc]))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and raw[nr][nc] != 0:
+                        queue.append((nr, nc))
+            components.append(comp)
+    return components
+
+
+def _anchor_template_predict(raw):
+    """Predict output for anchor-template-placement tasks.
+
+    Template shapes (multi-cell connected components with body + anchor colors)
+    are removed.  Each group of scattered anchor pixels gets a rotated/reflected
+    copy of its matching template placed around it.
+    """
+    h = len(raw)
+    w = len(raw[0]) if raw else 0
+    comps = _find_nonzero_components(raw)
+
+    templates = [c for c in comps if len(c) > 1]
+    scattered = [c[0] for c in comps if len(c) == 1]
+
+    if not templates or not scattered:
+        return None
+
+    # Analyze templates
+    tinfos = []
+    for comp in templates:
+        colors = {}
+        for r, c, col in comp:
+            colors[col] = colors.get(col, 0) + 1
+        body = max(colors, key=colors.get)
+        anchors = sorted(c for c in colors if c != body)
+        if not anchors:
+            return None
+        tinfos.append({'cells': comp, 'body': body, 'anchors': set(anchors)})
+
+    by_color = {}
+    for r, c, col in scattered:
+        by_color.setdefault(col, []).append((r, c))
+
+    used_s = set()
+    used_t = set()
+    placements = []
+
+    for ti, tinfo in enumerate(tinfos):
+        if ti in used_t:
+            continue
+        matched = False
+        for s_r, s_c, s_col in scattered:
+            if (s_r, s_c) in used_s or s_col not in tinfo['anchors']:
+                continue
+            t_pos = None
+            for r, c, col in tinfo['cells']:
+                if col == s_col:
+                    t_pos = (r, c)
+                    break
+            if t_pos is None:
+                continue
+            rel = {}
+            for r, c, col in tinfo['cells']:
+                if col in tinfo['anchors'] and col != s_col:
+                    rel[col] = (r - t_pos[0], c - t_pos[1])
+            body_rel = [(r - t_pos[0], c - t_pos[1])
+                        for r, c, col in tinfo['cells'] if col == tinfo['body']]
+            anchor_rel = {s_col: (0, 0)}
+            anchor_rel.update(rel)
+
+            for a, b, ct, dd in _ORTHO_TRANSFORMS:
+                group = [(s_r, s_c, s_col)]
+                ok = True
+                for ac, (tdr, tdc) in rel.items():
+                    er = s_r + a * tdr + b * tdc
+                    ec = s_c + ct * tdr + dd * tdc
+                    found = False
+                    for pr, pc in by_color.get(ac, []):
+                        if (pr, pc) not in used_s and pr == er and pc == ec:
+                            group.append((pr, pc, ac))
+                            found = True
+                            break
+                    if not found:
+                        ok = False
+                        break
+                if ok and len(group) == len(tinfo['anchors']):
+                    placements.append({
+                        'ref': (s_r, s_c),
+                        'transform': (a, b, ct, dd),
+                        'body_rel': body_rel,
+                        'body_color': tinfo['body'],
+                        'anchor_rel': anchor_rel,
+                    })
+                    for r, c, _ in group:
+                        used_s.add((r, c))
+                    used_t.add(ti)
+                    matched = True
+                    break
+            if matched:
+                break
+
+    if not placements:
+        return None
+
+    output = [[0] * w for _ in range(h)]
+    for p in placements:
+        a, b, ct, dd = p['transform']
+        sr, sc = p['ref']
+        for dr, dc in p['body_rel']:
+            nr = sr + a * dr + b * dc
+            nc = sc + ct * dr + dd * dc
+            if 0 <= nr < h and 0 <= nc < w:
+                output[nr][nc] = p['body_color']
+        for col, (dr, dc) in p['anchor_rel'].items():
+            nr = sr + a * dr + b * dc
+            nc = sc + ct * dr + dd * dc
+            if 0 <= nr < h and 0 <= nc < w:
+                output[nr][nc] = col
+    return output
+
+
+def _find_divider_edge(raw, h, w):
+    """Find which edge has a line of 1s."""
+    if all(raw[0][c] == 1 for c in range(w)):
+        return 'top'
+    if all(raw[h - 1][c] == 1 for c in range(w)):
+        return 'bottom'
+    if all(raw[r][0] == 1 for r in range(h)):
+        return 'left'
+    if all(raw[r][w - 1] == 1 for r in range(h)):
+        return 'right'
+    return None
+
+
+def _find_hollow_blocks(raw, h, w):
+    """Find 3x3 hollow square blocks (xxx/x0x/xxx pattern)."""
+    blocks = []
+    used = set()
+    for r in range(h - 2):
+        for c in range(w - 2):
+            if (r, c) in used:
+                continue
+            color = raw[r][c]
+            if color <= 1:
+                continue
+            if (raw[r][c + 1] == color and raw[r][c + 2] == color and
+                raw[r + 1][c] == color and raw[r + 1][c + 1] == 0 and
+                raw[r + 1][c + 2] == color and
+                raw[r + 2][c] == color and raw[r + 2][c + 1] == color and
+                raw[r + 2][c + 2] == color):
+                blocks.append((r, c, color))
+                for dr in range(3):
+                    for dc in range(3):
+                        used.add((r + dr, c + dc))
+    return blocks
+
+
+def _find_zone_split(positions):
+    """Find index where positions have the largest gap (zone boundary)."""
+    if len(positions) < 2:
+        return None
+    gaps = [(positions[i] - positions[i - 1], i) for i in range(1, len(positions))]
+    max_gap = max(gaps, key=lambda x: x[0])
+    min_gap = min(gaps, key=lambda x: x[0])
+    if max_gap[0] > min_gap[0]:
+        return max_gap[1]
+    return None
+
+
+def _block_gravity_predict(raw):
+    """Predict output for block-count-gravity tasks.
+
+    Detects 3x3 hollow blocks, finds the divider edge, splits zones,
+    counts blocks per zone per row/col, and packs them toward the divider.
+    """
+    h = len(raw)
+    w = len(raw[0]) if raw else 0
+
+    divider = _find_divider_edge(raw, h, w)
+    if divider is None:
+        return None
+
+    blocks = _find_hollow_blocks(raw, h, w)
+    if not blocks:
+        return None
+
+    row_pos = sorted(set(r for r, c, color in blocks))
+    col_pos = sorted(set(c for r, c, color in blocks))
+    ri = {rp: i for i, rp in enumerate(row_pos)}
+    ci = {cp: j for j, cp in enumerate(col_pos)}
+    gh, gw = len(row_pos), len(col_pos)
+
+    grid = [[0] * gw for _ in range(gh)]
+    for r, c, color in blocks:
+        grid[ri[r]][ci[c]] = color
+
+    if divider in ('top', 'bottom'):
+        zs = _find_zone_split(col_pos)
+        if zs is None:
+            return None
+        out = [[0] * gw for _ in range(gh)]
+        for i in range(gh):
+            z1 = [grid[i][j] for j in range(zs) if grid[i][j] != 0]
+            z2 = [grid[i][j] for j in range(zs, gw) if grid[i][j] != 0]
+            combined = z1 + z2
+            n = len(combined)
+            if divider == 'top':
+                for k, v in enumerate(combined):
+                    out[i][gw - n + k] = v
+            else:
+                for k, v in enumerate(combined):
+                    out[i][k] = v
+        return out
+    else:
+        zs = _find_zone_split(row_pos)
+        if zs is None:
+            return None
+        out = [[0] * gw for _ in range(gh)]
+        for j in range(gw):
+            z1 = [grid[i][j] for i in range(zs) if grid[i][j] != 0]
+            z2 = [grid[i][j] for i in range(zs, gh) if grid[i][j] != 0]
+            combined = z1 + z2
+            n = len(combined)
+            if divider == 'right':
+                for k, v in enumerate(combined):
+                    out[gh - n + k][j] = v
+            else:
+                for k, v in enumerate(combined):
+                    out[k][j] = v
+        return out
+
+
+# ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
 # ======================================================================
 
@@ -370,6 +634,14 @@ class GeneralizeOperator(Operator):
         # Strategy 15: count diamond -- scattered dots counted, V/diamond drawn
         if rule is None:
             rule = self._try_count_diamond(task)
+
+        # Strategy 16: anchor template placement (template shape + scattered anchors)
+        if rule is None:
+            rule = self._try_anchor_template_place(task)
+
+        # Strategy 17: block count gravity (3x3 hollow blocks + divider line)
+        if rule is None:
+            rule = self._try_block_count_gravity(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -2471,6 +2743,59 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy: anchor template placement --------------------------------
+
+    def _try_anchor_template_place(self, task):
+        """
+        Detect pattern: input has template shapes (connected multi-color objects)
+        and scattered single pixels (anchors). Output removes templates and
+        reconstructs them at scattered anchor positions with rotation/reflection.
+        Category: template+anchor reassembly tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            if len(g0.raw) != len(g1.raw) or len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+            result = _anchor_template_predict(g0.raw)
+            if result is None or result != g1.raw:
+                return None
+
+        return {"type": "anchor_template_place", "confidence": 1.0}
+
+    # ---- strategy: block count gravity --------------------------------------
+
+    def _try_block_count_gravity(self, task):
+        """
+        Detect pattern: large grid with 3x3 hollow square blocks arranged in
+        rows/cols, a divider line of 1s on one edge, two spatial zones.
+        Output is a small grid where each row/column shows zone block counts
+        packed toward the divider.
+        Category: block grid summary with gravity packing.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            result = _block_gravity_predict(g0.raw)
+            if result is None or result != g1.raw:
+                return None
+
+        return {"type": "block_count_gravity", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -2574,6 +2899,10 @@ class PredictOperator(Operator):
             return self._apply_gravity_fall(rule, input_grid)
         if rule_type == "count_diamond":
             return self._apply_count_diamond(rule, input_grid)
+        if rule_type == "anchor_template_place":
+            return self._apply_anchor_template_place(rule, input_grid)
+        if rule_type == "block_count_gravity":
+            return self._apply_block_count_gravity(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3052,6 +3381,12 @@ class PredictOperator(Operator):
             groups.append(group)
 
         return groups
+
+    def _apply_anchor_template_place(self, rule, input_grid):
+        return _anchor_template_predict(input_grid.raw)
+
+    def _apply_block_count_gravity(self, rule, input_grid):
+        return _block_gravity_predict(input_grid.raw)
 
 
 # ======================================================================

@@ -369,3 +369,50 @@
 - Stored rule hits: 17
 - Time: 56s
 - Log: logs/learn_20260325_032550.log
+
+---
+## Learning Loop -- 2026-03-25 03:28
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 28 -> 28 (+0 learned)
+- Stored rule hits: 17
+- Time: 56s
+- Log: logs/learn_20260325_032739.log
+
+---
+## Learning Loop -- 2026-03-25 03:47
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 28 -> 30 (+2 learned)
+- Stored rule hits: 17
+- Time: 59s
+- Log: logs/learn_20260325_034641.log
+
+---
+## Session 8 Analysis — 2026-03-25 03:47
+
+### Strategies added (agent/active_operators.py)
+
+1. **anchor_template_place** — template shapes with colored anchor points + scattered anchor pixels
+   - `_try_anchor_template_place`: finds connected multi-color components (templates) and isolated single pixels (anchors); validates reconstruction on all training pairs
+   - `_apply_anchor_template_place`: calls `_anchor_template_predict` — finds templates (body color + anchor colors), groups scattered anchors by trying all 8 orthogonal transforms, places transformed body + anchor pixels, removes originals
+   - Handles: rotation (0/90/180/270), reflection (horizontal/vertical/diagonal), any combination
+
+2. **block_count_gravity** — grid of 3x3 hollow squares with divider line of 1s on one edge
+   - `_try_block_count_gravity`: detects 3x3 hollow blocks in grid layout, divider edge, zone separation; validates compressed output against all training pairs
+   - `_apply_block_count_gravity`: calls `_block_gravity_predict` — parses blocks into a grid, splits into two spatial zones, counts blocks per zone per row/column, packs them toward the divider (top→right, bottom→left, right→down, left→up)
+   - Both strategies use module-level helper functions shared between Generalize and Predict
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 0e206a2e | INCORRECT (identity) | CORRECT | anchor_template_place |
+| afe3afe9 | INCORRECT (identity) | CORRECT | block_count_gravity |
+
+**Score: 18/20 (90.0%) → 20/20 (100.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
