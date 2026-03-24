@@ -156,3 +156,66 @@
 - Stored rule hits: 7
 - Time: 58s
 - Log: logs/learn_20260325_011412.log
+
+---
+## Learning Loop -- 2026-03-25 01:16
+
+- Split: training, Tasks: 20
+- Correct: 10 / 20 (50.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 10
+- Time: 59s
+- Log: logs/learn_20260325_011558.log
+
+---
+## Learning Loop -- 2026-03-25 01:44
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 20 -> 22 (+2 learned)
+- Stored rule hits: 10
+- Time: 59s
+- Log: logs/learn_20260325_014338.log
+
+---
+## Learning Loop -- 2026-03-25 01:48
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 22 -> 23 (+1 learned)
+- Stored rule hits: 12
+- Time: 58s
+- Log: logs/learn_20260325_014737.log
+
+---
+## Session 5 Analysis — 2026-03-25 01:43
+
+### Strategies added (agent/active_operators.py)
+
+1. **path_turn_signals** — L-shaped path drawing from a start cell with turn signals
+   - `_try_path_turn_signals`: finds unique start color (spreads in output), detects clockwise/ccw marker colors by testing both assignments against all training pairs
+   - `_apply_path_turn_signals`: simulates path from start, turning clockwise at one marker color and counterclockwise at the other, extending to grid edge after last marker
+   - Helper: `_simulate_turn_path` — core path simulation with direction vectors
+
+2. **arrow_slide_mirror** — dots slide along arrow chains across a divider, mirrored to opposite half
+   - `_try_arrow_slide_mirror`: finds uniform divider row, identifies dot/arrow colors in each half, validates slide+mirror displacement against all training pairs
+   - `_apply_arrow_slide_mirror`: traces arrow chains via BFS walk, computes displacement for each dot, mirrors displacement vertically for corresponding dots above divider
+   - Helper: `_walk_arrow_chain` — greedy chain walk from dot through adjacent arrow cells
+
+3. **quadrant_shape_swap** — grid divided by separator rows/columns, horizontally paired regions swap patterns
+   - `_try_quadrant_shape_swap`: parses grid into rectangular regions, verifies each horizontal pair swaps patterns with color = partner's background
+   - `_apply_quadrant_shape_swap`: parses test grid regions, applies pattern swap with correct color substitution
+   - Helper: `_parse_grid_regions` — detects separator color, extracts row/col ranges and per-region bg/pattern
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| e5790162 | INCORRECT (recolor_sequential) | CORRECT | path_turn_signals |
+| c9680e90 | INCORRECT (identity) | CORRECT | arrow_slide_mirror |
+| 5a719d11 | INCORRECT (identity) | CORRECT | quadrant_shape_swap |
+
+**Score: 10/20 (50.0%) → 13/20 (65.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

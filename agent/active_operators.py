@@ -292,8 +292,20 @@ class GeneralizeOperator(Operator):
         task = wm.task
         rule = None
 
+        # Strategy 0a: path with turn signals (L-path drawing) -- high specificity
+        rule = self._try_path_turn_signals(task)
+
+        # Strategy 0b: arrow slide with mirror across divider -- high specificity
+        if rule is None:
+            rule = self._try_arrow_slide_mirror(task)
+
+        # Strategy 0c: quadrant shape swap -- high specificity
+        if rule is None:
+            rule = self._try_quadrant_shape_swap(task)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
 
         # Strategy 2: max column filter (before color_mapping to avoid false match)
         if rule is None:
@@ -1288,6 +1300,501 @@ class GeneralizeOperator(Operator):
                 output.append(row)
         return output
 
+    # ---- strategy: path with turn signals --------------------------------
+
+    def _try_path_turn_signals(self, task):
+        """
+        Detect pattern: a path drawn from a unique start cell, turning at
+        signal markers. One marker color = clockwise turn, another = ccw.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        # Detect path color from first pair (unique color that spreads)
+        g0, g1 = pairs[0].input_grid, pairs[0].output_grid
+        if g0 is None or g1 is None:
+            return None
+        raw_in, raw_out = g0.raw, g1.raw
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+        if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+            return None
+
+        input_counts = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw_in[r][c]
+                if v != 0:
+                    input_counts[v] = input_counts.get(v, 0) + 1
+
+        path_color = None
+        for color, count in input_counts.items():
+            if count == 1:
+                oc = sum(1 for r2 in range(h) for c2 in range(w) if raw_out[r2][c2] == color)
+                if oc > 1:
+                    if path_color is not None:
+                        return None
+                    path_color = color
+        if path_color is None:
+            return None
+
+        # Collect all marker colors across ALL pairs
+        all_marker_colors = set()
+        for pair in pairs:
+            gi = pair.input_grid
+            if gi is None:
+                return None
+            ri = gi.raw
+            for r in range(len(ri)):
+                for c in range(len(ri[0])):
+                    v = ri[r][c]
+                    if v != 0 and v != path_color:
+                        all_marker_colors.add(v)
+
+        marker_colors = sorted(all_marker_colors)
+        if not marker_colors or len(marker_colors) > 2:
+            return None
+
+        if len(marker_colors) == 1:
+            assignments = [(marker_colors[0], -1), (-1, marker_colors[0])]
+        else:
+            assignments = [(marker_colors[0], marker_colors[1]),
+                           (marker_colors[1], marker_colors[0])]
+
+        for cw_color, ccw_color in assignments:
+            if self._verify_path_turn(pairs, path_color, cw_color, ccw_color):
+                return {
+                    "type": "path_turn_signals",
+                    "path_color": path_color,
+                    "cw_color": cw_color,
+                    "ccw_color": ccw_color,
+                    "confidence": 1.0,
+                }
+        return None
+
+    def _verify_path_turn(self, pairs, path_color, cw_color, ccw_color):
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return False
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return False
+
+            start = None
+            markers = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v == path_color:
+                        start = (r, c)
+                    elif v != 0:
+                        markers[(r, c)] = v
+            if start is None:
+                return False
+
+            expected = self._simulate_turn_path(
+                h, w, start, markers, path_color, cw_color, ccw_color)
+            if expected is None:
+                return False
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return False
+        return True
+
+    @staticmethod
+    def _simulate_turn_path(h, w, start, markers, path_color, cw_color, ccw_color):
+        """Simulate path drawing from start with turn signals."""
+        DIRS = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # R, D, L, U
+        grid = [[0] * w for _ in range(h)]
+        for (r, c), v in markers.items():
+            grid[r][c] = v
+
+        r, c = start
+        grid[r][c] = path_color
+        dir_idx = 0  # start RIGHT
+        remaining = dict(markers)
+
+        for _ in range(len(markers) + 1):
+            dr, dc = DIRS[dir_idx]
+            target = None
+            nr, nc = r + dr, c + dc
+            while 0 <= nr < h and 0 <= nc < w:
+                if (nr, nc) in remaining:
+                    target = (nr, nc)
+                    break
+                nr += dr
+                nc += dc
+
+            if target is not None:
+                tr, tc = target
+                nr, nc = r + dr, c + dc
+                while (nr, nc) != (tr, tc):
+                    grid[nr][nc] = path_color
+                    nr += dr
+                    nc += dc
+                r, c = tr - dr, tc - dc
+                mt = remaining.pop((tr, tc))
+                if mt == cw_color:
+                    dir_idx = (dir_idx + 1) % 4
+                elif mt == ccw_color:
+                    dir_idx = (dir_idx - 1) % 4
+                else:
+                    return None
+            else:
+                nr, nc = r + dr, c + dc
+                while 0 <= nr < h and 0 <= nc < w:
+                    grid[nr][nc] = path_color
+                    nr += dr
+                    nc += dc
+                break
+        return grid
+
+    # ---- strategy: arrow slide with mirror across divider ----------------
+
+    def _try_arrow_slide_mirror(self, task):
+        """
+        Detect pattern: grid split by a uniform divider row. Bottom half has
+        colored dots with arrow chains; dots slide to end of chain. Same
+        displacement (mirrored vertically) applied to top half dots.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        divider_color = None
+        bg_color = None
+        dot_top_color = None
+        dot_bot_color = None
+        arrow_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            bg_counts = {}
+            for r in range(h):
+                for c in range(w):
+                    bg_counts[raw_in[r][c]] = bg_counts.get(raw_in[r][c], 0) + 1
+            bg = max(bg_counts, key=bg_counts.get)
+            if bg_color is None:
+                bg_color = bg
+            elif bg_color != bg:
+                return None
+
+            div_row = None
+            for r in range(h):
+                if len(set(raw_in[r])) == 1 and raw_in[r][0] != bg:
+                    if div_row is not None:
+                        return None
+                    div_row = r
+            if div_row is None:
+                return None
+
+            dc = raw_in[div_row][0]
+            if divider_color is None:
+                divider_color = dc
+            elif divider_color != dc:
+                return None
+
+            top_colors = set()
+            for r in range(div_row):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        top_colors.add(v)
+            bot_colors = set()
+            for r in range(div_row + 1, h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        bot_colors.add(v)
+            if len(top_colors) != 1 or len(bot_colors) != 2:
+                return None
+
+            tc = list(top_colors)[0]
+            if dot_top_color is None:
+                dot_top_color = tc
+            elif dot_top_color != tc:
+                return None
+
+            bc_list = sorted(bot_colors)
+            local_dot = None
+            local_arrow = None
+            for bc in bc_list:
+                present = any(raw_out[r][c] == bc
+                              for r in range(div_row + 1, h) for c in range(w))
+                if present:
+                    if local_dot is not None:
+                        return None
+                    local_dot = bc
+                else:
+                    local_arrow = bc
+            if local_dot is None or local_arrow is None:
+                return None
+
+            if dot_bot_color is None:
+                dot_bot_color = local_dot
+            elif dot_bot_color != local_dot:
+                return None
+            if arrow_color is None:
+                arrow_color = local_arrow
+            elif arrow_color != local_arrow:
+                return None
+
+            expected = self._simulate_arrow_slide(
+                raw_in, h, w, div_row, bg, dot_top_color, dot_bot_color, arrow_color)
+            if expected is None:
+                return None
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {
+            "type": "arrow_slide_mirror",
+            "divider_color": divider_color,
+            "bg_color": bg_color,
+            "dot_top_color": dot_top_color,
+            "dot_bot_color": dot_bot_color,
+            "arrow_color": arrow_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _walk_arrow_chain(start_r, start_c, arrow_cells):
+        """Walk from start along adjacent arrow cells to find chain end."""
+        current = (start_r, start_c)
+        prev = None
+        while True:
+            cr, cc = current
+            found = False
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) in arrow_cells and (nr, nc) != prev:
+                    prev = current
+                    current = (nr, nc)
+                    found = True
+                    break
+            if not found:
+                break
+        return current
+
+    @staticmethod
+    def _simulate_arrow_slide(raw, h, w, div_row, bg, dot_top, dot_bot, arrow_color):
+        """Simulate arrow chain sliding and mirroring."""
+        output = [[bg] * w for _ in range(h)]
+        for c in range(w):
+            output[div_row][c] = raw[div_row][c]
+
+        arrow_cells = set()
+        bot_dots = []
+        for r in range(div_row + 1, h):
+            for c in range(w):
+                v = raw[r][c]
+                if v == dot_bot:
+                    bot_dots.append((r, c))
+                elif v == arrow_color:
+                    arrow_cells.add((r, c))
+
+        displacements = []
+        for dr, dc in bot_dots:
+            end = GeneralizeOperator._walk_arrow_chain(dr, dc, arrow_cells)
+            delta = (end[0] - dr, end[1] - dc)
+            displacements.append(((dr, dc), delta))
+
+        for (dr, dc), (d_r, d_c) in displacements:
+            nr, nc = dr + d_r, dc + d_c
+            if 0 <= nr < h and 0 <= nc < w:
+                output[nr][nc] = dot_bot
+
+        for (dr, dc), (d_r, d_c) in displacements:
+            mirror_r = 2 * div_row - dr
+            new_r = mirror_r + (-d_r)
+            new_c = dc + d_c
+            if 0 <= new_r < h and 0 <= new_c < w:
+                output[new_r][new_c] = dot_top
+
+        return output
+
+    # ---- strategy: quadrant shape swap -----------------------------------
+
+    def _try_quadrant_shape_swap(self, task):
+        """
+        Detect pattern: grid divided into rectangular regions by separator
+        rows/columns. Horizontally paired regions swap their patterns,
+        with pattern color becoming the partner's background color.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        sep_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            result = self._parse_grid_regions(raw_in, h, w)
+            if result is None:
+                return None
+            sc, row_ranges, col_ranges, regions = result
+
+            if sep_color is None:
+                sep_color = sc
+            elif sep_color != sc:
+                return None
+
+            if len(col_ranges) % 2 != 0:
+                return None
+
+            for ri in range(len(row_ranges)):
+                for ci in range(0, len(col_ranges), 2):
+                    left = regions.get((ri, ci))
+                    right = regions.get((ri, ci + 1))
+                    if left is None or right is None:
+                        return None
+
+                    l_bg, l_pat, l_pc, l_bounds = left
+                    r_bg, r_pat, r_pc, r_bounds = right
+
+                    # Dimensions must match for pattern swap
+                    if l_bounds[2] != r_bounds[2] or l_bounds[3] != r_bounds[3]:
+                        return None
+
+                    # Left output: right's pattern with color=r_bg, rest=l_bg
+                    lr, lc, lh, lw = l_bounds
+                    for r in range(lr, lr + lh):
+                        for c in range(lc, lc + lw):
+                            rel = (r - lr, c - lc)
+                            expected = r_bg if rel in r_pat else l_bg
+                            if raw_out[r][c] != expected:
+                                return None
+
+                    # Right output: left's pattern with color=l_bg, rest=r_bg
+                    rr, rc, rh, rw = r_bounds
+                    for r in range(rr, rr + rh):
+                        for c in range(rc, rc + rw):
+                            rel = (r - rr, c - rc)
+                            expected = l_bg if rel in l_pat else r_bg
+                            if raw_out[r][c] != expected:
+                                return None
+
+            # Separator cells unchanged
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] == sc and raw_out[r][c] != sc:
+                        return None
+
+        return {"type": "quadrant_shape_swap", "sep_color": sep_color, "confidence": 1.0}
+
+    @staticmethod
+    def _parse_grid_regions(raw, h, w):
+        """Parse grid into rectangular regions separated by uniform rows/cols."""
+        # Find separator color: forms both complete rows and complete columns
+        row_sep = set()
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1:
+                row_sep.add(raw[r][0])
+
+        col_sep = set()
+        for c in range(w):
+            vals = set(raw[r][c] for r in range(h))
+            if len(vals) == 1:
+                col_sep.add(raw[0][c])
+
+        candidates = row_sep & col_sep
+        if not candidates:
+            return None
+        sep_color = min(candidates)
+
+        # Find contiguous non-separator row ranges
+        row_ranges = []
+        start = None
+        for r in range(h):
+            is_sep = all(raw[r][c] == sep_color for c in range(w))
+            if not is_sep:
+                if start is None:
+                    start = r
+            else:
+                if start is not None:
+                    row_ranges.append((start, r))
+                    start = None
+        if start is not None:
+            row_ranges.append((start, h))
+
+        col_ranges = []
+        start = None
+        for c in range(w):
+            is_sep = all(raw[r][c] == sep_color for r in range(h))
+            if not is_sep:
+                if start is None:
+                    start = c
+            else:
+                if start is not None:
+                    col_ranges.append((start, c))
+                    start = None
+        if start is not None:
+            col_ranges.append((start, w))
+
+        if not row_ranges or not col_ranges:
+            return None
+
+        regions = {}
+        for ri, (r_start, r_end) in enumerate(row_ranges):
+            for ci, (c_start, c_end) in enumerate(col_ranges):
+                counts = {}
+                for r in range(r_start, r_end):
+                    for c in range(c_start, c_end):
+                        v = raw[r][c]
+                        if v != sep_color:
+                            counts[v] = counts.get(v, 0) + 1
+                if not counts:
+                    return None
+                bg = max(counts, key=counts.get)
+
+                pattern = set()
+                pattern_color = None
+                for r in range(r_start, r_end):
+                    for c in range(c_start, c_end):
+                        v = raw[r][c]
+                        if v != bg and v != sep_color:
+                            pattern.add((r - r_start, c - c_start))
+                            if pattern_color is None:
+                                pattern_color = v
+                            elif v != pattern_color:
+                                return None
+
+                rh = r_end - r_start
+                rw = c_end - c_start
+                regions[(ri, ci)] = (bg, pattern, pattern_color,
+                                     (r_start, c_start, rh, rw))
+
+        return (sep_color, row_ranges, col_ranges, regions)
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -1375,6 +1882,12 @@ class PredictOperator(Operator):
             return self._apply_connect_diamonds(rule, input_grid)
         if rule_type == "stripe_zone_fill":
             return self._apply_stripe_zone_fill(rule, input_grid)
+        if rule_type == "path_turn_signals":
+            return self._apply_path_turn_signals(rule, input_grid)
+        if rule_type == "arrow_slide_mirror":
+            return self._apply_arrow_slide_mirror(rule, input_grid)
+        if rule_type == "quadrant_shape_swap":
+            return self._apply_quadrant_shape_swap(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1662,6 +2175,92 @@ class PredictOperator(Operator):
         return GeneralizeOperator._build_stripe_zone_output(
             raw, h, w, bg, stripe_col, col_color, int_color, stripes
         )
+
+    def _apply_path_turn_signals(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        path_color = rule["path_color"]
+        cw_color = rule["cw_color"]
+        ccw_color = rule["ccw_color"]
+
+        start = None
+        markers = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v == path_color:
+                    start = (r, c)
+                elif v != 0:
+                    markers[(r, c)] = v
+        if start is None:
+            return [row[:] for row in raw]
+
+        result = GeneralizeOperator._simulate_turn_path(
+            h, w, start, markers, path_color, cw_color, ccw_color)
+        return result if result is not None else [row[:] for row in raw]
+
+    def _apply_arrow_slide_mirror(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg_color"]
+        divider_color = rule["divider_color"]
+        dot_top = rule["dot_top_color"]
+        dot_bot = rule["dot_bot_color"]
+        arrow_color = rule["arrow_color"]
+
+        div_row = None
+        for r in range(h):
+            if all(raw[r][c] == divider_color for c in range(w)):
+                div_row = r
+                break
+        if div_row is None:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._simulate_arrow_slide(
+            raw, h, w, div_row, bg, dot_top, dot_bot, arrow_color)
+
+    def _apply_quadrant_shape_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        sep_color = rule["sep_color"]
+
+        result = GeneralizeOperator._parse_grid_regions(raw, h, w)
+        if result is None:
+            return [row[:] for row in raw]
+        sc, row_ranges, col_ranges, regions = result
+        if sc != sep_color:
+            return [row[:] for row in raw]
+
+        output = [row[:] for row in raw]
+
+        for ri in range(len(row_ranges)):
+            for ci in range(0, len(col_ranges), 2):
+                if ci + 1 >= len(col_ranges):
+                    break
+                left = regions.get((ri, ci))
+                right = regions.get((ri, ci + 1))
+                if left is None or right is None:
+                    continue
+
+                l_bg, l_pat, l_pc, l_bounds = left
+                r_bg, r_pat, r_pc, r_bounds = right
+
+                lr, lc, lh, lw = l_bounds
+                for r in range(lr, lr + lh):
+                    for c in range(lc, lc + lw):
+                        rel = (r - lr, c - lc)
+                        output[r][c] = r_bg if rel in r_pat else l_bg
+
+                rr, rc, rh, rw = r_bounds
+                for r in range(rr, rr + rh):
+                    for c in range(rc, rc + rw):
+                        rel = (r - rr, c - rc)
+                        output[r][c] = l_bg if rel in l_pat else r_bg
+
+        return output
 
     # ---- helpers ---------------------------------------------------------
 
