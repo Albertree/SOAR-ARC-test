@@ -1324,3 +1324,84 @@ All 20 tasks in the standard batch were already CORRECT (100%). Ran with --limit
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 07:04
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 149 -> 149 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_070307.log
+
+---
+## Learning Loop -- 2026-03-25 07:06
+
+- Split: training, Tasks: 30
+- Correct: 24 / 30 (80.0%)
+- Rules: 149 -> 151 (+2 learned)
+- Stored rule hits: 23
+- Time: 119s
+- Log: logs/learn_20260325_070424.log
+
+---
+## Learning Loop -- 2026-03-25 07:27
+
+- Split: training, Tasks: 30
+- Correct: 24 / 30 (80.0%)
+- Rules: 151 -> 153 (+2 learned)
+- Stored rule hits: 23
+- Time: 118s
+- Log: logs/learn_20260325_072505.log
+
+---
+## Learning Loop -- 2026-03-25 07:37
+
+- Split: training, Tasks: 30
+- Correct: 26 / 30 (86.7%)
+- Rules: 153 -> 156 (+3 learned)
+- Stored rule hits: 23
+- Time: 118s
+- Log: logs/learn_20260325_073521.log
+
+---
+## Learning Loop -- 2026-03-25 07:38
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 156 -> 156 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_073727.log
+
+---
+## Session 17 Analysis — 2026-03-25 07:38
+
+### Strategies added (agent/active_operators.py)
+
+1. **mirror_symmetric_recolor** — for each row, cells of a single foreground color (e.g. 5) that have a mirror partner about the grid center column are recolored to a new color (e.g. 1); unpaired cells stay unchanged.
+   - `_try_mirror_symmetric_recolor`: verifies single non-zero input color, single new output color, and bilateral symmetry rule across all training pairs
+   - `_apply_mirror_symmetric_recolor`: for each foreground cell, checks mirror column; if partner exists, recolor
+   - Category: bilateral symmetry detection / selective recoloring
+   - Fixed task: ce039d91
+
+2. **bar_frame_gravity** — grid has 4 colored bars (2 vertical full-height, 2 horizontal full-width) forming a rectangular frame. Scattered cells of one bar's color appear in the center section. Output = center section with bar borders, scattered cells cast shadows toward the matching bar (gravity direction determined by which bar's color matches the scattered cells).
+   - `_try_bar_frame_gravity`: detects 4 bars, identifies scattered color and gravity direction, verifies output matches shadow prediction
+   - `_apply_bar_frame_gravity`: extracts center section, applies directional shadow fill, adds bar borders with correct corner values from input intersections
+   - Category: frame extraction with directional shadow projection
+   - Fixed task: 5daaa586
+
+3. **cross_center_mark** — on a uniform background with scattered foreground pixel-pairs (adjacent horizontal or vertical), finds cells equidistant from 4 surrounding pairs forming a cross pattern and marks them with a new color.
+   - `_try_cross_center_mark`: detects 2-color input with 1 new output color, verifies cross-center logic
+   - `_apply_cross_center_mark`: finds all fg-pairs, indexes by row/col, checks each bg cell for equidistant cross pattern
+   - Category: geometric crosshair detection / center marking
+   - Note: implemented speculatively; no matching task in current test set
+
+### Results
+
+- Previous (session 16 baseline): 20/20 (100%), 30-task expansion: 24/30 (80%)
+- After session 17: 20/20 (100%), 30-task expansion: 26/30 (86.7%)
+- New tasks solved: ce039d91 (mirror_symmetric_recolor), 5daaa586 (bar_frame_gravity)
+- Remaining failures at 30 tasks: 7837ac64, a2d730bd, 9f5f939b, 6350f1f4
+- Total stored rules: 156

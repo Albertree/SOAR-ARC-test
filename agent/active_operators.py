@@ -591,6 +591,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_noise_remove_rect(task)
 
+        # Strategy 44: mirror symmetric recolor (symmetric 5-pairs become 1)
+        if rule is None:
+            rule = self._try_mirror_symmetric_recolor(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -750,6 +754,14 @@ class GeneralizeOperator(Operator):
         # Strategy 43: key color swap (2x2 key in corner defines pairwise color swaps)
         if rule is None:
             rule = self._try_key_color_swap(task)
+
+        # Strategy 45: bar frame gravity (4 bars form frame, scattered cells shadow toward matching bar)
+        if rule is None:
+            rule = self._try_bar_frame_gravity(task)
+
+        # Strategy 46: cross center mark (equidistant pair-cross intersections get marked with 4)
+        if rule is None:
+            rule = self._try_cross_center_mark(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -5004,6 +5016,442 @@ class GeneralizeOperator(Operator):
         }
 
 
+    # ---- strategy: mirror symmetric recolor --------------------------------
+
+    def _try_mirror_symmetric_recolor(self, task):
+        """
+        Detect: grid has one non-zero color (e.g. 5) on background 0. For each
+        row, cells whose mirror partner about the grid center also has the same
+        color are recolored to a new color (e.g. 1). Unpaired cells stay.
+        Category: bilateral symmetry detection / selective recoloring.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0]) if ri else 0
+            oh, ow = len(ro), len(ro[0]) if ro else 0
+            if h != oh or w != ow:
+                return None
+
+        # Detect: input has exactly one non-zero color, output has that + one new
+        first_in = pairs[0].input_grid.raw
+        first_out = pairs[0].output_grid.raw
+        h, w = len(first_in), len(first_in[0])
+
+        in_colors = set()
+        for row in first_in:
+            for v in row:
+                if v != 0:
+                    in_colors.add(v)
+        if len(in_colors) != 1:
+            return None
+        src_color = in_colors.pop()
+
+        out_colors = set()
+        for row in first_out:
+            for v in row:
+                if v != 0 and v != src_color:
+                    out_colors.add(v)
+        if len(out_colors) != 1:
+            return None
+        dst_color = out_colors.pop()
+
+        # Verify all pairs: symmetric cells -> dst_color, asymmetric -> stay
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            for r in range(h):
+                for c in range(w):
+                    iv = ri[r][c]
+                    ov = ro[r][c]
+                    mirror_c = w - 1 - c
+                    if iv == src_color:
+                        has_mirror = ri[r][mirror_c] == src_color
+                        if has_mirror:
+                            if ov != dst_color:
+                                return None
+                        else:
+                            if ov != src_color:
+                                return None
+                    else:
+                        if ov != iv:
+                            return None
+
+        return {
+            "type": "mirror_symmetric_recolor",
+            "src_color": src_color,
+            "dst_color": dst_color,
+            "confidence": 0.95,
+        }
+
+    # ---- strategy: bar frame gravity -----------------------------------------
+
+    def _try_bar_frame_gravity(self, task):
+        """
+        Detect: grid has 4 colored bars (2 vertical full-height, 2 horizontal
+        full-width) forming a frame. Scattered cells of one bar's color appear
+        inside the center section. Output = center section with bars as border,
+        scattered cells cast shadows toward the matching bar.
+        Category: frame extraction with directional gravity / shadow projection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        rule_info = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0]) if ri else 0
+
+            info = self._detect_bar_frame(ri, h, w)
+            if info is None:
+                return None
+
+            # Verify output matches
+            predicted = self._apply_bar_frame_gravity_raw(info, ri, h, w)
+            if predicted is None or predicted != ro:
+                return None
+
+            if rule_info is None:
+                rule_info = info
+
+        return {
+            "type": "bar_frame_gravity",
+            "confidence": 0.95,
+        }
+
+    def _detect_bar_frame(self, grid, h, w):
+        """Find 4 bars (2 vertical, 2 horizontal) and the gravity direction."""
+        # Find vertical bars: columns where most cells are one non-zero color
+        vcols = []
+        for c in range(w):
+            counts = {}
+            for r in range(h):
+                v = grid[r][c]
+                if v != 0:
+                    counts[v] = counts.get(v, 0) + 1
+            if counts:
+                dominant = max(counts, key=counts.get)
+                # Allow a few cells with different colors (from bar intersections)
+                if counts[dominant] >= h - 6:
+                    vcols.append((c, dominant))
+
+        # Find horizontal bars: rows where most cells are one non-zero color
+        hrows = []
+        for r in range(h):
+            counts = {}
+            for c in range(w):
+                v = grid[r][c]
+                if v != 0:
+                    counts[v] = counts.get(v, 0) + 1
+            if counts:
+                dominant = max(counts, key=counts.get)
+                if counts[dominant] >= w - 6:
+                    hrows.append((r, dominant))
+
+        if len(vcols) < 2 or len(hrows) < 2:
+            return None
+
+        # Take leftmost and rightmost vertical bars
+        vcols.sort()
+        left_col, left_color = vcols[0]
+        right_col, right_color = vcols[-1]
+        if left_col >= right_col or left_color == right_color:
+            return None
+
+        # Take topmost and bottommost horizontal bars
+        hrows.sort()
+        top_row, top_color = hrows[0]
+        bot_row, bot_color = hrows[-1]
+        if top_row >= bot_row or top_color == bot_color:
+            return None
+
+        # All 4 bar colors must be distinct
+        bar_colors = {left_color, right_color, top_color, bot_color}
+        if len(bar_colors) != 4:
+            return None
+
+        # Center section
+        cr0, cr1 = top_row + 1, bot_row - 1
+        cc0, cc1 = left_col + 1, right_col - 1
+        if cr0 > cr1 or cc0 > cc1:
+            return None
+
+        # Find scattered color in center section (must match one bar)
+        scattered = set()
+        for r in range(cr0, cr1 + 1):
+            for c in range(cc0, cc1 + 1):
+                v = grid[r][c]
+                if v != 0 and v in bar_colors:
+                    scattered.add(v)
+
+        if len(scattered) != 1:
+            return None
+        scat_color = scattered.pop()
+
+        # Determine gravity direction
+        if scat_color == top_color:
+            direction = "up"
+        elif scat_color == bot_color:
+            direction = "down"
+        elif scat_color == left_color:
+            direction = "left"
+        elif scat_color == right_color:
+            direction = "right"
+        else:
+            return None
+
+        return {
+            "left_col": left_col, "left_color": left_color,
+            "right_col": right_col, "right_color": right_color,
+            "top_row": top_row, "top_color": top_color,
+            "bot_row": bot_row, "bot_color": bot_color,
+            "cr0": cr0, "cr1": cr1, "cc0": cc0, "cc1": cc1,
+            "scat_color": scat_color, "direction": direction,
+        }
+
+    def _apply_bar_frame_gravity_raw(self, info, grid, h, w):
+        """Build the output grid for bar_frame_gravity."""
+        cr0, cr1 = info["cr0"], info["cr1"]
+        cc0, cc1 = info["cc0"], info["cc1"]
+        ch = cr1 - cr0 + 1
+        cw = cc1 - cc0 + 1
+        direction = info["direction"]
+        scat_color = info["scat_color"]
+        left_color = info["left_color"]
+        right_color = info["right_color"]
+        top_color = info["top_color"]
+        bot_color = info["bot_color"]
+
+        # Extract center section
+        center = []
+        for r in range(cr0, cr1 + 1):
+            row = []
+            for c in range(cc0, cc1 + 1):
+                v = grid[r][c]
+                row.append(v if v == scat_color else 0)
+            center.append(row)
+
+        # Apply shadow/gravity: fill from the cell farthest from the gravity
+        # bar all the way to the bar edge
+        shadow = [[0] * cw for _ in range(ch)]
+        if direction == "down":
+            # Shadow extends from topmost (min row) scattered cell down to bottom
+            for c in range(cw):
+                top_most = ch
+                for r in range(ch):
+                    if center[r][c] == scat_color:
+                        top_most = min(top_most, r)
+                if top_most < ch:
+                    for r in range(top_most, ch):
+                        shadow[r][c] = scat_color
+        elif direction == "up":
+            # Shadow extends from bottommost (max row) scattered cell up to top
+            for c in range(cw):
+                bot_most = -1
+                for r in range(ch):
+                    if center[r][c] == scat_color:
+                        bot_most = max(bot_most, r)
+                if bot_most >= 0:
+                    for r in range(0, bot_most + 1):
+                        shadow[r][c] = scat_color
+        elif direction == "right":
+            # Shadow extends from leftmost (min col) scattered cell right to edge
+            for r in range(ch):
+                left_most = cw
+                for c in range(cw):
+                    if center[r][c] == scat_color:
+                        left_most = min(left_most, c)
+                if left_most < cw:
+                    for c in range(left_most, cw):
+                        shadow[r][c] = scat_color
+        elif direction == "left":
+            # Shadow extends from rightmost (max col) scattered cell left to edge
+            for r in range(ch):
+                right_most = -1
+                for c in range(cw):
+                    if center[r][c] == scat_color:
+                        right_most = max(right_most, c)
+                if right_most >= 0:
+                    for c in range(0, right_most + 1):
+                        shadow[r][c] = scat_color
+
+        # Build output with border
+        out_h = ch + 2
+        out_w = cw + 2
+        output = [[0] * out_w for _ in range(out_h)]
+
+        # Fill border: horizontal bars first, then vertical bars overwrite edges
+        for c in range(out_w):
+            output[0][c] = top_color
+            output[out_h - 1][c] = bot_color
+        for r in range(out_h):
+            output[r][0] = left_color
+            output[r][out_w - 1] = right_color
+
+        # Corners come from bar intersections in the original grid
+        left_col = info["left_col"]
+        right_col = info["right_col"]
+        top_row = info["top_row"]
+        bot_row = info["bot_row"]
+        output[0][0] = grid[top_row][left_col]
+        output[0][out_w - 1] = grid[top_row][right_col]
+        output[out_h - 1][0] = grid[bot_row][left_col]
+        output[out_h - 1][out_w - 1] = grid[bot_row][right_col]
+
+        # Fill interior with shadow
+        for r in range(ch):
+            for c in range(cw):
+                output[r + 1][c + 1] = shadow[r][c]
+
+        return output
+
+    # ---- strategy: cross center mark -----------------------------------------
+
+    def _try_cross_center_mark(self, task):
+        """
+        Detect: background color with scattered 1-pixel pairs (adjacent horizontal
+        or vertical). Some sets of 4 pairs form a cross pattern equidistant from
+        a center cell. That center gets marked with color 4.
+        Category: geometric crosshair detection / center marking.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        # Check all pairs: same grid size, only background and one foreground color
+        bg = None
+        fg = None
+        mark_color = None
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0]) if ri else 0
+            oh, ow = len(ro), len(ro[0]) if ro else 0
+            if h != oh or w != ow:
+                return None
+
+            in_colors = set()
+            for row in ri:
+                for v in row:
+                    in_colors.add(v)
+            out_only = set()
+            for r in range(h):
+                for c in range(w):
+                    if ro[r][c] != ri[r][c]:
+                        out_only.add(ro[r][c])
+
+            if len(in_colors) != 2:
+                return None
+            if len(out_only) != 1:
+                return None
+
+            # bg is the most common, fg is the less common
+            counts = {}
+            for row in ri:
+                for v in row:
+                    counts[v] = counts.get(v, 0) + 1
+            sorted_colors = sorted(counts, key=counts.get, reverse=True)
+            this_bg = sorted_colors[0]
+            this_fg = sorted_colors[1]
+            this_mark = out_only.pop()
+
+            if bg is None:
+                bg, fg, mark_color = this_bg, this_fg, this_mark
+            elif this_bg != bg or this_fg != fg or this_mark != mark_color:
+                return None
+
+        # Verify the cross-center rule on all pairs
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+
+            predicted = self._compute_cross_centers(ri, h, w, bg, fg, mark_color)
+            if predicted != ro:
+                return None
+
+        return {
+            "type": "cross_center_mark",
+            "bg": bg,
+            "fg": fg,
+            "mark_color": mark_color,
+            "confidence": 0.95,
+        }
+
+    def _compute_cross_centers(self, grid, h, w, bg, fg, mark_color):
+        """Find cross centers and produce the marked output."""
+        raw = grid if isinstance(grid, list) else grid.raw
+
+        # Find all fg-pairs (adjacent horizontal or vertical)
+        h_pairs = set()  # horizontal pairs: (r, min_c)
+        v_pairs = set()  # vertical pairs: (min_r, c)
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fg:
+                    # horizontal pair
+                    if c + 1 < w and raw[r][c + 1] == fg:
+                        h_pairs.add((r, c))
+                    # vertical pair
+                    if r + 1 < h and raw[r + 1][c] == fg:
+                        v_pairs.add((r, c))
+
+        # Index pairs by row (for h_pairs) and column (for v_pairs)
+        h_by_row = {}
+        for (r, c) in h_pairs:
+            h_by_row.setdefault(r, []).append(c)
+        v_by_col = {}
+        for (r, c) in v_pairs:
+            v_by_col.setdefault(c, []).append(r)
+
+        output = [row[:] for row in raw]
+
+        # For each cell that is background, check cross condition
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    continue
+
+                # Check all distances d from 1 up
+                found = False
+                for d in range(1, max(h, w)):
+                    # Need vertical pair above: pair at (r-d, c) means
+                    # v_pair starts at r-d, so (r-d, c) in v_pairs
+                    # Actually: pair at (r-d-1, c) and (r-d, c), so start = r-d-1
+                    has_above = c in v_by_col and (r - d - 1) in set(v_by_col[c])
+                    if not has_above:
+                        continue
+
+                    # Vertical pair below: starts at (r+d, c)
+                    has_below = c in v_by_col and (r + d) in set(v_by_col[c])
+                    if not has_below:
+                        continue
+
+                    # Horizontal pair left: pair at row r, starting at (r, c-d-1)
+                    has_left = r in h_by_row and (c - d - 1) in set(h_by_row[r])
+                    if not has_left:
+                        continue
+
+                    # Horizontal pair right: starts at (r, c+d)
+                    has_right = r in h_by_row and (c + d) in set(h_by_row[r])
+                    if not has_right:
+                        continue
+
+                    output[r][c] = mark_color
+                    found = True
+                    break
+
+        return output
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -5164,6 +5612,12 @@ class PredictOperator(Operator):
             return self._apply_quadrant_extract(rule, input_grid)
         if rule_type == "key_color_swap":
             return self._apply_key_color_swap(rule, input_grid)
+        if rule_type == "mirror_symmetric_recolor":
+            return self._apply_mirror_symmetric_recolor(rule, input_grid)
+        if rule_type == "bar_frame_gravity":
+            return self._apply_bar_frame_gravity(rule, input_grid)
+        if rule_type == "cross_center_mark":
+            return self._apply_cross_center_mark(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6480,6 +6934,41 @@ class PredictOperator(Operator):
                 if v != 0:
                     output[r][col] = swap.get(v, v)
         return output
+
+    def _apply_mirror_symmetric_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        src = rule["src_color"]
+        dst = rule["dst_color"]
+        output = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == src:
+                    mirror_c = w - 1 - c
+                    if raw[r][mirror_c] == src:
+                        output[r][c] = dst
+        return output
+
+    def _apply_bar_frame_gravity(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        gen = GeneralizeOperator()
+        info = gen._detect_bar_frame(raw, h, w)
+        if info is None:
+            return [row[:] for row in raw]
+        return gen._apply_bar_frame_gravity_raw(info, raw, h, w)
+
+    def _apply_cross_center_mark(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        fg = rule["fg"]
+        mark_color = rule["mark_color"]
+        gen = GeneralizeOperator()
+        return gen._compute_cross_centers(raw, h, w, bg, fg, mark_color)
 
     def _find_colored_rects_raw(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""
