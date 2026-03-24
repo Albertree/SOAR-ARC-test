@@ -679,6 +679,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_core_quadrant_fill(task)
 
+        # Strategy 26: frame color swap (extract rect block, swap 2 colors)
+        if rule is None:
+            rule = self._try_frame_color_swap(task)
+
+        # Strategy 27: pattern tile fill (tile pattern upward to fill grid)
+        if rule is None:
+            rule = self._try_pattern_tile_fill(task)
+
+        # Strategy 28: template color remap (extract block, remap via key pairs)
+        if rule is None:
+            rule = self._try_template_color_remap(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -3505,6 +3517,214 @@ class GeneralizeOperator(Operator):
 
         return {"type": "noise_remove_rect", "confidence": 1.0}
 
+    # ---- strategy: frame color swap (extract rect, swap 2 colors) --------
+
+    def _try_frame_color_swap(self, task):
+        """
+        Detect pattern: a rectangular block of exactly two non-zero colors
+        on a zero background.  Output = extracted block with the two colors
+        swapped.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Bounding box of non-zero cells
+            min_r, max_r, min_c, max_c = h, -1, w, -1
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        min_r = min(min_r, r)
+                        max_r = max(max_r, r)
+                        min_c = min(min_c, c)
+                        max_c = max(max_c, c)
+            if max_r == -1:
+                return None
+
+            block = [ri[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+            bh, bw = len(block), len(block[0])
+
+            if oh != bh or ow != bw:
+                return None
+
+            # Exactly two colors in block, all cells non-zero
+            colors = set()
+            for row in block:
+                for v in row:
+                    if v == 0:
+                        return None
+                    colors.add(v)
+            if len(colors) != 2:
+                return None
+
+            c1, c2 = sorted(colors)
+
+            # Swap colors and verify
+            expected = []
+            for row in block:
+                expected.append([c2 if v == c1 else c1 for v in row])
+            if expected != ro:
+                return None
+
+        return {"type": "frame_color_swap", "confidence": 0.95}
+
+    # ---- strategy: pattern tile fill (tile pattern upward) ---------------
+
+    def _try_pattern_tile_fill(self, task):
+        """
+        Detect pattern: top portion of grid is uniform background; bottom
+        portion has a multi-row pattern.  Output tiles the pattern upward
+        to fill the entire grid.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Background = value of top-left cell; entire first row must match
+            bg = ri[0][0]
+            if not all(ri[0][c] == bg for c in range(w)):
+                return None
+
+            # Find pattern start (first row with any non-bg cell)
+            pattern_start = None
+            for r in range(h):
+                if any(ri[r][c] != bg for c in range(w)):
+                    pattern_start = r
+                    break
+            if pattern_start is None or pattern_start == 0:
+                return None
+
+            # All rows before pattern_start must be pure bg
+            for r in range(pattern_start):
+                if any(ri[r][c] != bg for c in range(w)):
+                    return None
+
+            ph = h - pattern_start
+            pattern = [ri[r][:] for r in range(pattern_start, h)]
+
+            # Verify output is pattern tiled
+            for r in range(h):
+                idx = (r - pattern_start) % ph
+                if ro[r] != pattern[idx]:
+                    return None
+
+        return {"type": "pattern_tile_fill", "confidence": 0.95}
+
+    # ---- strategy: template color remap (block + key pairs) --------------
+
+    def _try_template_color_remap(self, task):
+        """
+        Detect pattern: a rectangular block (all non-zero) plus scattered
+        2-cell key-value pairs on a zero background.  Each pair [a, b]
+        (raster order) defines mapping b -> a.  Output = extracted block
+        with colors remapped.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Find connected components of non-zero cells (4-connected)
+            visited = [[False] * w for _ in range(h)]
+            components = []
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0 and not visited[r][c]:
+                        comp = []
+                        queue = [(r, c)]
+                        visited[r][c] = True
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                nr, nc = cr + dr, cc + dc
+                                if (0 <= nr < h and 0 <= nc < w
+                                        and not visited[nr][nc]
+                                        and ri[nr][nc] != 0):
+                                    visited[nr][nc] = True
+                                    queue.append((nr, nc))
+                        components.append(comp)
+
+            if len(components) < 2:
+                return None
+
+            # Largest component = block; must be a filled rectangle
+            components.sort(key=len, reverse=True)
+            block_comp = components[0]
+            br1 = min(r for r, c in block_comp)
+            br2 = max(r for r, c in block_comp)
+            bc1 = min(c for r, c in block_comp)
+            bc2 = max(c for r, c in block_comp)
+            bh, bw = br2 - br1 + 1, bc2 - bc1 + 1
+            if len(block_comp) != bh * bw:
+                return None
+
+            if oh != bh or ow != bw:
+                return None
+
+            block = [ri[r][bc1:bc2 + 1] for r in range(br1, br2 + 1)]
+
+            # Remaining components must be 2-cell key pairs
+            if len(components) < 2:
+                return None
+            key_pairs = []
+            for comp in components[1:]:
+                if len(comp) != 2:
+                    return None
+                (r1, c1), (r2, c2) = comp
+                key_pairs.append((ri[r1][c1], ri[r2][c2]))
+
+            # Determine mapping: figure out old vs new via block membership
+            block_colors = set()
+            for row in block:
+                for v in row:
+                    block_colors.add(v)
+
+            color_map = {}
+            for a, b in key_pairs:
+                a_in = a in block_colors
+                b_in = b in block_colors
+                if b_in and not a_in:
+                    color_map[b] = a
+                elif a_in and not b_in:
+                    color_map[a] = b
+                else:
+                    # Fallback: raster-order convention (b -> a)
+                    color_map[b] = a
+
+            # Apply mapping to block and verify
+            expected = []
+            for row in block:
+                expected.append([color_map.get(v, v) for v in row])
+            if expected != ro:
+                return None
+
+        return {"type": "template_color_remap", "confidence": 0.95}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -3630,6 +3850,12 @@ class PredictOperator(Operator):
             return self._apply_core_quadrant_fill(rule, input_grid)
         if rule_type == "noise_remove_rect":
             return self._apply_noise_remove_rect(rule, input_grid)
+        if rule_type == "frame_color_swap":
+            return self._apply_frame_color_swap(rule, input_grid)
+        if rule_type == "pattern_tile_fill":
+            return self._apply_pattern_tile_fill(rule, input_grid)
+        if rule_type == "template_color_remap":
+            return self._apply_template_color_remap(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4362,6 +4588,121 @@ class PredictOperator(Operator):
         for r, c in keep:
             result[r][c] = raw[r][c]
         return result
+
+    def _apply_frame_color_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Bounding box of non-zero cells
+        min_r, max_r, min_c, max_c = h, -1, w, -1
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    min_r = min(min_r, r)
+                    max_r = max(max_r, r)
+                    min_c = min(min_c, c)
+                    max_c = max(max_c, c)
+        if max_r == -1:
+            return None
+
+        block = [raw[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+
+        colors = set()
+        for row in block:
+            for v in row:
+                colors.add(v)
+        colors.discard(0)
+        if len(colors) != 2:
+            return None
+
+        c1, c2 = sorted(colors)
+        return [[c2 if v == c1 else c1 for v in row] for row in block]
+
+    def _apply_pattern_tile_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        bg = raw[0][0]
+        pattern_start = None
+        for r in range(h):
+            if any(raw[r][c] != bg for c in range(w)):
+                pattern_start = r
+                break
+        if pattern_start is None or pattern_start == 0:
+            return [row[:] for row in raw]
+
+        ph = h - pattern_start
+        pattern = [raw[r][:] for r in range(pattern_start, h)]
+
+        result = []
+        for r in range(h):
+            idx = (r - pattern_start) % ph
+            result.append(pattern[idx][:])
+        return result
+
+    def _apply_template_color_remap(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Find connected components of non-zero cells
+        visited = [[False] * w for _ in range(h)]
+        components = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0 and not visited[r][c]:
+                    comp = []
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if (0 <= nr < h and 0 <= nc < w
+                                    and not visited[nr][nc]
+                                    and raw[nr][nc] != 0):
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    components.append(comp)
+
+        if len(components) < 2:
+            return None
+
+        components.sort(key=len, reverse=True)
+        block_comp = components[0]
+        br1 = min(r for r, c in block_comp)
+        br2 = max(r for r, c in block_comp)
+        bc1 = min(c for r, c in block_comp)
+        bc2 = max(c for r, c in block_comp)
+        bh, bw = br2 - br1 + 1, bc2 - bc1 + 1
+        if len(block_comp) != bh * bw:
+            return None
+
+        block = [raw[r][bc1:bc2 + 1] for r in range(br1, br2 + 1)]
+
+        # Collect block colors
+        block_colors = set()
+        for row in block:
+            for v in row:
+                block_colors.add(v)
+
+        # Extract key pairs
+        color_map = {}
+        for comp in components[1:]:
+            if len(comp) != 2:
+                continue
+            (r1, c1), (r2, c2) = comp
+            a, b = raw[r1][c1], raw[r2][c2]
+            a_in = a in block_colors
+            b_in = b in block_colors
+            if b_in and not a_in:
+                color_map[b] = a
+            elif a_in and not b_in:
+                color_map[a] = b
+            else:
+                color_map[b] = a
+
+        return [[color_map.get(v, v) for v in row] for row in block]
 
 
 # ======================================================================

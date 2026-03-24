@@ -742,3 +742,104 @@
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 04:55
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 86 -> 86 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_045440.log
+
+---
+## Learning Loop -- 2026-03-25 05:11
+
+- Split: training, Tasks: 40
+- Correct: 6 / 40 (15.0%)
+- Rules: 86 -> 90 (+4 learned)
+- Stored rule hits: 5
+- Time: 152s
+- Log: logs/learn_20260325_050840.log
+
+---
+## Learning Loop -- 2026-03-25 05:13
+
+- Split: training, Tasks: 40
+- Correct: 6 / 40 (15.0%)
+- Rules: 90 -> 93 (+3 learned)
+- Stored rule hits: 6
+- Time: 150s
+- Log: logs/learn_20260325_051126.log
+
+---
+## Learning Loop -- 2026-03-25 05:16
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 93 -> 99 (+6 learned)
+- Stored rule hits: 25
+- Time: 119s
+- Log: logs/learn_20260325_051408.log
+
+---
+## Learning Loop -- 2026-03-25 05:19
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 99 -> 102 (+3 learned)
+- Stored rule hits: 28
+- Time: 119s
+- Log: logs/learn_20260325_051735.log
+
+---
+## Learning Loop -- 2026-03-25 05:20
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 102 -> 102 (+0 learned)
+- Stored rule hits: 2
+- Time: 78s
+- Log: logs/learn_20260325_051939.log
+
+---
+## Learning Loop -- 2026-03-25 05:22
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 102 -> 102 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_052103.log
+
+---
+## Session 11 Analysis — 2026-03-25 05:22
+
+### Strategies added (agent/active_operators.py)
+
+1. **frame_color_swap** — rectangular block of exactly 2 non-zero colors on zero background; extract and swap colors
+   - `_try_frame_color_swap`: finds bounding box of non-zero cells, verifies exactly 2 colors, no zeros in block, swapped output matches
+   - `_apply_frame_color_swap`: extracts block, swaps the two colors
+
+2. **pattern_tile_fill** — uniform background fills top of grid, multi-row pattern at bottom; tile pattern upward to fill entire grid
+   - `_try_pattern_tile_fill`: detects background rows, extracts pattern, verifies cyclic tiling matches output
+   - `_apply_pattern_tile_fill`: tiles pattern using modular index from pattern start position
+
+3. **template_color_remap** — rectangular block (all non-zero) plus scattered 2-cell key-value pairs on zero background; extract block and remap colors via keys
+   - `_try_template_color_remap`: finds connected components (largest = block, 2-cell = key pairs), determines old→new mapping via block membership, verifies remapped output
+   - `_apply_template_color_remap`: same detection logic applied to test input
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| b94a9452 | INCORRECT (identity) | CORRECT | frame_color_swap |
+| 9b30e358 | INCORRECT (identity) | CORRECT | pattern_tile_fill |
+| e9b4f6fc | INCORRECT (identity) | CORRECT | template_color_remap |
+
+**Score on original 20-task set: 20/20 (100.0%) maintained**
+**Broader test (40 tasks): 26/40 (65.0%) → 29/40 (72.5%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
