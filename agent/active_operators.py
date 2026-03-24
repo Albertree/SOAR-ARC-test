@@ -363,6 +363,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_block_slide_split(task)
 
+        # Strategy 14: gravity fall -- objects fall toward border wall
+        if rule is None:
+            rule = self._try_gravity_fall(task)
+
+        # Strategy 15: count diamond -- scattered dots counted, V/diamond drawn
+        if rule is None:
+            rule = self._try_count_diamond(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2193,6 +2201,276 @@ class GeneralizeOperator(Operator):
 
         return {"type": "grid_zigzag", "confidence": 1.0}
 
+    # ---- strategy: gravity fall --------------------------------------------
+
+    def _try_gravity_fall(self, task):
+        """
+        Detect pattern: objects of one color fall toward a border/wall
+        of another color as rigid bodies, stopping with a 1-cell gap.
+        Colors may differ per example — brute-force all assignments.
+        Category: gravity/physics puzzles with border walls.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        from collections import Counter
+        for pair in pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if H != len(raw_out) or W != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            color_counts = Counter()
+            for r in range(H):
+                for c in range(W):
+                    color_counts[raw_in[r][c]] += 1
+            if len(color_counts) < 3:
+                return None
+
+            # Brute-force: try all (bg, border) assignments
+            colors = list(color_counts.keys())
+            found = False
+            for bg in colors:
+                for border in colors:
+                    if border == bg:
+                        continue
+                    obj_colors = set(colors) - {bg, border}
+                    if not obj_colors:
+                        continue
+                    predicted = self._compute_gravity_fall(
+                        raw_in, bg, border, obj_colors)
+                    if predicted == raw_out:
+                        found = True
+                        break
+                if found:
+                    break
+            if not found:
+                return None
+
+        return {"type": "gravity_fall", "confidence": 0.9}
+
+    @staticmethod
+    def _identify_gravity_colors(raw):
+        """Identify bg, border, obj from input using edge-sides heuristic."""
+        from collections import Counter
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        color_counts = Counter()
+        for r in range(H):
+            for c in range(W):
+                color_counts[raw[r][c]] += 1
+        if len(color_counts) < 3:
+            return None
+
+        bg = color_counts.most_common(1)[0][0]
+        remaining = set(color_counts.keys()) - {bg}
+
+        def edge_sides(color):
+            sides = set()
+            for c in range(W):
+                if raw[0][c] == color:
+                    sides.add('top')
+                if raw[H - 1][c] == color:
+                    sides.add('bottom')
+            for r in range(H):
+                if raw[r][0] == color:
+                    sides.add('left')
+                if raw[r][W - 1] == color:
+                    sides.add('right')
+            return len(sides)
+
+        border = max(remaining, key=lambda c: (edge_sides(c), color_counts[c]))
+        obj_colors = remaining - {border}
+        if not obj_colors or edge_sides(border) == 0:
+            return None
+        return bg, border, obj_colors
+
+    @staticmethod
+    def _compute_gravity_fall(raw, bg, border_color, obj_colors):
+        """Apply gravity to all object components, shifting them toward border."""
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Find all object cells
+        obj_cells = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] in obj_colors:
+                    obj_cells.add((r, c))
+        if not obj_cells:
+            return [row[:] for row in raw]
+
+        # Connected components
+        visited = set()
+        components = []
+        for cell in sorted(obj_cells):
+            if cell in visited:
+                continue
+            comp = []
+            queue = [cell]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in obj_cells:
+                    continue
+                visited.add(p)
+                comp.append(p)
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (p[0] + dr, p[1] + dc)
+                    if nb in obj_cells and nb not in visited:
+                        queue.append(nb)
+            components.append(comp)
+
+        # Sort: bottom-most component first (settles first)
+        components.sort(key=lambda comp: -max(r for r, c in comp))
+
+        # Build output with bg + border only
+        output = [[bg] * W for _ in range(H)]
+        border_cells = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == border_color:
+                    output[r][c] = border_color
+                    border_cells.add((r, c))
+        placed_cells = set()
+
+        for comp in components:
+            cols_in_comp = set(c for _, c in comp)
+            min_shift = H  # large default
+
+            for col in cols_in_comp:
+                bottom_row = max(r for r, c in comp if c == col)
+                # Scan down to find first obstacle (border or placed object)
+                obstacle_row = H
+                is_border = True
+                for scan_r in range(bottom_row + 1, H):
+                    if (scan_r, col) in border_cells:
+                        obstacle_row = scan_r
+                        is_border = True
+                        break
+                    if (scan_r, col) in placed_cells:
+                        obstacle_row = scan_r
+                        is_border = False
+                        break
+                # 1-cell gap before border, 0-cell gap before other objects
+                gap = 2 if is_border else 1
+                shift = obstacle_row - bottom_row - gap
+                if shift < 0:
+                    shift = 0
+                min_shift = min(min_shift, shift)
+
+            for r, c in comp:
+                new_r = r + min_shift
+                if 0 <= new_r < H:
+                    output[new_r][c] = raw[r][c]
+                    placed_cells.add((new_r, c))
+
+        return output
+
+    # ---- strategy: count diamond -------------------------------------------
+
+    def _try_count_diamond(self, task):
+        """
+        Detect pattern: scattered dots of exactly 2 non-bg colors.
+        Count each color -> rectangle dims (w=max, h=min) at bottom-left.
+        Rectangle filled with color 2, V/diamond outline in color 4.
+        Output grid may be larger than input (max dims across examples).
+        Category: counting-to-geometry puzzles.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        from collections import Counter
+
+        # Output dim = max across all training inputs
+        max_dim = 0
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            max_dim = max(max_dim, len(ri), len(ri[0]) if ri else 0)
+
+        for pair in pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            H_in = len(raw_in)
+            W_in = len(raw_in[0]) if raw_in else 0
+            H_out = len(raw_out)
+            W_out = len(raw_out[0]) if raw_out else 0
+
+            if H_out != max_dim or W_out != max_dim:
+                return None
+
+            color_counts = Counter()
+            for r in range(H_in):
+                for c in range(W_in):
+                    color_counts[raw_in[r][c]] += 1
+
+            bg = color_counts.most_common(1)[0][0]
+            non_bg = {c: cnt for c, cnt in color_counts.items() if c != bg}
+            if len(non_bg) != 2:
+                return None
+
+            counts = sorted(non_bg.values())
+            h_rect = counts[0]
+            w_rect = counts[1]
+
+            expected = self._build_count_diamond(max_dim, max_dim, bg, w_rect, h_rect)
+            if expected != raw_out:
+                return None
+
+        return {"type": "count_diamond", "output_dim": max_dim, "confidence": 0.95}
+
+    @staticmethod
+    def _build_count_diamond(H, W, bg, w, h):
+        """Build output grid with V/diamond pattern at bottom-left."""
+        output = [[bg] * W for _ in range(H)]
+        max_d = (w - 1) // 2
+
+        # Distance sequence (bottom-up): starts at max_d, decreases to 0,
+        # then bounces back (even width: d=0 repeats once).
+        distances = []
+        for i in range(h):
+            if i <= max_d:
+                d = max_d - i
+            else:
+                extra = i - max_d
+                if w % 2 == 0:
+                    d = extra - 1
+                else:
+                    d = extra
+            distances.append(d)
+
+        for i, dist in enumerate(distances):
+            row = H - 1 - i
+            # Fill row with color 2
+            for c in range(w):
+                output[row][c] = 2
+            # Place 4s on the diagonals
+            if w % 2 == 0:
+                cl = w // 2 - 1 - dist
+                cr = w // 2 + dist
+                if 0 <= cl < w:
+                    output[row][cl] = 4
+                if 0 <= cr < w:
+                    output[row][cr] = 4
+            else:
+                center = w // 2
+                if dist == 0:
+                    output[row][center] = 4
+                else:
+                    if 0 <= center - dist < w:
+                        output[row][center - dist] = 4
+                    if 0 <= center + dist < w:
+                        output[row][center + dist] = 4
+
+        return output
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -2292,6 +2570,10 @@ class PredictOperator(Operator):
             return self._apply_grid_zigzag(rule, input_grid)
         if rule_type == "block_slide_split":
             return self._apply_block_slide_split(rule, input_grid)
+        if rule_type == "gravity_fall":
+            return self._apply_gravity_fall(rule, input_grid)
+        if rule_type == "count_diamond":
+            return self._apply_count_diamond(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2710,6 +2992,37 @@ class PredictOperator(Operator):
         blocks, axis, middle_idx, split_idx, stay_idx = result
         return GeneralizeOperator._build_block_slide_output(
             h, w, bg, blocks, axis, middle_idx, split_idx, stay_idx)
+
+    def _apply_gravity_fall(self, rule, input_grid):
+        raw = input_grid.raw
+        colors = GeneralizeOperator._identify_gravity_colors(raw)
+        if colors is None:
+            return [row[:] for row in raw]
+        bg, border_color, obj_colors = colors
+        return GeneralizeOperator._compute_gravity_fall(
+            raw, bg, border_color, obj_colors)
+
+    def _apply_count_diamond(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        from collections import Counter
+        color_counts = Counter()
+        for r in range(H):
+            for c in range(W):
+                color_counts[raw[r][c]] += 1
+        bg = color_counts.most_common(1)[0][0]
+        non_bg = {c: cnt for c, cnt in color_counts.items() if c != bg}
+        if len(non_bg) != 2:
+            return [row[:] for row in raw]
+        counts = sorted(non_bg.values())
+        h_rect = counts[0]
+        w_rect = counts[1]
+        out_dim = max(rule.get("output_dim", max(H, W)), H, W)
+        if w_rect > out_dim or h_rect > out_dim:
+            return [row[:] for row in raw]
+        return GeneralizeOperator._build_count_diamond(
+            out_dim, out_dim, bg, w_rect, h_rect)
 
     # ---- helpers ---------------------------------------------------------
 

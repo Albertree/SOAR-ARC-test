@@ -291,3 +291,81 @@
 - Stored rule hits: 15
 - Time: 56s
 - Log: logs/learn_20260325_022344.log
+
+---
+## Learning Loop -- 2026-03-25 02:26
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 26 -> 26 (+0 learned)
+- Stored rule hits: 16
+- Time: 56s
+- Log: logs/learn_20260325_022536.log
+
+---
+## Session 7 Analysis — 2026-03-25 03:25
+
+### Strategies added (agent/active_operators.py)
+
+1. **gravity_fall** — objects fall toward a border wall as rigid bodies, stopping with 1-cell gap
+   - `_try_gravity_fall`: brute-forces all (bg, border, obj) color role assignments per training example; validates gravity computation against expected output
+   - `_apply_gravity_fall`: auto-detects colors via edge-sides heuristic, applies gravity
+   - `_compute_gravity_fall`: finds connected components of object color, sorts bottom-first, shifts each toward border (gap=1 to border, gap=0 between stacked objects)
+   - `_identify_gravity_colors`: heuristic for test input: bg=most common, border=most edge sides among remaining
+
+2. **count_diamond** — scattered dots of 2 non-bg colors counted; rectangle at bottom-left with V/diamond pattern
+   - `_try_count_diamond`: counts exactly 2 non-bg colors, computes rect dims (w=max_count, h=min_count), output grid = max dims across training examples, verifies V/diamond pattern (fill=2, diagonals=4)
+   - `_apply_count_diamond`: counts colors in test input, builds output with _build_count_diamond
+   - `_build_count_diamond`: generates distance sequence (bottom-up: converge to center, bounce), draws diagonal 4s on fill of 2s
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 825aa9e9 | INCORRECT (identity) | CORRECT | gravity_fall |
+| 878187ab | INCORRECT (identity) | CORRECT | count_diamond |
+
+**Score: 16/20 (80.0%) → 18/20 (90.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 03:25
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 26 -> 28 (+2 learned)
+- Stored rule hits: 16
+- Time: 57s
+- Log: logs/learn_20260325_032550.log
+
+---
+## Learning Loop -- 2026-03-25 03:12
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 26 -> 26 (+0 learned)
+- Stored rule hits: 16
+- Time: 56s
+- Log: logs/learn_20260325_031109.log
+
+---
+## Learning Loop -- 2026-03-25 03:13
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 26 -> 26 (+0 learned)
+- Stored rule hits: 16
+- Time: 57s
+- Log: logs/learn_20260325_031215.log
+
+---
+## Learning Loop -- 2026-03-25 03:26
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 28 -> 28 (+0 learned)
+- Stored rule hits: 17
+- Time: 56s
+- Log: logs/learn_20260325_032550.log
