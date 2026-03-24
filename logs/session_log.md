@@ -843,3 +843,112 @@
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 05:24
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 102 -> 102 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_052308.log
+
+---
+## Learning Loop -- 2026-03-25 05:25
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 102 -> 102 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_052431.log
+
+---
+## Learning Loop -- 2026-03-25 05:26
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 102 -> 107 (+5 learned)
+- Stored rule hits: 2
+- Time: 47s
+- Log: logs/learn_20260325_052540.log
+
+---
+## Learning Loop -- 2026-03-25 05:31
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 107 -> 114 (+7 learned)
+- Stored rule hits: 2
+- Time: 39s
+- Log: logs/learn_20260325_053027.log
+
+---
+## Learning Loop -- 2026-03-25 05:32
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 114 -> 114 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_053134.log
+
+---
+## Learning Loop -- 2026-03-25 05:35
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 114 -> 114 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_053440.log
+
+---
+## Learning Loop -- 2026-03-25 05:36
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 114 -> 118 (+4 learned)
+- Stored rule hits: 5
+- Time: 39s
+- Log: logs/learn_20260325_053539.log
+
+---
+## Session 12 Analysis — 2026-03-25 05:24
+
+### Context
+
+All 20 tasks in the standard batch (seed 42) were already at 100%. Ran a new batch (seed 99) to find unsolved tasks: 3/20 correct. Picked 3 failing tasks and implemented strategies.
+
+### Strategies added (agent/active_operators.py)
+
+1. **marker_ray_fill** — isolated marker pixels fill rightward to grid edge, then downward along the right-edge column
+   - `_try_marker_ray_fill`: verifies isolated non-zero markers on zero background; simulates L-fill and checks against expected output for all training pairs
+   - `_apply_marker_ray_fill`: sorts markers by row, fills right to edge, fills down right-edge column until next marker row (or bottom)
+
+2. **crop_bbox** — extract bounding box of non-background pixels from input grid
+   - `_try_crop_bbox`: determines background (most common color), finds non-bg pixel bounding box, verifies extraction (bg→0) matches output for all training pairs
+   - `_apply_crop_bbox`: finds bounding box, extracts region, replaces bg with 0
+
+3. **binary_grid_xor** — input split by separator row into two binary halves; output is XOR of the two masks
+   - `_try_binary_grid_xor`: finds uniform separator row, verifies each half is binary (0 vs one color), checks XOR matches output for all training pairs
+   - `_apply_binary_grid_xor`: finds separator, extracts halves, XORs binary masks, maps result to output color
+
+### Bug fix
+
+- Fixed `_apply_binary_grid_xor` crash ("list index out of range") when separator row is at grid edge, causing `bot` to be empty. Added size guard returning `None` when halves are unequal.
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 99fa7670 | INCORRECT (identity) | CORRECT | marker_ray_fill |
+| a740d043 | INCORRECT (identity) | CORRECT | crop_bbox |
+| 99b1bc43 | INCORRECT (identity) | CORRECT | binary_grid_xor |
+
+**Standard batch (seed 42): 20/20 (100.0%) — no regressions**
+**New batch (seed 99): 3/20 (15.0%) → 6/20 (30.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

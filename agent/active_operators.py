@@ -691,6 +691,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_template_color_remap(task)
 
+        # Strategy 29: marker ray fill (isolated pixels fill right then down)
+        if rule is None:
+            rule = self._try_marker_ray_fill(task)
+
+        # Strategy 30: crop bounding box (extract non-bg region)
+        if rule is None:
+            rule = self._try_crop_bbox(task)
+
+        # Strategy 31: binary grid XOR (two grid halves split by divider, XOR)
+        if rule is None:
+            rule = self._try_binary_grid_xor(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -3725,6 +3737,207 @@ class GeneralizeOperator(Operator):
 
         return {"type": "template_color_remap", "confidence": 0.95}
 
+    # ---- strategy: marker ray fill ----------------------------------------
+
+    def _try_marker_ray_fill(self, task):
+        """
+        Detect pattern: isolated non-zero marker pixels on a zero background.
+        Each marker fills rightward to the grid edge, then fills downward
+        along the right-edge column until the next marker's row (or grid bottom).
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if h != oh or w != ow:
+                return None
+
+            # Collect non-zero markers (must be isolated single pixels)
+            markers = []
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        markers.append((r, c, ri[r][c]))
+            if not markers:
+                return None
+
+            # Check they are isolated (no two adjacent)
+            mset = {(r, c) for r, c, _ in markers}
+            for r, c, _ in markers:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    if (r + dr, c + dc) in mset:
+                        return None
+
+            # Sort markers by row
+            markers.sort(key=lambda m: m[0])
+
+            # Build expected output
+            expected = [[0] * w for _ in range(h)]
+            for idx, (mr, mc, color) in enumerate(markers):
+                # Fill right from marker to right edge
+                for c in range(mc, w):
+                    expected[mr][c] = color
+                # Fill down right-edge column from marker_row+1
+                # until next marker's row - 1 (or bottom)
+                if idx + 1 < len(markers):
+                    end_row = markers[idx + 1][0] - 1
+                else:
+                    end_row = h - 1
+                for r in range(mr + 1, end_row + 1):
+                    expected[r][w - 1] = color
+
+            if expected != ro:
+                return None
+
+        return {"type": "marker_ray_fill", "confidence": 0.95}
+
+    # ---- strategy: crop bounding box --------------------------------------
+
+    def _try_crop_bbox(self, task):
+        """
+        Detect pattern: the output is the bounding box of all non-background
+        pixels in the input, with the background color replaced by 0.
+        Background = most common color in input.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        bg_color = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Output must be smaller than input
+            if oh >= h and ow >= w:
+                return None
+
+            # Determine background color (most common)
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    v = ri[r][c]
+                    freq[v] = freq.get(v, 0) + 1
+            local_bg = max(freq, key=freq.get)
+
+            if bg_color is None:
+                bg_color = local_bg
+            elif bg_color != local_bg:
+                return None
+
+            # Find bounding box of non-bg pixels
+            non_bg = [(r, c) for r in range(h) for c in range(w)
+                       if ri[r][c] != bg_color]
+            if not non_bg:
+                return None
+            r1 = min(r for r, c in non_bg)
+            r2 = max(r for r, c in non_bg)
+            c1 = min(c for r, c in non_bg)
+            c2 = max(c for r, c in non_bg)
+            bh, bw = r2 - r1 + 1, c2 - c1 + 1
+
+            if bh != oh or bw != ow:
+                return None
+
+            # Extract region, replace bg with 0
+            expected = []
+            for r in range(r1, r2 + 1):
+                row = []
+                for c in range(c1, c2 + 1):
+                    v = ri[r][c]
+                    row.append(0 if v == bg_color else v)
+                expected.append(row)
+
+            if expected != ro:
+                return None
+
+        return {"type": "crop_bbox", "bg_color": bg_color, "confidence": 0.95}
+
+    # ---- strategy: binary grid XOR ----------------------------------------
+
+    def _try_binary_grid_xor(self, task):
+        """
+        Detect pattern: input grid has a separator row of uniform non-zero
+        color splitting it into two equal halves.  Each half is binary
+        (0 vs color_A / 0 vs color_B).  Output = XOR of the two binary
+        masks, with 1s mapped to a result color (typically 3).
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        result_color = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Find separator row (all cells same non-zero value)
+            sep_row = None
+            sep_val = None
+            for r in range(h):
+                vals = set(ri[r])
+                if len(vals) == 1 and 0 not in vals:
+                    sep_row = r
+                    sep_val = vals.pop()
+                    break
+            if sep_row is None:
+                return None
+
+            # Split into top and bottom halves
+            top = ri[:sep_row]
+            bot = ri[sep_row + 1:]
+            th, bh_ = len(top), len(bot)
+            if th != bh_ or th != oh or w != ow:
+                return None
+
+            # Identify the non-zero color in each half
+            top_colors = {v for row in top for v in row if v != 0}
+            bot_colors = {v for row in bot for v in row if v != 0}
+            if len(top_colors) != 1 or len(bot_colors) != 1:
+                return None
+            color_a = top_colors.pop()
+            color_b = bot_colors.pop()
+
+            # Build binary masks and XOR
+            out_colors = {v for row in ro for v in row if v != 0}
+            if len(out_colors) != 1:
+                return None
+            local_result = out_colors.pop()
+            if result_color is None:
+                result_color = local_result
+            elif result_color != local_result:
+                return None
+
+            expected = []
+            for r in range(th):
+                row = []
+                for c in range(w):
+                    a_set = (top[r][c] == color_a)
+                    b_set = (bot[r][c] == color_b)
+                    row.append(result_color if (a_set != b_set) else 0)
+                expected.append(row)
+
+            if expected != ro:
+                return None
+
+        return {"type": "binary_grid_xor", "result_color": result_color,
+                "confidence": 0.95}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -3856,6 +4069,12 @@ class PredictOperator(Operator):
             return self._apply_pattern_tile_fill(rule, input_grid)
         if rule_type == "template_color_remap":
             return self._apply_template_color_remap(rule, input_grid)
+        if rule_type == "marker_ray_fill":
+            return self._apply_marker_ray_fill(rule, input_grid)
+        if rule_type == "crop_bbox":
+            return self._apply_crop_bbox(rule, input_grid)
+        if rule_type == "binary_grid_xor":
+            return self._apply_binary_grid_xor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4703,6 +4922,100 @@ class PredictOperator(Operator):
                 color_map[b] = a
 
         return [[color_map.get(v, v) for v in row] for row in block]
+
+    def _apply_marker_ray_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Collect non-zero markers
+        markers = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    markers.append((r, c, raw[r][c]))
+        if not markers:
+            return [row[:] for row in raw]
+
+        markers.sort(key=lambda m: m[0])
+
+        output = [[0] * w for _ in range(h)]
+        for idx, (mr, mc, color) in enumerate(markers):
+            # Fill right from marker to right edge
+            for c in range(mc, w):
+                output[mr][c] = color
+            # Fill down right-edge column
+            if idx + 1 < len(markers):
+                end_row = markers[idx + 1][0] - 1
+            else:
+                end_row = h - 1
+            for r in range(mr + 1, end_row + 1):
+                output[r][w - 1] = color
+
+        return output
+
+    def _apply_crop_bbox(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule.get("bg_color", 0)
+
+        # Find bounding box of non-bg pixels
+        non_bg = [(r, c) for r in range(h) for c in range(w)
+                   if raw[r][c] != bg]
+        if not non_bg:
+            return [[0]]
+        r1 = min(r for r, c in non_bg)
+        r2 = max(r for r, c in non_bg)
+        c1 = min(c for r, c in non_bg)
+        c2 = max(c for r, c in non_bg)
+
+        output = []
+        for r in range(r1, r2 + 1):
+            row = []
+            for c in range(c1, c2 + 1):
+                v = raw[r][c]
+                row.append(0 if v == bg else v)
+            output.append(row)
+        return output
+
+    def _apply_binary_grid_xor(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        result_color = rule.get("result_color", 3)
+
+        # Find separator row
+        sep_row = None
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and 0 not in vals:
+                sep_row = r
+                break
+        if sep_row is None:
+            return None
+
+        top = raw[:sep_row]
+        bot = raw[sep_row + 1:]
+        th = len(top)
+        if th == 0 or th != len(bot):
+            return None
+
+        # Identify non-zero colors
+        top_colors = {v for row in top for v in row if v != 0}
+        bot_colors = {v for row in bot for v in row if v != 0}
+        color_a = top_colors.pop() if top_colors else 1
+        color_b = bot_colors.pop() if bot_colors else 2
+
+        output = []
+        for r in range(th):
+            row = []
+            for c in range(w):
+                a_set = (top[r][c] == color_a)
+                b_set = (bot[r][c] == color_b)
+                row.append(result_color if (a_set != b_set) else 0)
+            output.append(row)
+        return output
 
 
 # ======================================================================
