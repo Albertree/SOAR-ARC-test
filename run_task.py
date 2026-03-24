@@ -1,22 +1,22 @@
 """
-단일 태스크 실행 스크립트 — inner loop 성공 기준 판정용.
+Single task execution script — for inner loop success criteria evaluation.
 python run_task.py
 
-성공 기준: 출력에 "CORRECT" 포함
+Success criteria: output contains "CORRECT"
 """
 
 import sys
 import traceback
 
 TASK_HEX = "08ed6ac7"
-MAX_STEPS = 500  # goal 달성 전까지 충분히 돌 수 있도록
+MAX_STEPS = 500  # Allow enough iterations until goal is achieved
 
 
 def main():
     print(f"=== run_task: {TASK_HEX} ===\n")
 
-    # 1. 태스크 로드
-    print("[*] 태스크 로드...")
+    # 1. Load task
+    print("[*] Loading task...")
     try:
         from basics.viz import show_task
         from managers.arc_manager import ARCManager
@@ -27,7 +27,7 @@ def main():
         show_task(task)
 
     except Exception:
-        print("[!] 태스크 로드 실패:")
+        print("[!] Task loading failed:")
         traceback.print_exc()
         sys.exit(1)
 
@@ -62,13 +62,13 @@ def main():
         print(f"\n[cycle] {out}")
 
     except Exception:
-        print("[!] WM / cycle 실패:")
+        print("[!] WM / cycle failed:")
         traceback.print_exc()
         _print_result(False, error=True)
         sys.exit(1)
 
-    # 2. 결과 판정
-    # wm에서 제출된 답 꺼내기
+    # 2. Result evaluation
+    # Extract submitted answer from wm
     try:
         predicted = _extract_prediction(wm)
         answer = _load_answer(task)
@@ -77,7 +77,7 @@ def main():
         sys.exit(0 if correct else 1)
 
     except Exception:
-        print("[!] 결과 판정 실패:")
+        print("[!] Result evaluation failed:")
         traceback.print_exc()
         _print_result(False, error=True)
         sys.exit(1)
@@ -85,11 +85,11 @@ def main():
 
 def _extract_prediction(wm):
     """
-    WM output-link에서 예측 그리드를 꺼낸다.
-    SubmitOperator가 아래 슬롯에 결과를 써야 한다:
+    Extract the predicted grid from the WM output-link.
+    SubmitOperator must write the result to the following slots:
       (S1 ^output-link O_out)
       (O_out ^predicted-grid [[...], [...], ...])
-    구현 전까지는 None 반환.
+    Returns None until implemented.
     """
     try:
         s1 = wm.get("S1")
@@ -106,8 +106,8 @@ def _extract_prediction(wm):
 
 def _load_answer(task):
     """
-    task 객체에서 test pair의 정답 output grid를 꺼낸다.
-    test pair가 여러 개면 리스트로 반환.
+    Extract the correct output grid from the task object's test pairs.
+    Returns a list if there are multiple test pairs.
     """
     answers = []
     for pair in task.test_pairs:
@@ -118,13 +118,13 @@ def _load_answer(task):
 
 def _check_correct(predicted, answer):
     """
-    predicted: 예측 그리드 (list[list[int]] 또는 list of them)
-    answer:    정답 그리드 리스트
-    완전 일치할 때만 True.
+    predicted: predicted grid (list[list[int]] or list of them)
+    answer:    list of correct grids
+    Returns True only on exact match.
     """
     if predicted is None or answer is None:
         return False
-    # 단일 그리드로 왔을 때 리스트로 감싸기
+    # Wrap in a list if a single grid was provided
     if predicted and not isinstance(predicted[0], list):
         predicted = [predicted]
     if len(predicted) != len(answer):
@@ -138,7 +138,7 @@ def _check_correct(predicted, answer):
 def _print_result(correct: bool, error: bool = False):
     print("\n" + "=" * 40)
     if error:
-        print("RESULT  : ERROR (판정 불가)")
+        print("RESULT  : ERROR (unable to evaluate)")
     elif correct:
         print("RESULT  : CORRECT ✅")
     else:

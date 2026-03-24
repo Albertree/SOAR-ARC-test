@@ -1,8 +1,8 @@
 """
-ARCKG — Knowledge Graph 패키지.
+ARCKG — Knowledge Graph package.
 
 Public interface:
-    compare  — 두 KG 노드를 비교해 relation edge를 생성한다
+    compare  — compare two KG nodes and generate a relation edge
 """
 
 from ARCKG.comparison import compare

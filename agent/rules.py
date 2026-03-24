@@ -1,13 +1,13 @@
 """
-rules — SOAR Production Memory의 Propose 규칙.
+rules — Propose rules for SOAR Production Memory.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[SOAR 강제] ProductionRule의 인터페이스(condition + propose).
-            Proposer는 모든 규칙을 순회해 후보를 수집하는 엔진.
+[SOAR MANDATORY] ProductionRule interface (condition + propose).
+                 Proposer is the engine that iterates all rules to collect candidates.
 
-[설계 자유] 어떤 WM 상태에서 어떤 operator를 제안할지 (규칙 내용 전부).
-            condition의 조건, propose가 반환하는 operator.
-            Proposer에 등록할 규칙 목록.
+[DESIGN FREE] Which operator to propose for which WM state (entire rule content).
+              Conditions in condition, operator returned by propose.
+              List of rules to register with Proposer.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -27,35 +27,35 @@ from agent.active_operators import (
 
 class ProductionRule:
     """
-    [SOAR 강제] Production Rule 인터페이스. condition + propose.
-    [설계 자유] condition 내용, propose가 반환하는 operator.
-    MUST NOT: condition에서 WM을 수정하지 마.
-              condition에서 elaborated 이외를 직접 계산하지 마.
-              propose에서 operator를 실행하지 마.
+    [SOAR MANDATORY] Production Rule interface. condition + propose.
+    [DESIGN FREE] condition content, operator returned by propose.
+    MUST NOT: Do not modify WM in condition.
+              Do not directly compute anything other than elaborated in condition.
+              Do not execute operator in propose.
     """
 
     def __init__(self, name: str):
         self.name = name
 
     def condition(self, wm) -> bool:
-        """[설계 자유] elaborated facts만 읽어 발화 조건 판단."""
+        """[DESIGN FREE] Determine firing condition by reading only elaborated facts."""
         raise NotImplementedError(
             f"{self.__class__.__name__}.condition() must be implemented."
         )
 
     def propose(self, wm) -> object:
-        """[설계 자유] 조건 충족 시 Operator 인스턴스 반환. None 반환 금지."""
+        """[DESIGN FREE] Return an Operator instance when condition is met. Must not return None."""
         raise NotImplementedError(
             f"{self.__class__.__name__}.propose() must be implemented."
         )
 
 
-# ── 구체 ProductionRule 구현 — 전부 [설계 자유] ───────────────────────
+# ── Concrete ProductionRule implementations — all [DESIGN FREE] ─────────
 
 
 class SolveTaskRule(ProductionRule):
     """
-    S1에 ^current-task가 있고 아직 ^operator가 없을 때 solve-task를 제안한다.
+    Proposes solve-task when S1 has ^current-task and no ^operator yet.
     """
 
     def __init__(self):
@@ -73,8 +73,9 @@ class SolveTaskRule(ProductionRule):
 
 class SubstateNoChangeProgressRule(ProductionRule):
     """
-    S2+ 에서 operator no-change 임패스가 열린 뒤, 상위(S1)에 result를 쓸 수 있는
-    최소 구체 오퍼레이터를 제안한다. (향후 compare/collect 로 대체·분기)
+    After an operator no-change impasse opens in S2+, proposes a minimal concrete
+    operator that can write a result to the superstate (S1).
+    (To be replaced/branched with compare/collect in the future)
     """
 
     def __init__(self):
@@ -95,7 +96,7 @@ class SubstateNoChangeProgressRule(ProductionRule):
 
 
 class SelectTargetRule(ProductionRule):
-    """[설계 자유] elaborated["needs_target_selection"] → SelectTargetOperator."""
+    """[DESIGN FREE] elaborated["needs_target_selection"] → SelectTargetOperator."""
 
     def __init__(self):
         super().__init__("rule_select_target")
@@ -108,7 +109,7 @@ class SelectTargetRule(ProductionRule):
 
 
 class CompareRule(ProductionRule):
-    """[설계 자유] elaborated["has_pending_comparison"] → CompareOperator."""
+    """[DESIGN FREE] elaborated["has_pending_comparison"] → CompareOperator."""
 
     def __init__(self):
         super().__init__("rule_compare")
@@ -121,7 +122,7 @@ class CompareRule(ProductionRule):
 
 
 class ExtractPatternRule(ProductionRule):
-    """[설계 자유] elaborated["ready_for_pattern_extraction"] → ExtractPatternOperator."""
+    """[DESIGN FREE] elaborated["ready_for_pattern_extraction"] → ExtractPatternOperator."""
 
     def __init__(self):
         super().__init__("rule_extract_pattern")
@@ -134,7 +135,7 @@ class ExtractPatternRule(ProductionRule):
 
 
 class GeneralizeRule(ProductionRule):
-    """[설계 자유] elaborated["ready_for_generalization"] → GeneralizeOperator."""
+    """[DESIGN FREE] elaborated["ready_for_generalization"] → GeneralizeOperator."""
 
     def __init__(self):
         super().__init__("rule_generalize")
@@ -147,7 +148,7 @@ class GeneralizeRule(ProductionRule):
 
 
 class PredictRule(ProductionRule):
-    """[설계 자유] elaborated["ready_for_prediction"] → PredictOperator."""
+    """[DESIGN FREE] elaborated["ready_for_prediction"] → PredictOperator."""
 
     def __init__(self):
         super().__init__("rule_predict")
@@ -160,7 +161,7 @@ class PredictRule(ProductionRule):
 
 
 class SubmitRule(ProductionRule):
-    """[설계 자유] elaborated["all_outputs_found"] → SubmitOperator."""
+    """[DESIGN FREE] elaborated["all_outputs_found"] → SubmitOperator."""
 
     def __init__(self):
         super().__init__("rule_submit")
@@ -174,21 +175,21 @@ class SubmitRule(ProductionRule):
 
 class VerifyRule(ProductionRule):
     """
-    [설계 자유] verify 연산을 위한 ProductionRule.
+    [DESIGN FREE] ProductionRule for the verify operation.
 
-    인지 수준의 verify(predicted_output, constraints)에 대응하며,
-    elaborated["all_outputs_found"]와 같은 고수준 제약 판단이 끝났을 때
-    VerifyOperator를 제안한다.
+    Corresponds to the cognitive-level verify(predicted_output, constraints),
+    and proposes VerifyOperator when high-level constraint evaluation such as
+    elaborated["all_outputs_found"] is complete.
 
-    기본 설계에서는 SubmitRule과 동일한 발화 조건을 사용하지만,
-    필요하다면 나중에 제약 검사를 더 세분화할 수 있다.
+    In the default design, it uses the same firing condition as SubmitRule,
+    but the constraint check can be further refined later if needed.
     """
 
     def __init__(self):
         super().__init__("rule_verify")
 
     def condition(self, wm) -> bool:
-        """[설계 자유] 현재는 SubmitRule과 동일한 플래그 사용을 가정."""
+        """[DESIGN FREE] Currently assumes the same flag as SubmitRule."""
         raise NotImplementedError("VerifyRule.condition() not implemented.")
 
     def propose(self, wm):
@@ -197,16 +198,16 @@ class VerifyRule(ProductionRule):
 
 class Proposer:
     """
-    [SOAR 강제] 등록된 ProductionRule을 순회해 후보를 수집하는 엔진.
-    [설계 자유] 등록할 규칙 목록 (build_proposer에서 결정).
-    MUST NOT: 선택(select)이나 적용(apply)을 수행하지 마.
+    [SOAR MANDATORY] Engine that iterates registered ProductionRules to collect candidates.
+    [DESIGN FREE] List of rules to register (determined in build_proposer).
+    MUST NOT: Do not perform selection (select) or application (apply).
     """
 
     def __init__(self, rules: list):
         self._rules = rules
 
     def propose(self, wm) -> list:
-        """발화한 규칙이 낸 오퍼레이터 인스턴스 목록. NotImplemented 규칙은 건너뜀."""
+        """List of operator instances from fired rules. Rules with NotImplementedError are skipped."""
         candidates: list = []
         for rule in self._rules:
             try:
@@ -221,7 +222,7 @@ class Proposer:
 
 
 def build_proposer() -> Proposer:
-    """[설계 자유] 어떤 ProductionRule을 등록할지. ActiveSoarAgent.solve() 시 생성."""
+    """[DESIGN FREE] Which ProductionRules to register. Created at ActiveSoarAgent.solve() time."""
     rules = [
         SolveTaskRule(),
         SubstateNoChangeProgressRule(),
@@ -232,7 +233,7 @@ def build_proposer() -> Proposer:
         ExtractPatternRule(),
         # generalize
         GeneralizeRule(),
-        # descend (DescendRule는 elaboration 설계 이후 추가 예정)
+        # descend (DescendRule to be added after elaboration design is complete)
         # predict
         PredictRule(),
         # verify

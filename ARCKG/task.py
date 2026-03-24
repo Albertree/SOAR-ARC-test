@@ -1,6 +1,6 @@
 """
-TASK node — 지식 그래프 최상위 레이어.
-Node ID 형식: T{hex}
+TASK node — top-level layer of the knowledge graph.
+Node ID format: T{hex}
 """
 
 import json
@@ -11,19 +11,19 @@ from ARCKG.memory_paths import id_to_json_path, node_id_to_folder_path
 
 class Task:
     """
-    INTENT: ARC 태스크 하나를 나타내는 KG 노드.
-            task_hex ID, example pairs, test pairs, 태스크 레벨 속성을 보유한다.
-            to_json()으로 semantic_memory에 E_T{hex}.json 속성 파일을 기록한다.
-    MUST NOT: pair-specific 관측값을 여기에 저장하지 마 (PAIR 레이어 책임).
-              어떤 solve 로직도 두지 마.
+    INTENT: A KG node representing a single ARC task.
+            Holds task_hex ID, example pairs, test pairs, and task-level properties.
+            Writes the E_T{hex}.json property file to semantic_memory via to_json().
+    MUST NOT: Do not store pair-specific observations here (that is the PAIR layer's responsibility).
+              Do not put any solve logic here.
     REF: ARC-solver/ARCKG/task.py TASK (line 12)
     """
 
     def __init__(self, task_hex: str, example_pairs: list, test_pairs: list):
         """
-        INTENT: task_hex, example_pairs(Pair 목록), test_pairs(Pair 목록)를 받아
-                노드를 초기화한다.
-        MUST NOT: 파일 I/O를 생성자 내에서 수행하지 마.
+        INTENT: Initialize the node with task_hex, example_pairs (list of Pair),
+                and test_pairs (list of Pair).
+        MUST NOT: Do not perform file I/O in the constructor.
         REF: ARC-solver/ARCKG/task.py TASK.__init__ (line 13)
         """
         self.task_hex = task_hex
@@ -33,9 +33,9 @@ class Task:
 
     def to_json(self) -> dict:
         """
-        INTENT: 이 노드의 0th-order 속성(E_T{hex}.json 내용)을 dict로 반환한다.
-                반환 결과는 semantic_memory에 기록된다.
-        MUST NOT: 비교(comparison) 결과를 포함하지 마. 속성만.
+        INTENT: Return this node's 0th-order properties (E_T{hex}.json contents) as a dict.
+                The returned result is written to semantic_memory.
+        MUST NOT: Do not include comparison results. Properties only.
         REF: CLAUDE.md § Edge Creation Timing
         """
         return {
@@ -45,9 +45,9 @@ class Task:
 
     def save(self, semantic_memory_root: str):
         """
-        INTENT: to_json()을 semantic_memory_root/N_T{hex}/E_T{hex}.json에 기록한다.
-                하위 모든 Pair → Grid → Object도 재귀적으로 저장한다.
-        MUST NOT: solve 루프 내부에서 호출하지 마 (task load 시점에만).
+        INTENT: Write to_json() to semantic_memory_root/N_T{hex}/E_T{hex}.json.
+                Recursively save all child Pair -> Grid -> Object nodes as well.
+        MUST NOT: Do not call inside a solve loop (only at task load time).
         REF: ARCKG/memory_paths.py id_to_json_path()
         """
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)

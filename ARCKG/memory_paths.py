@@ -1,24 +1,24 @@
 """
-Path helpers — 노드 ID와 비교 쌍으로부터 semantic_memory 파일 경로를 계산한다.
+Path helpers — compute semantic_memory file paths from node IDs and comparison pairs.
 
-Node ID 형식: T{hex}.P{p}.G{g}.O{o}.X{x}  (필요한 깊이까지만)
-  예) "T0a1b2c3.P0"          → PAIR 노드
-      "T0a1b2c3.P0.G0"       → GRID 노드
-      "T0a1b2c3.P0.G0.O2"    → OBJECT 노드
-      "T0a1b2c3.P0.G0.O2.X5" → PIXEL 노드 (Object 하위)
+Node ID format: T{hex}.P{p}.G{g}.O{o}.X{x}  (only as deep as needed)
+  e.g.) "T0a1b2c3.P0"          -> PAIR node
+        "T0a1b2c3.P0.G0"       -> GRID node
+        "T0a1b2c3.P0.G0.O2"    -> OBJECT node
+        "T0a1b2c3.P0.G0.O2.X5" -> PIXEL node (under Object)
 
-폴더 구조: N_{part}/ 계층
+Folder structure: N_{part}/ hierarchy
   semantic_memory_root/N_T{hex}/N_P{p}/N_G{g}/N_O{o}/N_X{x}/
-속성 파일: E_{last_part}.json
-  예) N_G0/E_G0.json
+Property file: E_{last_part}.json
+  e.g.) N_G0/E_G0.json
 """
 
 
 def node_id_to_folder_path(node_id: str, semantic_memory_root: str) -> str:
     """
-    노드 ID → 해당 노드 폴더(N_ 접두어) 절대 경로.
-    파일을 실제로 생성하지 않는다 — 경로 계산만.
-    예) "T0a.P0.G0", "semantic_memory" → "semantic_memory/N_T0a/N_P0/N_G0/"
+    Node ID -> absolute path to the node folder (with N_ prefix).
+    Does not actually create files — path computation only.
+    e.g.) "T0a.P0.G0", "semantic_memory" -> "semantic_memory/N_T0a/N_P0/N_G0/"
     """
     root = semantic_memory_root.rstrip("/") + "/"
     parts = node_id.split(".")
@@ -30,9 +30,9 @@ def node_id_to_folder_path(node_id: str, semantic_memory_root: str) -> str:
 
 def id_to_json_path(node_id: str, semantic_memory_root: str) -> str:
     """
-    노드 ID → 속성 JSON 파일 경로 (E_{last_part}.json).
-    파일을 실제로 생성하지 않는다 — 경로 계산만.
-    예) "T0a.P0.G0" → "semantic_memory/N_T0a/N_P0/N_G0/E_G0.json"
+    Node ID -> property JSON file path (E_{last_part}.json).
+    Does not actually create files — path computation only.
+    e.g.) "T0a.P0.G0" -> "semantic_memory/N_T0a/N_P0/N_G0/E_G0.json"
     """
     folder = node_id_to_folder_path(node_id, semantic_memory_root)
     last_part = node_id.split(".")[-1]
@@ -40,7 +40,7 @@ def id_to_json_path(node_id: str, semantic_memory_root: str) -> str:
 
 
 def _lca_node_id(id_a: str, id_b: str):
-    """두 노드 ID의 LCA(Lowest Common Ancestor) 노드 ID를 반환."""
+    """Return the LCA (Lowest Common Ancestor) node ID of two node IDs."""
     parts_a = id_a.split(".")
     parts_b = id_b.split(".")
     if parts_a[0] != parts_b[0]:
@@ -55,26 +55,26 @@ def _lca_node_id(id_a: str, id_b: str):
 
 
 def _short_name(node_id: str, lca_id: str) -> str:
-    """LCA 이후의 경로 세그먼트를 이어 붙인 단축 이름을 반환.
-    예) LCA="T0a.P0", node_id="T0a.P0.G0.O2" → "G0O2"
+    """Return a short name by concatenating path segments after the LCA.
+    e.g.) LCA="T0a.P0", node_id="T0a.P0.G0.O2" -> "G0O2"
     """
     lca_prefix = lca_id + "."
     if node_id.startswith(lca_prefix):
         suffix = node_id[len(lca_prefix):]
         return suffix.replace(".", "")
-    # LCA와 동일한 노드인 경우 마지막 세그먼트만 반환
+    # If the node is the same as the LCA, return only the last segment
     return node_id.split(".")[-1]
 
 
 def id_pair_to_comparison_path(id_a: str, id_b: str,
                                 semantic_memory_root: str) -> str:
     """
-    두 노드 ID로부터 비교 엣지 파일 경로를 반환한다.
-    - 1차 비교 (노드 ID): LCA 폴더 아래 E_{short_a}-{short_b}.json
-    - 고차 비교 (id가 이미 'E_...' 형식): E_(E_...)-(E_...).json을 root에 생성
-    경로 계산만 수행하며, 파일을 실제로 생성하지 않는다.
+    Return the comparison edge file path from two node IDs.
+    - 1st-order comparison (node IDs): E_{short_a}-{short_b}.json under the LCA folder
+    - Higher-order comparison (id already in 'E_...' format): create E_(E_...)-(E_...).json at root
+    Only computes the path; does not actually create the file.
     """
-    # 고차(higher-order) 비교: 두 edge ID를 괄호로 감싼 형식
+    # Higher-order comparison: format wrapping two edge IDs in parentheses
     if id_a.startswith("E_") and id_b.startswith("E_"):
         edge_name = f"E_({id_a})-({id_b}).json"
         root = semantic_memory_root.rstrip("/") + "/"

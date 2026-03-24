@@ -1,25 +1,25 @@
 """
-preferences — 오퍼레이터 선택 우선순위.
+preferences — Operator selection priority.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[SOAR 강제] Select 단계에서 하나의 operator가 선택되어야 한다.
-            여러 후보가 있을 때 선택 기준이 필요하다.
+[SOAR MANDATORY] In the Select phase, one operator must be selected.
+                 A selection criterion is needed when there are multiple candidates.
 
-[설계 자유] PREFERENCE_ORDER 내용 (어떤 순서로 우선시할지).
-            순서를 하드코딩이 아닌 WM 상태 기반 동적 결정으로 바꾸는 것도 가능.
+[DESIGN FREE] PREFERENCE_ORDER content (in what order to prioritize).
+              It is also possible to change from hard-coded order to dynamic WM state-based decisions.
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
-# [설계 자유] 우선순위 순서. operator.name과 일치해야 한다.
-# 파이프라인 순서: select_target/compare(compare 단계) →
-#                 extract_pattern(collect 단계) →
+# [DESIGN FREE] Priority order. Must match operator.name.
+# Pipeline order: select_target/compare (compare phase) →
+#                 extract_pattern (collect phase) →
 #                 generalize →
-#                 descend(impasse 해소용, generalize 실패 시 우선) →
+#                 descend (for impasse resolution, prioritized when generalize fails) →
 #                 predict →
 #                 verify/submit
 PREFERENCE_ORDER: list = [
     "solve-task",
-    "substate-progress",  # S2+ operator no-change 등 임패스에서 상위(S1)에 result 기록
+    "substate-progress",  # Record result to superstate (S1) during impasse in S2+ operator no-change, etc.
     "select_target",
     "compare",
     "extract_pattern",
@@ -33,10 +33,10 @@ PREFERENCE_ORDER: list = [
 
 def select_operator(candidates: list, wm) -> object:
     """
-    [SOAR 강제] Select 단계 — 반드시 하나를 선택하거나 None(impasse)을 반환.
-    [설계 자유] 선택 기준 (PREFERENCE_ORDER 순서 기반 또는 다른 전략).
-    MUST NOT: 무작위 선택을 사용하지 마 — 결정적 선택.
-              동순위 발생 시 candidates 목록 순서를 tiebreak로 사용.
+    [SOAR MANDATORY] Select phase — must select exactly one or return None (impasse).
+    [DESIGN FREE] Selection criterion (based on PREFERENCE_ORDER or other strategy).
+    MUST NOT: Do not use random selection — deterministic selection.
+              Use candidates list order as tiebreak when ranks are equal.
     """
     if not candidates:
         return None

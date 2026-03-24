@@ -1,6 +1,6 @@
 """
-OBJECT node — GRID 아래 연결 성분(connected component).
-Node ID 형식: T{hex}.P{p}.G{g}.O{o}
+OBJECT node — a connected component under a GRID.
+Node ID format: T{hex}.P{p}.G{g}.O{o}
 """
 
 import json
@@ -11,11 +11,11 @@ from ARCKG.memory_paths import id_to_json_path, node_id_to_folder_path
 
 class Object:
     """
-    INTENT: hodel objects() 함수로 검출된 하나의 object.
-            colorgrid(bbox 크기, 투명=13)와 격자 내 절대 좌표 pos로 초기화.
-            8개 property(area/color/coordinate/method/position/shape/size/symmetry)를
-            to_json()으로 직렬화한다.
-    MUST NOT: GRID 전체를 저장하지 마. bbox 범위만 가진다.
+    INTENT: A single object detected by the hodel objects() function.
+            Initialized with colorgrid (bbox size, transparent=13) and absolute position pos within the grid.
+            Serializes 8 properties (area/color/coordinate/method/position/shape/size/symmetry)
+            via to_json().
+    MUST NOT: Do not store the entire GRID. Only holds the bbox range.
     REF: ARC-solver/ARCKG/object.py OBJECT.update_property (line 170)
          ARC-solver/DSL/object_finder.py find_all_objects (line 62)
     """
@@ -23,26 +23,26 @@ class Object:
     def __init__(self, object_id: str, colorgrid: list, pos: tuple, method: dict):
         """
         Args:
-            object_id:  전체 node_id 문자열 (e.g. "T0a.P0.G0.O3")
-            colorgrid:  list[list[int]], bbox 크기. 투명 셀 = 13.
-            pos:        (row_min, col_min) — bbox left_top 절대 좌표
+            object_id:  full node_id string (e.g. "T0a.P0.G0.O3")
+            colorgrid:  list[list[int]], bbox size. Transparent cell = 13.
+            pos:        (row_min, col_min) — absolute coordinates of the bbox left_top
             method:     {"univalued": bool, "diagonal": bool, "without_bg": bool}
         """
         self.node_id = object_id
         self.colorgrid = colorgrid
         self.pos = pos
         self.method = method
-        self.pixels: list = []  # Pixel 객체 목록 (object-level)
+        self.pixels: list = []  # List of Pixel objects (object-level)
 
-        # --- transformation DSL selection 인터페이스 ---
+        # --- transformation DSL selection interface ---
         h = len(colorgrid)
         w = len(colorgrid[0]) if colorgrid else 0
         row_min, col_min = pos
 
-        # bbox: colorgrid 의 별칭 (transformation.py 에서 selection.bbox 로 접근)
+        # bbox: alias for colorgrid (accessed as selection.bbox in transformation.py)
         self.bbox = colorgrid
 
-        # coordinate: 비투명 셀의 절대 (row, col) 목록
+        # coordinate: list of absolute (row, col) for non-transparent cells
         self.coordinate = [
             (row_min + r, col_min + c)
             for r, row in enumerate(colorgrid)
@@ -50,48 +50,48 @@ class Object:
             if cell != 13
         ]
 
-        # bbox 내 전체 (row, col) — teleport 에서 grab 검증에 사용
+        # all (row, col) within the bbox — used for grab validation in teleport
         self.bbox_coordinate = [
             (row_min + r, col_min + c)
             for r in range(h)
             for c in range(w)
         ]
 
-        # 꼭짓점 절대 좌표
+        # vertex absolute coordinates
         self.left_top     = (row_min,         col_min)
         self.right_top    = (row_min,         col_min + w - 1)
         self.left_bottom  = (row_min + h - 1, col_min)
         self.right_bottom = (row_min + h - 1, col_min + w - 1)
 
-        # --- 하위 호환 속성 (bounding_box, mask, color) ---
+        # --- backward-compatible properties (bounding_box, mask, color) ---
         self.bounding_box = (row_min, col_min, row_min + h - 1, col_min + w - 1)
         self.mask = [[cell != 13 for cell in row] for row in colorgrid]
         colors = [cell for row in colorgrid for cell in row if cell != 13]
         self.color = max(set(colors), key=colors.count) if colors else 0
 
     # ------------------------------------------------------------------ #
-    #  대칭성 헬퍼 (원본: ARC-solver/ARCKG/object.py)                       #
+    #  Symmetry helpers (original: ARC-solver/ARCKG/object.py)            #
     # ------------------------------------------------------------------ #
 
     @staticmethod
     def _hori_symmetry(grid: list) -> bool:
-        """좌우(수직 축) 대칭 — 각 행이 뒤집어도 동일."""
+        """Horizontal (vertical axis) symmetry — each row is identical when reversed."""
         return all(row == list(reversed(row)) for row in grid)
 
     @staticmethod
     def _verti_symmetry(grid: list) -> bool:
-        """상하(수평 축) 대칭 — 뒤집어도 동일."""
+        """Vertical (horizontal axis) symmetry — identical when flipped upside down."""
         return grid == list(reversed(grid))
 
     @staticmethod
     def _diag_symmetry(grid: list) -> bool:
-        """주 대각선 대칭 (정사각형 전용)."""
+        """Main diagonal symmetry (square grids only)."""
         n = len(grid)
         return all(grid[i][j] == grid[j][i] for i in range(n) for j in range(n))
 
     @staticmethod
     def _anti_symmetry(grid: list) -> bool:
-        """반 대각선 대칭 (정사각형 전용)."""
+        """Anti-diagonal symmetry (square grids only)."""
         n = len(grid)
         return all(
             grid[i][j] == grid[n - 1 - j][n - 1 - i]
@@ -99,19 +99,19 @@ class Object:
         )
 
     # ------------------------------------------------------------------ #
-    #  직렬화                                                               #
+    #  Serialization                                                      #
     # ------------------------------------------------------------------ #
 
     def to_json(self) -> dict:
         """
-        8개 OBJECT property dict 반환.
+        Return a dict of 8 OBJECT properties.
 
-        area       : bbox 내 비투명(0-9) 셀 수
-        color      : {0: bool, …, 9: bool}
-        coordinate : [[row, col], …] — 비투명 셀의 절대 좌표 목록
+        area       : number of non-transparent (0-9) cells within the bbox
+        color      : {0: bool, ..., 9: bool}
+        coordinate : [[row, col], ...] — list of absolute coordinates of non-transparent cells
         method     : {"univalued": bool, "diagonal": bool, "without_bg": bool}
         position   : left_top / right_top / left_bottom / right_bottom
-        shape      : bbox 2D array, 비투명=1, 투명=-1
+        shape      : bbox 2D array, non-transparent=1, transparent=-1
         size       : {"height": int, "width": int}
         symmetry   : {hori_symm / verti_symm / diag_symm / anti_symm}
         """
@@ -126,7 +126,7 @@ class Object:
                 if 0 <= cell <= 9:
                     color_dict[cell] = True
 
-        # coordinate (절대 좌표)
+        # coordinate (absolute coordinates)
         coordinate = [
             [row_min + r, col_min + c]
             for r, row in enumerate(self.colorgrid)
@@ -134,7 +134,7 @@ class Object:
             if cell != 13
         ]
 
-        # shape: 비투명=1, 투명=-1
+        # shape: non-transparent=1, transparent=-1
         shape = [
             [1 if cell != 13 else -1 for cell in row]
             for row in self.colorgrid
@@ -178,7 +178,7 @@ class Object:
         }
 
     def save(self, semantic_memory_root: str):
-        """to_json()을 E_O{o}.json으로 기록하고, 하위 Pixel도 모두 save."""
+        """Write to_json() as E_O{o}.json and save all child Pixels as well."""
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)
         os.makedirs(folder, exist_ok=True)
         path = id_to_json_path(self.node_id, semantic_memory_root)

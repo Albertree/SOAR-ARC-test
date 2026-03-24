@@ -1,6 +1,6 @@
 """
-ActiveSoarAgent — 메인 SOAR 에이전트.
-ARCEnvironment의 agent.solve(task) 인터페이스를 구현한다.
+ActiveSoarAgent — Main SOAR agent.
+Implements the agent.solve(task) interface for ARCEnvironment.
 """
 
 from agent.wm import WorkingMemory
@@ -14,30 +14,30 @@ from agent.wm_logger import reset_wm_snapshot
 
 class ActiveSoarAgent:
     """
-    [SOAR 강제] SOAR 사이클을 실행하는 에이전트 래퍼가 있어야 한다.
-    [설계 자유] solve() 호출 횟수 제한(can_retry), LTM 로드 방식,
-               chunking 콜백 연결 방식.
-    MUST NOT: ARCSolver 등 별도 solver를 fallback으로 사용하지 마.
-              solve() 1회 = 1 제출.
+    [SOAR MANDATORY] There must be an agent wrapper that runs the SOAR cycle.
+    [DESIGN FREE] solve() call limit (can_retry), LTM load method,
+                  chunking callback connection method.
+    MUST NOT: Do not use a separate solver like ARCSolver as fallback.
+              solve() 1 call = 1 submission.
     """
 
     def __init__(self, semantic_memory_root: str = "semantic_memory"):
-        """[설계 자유] semantic_memory_root 경로, 제출 횟수 카운터."""
+        """[DESIGN FREE] semantic_memory_root path, submission count counter."""
         self.semantic_memory_root = semantic_memory_root
         self._submission_count: int = 0
         self._current_task_hex: str = None
 
     def solve(self, task) -> list:
         """
-        [SOAR 강제] 사이클 실행 흐름 (WM 초기화 → run_cycle → 결과 추출) 자체.
-        [설계 자유] LTM rule 선로드 방식, max_steps 값.
+        [SOAR MANDATORY] The cycle execution flow itself (WM initialization → run_cycle → result extraction).
+        [DESIGN FREE] LTM rule preloading method, max_steps value.
 
-        흐름:
-          1. 새 태스크이면 _submission_count 리셋
-          2. reset_wm_snapshot() 호출  ← 태스크 경계마다 diff 상태 초기화
-          3. WorkingMemory 생성
+        Flow:
+          1. Reset _submission_count if new task
+          2. Call reset_wm_snapshot()  ← Reset diff state at each task boundary
+          3. Create WorkingMemory
           4. build_wm_from_task(task, wm)
-          5. LTM rule 로드 → wm.s1["active_rules"] 초기화
+          5. Load LTM rules → Initialize wm.s1["active_rules"]
           6. elaborator = build_elaborator()
           7. proposer   = build_proposer()
           8. run_cycle(wm, elaborator, proposer, max_steps=50)
@@ -50,13 +50,13 @@ class ActiveSoarAgent:
 
     def on_substate_resolved(self, substate: dict, task_hex: str):
         """
-        [SOAR 강제] subgoal 해결 시 chunking 트리거.
-        [설계 자유] chunk 결과를 어떻게 저장할지.
-        MUST NOT: solve 루프 내부에서 직접 호출하지 마 — cycle.py가 호출.
+        [SOAR MANDATORY] Triggers chunking when subgoal is resolved.
+        [DESIGN FREE] How to store the chunk result.
+        MUST NOT: Do not call directly inside the solve loop — cycle.py calls this.
         """
         raise NotImplementedError("ActiveSoarAgent.on_substate_resolved() not implemented.")
 
     @property
     def can_retry(self) -> bool:
-        """[설계 자유] 최대 제출 횟수 (현재 3회). 태스크별 카운터."""
+        """[DESIGN FREE] Maximum submission count (currently 3). Per-task counter."""
         return self._submission_count < 3

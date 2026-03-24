@@ -1,14 +1,14 @@
 """
-io — SOAR I/O 링크 관리 모듈.
+io — SOAR I/O link management module.
 
-SOAR 관점:
-  - 아키텍처가 0th decision cycle에 S1과 ^io 뼈대를 만든다.
-  - 매 execution cycle 시작 시 환경의 input function이 호출되어
-    환경 상태(여기서는 ARC task)를 WM의 ^io ^input-link 아래에 WME로 추가한다.
-  - output-link는 에이전트가 환경으로 내보낼 행동/결과를 기록하는 채널이다.
+SOAR perspective:
+  - The architecture creates S1 and the ^io skeleton in the 0th decision cycle.
+  - At the start of each execution cycle, the environment's input function is called
+    to add the environment state (here, ARC task) as WMEs under WM's ^io ^input-link.
+  - output-link is the channel where the agent records actions/results to send to the environment.
 
-이 프로젝트에서는 WM을 파이썬 dict로 표현하고 있으므로,
-input-link 아래에 task를 직렬화한 구조를 넣는다.
+In this project, WM is represented as Python dicts, so a serialized structure
+of the task is placed under input-link.
 """
 
 from __future__ import annotations
@@ -16,39 +16,38 @@ from __future__ import annotations
 
 def inject_arc_task(task, wm) -> None:
     """
-    ARC task를 wm.s1['io']['input-link'] 아래에 주입한다.
+    Injects an ARC task under wm.s1['io']['input-link'].
 
-    주입 위치(개념):
+    Injection location (conceptual):
       (S1 ^io I1)
       (I1 ^input-link I2)
       (I2 ^task T1 ...)
 
-    구현에서는 input-link dict에 task 요약/격자 내용을 넣는다.
+    In the implementation, task summary/grid content is placed in the input-link dict.
     """
     io = wm.s1.get("io")
     if not isinstance(io, dict) or "input-link" not in io:
-        raise ValueError("WM에 io/input-link 구조가 없습니다.")
+        raise ValueError("io/input-link structure does not exist in WM.")
 
     in_link = io["input-link"]
-    # SOAR 스타일: input-link에는 우선 task를 가리키는 심볼만 올린다.
-    # 세부 example/test 구조는 이후 production/elaboration 단계에서
-    # current-task를 따라가거나 별도 input function으로 확장한다.
+    # SOAR style: only a symbol pointing to the task is placed on input-link first.
+    # Detailed example/test structure is extended later in the production/elaboration phase
+    # by following current-task or through a separate input function.
     in_link["task"] = task.task_hex
     wm.register_wme("input-link", "task", task.task_hex)
 
 
 def clear_input_link(wm) -> None:
-    """^input-link 아래의 내용을 비운다 (다음 execution cycle 입력 갱신용)."""
+    """Clears the contents under ^input-link (for next execution cycle input refresh)."""
     io = wm.s1.get("io")
     if not isinstance(io, dict) or "input-link" not in io:
-        raise ValueError("WM에 io/input-link 구조가 없습니다.")
+        raise ValueError("io/input-link structure does not exist in WM.")
     io["input-link"].clear()
 
 
 def clear_output_link(wm) -> None:
-    """^output-link 아래의 내용을 비운다 (환경에 반영 후 초기화)."""
+    """Clears the contents under ^output-link (reset after reflecting to environment)."""
     io = wm.s1.get("io")
     if not isinstance(io, dict) or "output-link" not in io:
-        raise ValueError("WM에 io/output-link 구조가 없습니다.")
+        raise ValueError("io/output-link structure does not exist in WM.")
     io["output-link"].clear()
-

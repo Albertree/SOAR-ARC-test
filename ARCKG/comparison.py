@@ -1,19 +1,19 @@
 """
-compare() — 지식 그래프 핵심 관계 생성 함수.
-두 노드 또는 두 관계 결과를 받아 COMM/DIFF 관계를 반환하고 선택적으로 저장한다.
+compare() — core relation generation function for the knowledge graph.
+Takes two nodes or two relation results, returns a COMM/DIFF relation, and optionally saves it.
 
-관계 파일 ID 구조 (중첩 dict, 차수에 무관하게 동일 패턴):
+Relation file ID structure (nested dict, same pattern regardless of order):
 
-  1차 (노드 vs 노드):
+  1st-order (node vs node):
     "id": {"id1": "T0a.P0.G0", "id2": "T0a.P0.G1"}
 
-  2차 (1차 relation vs 1차 relation):
+  2nd-order (1st-order relation vs 1st-order relation):
     "id": {
       "id1": {"id1": "T0a.P0.G0.O0", "id2": "T0a.P0.G0.O1"},
       "id2": {"id1": "T0a.P1.G0.O0", "id2": "T0a.P1.G0.O1"}
     }
 
-  n차: id1/id2 값이 (n-1)차 id dict이므로 재귀적으로 추적 가능.
+  nth-order: id1/id2 values are (n-1)th-order id dicts, so they can be traced recursively.
 """
 
 import json
@@ -27,21 +27,21 @@ from ARCKG.memory_paths import id_pair_to_comparison_path, node_id_to_folder_pat
 # ---------------------------------------------------------------------------
 
 def _is_relation_result(obj) -> bool:
-    """이전 compare() 반환값인지 여부 판별 — "result" key를 가진 dict."""
+    """Determine whether the object is a previous compare() return value — a dict with a "result" key."""
     return isinstance(obj, dict) and "result" in obj
 
 
 def _id_to_edge_str(id_val) -> str:
     """
-    id 필드(str 또는 중첩 dict)를 edge 문자열로 변환한다.
-    저장 경로 계산 시 id_pair_to_comparison_path()에 전달하기 위해 사용.
+    Convert an id field (str or nested dict) to an edge string.
+    Used for passing to id_pair_to_comparison_path() when computing the save path.
 
-    예) "T0a.P0.G0"                            → "T0a.P0.G0"
-        {"id1": "T0a.P0.G0", "id2": "T0a.P0.G1"}
-                                               → "E_T0a.P0.G0-T0a.P0.G1"
-        {"id1": {"id1": "G0.O0", "id2": "G0.O1"},
-         "id2": {"id1": "G1.O0", "id2": "G1.O1"}}
-                                               → "E_E_G0.O0-G0.O1-E_G1.O0-G1.O1"
+    e.g.) "T0a.P0.G0"                            -> "T0a.P0.G0"
+          {"id1": "T0a.P0.G0", "id2": "T0a.P0.G1"}
+                                                 -> "E_T0a.P0.G0-T0a.P0.G1"
+          {"id1": {"id1": "G0.O0", "id2": "G0.O1"},
+           "id2": {"id1": "G1.O0", "id2": "G1.O1"}}
+                                                 -> "E_E_G0.O0-G0.O1-E_G1.O0-G1.O1"
     """
     if isinstance(id_val, str):
         return id_val
@@ -49,7 +49,7 @@ def _id_to_edge_str(id_val) -> str:
 
 
 def _compare_values(a, b) -> dict:
-    """두 값을 재귀적으로 비교한다. 반환값은 {type, ...} 구조."""
+    """Recursively compare two values. Return value has {type, ...} structure."""
     if isinstance(a, dict) and isinstance(b, dict):
         return _compare_dicts(a, b)
     if isinstance(a, list) and isinstance(b, list):
@@ -58,9 +58,9 @@ def _compare_values(a, b) -> dict:
 
 
 def _compare_lists(a: list, b: list) -> dict:
-    """두 리스트를 비교한다.
-    - 2D(중첩 리스트): 원소 단위 정확 비교 (행/열 순서 유지)
-    - 1D: 순서 유지 정확 비교
+    """Compare two lists.
+    - 2D (nested lists): element-wise exact comparison (row/column order preserved)
+    - 1D: order-preserving exact comparison
     """
     if len(a) != len(b):
         return {"type": "DIFF", "comp1": a, "comp2": b}
@@ -85,9 +85,9 @@ def _compare_lists(a: list, b: list) -> dict:
 
 def _compare_scalars(a, b) -> dict:
     """
-    INTENT: 두 스칼라 값을 비교해 COMM/DIFF 결과를 반환.
-            scalar leaf에서는 comp1, comp2 값도 결과에 포함된다.
-    MUST NOT: 리스트나 dict 타입을 이 함수로 보내지 마.
+    INTENT: Compare two scalar values and return a COMM/DIFF result.
+            At scalar leaves, comp1 and comp2 values are also included in the result.
+    MUST NOT: Do not send list or dict types to this function.
     REF: CLAUDE.md § Relation result format
     """
     if a is None and b is None:
@@ -99,9 +99,9 @@ def _compare_scalars(a, b) -> dict:
 
 def _compare_dicts(a: dict, b: dict) -> dict:
     """
-    INTENT: 두 dict의 각 key에 대해 재귀적으로 compare를 수행해
-            category 구조를 구성한다.
-    MUST NOT: key 집합이 다른 경우를 무시하지 마 — 누락 key도 DIFF로 처리.
+    INTENT: Recursively perform comparison for each key of two dicts
+            and build the category structure.
+    MUST NOT: Do not ignore cases where key sets differ — missing keys are also treated as DIFF.
     REF: CLAUDE.md § Relation result format
     """
     all_keys = sorted(set(a.keys()) | set(b.keys()), key=str)
@@ -135,30 +135,29 @@ def _compare_dicts(a: dict, b: dict) -> dict:
 
 def compare(a, b, save: bool = False, semantic_memory_root: str = None) -> dict:
     """
-    INTENT: 두 KG 노드(또는 이전 compare 결과)를 비교하여
-            {"id": {...}, "result": {"type": "COMM|DIFF", "score": "n/total", "category": {...}}}
-            형태의 관계 결과 dict를 반환한다.
+    INTENT: Compare two KG nodes (or previous compare results) and return a relation result dict
+            of the form {"id": {...}, "result": {"type": "COMM|DIFF", "score": "n/total", "category": {...}}}.
 
-            id 필드는 차수에 따라 재귀적으로 중첩된다:
-              1차: id = {"id1": str, "id2": str}
-              2차: id = {"id1": {1차 id dict}, "id2": {1차 id dict}}
-              n차: id = {"id1": {(n-1)차 id dict}, "id2": {(n-1)차 id dict}}
+            The id field is recursively nested according to the order:
+              1st-order: id = {"id1": str, "id2": str}
+              2nd-order: id = {"id1": {1st-order id dict}, "id2": {1st-order id dict}}
+              nth-order: id = {"id1": {(n-1)th-order id dict}, "id2": {(n-1)th-order id dict}}
 
-            save=True일 때만 LCA 규칙에 따라 E_*-*.json을 파일시스템에 기록한다.
-    MUST NOT: save=True를 기본값으로 쓰지 마 — 수만 개 파일 생성 위험.
-              레이어 경계를 넘는 비교(예: GRID와 PIXEL 직접 비교)를 수행하지 마.
+            Only writes E_*-*.json to the filesystem according to LCA rules when save=True.
+    MUST NOT: Do not use save=True as the default — risk of creating tens of thousands of files.
+              Do not perform cross-layer comparisons (e.g., directly comparing GRID and PIXEL).
     REF: CLAUDE.md § Knowledge Graph Architecture, § Edge Creation Timing
          ARCKG/memory_paths.py id_pair_to_comparison_path()
     """
     if _is_relation_result(a) and _is_relation_result(b):
-        # 2차 이상: 두 compare 결과 dict의 result를 비교
+        # 2nd-order or higher: compare the result of two compare result dicts
         raw = _compare_dicts(a["result"], b["result"])
         result = {
             "type": raw["type"],
             "score": raw.get("score", "0/0"),
             "category": raw.get("category", {}),
         }
-        # id는 각 입력 relation의 id를 그대로 중첩
+        # id nests each input relation's id as-is
         id_dict = {
             "id1": a.get("id"),
             "id2": b.get("id"),
@@ -175,7 +174,7 @@ def compare(a, b, save: bool = False, semantic_memory_root: str = None) -> dict:
 
         return comparison
 
-    # 1차: KG 노드 비교 — to_json() 속성 dict를 비교
+    # 1st-order: KG node comparison — compare to_json() property dicts
     props_a = a.to_json()
     props_b = b.to_json()
     raw = _compare_dicts(props_a, props_b)

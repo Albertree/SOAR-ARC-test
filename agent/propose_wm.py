@@ -1,35 +1,36 @@
 """
-propose_wm — Propose 단계 이후, 후보 오퍼레이터를 WM에 올리는 헬퍼.
+propose_wm — Helper that writes candidate operators to WM after the Propose phase.
 
-역할
+Role
 ----
-- ``rules.Proposer.propose(wm)`` 는 **WM을 바꾸지 않고** Operator 인스턴스
-  리스트만 돌려준다.
-- 이 모듈은 그 리스트를 받아 **현재 활성 상태(``wm.active``)** 에 실제 WME에 대응하는 dict 구조로 써 넣는다.
-  (S1일 때는 최상위, 서브스테이트일 때는 S2 등.)
+- ``rules.Proposer.propose(wm)`` returns only a list of Operator instances
+  **without modifying WM**.
+- This module takes that list and writes it as a dict structure corresponding to
+  actual WMEs into the **currently active state (``wm.active``)**
+  (top-level when S1, S2, etc. for substates).
 
-저장 형태 (내부)
-----------------
+Storage format (internal)
+-------------------------
 - ``S1["operator"] = "O1"``  → (S1 ^operator O1)
 - ``S1["O1"] = { "name": "solve-task", "task-id": <hex>, "op-preference": "+" }``
-  → (O1 ^name …) (O1 ^task-id …) (O1 ^op-preference +)
+  → (O1 ^name ...) (O1 ^task-id ...) (O1 ^op-preference +)
 
-로그 출력 (wm_logger)
----------------------
-- ``^op-preference`` 는 O1 블록에 따로 안 찍고,
-- S1의 ``^operator`` 줄에 붙여 Soar 디버그처럼
-  ``(S1 ^operator O1 +)`` 로 합쳐서 보여준다.
-- 선택(Select) 직후: 제안 ``(S1 ^operator O1 +)`` 는 **유지**되고, Soar처럼
-  공식 적용용 WME ``(S1 ^operator O1)`` (+ 없음)가 **추가**된다
-  (내부 키 ``operator-application`` → 로거에서 ``^operator`` 로 표시).
-- 이후 Application으로 상태가 바뀌어 제안 규칙이 깨지면 ``+`` 줄은 사라진다.
+Log output (wm_logger)
+----------------------
+- ``^op-preference`` is not printed separately in the O1 block,
+- Instead it is merged into the S1 ``^operator`` line like Soar debug:
+  ``(S1 ^operator O1 +)``
+- After Select: the proposal ``(S1 ^operator O1 +)`` is **retained**, and like Soar,
+  an official application WME ``(S1 ^operator O1)`` (without +) is **added**
+  (internal key ``operator-application`` → displayed as ``^operator`` in the logger).
+- When the state changes due to Application and the proposal rule breaks, the ``+`` line disappears.
 """
 
 from __future__ import annotations
 
 
 def _next_global_operator_id(wm) -> str:
-    """S1 + 모든 서브스테이트에서 O1, O2, … 중 다음 빈 번호."""
+    """Next available number among O1, O2, ... across S1 + all substates."""
     used: set[int] = set()
 
     def scan(d: dict) -> None:
@@ -48,8 +49,8 @@ def _next_global_operator_id(wm) -> str:
 
 def materialize_operator_proposals(wm, candidates: list) -> None:
     """
-    후보 오퍼레이터를 **wm.active** 에 기록한다.
-    이미 활성 상태에 ^operator 가 있으면 아무 것도 하지 않는다.
+    Records candidate operators in **wm.active**.
+    Does nothing if ^operator already exists in the active state.
     """
     state = wm.active
     if not candidates or "operator" in state:
@@ -75,7 +76,7 @@ def materialize_operator_proposals(wm, candidates: list) -> None:
 
 
 def clear_operator_proposal_preferences(wm) -> None:
-    """Application 등으로 제안이 철회될 때 O*의 op-preference 제거용 (선택 시에는 호출하지 않음)."""
+    """Removes O*'s op-preference when a proposal is withdrawn due to Application, etc. (not called during selection)."""
     state = wm.s1
     op_id = state.get("operator")
     if not op_id or not isinstance(state.get(op_id), dict):
@@ -87,8 +88,8 @@ def clear_operator_proposal_preferences(wm) -> None:
 
 def clear_s1_operator_slots(wm) -> None:
     """
-    S1에서 제안/선택/적용용 오퍼레이터 WME를 제거한다.
-    상위 사이클을 다시 시작하거나 서브스테이트를 비운 뒤 S1로 돌아올 때 사용.
+    Removes proposal/selection/application operator WMEs from S1.
+    Used when restarting the top-level cycle or returning to S1 after clearing a substate.
     """
     state = wm.s1
     for k in (
@@ -103,8 +104,8 @@ def clear_s1_operator_slots(wm) -> None:
 
 def mark_operator_selected(wm) -> None:
     """
-    Select 직후: **활성 상태**에 공식 오퍼레이터 증강 (Soar: + 없는 ^operator O1 WME 추가).
-    제안용 ^operator O1 + 는 그대로 둔다.
+    After Select: adds official operator augmentation to the **active state** (Soar: ^operator O1 WME without +).
+    The proposal ^operator O1 + is kept as-is.
     """
     state = wm.active
     op_id = state.get("operator")

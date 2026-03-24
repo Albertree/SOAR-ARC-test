@@ -1,6 +1,6 @@
 """
-GRID node — PAIR 아래 한 격자.
-Node ID 형식: T{hex}.P{p}.G{g}  (G0=input, G1=output)
+GRID node — a single grid under a PAIR.
+Node ID format: T{hex}.P{p}.G{g}  (G0=input, G1=output)
 """
 
 import json
@@ -14,9 +14,9 @@ from ARCKG.pixel import Pixel
 
 class Grid:
     """
-    INTENT: 2D 정수 격자와 그 격자에서 추출된 Object 목록을 보유하는 KG 노드.
-            to_json()으로 E_G{g}.json 속성 파일을 기록한다.
-    MUST NOT: object-level 관계 추론을 여기서 수행하지 마 (OBJECT 레이어 책임).
+    INTENT: A KG node holding a 2D integer grid and the list of Objects extracted from it.
+            Writes the E_G{g}.json property file via to_json().
+    MUST NOT: Do not perform object-level relation inference here (that is the OBJECT layer's responsibility).
     REF: ARC-solver/ARCKG/grid.py GRID (line 14)
     """
 
@@ -24,7 +24,7 @@ class Grid:
         self.node_id = grid_id
         self.raw = raw
         self.objects: list = []
-        self.pixels: list = []   # grid-level Pixel 노드 (절대 좌표 기준)
+        self.pixels: list = []   # grid-level Pixel nodes (based on absolute coordinates)
 
     @property
     def height(self) -> int:
@@ -36,9 +36,9 @@ class Grid:
 
     def extract_objects(self):
         """
-        INTENT: hodel objects() 8-파라미터 조합으로 고유 Object를 추출해
-                self.objects / self.pixels에 저장한다.
-                각 object는 검출에 사용된 method dict를 보유한다.
+        INTENT: Extract unique Objects using 8 parameter combinations of hodel objects()
+                and store them in self.objects / self.pixels.
+                Each object holds the method dict used for its detection.
         REF: ARC-solver/DSL/object_finder.py find_all_objects (line 62)
              ARCKG/hodel.py find_all_objects
         """
@@ -49,7 +49,7 @@ class Grid:
 
         self.objects = []
         self.pixels = []
-        grid_pixel_seen: set = set()   # 동일 (r,c) grid-level Pixel 중복 방지
+        grid_pixel_seen: set = set()   # prevent duplicate (r,c) grid-level Pixels
 
         for obj_idx, data in enumerate(find_all_objects(self.raw)):
             object_id = f"{self.node_id}.O{obj_idx}"
@@ -60,7 +60,7 @@ class Grid:
                 method=data["method"],
             )
 
-            # Object-level Pixel: 행-열 순 정렬
+            # Object-level Pixel: sorted by row-column order
             sorted_pixels = sorted(data["obj"], key=lambda x: (x[1][0], x[1][1]))
             for pix_idx, (color, (r, c)) in enumerate(sorted_pixels):
                 obj_pixel_id = f"{object_id}.X{pix_idx}"
@@ -68,7 +68,7 @@ class Grid:
                     Pixel(pixel_id=obj_pixel_id, color=color, row=r, col=c)
                 )
 
-                # Grid-level Pixel: 행-우선 인덱스, 중복 없이
+                # Grid-level Pixel: row-major index, no duplicates
                 grid_pixel_idx = r * self.width + c
                 if grid_pixel_idx not in grid_pixel_seen:
                     grid_pixel_seen.add(grid_pixel_idx)
@@ -82,7 +82,7 @@ class Grid:
 
     def to_json(self) -> dict:
         """
-        GRID property 3개:
+        3 GRID properties:
           size     : {"height": int, "width": int}
           color    : {0: bool, …, 9: bool}
           contents : 2D int array
@@ -104,7 +104,7 @@ class Grid:
         }
 
     def save(self, semantic_memory_root: str):
-        """E_G{g}.json 기록 후 하위 Object / Pixel 모두 재귀 save."""
+        """Write E_G{g}.json then recursively save all child Objects / Pixels."""
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)
         os.makedirs(folder, exist_ok=True)
         path = id_to_json_path(self.node_id, semantic_memory_root)

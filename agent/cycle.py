@@ -1,13 +1,13 @@
 """
-cycle — SOAR 결정 사이클.
+cycle — SOAR decision cycle.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[SOAR 강제] 사이클 순서는 반드시 Elaborate → Propose → Select → Apply.
-            Elaborate는 매 사이클 첫 단계 — 생략 불가.
-            impasse(후보 없음 / failure) → substate 생성 — 생략 불가.
+[SOAR MANDATORY] Cycle order must be Elaborate → Propose → Select → Apply.
+                 Elaborate is the first phase of every cycle — cannot be skipped.
+                 impasse (no candidates / failure) → substate creation — cannot be skipped.
 
-[설계 자유] max_steps 값
-            impasse 시 생성할 subgoal 내용
+[DESIGN FREE] max_steps value
+              Subgoal content to create on impasse
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """
 
@@ -33,16 +33,16 @@ def run_cycle(
     log_wm: bool = True,
 ) -> dict:
     """
-    Elaborate → Propose → Select → Apply 루프.
+    Elaborate → Propose → Select → Apply loop.
 
-    - S1(깊이 0): 제안·구체화·적용. 추상 오퍼레이터 적용 후 WM 변화가 없으면
-      operator no-change 임패스로 서브스테이트(S2…) 생성.
-    - 서브스테이트: operator no-change 임패스 시 ``SubstateNoChangeProgressRule`` 이
-      ``substate-progress`` 를 제안 → Apply 로 S1에 ``^substate-resolution`` 기록 후
-      substate pop + S1 오퍼레이터 슬롯 정리.
-    - 그 외 서브스테이트에서 후보 없음 → pop + S1 오퍼 슬롯 비우기 (임시).
+    - S1 (depth 0): proposal, elaboration, application. If no WM change after
+      abstract operator application, creates a substate (S2...) via operator no-change impasse.
+    - Substate: on operator no-change impasse, ``SubstateNoChangeProgressRule`` proposes
+      ``substate-progress`` → Apply writes ``^substate-resolution`` to S1, then
+      substate pop + S1 operator slot cleanup.
+    - Other substates with no candidates → pop + clear S1 operator slots (temporary).
 
-    stop_on_goal: True이고 S1에 goal이 있으며 goal_satisfied이면 조기 종료.
+    stop_on_goal: If True and S1 has a goal and goal_satisfied, terminates early.
     """
     step = 0
     while step < max_steps:
@@ -95,7 +95,7 @@ def run_cycle(
             if not ok:
                 break
         elif wm.depth > 0 and apply_outcome == "changed":
-            # S2에서 상위(S1)에 result를 쓴 뒤 임패스 해소: substate 제거 + S1 오퍼 재제안 가능
+            # After writing result to superstate (S1) from S2, resolve impasse: remove substate + allow S1 operator re-proposal
             wm.pop_substate()
             clear_s1_operator_slots(wm)
             if log_wm:
@@ -114,7 +114,7 @@ def run_cycle(
 
 
 def _s1_goal_satisfied(wm) -> bool:
-    """서브스테이트에 있어도 S1의 goal만 본다."""
+    """Checks only S1's goal even when in a substate."""
     goal = wm.s1.get("goal")
     if goal is None:
         return False
@@ -148,8 +148,8 @@ def _elaborate(wm, elaborator) -> None:
 
 def _propose(wm, proposer) -> list:
     candidates = proposer.propose(wm) or []
-    # Soar-style: preferences는 (S1 ^operator O1 +) / (O1 ^op-preference +)만 통해 표현하고,
-    # 별도의 ^proposed_ops WME는 만들지 않는다.
+    # Soar-style: preferences are expressed only through (S1 ^operator O1 +) / (O1 ^op-preference +),
+    # no separate ^proposed_ops WME is created.
     if candidates:
         materialize_operator_proposals(wm, candidates)
     return candidates
@@ -168,10 +168,10 @@ def _select(candidates: list, wm):
 
 def _apply(operator, wm) -> str:
     """
-    operator.effect(wm)만 호출한다. WM에는 성공/실패/무변화를 쓰지 않는다.
+    Only calls operator.effect(wm). Does not write success/failure/no-change to WM.
 
-    반환값은 사이클 내부용: \"failure\" | \"no_change\" | \"changed\".
-    무변화 판단은 wme_records 길이( effect 전후 )로만 한다.
+    Return value is for cycle internal use: "failure" | "no_change" | "changed".
+    No-change is determined solely by wme_records length (before and after effect).
     """
     n_before = len(wm.wme_records)
     try:
@@ -186,7 +186,7 @@ def _apply(operator, wm) -> str:
 
 def _handle_impasse(wm, trigger: str) -> bool:
     """
-    True: 사이클 계속. False: 종료(깊이 한계 또는 최상위에서 후보 없음).
+    True: continue cycle. False: terminate (depth limit or no candidates at top level).
     """
     if trigger == "no_candidates":
         if wm.depth > 0:

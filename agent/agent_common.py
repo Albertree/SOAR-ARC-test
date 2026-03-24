@@ -1,12 +1,12 @@
 """
-agent_common — WM 초기화, 종료 조건 판단, 답변 추출 공통 유틸.
+agent_common — Common utilities for WM initialization, termination condition checks, and answer extraction.
 """
 
 
 def build_wm_from_task(task, wm) -> None:
     """
-    task를 WM에 반영한다. 비교 agenda·relations·elaborated 등은 만들지 않는다.
-    goal·subgoals·focus·operator 상태만 직접 설정한다.
+    Reflects task into WM. Does not create comparison agenda, relations, elaborated, etc.
+    Only directly sets goal, subgoals, focus, and operator state.
     """
     wm.task = task
     goal = wm.s1["goal"]

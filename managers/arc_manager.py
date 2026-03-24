@@ -1,5 +1,5 @@
 """
-ARCManager — data/ 폴더에서 ARC 태스크를 로드하고 ARCKG 노드 계층을 구축.
+ARCManager — Load ARC tasks from the data/ folder and build the ARCKG node hierarchy.
 """
 
 import json
@@ -12,11 +12,11 @@ from ARCKG.grid import Grid
 
 class ARCManager:
     """
-    INTENT: 지정된 data/ 경로에서 ARC JSON 파일을 읽어
-            Task → Pair → Grid → Object → Pixel 노드 계층을 구성하고
-            각 노드의 to_json()/save()를 호출해 semantic_memory에 속성을 기록한다.
-    MUST NOT: data/ 파일을 수정하지 마 (read-only).
-              solve 로직을 여기에 포함하지 마.
+    INTENT: Read ARC JSON files from the specified data/ path,
+            construct the Task → Pair → Grid → Object → Pixel node hierarchy,
+            and call each node's to_json()/save() to record attributes in semantic_memory.
+    MUST NOT: Do not modify data/ files (read-only).
+              Do not include solve logic here.
     REF: ARCKG/task.py, ARCKG/pair.py, ARCKG/grid.py
          CLAUDE.md § Data, § Edge Creation Timing
     """
@@ -24,8 +24,8 @@ class ARCManager:
     def __init__(self, data_root: str = "data",
                  semantic_memory_root: str = "semantic_memory"):
         """
-        INTENT: data 경로와 semantic_memory 경로로 초기화.
-        MUST NOT: 생성자에서 파일을 읽지 마.
+        INTENT: Initialize with data path and semantic_memory path.
+        MUST NOT: Do not read files in the constructor.
         REF: ARC-solver/managers/arc_manager.py ARCManager._build_task_mapping (line 6)
         """
         self.data_root = data_root
@@ -33,9 +33,9 @@ class ARCManager:
 
     def get_task_hex(self, task_file: str) -> str:
         """
-        INTENT: 태스크 파일명에서 hex ID를 추출해 반환한다.
-                확장자(.json) 및 경로 prefix를 제거한 순수 파일명.
-        MUST NOT: 파일을 열지 마 — 파일명 파싱만.
+        INTENT: Extract and return the hex ID from the task filename.
+                Pure filename with extension (.json) and path prefix removed.
+        MUST NOT: Do not open the file — filename parsing only.
         REF: CLAUDE.md § Node ID format
         """
         basename = os.path.basename(task_file)
@@ -43,11 +43,11 @@ class ARCManager:
 
     def load_task(self, task_file: str) -> Task:
         """
-        INTENT: data_root/{task_file}.json을 읽어 Task 노드를 생성하고
-                하위 Pair/Grid/Object/Pixel 노드를 모두 구성한 뒤 반환한다.
-                각 노드의 save()를 호출해 semantic_memory에 속성 파일을 기록한다.
-        MUST NOT: comparison edge(E_*-*.json)를 여기서 생성하지 마
-                  — 속성 파일(0th-order)만.
+        INTENT: Read data_root/{task_file}.json to create a Task node,
+                construct all child Pair/Grid/Object/Pixel nodes, and return the Task.
+                Call save() on each node to write attribute files to semantic_memory.
+        MUST NOT: Do not create comparison edges (E_*-*.json) here
+                  — only attribute files (0th-order).
         REF: ARCKG/task.py Task, ARCKG/memory_paths.py
              CLAUDE.md § Edge Creation Timing
              ARC-solver/managers/arc_manager.py ARCManager.from_hex_code (line 40)
@@ -55,7 +55,7 @@ class ARCManager:
         """
         task_hex = self.get_task_hex(task_file)
 
-        # data/ 아래 여러 위치 탐색
+        # Search multiple locations under data/
         candidates = [
             os.path.join(self.data_root, task_file),
             os.path.join(self.data_root, f"{task_file}.json"),
@@ -101,10 +101,10 @@ class ARCManager:
                      pair_type: str, id_offset: int,
                      test: bool = False) -> list[Pair]:
         """
-        ARC JSON의 train/test 목록에서 Pair 노드 목록을 구성한다.
+        Construct Pair node list from ARC JSON train/test lists.
         - example pairs: pair_id = "T{hex}.P0", "T{hex}.P1", ...
         - test pairs:    pair_id = "T{hex}.Pa", "T{hex}.Pb", ...
-        각 Grid에서 extract_objects()를 호출한다.
+        Calls extract_objects() on each Grid.
         """
         pairs = []
         for idx, raw_pair in enumerate(pairs_raw):
@@ -115,12 +115,12 @@ class ARCManager:
 
             pair_id = f"T{task_hex}.P{p_suffix}"
 
-            # Input grid (항상 존재)
+            # Input grid (always present)
             input_id = f"{pair_id}.G0"
             input_grid = Grid(grid_id=input_id, raw=raw_pair["input"])
             input_grid.extract_objects()
 
-            # Output grid (test pair의 실제 답 없음 → output 있으면 구성, 없으면 None)
+            # Output grid (test pairs have no actual answer → construct if output exists, otherwise None)
             output_raw = raw_pair.get("output")
             if output_raw is not None and len(output_raw) > 0 and len(output_raw[0]) > 0:
                 output_id = f"{pair_id}.G1"
@@ -135,13 +135,13 @@ class ARCManager:
 
     def load_all_tasks(self, split: str = "training") -> list:
         """
-        INTENT: data_root/{split}/ 아래 모든 태스크 파일을 순회하며
-                load_task()를 호출해 Task 목록을 반환한다.
-        MUST NOT: 에러 발생 시 전체를 중단하지 마 — 개별 태스크 오류는 로그만.
+        INTENT: Iterate over all task files under data_root/{split}/,
+                call load_task() on each, and return the Task list.
+        MUST NOT: Do not abort entirely on error — only log individual task failures.
         REF: ARC-solver/managers/arc_manager.py ARCManager._build_task_mapping (line 6)
              ARC-solver/basics/ARCLOADER.py ARCDataset.load_data (line 15)
         """
-        # ARC_AGI 하위 split 폴더 우선 탐색, 없으면 data_root 직접
+        # Search ARC_AGI sub-split folder first, fall back to data_root directly
         candidate_dirs = [
             os.path.join(self.data_root, "ARC_AGI", split),
             os.path.join(self.data_root, split),

@@ -1,7 +1,7 @@
 """
-PIXEL node — OBJECT 또는 GRID 아래 단일 픽셀.
-Node ID 형식: T{hex}.P{p}.G{g}.O{o}.X{x}  (object-level)
-            T{hex}.P{p}.G{g}.X{x}         (grid-level)
+PIXEL node — a single pixel under an OBJECT or GRID.
+Node ID format: T{hex}.P{p}.G{g}.O{o}.X{x}  (object-level)
+                T{hex}.P{p}.G{g}.X{x}         (grid-level)
 """
 
 import json
@@ -12,18 +12,18 @@ from ARCKG.memory_paths import id_to_json_path, node_id_to_folder_path
 
 class Pixel:
     """
-    INTENT: 단일 픽셀의 색상과 격자 내 절대 좌표를 나타내는 KG 노드.
-            to_json()으로 E_X{x}.json 속성 파일을 기록한다.
+    INTENT: A KG node representing a single pixel's color and absolute coordinates within the grid.
+            Writes the E_X{x}.json property file via to_json().
     REF: ARC-solver/ARCKG/pixel.py PIXEL (line 11)
     """
 
     def __init__(self, pixel_id: str, color: int, row: int, col: int):
         """
         Args:
-            pixel_id: 전체 node_id 문자열 (e.g. "T0a.P0.G0.O2.X5")
-            color:    0-9 색상 값
-            row:      격자 내 절대 행 인덱스
-            col:      격자 내 절대 열 인덱스
+            pixel_id: full node_id string (e.g. "T0a.P0.G0.O2.X5")
+            color:    0-9 color value
+            row:      absolute row index within the grid
+            col:      absolute column index within the grid
         """
         self.node_id = pixel_id
         self.color = color
@@ -32,7 +32,7 @@ class Pixel:
 
     def to_json(self) -> dict:
         """
-        PIXEL 속성: color + coordinate(row_index, col_index).
+        PIXEL properties: color + coordinate(row_index, col_index).
         REF: ARC-solver/ARCKG/pixel.py  update_property → property['coordinate']
         """
         return {
@@ -44,7 +44,7 @@ class Pixel:
         }
 
     def save(self, semantic_memory_root: str):
-        """to_json()을 E_X{x}.json으로 노드 폴더에 기록."""
+        """Write to_json() as E_X{x}.json in the node folder."""
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)
         os.makedirs(folder, exist_ok=True)
         path = id_to_json_path(self.node_id, semantic_memory_root)

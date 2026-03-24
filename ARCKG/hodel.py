@@ -1,25 +1,25 @@
 """
-hodel.py — Michael Hodel의 ARC DSL에서 object 추출에 필요한 함수만 최소 포팅.
-원본: ARC-solver/DSL/base.py  (objects, dneighbors, neighbors, mostcolor, asindices)
+hodel.py — Minimal port of only the functions needed for object extraction from Michael Hodel's ARC DSL.
+Original: ARC-solver/DSL/base.py  (objects, dneighbors, neighbors, mostcolor, asindices)
 
-외부 의존성 없이 순수 Python만 사용.
+Uses pure Python only, with no external dependencies.
 """
 
 
 def _mostcolor(grid: tuple) -> int:
-    """격자에서 가장 많이 나타나는 색상 반환."""
+    """Return the most frequently occurring color in the grid."""
     values = [v for row in grid for v in row]
     return max(set(values), key=values.count)
 
 
 def _dneighbors(loc: tuple) -> frozenset:
-    """상하좌우 4방향 인접 좌표."""
+    """4-directional (up/down/left/right) neighboring coordinates."""
     r, c = loc
     return frozenset({(r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)})
 
 
 def _allneighbors(loc: tuple) -> frozenset:
-    """4방향 + 대각선 8방향 인접 좌표."""
+    """8-directional (4 cardinal + 4 diagonal) neighboring coordinates."""
     r, c = loc
     return frozenset({
         (r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1),
@@ -30,15 +30,15 @@ def _allneighbors(loc: tuple) -> frozenset:
 def hodel_objects(grid: tuple, univalued: bool,
                    diagonal: bool, without_bg: bool) -> frozenset:
     """
-    Michael Hodel의 objects() 함수 포팅.
-    격자에서 연결 성분을 찾아 frozenset of frozensets 반환.
-    각 object: frozenset of (color, (row, col)) 쌍.
+    Port of Michael Hodel's objects() function.
+    Finds connected components in the grid and returns a frozenset of frozensets.
+    Each object: frozenset of (color, (row, col)) pairs.
 
     Args:
-        grid:        tuple[tuple[int]] — 읽기 전용 2D 격자
-        univalued:   True → 동일 색상 픽셀만 같은 object로 묶음
-        diagonal:    True → 대각선 방향도 연결로 취급
-        without_bg:  True → 최다 색상(배경)을 object에서 제외
+        grid:        tuple[tuple[int]] — read-only 2D grid
+        univalued:   True -> only group same-color pixels into the same object
+        diagonal:    True -> treat diagonal directions as connected
+        without_bg:  True -> exclude the most frequent color (background) from objects
     """
     h, w = len(grid), len(grid[0])
     bg = _mostcolor(grid) if without_bg else None
@@ -76,7 +76,7 @@ def hodel_objects(grid: tuple, univalued: bool,
     return frozenset(objs)
 
 
-# 8가지 파라미터 조합 — 원본 object_finder.py find_all_objects 순서 그대로
+# 8 parameter combinations — same order as the original object_finder.py find_all_objects
 PARAM_COMBINATIONS = [
     (True,  True,  True),   # univalued, diagonal, without_bg
     (False, True,  True),
@@ -91,15 +91,15 @@ PARAM_COMBINATIONS = [
 
 def find_all_objects(raw: list) -> list:
     """
-    8가지 파라미터 조합으로 hodel_objects를 실행해 고유 object 목록을 반환.
+    Run hodel_objects with 8 parameter combinations and return a list of unique objects.
 
-    반환: list of dict, 각 dict:
+    Returns: list of dict, each dict:
         {
           "obj":    frozenset of (color, (row, col)),
-          "pos":    (row_min, col_min),            ← left_top 절대 좌표
+          "pos":    (row_min, col_min),            <- absolute coordinates of left_top
           "color":  {0: bool, ..., 9: bool},
           "method": {"univalued": bool, "diagonal": bool, "without_bg": bool},
-          "colorgrid": list[list[int]],           ← bbox 크기, 투명=13
+          "colorgrid": list[list[int]],           <- bbox size, transparent=13
         }
     """
     grid = tuple(tuple(row) for row in raw)

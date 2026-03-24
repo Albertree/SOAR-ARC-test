@@ -1,21 +1,21 @@
 """
-viz.py — ANSI 색상 기반 KG 컴포넌트 시각화 유틸리티.
-원본 색상 팔레트: ARC-solver/basics/utils.py  color_text()
-원본 출력 방식: ARC-solver/basics/utils.py  print_multiple_grids / print_task_view
+viz.py — ANSI color-based KG component visualization utility.
+Original color palette: ARC-solver/basics/utils.py  color_text()
+Original output method: ARC-solver/basics/utils.py  print_multiple_grids / print_task_view
 
-설계 원칙 (원본 그대로):
-  - 레이블, 구분선, 인덱스 등 텍스트 없음
-  - ANSI 색상 블록만 출력
-  - 여러 그리드를 가로로 배치할 때 고정 공백(gap)만 사이에 삽입
+Design principles (same as original):
+  - No labels, separators, indices, or other text
+  - Only ANSI color blocks are output
+  - When placing multiple grids side by side, only fixed spaces (gap) are inserted between them
 
-공개 함수:
-    show_task(task)             — 태스크 전체 (example + test) 시각화
-    show_objects(grid)          — Grid 검출 object 목록 (5열 배치)
-    show_comparison(a, b)       — 두 컴포넌트(Grid / Object / Pixel) 가로 비교
+Public functions:
+    show_task(task)             — Visualize entire task (example + test)
+    show_objects(grid)          — Display detected objects from Grid (5 columns)
+    show_comparison(a, b)       — Side-by-side comparison of two components (Grid / Object / Pixel)
 """
 
 # ---------------------------------------------------------------------------
-# ANSI 색상 팔레트 (원본: ARC-solver/basics/utils.py)
+# ANSI color palette (original: ARC-solver/basics/utils.py)
 # ---------------------------------------------------------------------------
 
 _PALETTE = {
@@ -39,36 +39,36 @@ _FALLBACK = (180, 180, 180)
 
 
 def _cell(color: int) -> str:
-    """단일 셀 → 2칸 ANSI 배경색 블록."""
+    """Single cell → 2-character ANSI background color block."""
     r, g, b = _PALETTE.get(color, _FALLBACK)
     return f"\033[48;2;{r};{g};{b}m  \033[0m"
 
 
 def _render_row(row: list) -> str:
-    """int 리스트 한 행 → ANSI 문자열."""
+    """Single row of int list → ANSI string."""
     return "".join(_cell(v) for v in row)
 
 
 def _blank_row(cols: int) -> str:
-    """cols 칸 너비의 빈 공백 행 (높이가 다른 그리드 패딩용)."""
+    """Empty whitespace row of cols-cell width (for padding grids of different heights)."""
     return " " * (cols * 2)
 
 
 # ---------------------------------------------------------------------------
-# 핵심 출력 헬퍼 (원본 print_multiple_grids 방식)
+# Core output helper (same approach as original print_multiple_grids)
 # ---------------------------------------------------------------------------
 
 def _print_side_by_side(grids: list, gap: int = 4):
     """
-    여러 2D int 배열을 가로로 나란히 출력한다.
-    원본 print_multiple_grids와 동일한 방식:
-      - 레이블·구분선 없음
-      - 행 단위로 ANSI 문자열을 공백 gap으로 이어 붙임
-      - 높이가 짧은 그리드는 빈 공백으로 패딩
+    Print multiple 2D int arrays side by side.
+    Same approach as original print_multiple_grids:
+      - No labels or separators
+      - Join ANSI strings per row with gap whitespace
+      - Shorter grids are padded with blank spaces
 
     Args:
         grids: list of 2D int arrays
-        gap:   그리드 사이 공백 문자 수
+        gap:   number of whitespace characters between grids
     """
     if not grids:
         return
@@ -88,9 +88,9 @@ def _print_side_by_side(grids: list, gap: int = 4):
 
 def _extract_raw(component) -> list:
     """
-    Grid / Object / Pixel 컴포넌트에서 2D int 배열 추출.
+    Extract 2D int array from Grid / Object / Pixel component.
       Grid  → raw
-      Object → colorgrid  (투명=13)
+      Object → colorgrid  (transparent=13)
       Pixel  → [[color]]
     """
     if hasattr(component, "raw"):
@@ -103,16 +103,16 @@ def _extract_raw(component) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 공개 함수 1: show_task
+# Public function 1: show_task
 # ---------------------------------------------------------------------------
 
 def show_task(task, gap: int = 6):
     """
-    태스크 전체를 시각화한다.
-    Example pair: input(좌)·output(우) 가로 배치, pair 사이에 빈 줄.
-    Test pair:    input만 출력.
+    Visualize the entire task.
+    Example pair: input (left) and output (right) placed side by side, blank line between pairs.
+    Test pair:    only input is displayed.
 
-    원본 print_task_view 방식 그대로.
+    Same approach as original print_task_view.
     """
     for i, pair in enumerate(task.example_pairs):
         if i > 0:
@@ -130,13 +130,13 @@ def show_task(task, gap: int = 6):
 
 
 # ---------------------------------------------------------------------------
-# 공개 함수 2: show_objects
+# Public function 2: show_objects
 # ---------------------------------------------------------------------------
 
 def show_objects(grid, cols_per_row: int = 5, gap: int = 3):
     """
-    Grid에서 검출된 object를 한 줄에 cols_per_row 개씩 가로 배치해 출력한다.
-    각 object는 colorgrid(bbox 크기, 투명=어두운 회색)로 표시.
+    Display detected objects from Grid, placing cols_per_row per line side by side.
+    Each object is shown as colorgrid (bbox size, transparent=dark gray).
     """
     objects = getattr(grid, "objects", [])
     if not objects:
@@ -149,13 +149,13 @@ def show_objects(grid, cols_per_row: int = 5, gap: int = 3):
 
 
 # ---------------------------------------------------------------------------
-# 공개 함수 3: show_comparison
+# Public function 3: show_comparison
 # ---------------------------------------------------------------------------
 
 def show_comparison(a, b, gap: int = 6):
     """
-    두 컴포넌트(Grid / Object / Pixel)를 가로로 나란히 출력한다.
-    comparison 디버깅 시 사용.
+    Print two components (Grid / Object / Pixel) side by side.
+    Used for debugging comparisons.
     """
     raw_a = _extract_raw(a)
     raw_b = _extract_raw(b)

@@ -1,8 +1,8 @@
 """
-program — 지식 추상화 패키지.
+program — knowledge abstraction package.
 
 Public interface:
-    anti_unify  — 여러 pair의 relation trace를 anti-unification으로 추상화
+    anti_unify  — abstract relation traces from multiple pairs via anti-unification
 """
 
 from program.anti_unification import anti_unify

@@ -1,9 +1,9 @@
 """
-ARCEnvironment — ARC 벤치마크 실행 환경.
-태스크 제공, 채점(pixel-exact match), 시간 예산, 실행 트레이스를 관리한다.
+ARCEnvironment — ARC benchmark execution environment.
+Manages task provisioning, scoring (pixel-exact match), time budget, and execution traces.
 
-에이전트는 Task 객체(ARCKG 노드)를 받아 solve()를 호출한다.
-SOAR가 유일한 solver이므로 SolverAgent 등 별도 fallback은 없다.
+The agent receives a Task object (ARCKG node) and calls solve().
+Since SOAR is the only solver, there is no separate fallback such as SolverAgent.
 """
 
 import json
@@ -16,7 +16,7 @@ DEFAULT_MAX_ATTEMPTS_PER_TASK = 3
 
 
 def _grids_equal(a: list, b: list) -> bool:
-    """두 그리드(list[list[int]])가 pixel-exact로 같은지 비교."""
+    """Compare whether two grids (list[list[int]]) are pixel-exact equal."""
     if a is b:
         return True
     if len(a) != len(b):
@@ -29,11 +29,11 @@ def _grids_equal(a: list, b: list) -> bool:
 
 class ARCEnvironment:
     """
-    에이전트에게 Task 객체를 제공하고, 제출된 answer를 채점하며,
-    시간 예산과 trace를 관리하는 평가 환경.
+    An evaluation environment that provides Task objects to the agent,
+    scores submitted answers, and manages time budget and traces.
 
-    MUST NOT: solve 로직을 여기에 포함하지 마.
-              에이전트 인스턴스를 여기서 생성하지 마.
+    MUST NOT: Do not include solve logic here.
+              Do not create agent instances here.
     """
 
     def __init__(
@@ -45,10 +45,10 @@ class ARCEnvironment:
     ):
         """
         Args:
-            task_list: None이면 data/ 전체 태스크. list[str]이면 hex 코드 목록.
-            time_budget_sec: 에피소드 전체 시간 제한(초). None이면 무제한.
-            enable_trace: step마다 trace 기록 여부.
-            max_attempts_per_task: 태스크당 최대 제출 횟수(agent.can_retry와 연동).
+            task_list: If None, all tasks in data/. If list[str], a list of hex codes.
+            time_budget_sec: Time limit in seconds for the entire episode. None means unlimited.
+            enable_trace: Whether to record traces at each step.
+            max_attempts_per_task: Maximum number of submissions per task (linked with agent.can_retry).
         """
         self._time_budget_sec = time_budget_sec
         self._enable_trace = enable_trace
@@ -56,7 +56,7 @@ class ARCEnvironment:
         self._trace: list = []
         self._episode_start_time = None
 
-        # task 순서 결정
+        # determine task order
         if task_list is None:
             index_to_hex, _ = ARCManager._build_task_mapping()
             self._task_ids = [index_to_hex[i] for i in sorted(index_to_hex)]
@@ -64,10 +64,10 @@ class ARCEnvironment:
             self._task_ids = list(task_list)
 
         self._current_index: int = -1
-        self._current_task = None      # Task 객체 (ARCKG 노드)
+        self._current_task = None      # Task object (ARCKG node)
         self._done: bool = True
         self._episode_task_ids: list = []
-        self._attempts_left: int = 0   # 현재 태스크 남은 제출 횟수
+        self._attempts_left: int = 0   # remaining submission count for current task
 
     # ──────────────────────────────────────────
     # Public API
@@ -75,13 +75,13 @@ class ARCEnvironment:
 
     def reset(self, task_list: list = None):
         """
-        새 에피소드 시작. 첫 번째 Task 객체를 반환한다.
+        Start a new episode. Returns the first Task object.
 
         Args:
-            task_list: 이번 에피소드에만 쓸 hex 코드 목록. None이면 생성자 목록 사용.
+            task_list: List of hex codes to use only for this episode. None uses the constructor list.
 
         Returns:
-            첫 번째 Task 객체 (없으면 None).
+            The first Task object (None if empty).
         """
         self._episode_task_ids = list(task_list) if task_list is not None else list(self._task_ids)
         self._current_index = -1
@@ -95,32 +95,32 @@ class ARCEnvironment:
         return self._advance_to_next_task()
 
     def get_task(self):
-        """현재 Task 객체 반환. 에피소드가 끝났으면 None."""
+        """Return the current Task object. None if the episode has ended."""
         return self._current_task
 
     def get_current_task_id(self):
-        """현재 태스크의 hex 코드. 없으면 None."""
+        """Hex code of the current task. None if no current task."""
         return self._current_task.task_hex if self._current_task else None
 
     def step(self, answer: list) -> tuple:
         """
-        에이전트의 answer를 채점한다.
+        Score the agent's answer.
 
         Args:
-            answer: test pair 순서대로 출력 그리드 목록. 각 원소는 list[list[int]].
+            answer: List of output grids in test pair order. Each element is list[list[int]].
 
         Returns:
             (reward, next_task, done, info)
-            - reward: 1.0 = 전부 정답, 0.0 = 하나라도 오답.
-            - next_task: 다음 Task 객체. can_retry면 현재 Task.
-            - done: 에피소드 종료 여부.
+            - reward: 1.0 = all correct, 0.0 = at least one incorrect.
+            - next_task: Next Task object. Current Task if can_retry.
+            - done: Whether the episode has ended.
             - info: {"correct_per_pair": [bool,...], "attempts_left": int, "can_retry": bool}
         """
         info = {"correct_per_pair": [], "attempts_left": 0, "can_retry": False}
         if self._current_task is None:
             return 0.0, None, True, info
 
-        # answer 정규화
+        # normalize answer
         if not isinstance(answer, list):
             answer = [answer]
         if answer and isinstance(answer[0], (list, tuple)):
@@ -155,7 +155,7 @@ class ARCEnvironment:
                                if self._episode_start_time else None,
             })
 
-        # 시간 예산 초과 체크
+        # check time budget exceeded
         if self._time_budget_exceeded():
             self._done = True
             return reward, None, True, info
@@ -164,22 +164,22 @@ class ARCEnvironment:
             next_task = self._advance_to_next_task()
             return reward, next_task, self._done, info
 
-        # 재시도 가능 여부: attempts_left AND agent.can_retry 모두 필요
+        # retry eligibility: both attempts_left AND agent.can_retry are required
         if self._attempts_left > 0:
             info["can_retry"] = True
             return reward, self._current_task, False, info
 
-        # 시도 소진 → 다음 태스크로
+        # attempts exhausted -> move to next task
         next_task = self._advance_to_next_task()
         return reward, next_task, self._done, info
 
     def run_benchmark(self, agent, n: int = None) -> dict:
         """
-        agent.solve(task)를 반복 호출해 벤치마크를 실행한다.
+        Run the benchmark by repeatedly calling agent.solve(task).
 
         Args:
-            agent: .solve(task) → list[list[list[int]]], .can_retry → bool 인터페이스.
-            n: 최대 수행 태스크 수. None이면 전부.
+            agent: Interface with .solve(task) -> list[list[list[int]]], .can_retry -> bool.
+            n: Maximum number of tasks to run. None means all.
 
         Returns:
             {"correct": int, "total": int, "results": list, "trace": list}
@@ -240,7 +240,7 @@ class ARCEnvironment:
 
     def run_single_task(self, task_id: str, agent=None) -> tuple:
         """
-        단일 태스크 실행.
+        Run a single task.
 
         Returns:
             (reward, info)
@@ -288,11 +288,11 @@ class ARCEnvironment:
         }
 
     def get_trace(self) -> list:
-        """현재 에피소드 trace 반환."""
+        """Return the current episode trace."""
         return list(self._trace)
 
     def save_trace(self, path) -> None:
-        """trace를 JSON 파일로 저장."""
+        """Save the trace as a JSON file."""
         path = Path(path)
         path.parent.mkdir(parents=True, exist_ok=True)
         with open(path, "w", encoding="utf-8") as f:
@@ -303,7 +303,7 @@ class ARCEnvironment:
     # ──────────────────────────────────────────
 
     def _advance_to_next_task(self):
-        """다음 태스크로 이동하고 Task 객체 반환."""
+        """Advance to the next task and return the Task object."""
         if self._time_budget_exceeded():
             self._done = True
             return None
@@ -323,7 +323,7 @@ class ARCEnvironment:
             return self._advance_to_next_task()
 
     def _get_ground_truth(self, test_pair) -> list:
-        """test pair의 정답 그리드를 list[list[int]]로 반환."""
+        """Return the ground truth grid of a test pair as list[list[int]]."""
         grid = test_pair.output_grid
         if hasattr(grid, "view"):
             return grid.view

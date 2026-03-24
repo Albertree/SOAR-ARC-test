@@ -1,93 +1,93 @@
 # ARCKG — ARC Knowledge Graph Solver
 
-순수 심볼릭 AI 시스템으로 ARC(Abstraction and Reasoning Corpus) 태스크를 푼다.  
-계층적 지식 그래프를 구축하고 SOAR 인지 아키텍처를 sole solver로 운용한다.
+A purely symbolic AI system that solves ARC (Abstraction and Reasoning Corpus) tasks.
+It builds a hierarchical knowledge graph and operates SOAR cognitive architecture as the sole solver.
 
 ---
 
-## 핵심 철학
+## Core Philosophy
 
-- **순수 심볼릭** — 지식 레이어에 신경망 없음
-- **지식은 관계(why)로 저장**, 프로그램(how)이 아님
-- **실패(impasse)는 정보** — 무엇이 부족한지 드러냄
-- **SOAR가 유일한 solver** — 별도의 프로그램 합성 엔진 없음
+- **Purely symbolic** — no neural networks in the knowledge layer
+- **Knowledge is stored as relations (why)**, not programs (how)
+- **Failure (impasse) is information** — it reveals what is missing
+- **SOAR is the only solver** — no separate program synthesis engine
 
 ---
 
-## 실행
+## Execution
 
 ```bash
-# 전체 벤치마크
+# Full benchmark
 python main.py
 
-# 단일 태스크 실험 (에러 추적용)
+# Single task experiment (for error tracking)
 python run_task.py
 ```
 
 ---
 
-## 모듈 구조
+## Module Structure
 
 ```
 ARC-solver2/
 │
-├── main.py                  ← 단일 진입점
-├── run_task.py              ← 단일 태스크 실험 스크립트
+├── main.py                  ← Single entry point
+├── run_task.py              ← Single task experiment script
 │
-├── ARCKG/                   ← Knowledge Graph 기반층
-│   ├── task.py              TASK 노드   (T{hex})
-│   ├── pair.py              PAIR 노드   (T.P{n})
-│   ├── grid.py              GRID 노드   (T.P.G{n})
-│   ├── object.py            OBJECT 노드 (T.P.G.O{n})
-│   ├── pixel.py             PIXEL 노드  (T.P.G.O.X{n})
-│   ├── hodel.py             객체 검출 함수 (Hodel's objects())
-│   ├── comparison.py        compare() — 핵심 관계 구축 함수
-│   └── memory_paths.py      노드 ID → 파일 경로 변환
+├── ARCKG/                   ← Knowledge Graph base layer
+│   ├── task.py              TASK node   (T{hex})
+│   ├── pair.py              PAIR node   (T.P{n})
+│   ├── grid.py              GRID node   (T.P.G{n})
+│   ├── object.py            OBJECT node (T.P.G.O{n})
+│   ├── pixel.py             PIXEL node  (T.P.G.O.X{n})
+│   ├── hodel.py             Object detection function (Hodel's objects())
+│   ├── comparison.py        compare() — core relation construction function
+│   └── memory_paths.py      Node ID → file path conversion
 │
-├── agent/                   ← SOAR 인지 아키텍처 (유일한 solver)
-│   ├── wm.py                WorkingMemory — WME triplet, S1/S2 상태 스택
-│   ├── elaboration_rules.py ElaborationRule, Elaborator — 파생 사실 생성
-│   ├── rules.py             ProductionRule, Proposer — operator 후보 제안
-│   ├── operators.py         Operator 베이스 클래스
+├── agent/                   ← SOAR cognitive architecture (sole solver)
+│   ├── wm.py                WorkingMemory — WME triplet, S1/S2 state stack
+│   ├── elaboration_rules.py ElaborationRule, Elaborator — derived fact generation
+│   ├── rules.py             ProductionRule, Proposer — operator candidate proposal
+│   ├── operators.py         Operator base class
 │   ├── active_operators.py  SelectTarget / Compare / ExtractPattern /
 │   │                        Generalize / Predict / Submit
-│   ├── preferences.py       select_operator() — PREFERENCE_ORDER 기반 선택
-│   ├── cycle.py             run_cycle() — Elaborate→Propose→Select→Apply 루프
+│   ├── preferences.py       select_operator() — PREFERENCE_ORDER-based selection
+│   ├── cycle.py             run_cycle() — Elaborate→Propose→Select→Apply loop
 │   ├── agent_common.py      build_wm_from_task / goal_satisfied / answers_from_wm
-│   ├── memory.py            chunk_from_substate / LTM 저장·로드
-│   └── active_agent.py      ActiveSoarAgent — env 호환 agent 인터페이스
+│   ├── memory.py            chunk_from_substate / LTM save/load
+│   └── active_agent.py      ActiveSoarAgent — env-compatible agent interface
 │
-├── env/                     ← 평가 환경
-│   └── arc_environment.py   ARCEnvironment — 태스크 제공, 채점, trace
+├── env/                     ← Evaluation environment
+│   └── arc_environment.py   ARCEnvironment — task provision, scoring, trace
 │
 ├── managers/
-│   └── arc_manager.py       ARCManager — data/ 로드 → ARCKG 노드 계층 구성
+│   └── arc_manager.py       ARCManager — data/ load → ARCKG node hierarchy construction
 │
 ├── program/
-│   └── anti_unification.py  관계 trace → 추상 규칙 일반화
+│   └── anti_unification.py  Relation trace → abstract rule generalization
 │
-├── procedural_memory/DSL/   ← DSL 도구 (operator 내부 호출용)
-│   ├── apply.py             apply_DSL() 디스패처
-│   ├── transformation.py    그리드/객체 변환 함수
+├── procedural_memory/DSL/   ← DSL tools (for internal operator calls)
+│   ├── apply.py             apply_DSL() dispatcher
+│   ├── transformation.py    Grid/object transformation functions
 │   ├── selection.py         find_object()
-│   ├── util.py              헬퍼
-│   └── layer.py             90×90 캔버스 레이어 시스템
+│   ├── util.py              Helpers
+│   └── layer.py             90×90 canvas layer system
 │
 ├── basics/
-│   ├── viz.py               ANSI 컬러 시각화 (show_task / show_objects / show_comparison)
-│   └── utils.py             기타 유틸리티
+│   ├── viz.py               ANSI color visualization (show_task / show_objects / show_comparison)
+│   └── utils.py             Miscellaneous utilities
 │
 ├── data/                    ← symlink → ../ARC-solver/data (read-only)
-├── semantic_memory/         ← STORAGE: KG 노드 속성 + 비교 엣지 (JSON)
-├── episodic_memory/         ← STORAGE: 태스크별 풀이 에피소드
-└── inspect.py               ← 디버깅용 대화형 스크립트
+├── semantic_memory/         ← STORAGE: KG node attributes + comparison edges (JSON)
+├── episodic_memory/         ← STORAGE: Per-task solution episodes
+└── inspect.py               ← Interactive debugging script
 ```
 
 ---
 
-## 지식 그래프 구조
+## Knowledge Graph Structure
 
-### 5계층 노드 계층
+### 5-Level Node Hierarchy
 
 ```
 TASK (T{hex})
@@ -97,21 +97,21 @@ TASK (T{hex})
                 └── PIXEL (X{n})
 ```
 
-### 노드 = 폴더, 엣지 = JSON 파일
+### Node = Folder, Edge = JSON File
 
 ```
 semantic_memory/
   N_T{hex}/
-    E_T{hex}.json          ← 0th-order: TASK 속성
-    E_P0G0-P0G1.json       ← 1st-order: G0 vs G1 비교
-    E_(E_...)-(...).json   ← 2nd-order: 관계 간 비교
+    E_T{hex}.json          ← 0th-order: TASK attributes
+    E_P0G0-P0G1.json       ← 1st-order: G0 vs G1 comparison
+    E_(E_...)-(...).json   ← 2nd-order: comparison between relations
     N_T{hex}.P0/
-      E_P0.json            ← PAIR 속성
-      E_P0G0.json          ← GRID 속성
+      E_P0.json            ← PAIR attributes
+      E_P0G0.json          ← GRID attributes
       ...
 ```
 
-### 관계 결과 형식
+### Relation Result Format
 
 ```json
 {
@@ -129,39 +129,40 @@ semantic_memory/
 
 ---
 
-## SOAR 결정 사이클
+## SOAR Decision Cycle
 
 ```
-매 사이클:
-  ① Elaborate  — ElaborationRule들을 fixed-point까지 반복
-                  → wm.elaborated 채움
-  ② Propose    — ProductionRule들이 elaborated 읽어 operator 후보 수집
-  ③ Select     — PREFERENCE_ORDER 기준으로 하나 선택
-  ④ Apply      — operator.effect(wm) 호출 → WM에 새 사실 추가 (또는 무변화)
-  
-  impasse 발생 조건:
-    - 후보 없음 (no_candidates) → substate 생성
-    - operator 실패(예외 등)   → substate 생성
-    - 루트 상태에서 operator 적용 결과 WM 무변화 (no-change) → substate 생성
-  
+Each cycle:
+  1. Elaborate  — Repeat ElaborationRules until fixed-point
+                  → Fill wm.elaborated
+  2. Propose    — ProductionRules read elaborated and collect operator candidates
+  3. Select     — Choose one based on PREFERENCE_ORDER
+  4. Apply      — Call operator.effect(wm) → Add new facts to WM (or no change)
+
+  Impasse conditions:
+    - No candidates (no_candidates) → create substate
+    - Operator failure (exception, etc.) → create substate
+    - No WM change from operator application at root state (no-change) → create substate
+
   MAX_SUBSTATE_DEPTH = 2
 ```
 
-> 이 구현에서는 operator의 성공/실패/무변화를 WM 슬롯(`^op_status`)로 남기지 않고,  
-> cycle 내부에서 `changed / no_change / failure` 로만 판정해 impasse를 트리거한다.
+> In this implementation, operator success/failure/no-change is not stored in WM slots (`^op_status`).
+> Instead, impasses are triggered within the cycle based only on `changed / no_change / failure` determination.
 
 
-### Operator 흐름
+### Operator Flow
 
 ```
 SelectTarget → Compare → ExtractPattern → Generalize → Predict → Submit
-(agenda에서   (관계 생성) (COMM→invariant  (추상 규칙   (test 출력  (goal
-pending으로)             DIFF→diff_pattern) 생성·저장)  예측)       완료)
+(from agenda   (relation  (COMM→invariant  (abstract    (test output  (goal
+to pending)    creation)  DIFF→diff_pattern) rule         prediction)  complete)
+                                            create/save)
 ```
 
 ---
 
-## 환경 인터페이스
+## Environment Interface
 
 ```python
 env = ARCEnvironment(task_list=["08ed6ac7"], time_budget_sec=300)
@@ -170,44 +171,44 @@ results = env.run_benchmark(agent)
 # → {"correct": int, "total": int, "results": list, "trace": list}
 ```
 
-- `agent.solve(task)` → `list[list[list[int]]]` (test pair 수만큼의 출력 그리드)
-- `agent.can_retry` → `bool` (최대 3회 제출)
-- reward: 1.0 = 전부 정답, 0.0 = 하나라도 오답 (부분 점수 없음)
+- `agent.solve(task)` → `list[list[list[int]]]` (output grids, one per test pair)
+- `agent.can_retry` → `bool` (max 3 submissions)
+- reward: 1.0 = all correct, 0.0 = any wrong (no partial credit)
 
 ---
 
-## 데이터
+## Data
 
 ```bash
-ln -s ../ARC-solver/data ./data   # 최초 1회 심볼릭 링크 생성
+ln -s ../ARC-solver/data ./data   # Create symbolic link once
 ```
 
-`data/`는 read-only. 절대 수정하지 마.
+`data/` is read-only. Never modify it.
 
 ---
 
-## 구현 상태
+## Implementation Status
 
-| 레이어 | 파일 | 상태 |
-|--------|------|------|
-| ARCKG 기반층 | ARCKG/*.py | ✅ 완료 |
-| DSL 도구 | procedural_memory/DSL/*.py | ✅ 완료 |
-| 로드/관리 | managers/arc_manager.py | ✅ 완료 |
-| 평가 환경 | env/arc_environment.py | ✅ 완료 |
-| SOAR 구조 | agent/*.py | ✅ 뼈대 완료 |
-| SOAR 로직 | agent/wm.py 외 | 🔲 부분 구현 (cycle/propose/선호 정렬 등) |
-| 진입점 | main.py | ✅ 완료 |
+| Layer | File | Status |
+|-------|------|--------|
+| ARCKG base layer | ARCKG/*.py | Done |
+| DSL tools | procedural_memory/DSL/*.py | Done |
+| Load/manage | managers/arc_manager.py | Done |
+| Evaluation env | env/arc_environment.py | Done |
+| SOAR structure | agent/*.py | Skeleton complete |
+| SOAR logic | agent/wm.py etc. | Partially implemented (cycle/propose/preference sorting, etc.) |
+| Entry point | main.py | Done |
 
 ---
 
-## SOAR WM 표기 규약 (state, operator, preference)
+## SOAR WM Notation Conventions (state, operator, preference)
 
-### 상태 identifier 및 공통 attribute
+### State Identifiers and Common Attributes
 
-- 루트 상태: `S1`
-- 서브스테이트: `S2`, `S3`, …
+- Root state: `S1`
+- Substates: `S2`, `S3`, ...
 
-기본 형태:
+Basic form:
 
 ```text
 (S1 ^type state
@@ -218,16 +219,16 @@ ln -s ../ARC-solver/data ./data   # 최초 1회 심볼릭 링크 생성
     ...)
 ```
 
-- attribute 출력 순서:
-  - `type`, `superstate`, `io`, `smem`, `epmem`, 그 밖의 슬롯(`goal`, `focus`, `current-task`, `operator`, ...) 순.
-- `^io` 구조:
+- Attribute output order:
+  - `type`, `superstate`, `io`, `smem`, `epmem`, then other slots (`goal`, `focus`, `current-task`, `operator`, ...).
+- `^io` structure:
 
 ```text
 (I1 ^input-link I2
     ^output-link I3)
 ```
 
-서브스테이트(S2, S3, …)는 다음 필드를 우선적으로 가진다:
+Substates (S2, S3, ...) have the following fields as priority:
 
 ```text
 (S2 ^type state
@@ -244,11 +245,11 @@ ln -s ../ARC-solver/data ./data   # 최초 1회 심볼릭 링크 생성
     [^non-numeric-count M])
 ```
 
-### 연산자 및 preference 표기
+### Operator and Preference Notation
 
-- 오퍼레이터 제안/선택은 Soar 디버거 스타일을 따른다.
+- Operator proposal/selection follows Soar debugger style.
 
-1. **제안(Propose) 직후**:
+1. **Immediately after proposal (Propose)**:
 
 ```text
 (S1 ^operator O1 +)
@@ -257,31 +258,31 @@ ln -s ../ARC-solver/data ./data   # 최초 1회 심볼릭 링크 생성
     ^op-preference +)
 ```
 
-2. **선택(Select) 직후**:
+2. **Immediately after selection (Select)**:
 
 ```text
 (S1 ^operator O1 +)
-(S1 ^operator O1)        ; preference 없는 공식 적용 WME 추가
+(S1 ^operator O1)        ; official application WME added without preference
 ```
 
-- preference 기호(`+`, `!`, `~`, `-`)는 항상:
-  - `^operator` 줄의 끝(`(S1 ^operator O1 +)`)
-  - 그리고 `O1` 노드의 `^op-preference` 로만 표현하며,
-- `^proposed_ops`, `^selected_op`, `^op_status` 같은 메타 슬롯은 WM에 두지 않는다.
+- Preference symbols (`+`, `!`, `~`, `-`) are always expressed:
+  - at the end of the `^operator` line (`(S1 ^operator O1 +)`)
+  - and only via `^op-preference` on the `O1` node,
+- Meta-slots like `^proposed_ops`, `^selected_op`, `^op_status` are not placed in WM.
 
 ### Operator no-change impasse
 
-- `SolveTaskOperator` 는 **추상 오퍼레이터**로, S1에서:
-  - `^current-task` 가 있을 때 선택되지만,
-  - `effect()` 내에서 WM을 전혀 바꾸지 않는다 (추상적인 “solve task” 목표만 표상).
-- cycle은:
-  - `effect()` 호출 전후의 `wm.wme_records` 길이를 비교해서:
-    - 동일 → `"no_change"`
-    - 증가 → `"changed"`
-    - 예외 → `"failure"`
-  - 루트 상태(S1)에서 `"no_change"` 이면 **operator no-change impasse** 로서 `S2` 를 생성한다.
+- `SolveTaskOperator` is an **abstract operator** that, at S1:
+  - is selected when `^current-task` exists,
+  - but does not change WM at all within `effect()` (it only represents the abstract "solve task" goal).
+- The cycle:
+  - compares the length of `wm.wme_records` before and after `effect()`:
+    - same → `"no_change"`
+    - increased → `"changed"`
+    - exception → `"failure"`
+  - When `"no_change"` at root state (S1), an **operator no-change impasse** creates `S2`.
 
-로그 예시는 다음과 같다:
+A log example looks like this:
 
 ```text
 [Step 0] After: apply(solve-task)
@@ -307,5 +308,5 @@ ln -s ../ARC-solver/data ./data   # 최초 1회 심볼릭 링크 생성
       ^epmem I7)
 ```
 
-이때도 S1의 `(S1 ^operator O1 +)` / `(S1 ^operator O1)` 는 그대로 유지된다.  
-향후 S2 규칙이 S1의 goal/WM을 실제로 수정하게 되면, 그 변화로 인해 상위 규칙의 매칭이 깨지고 제안이 retract되는 Soar-style resolution을 점진적으로 도입할 예정이다.
+At this point, `(S1 ^operator O1 +)` / `(S1 ^operator O1)` on S1 are still maintained.
+In the future, once S2 rules actually modify S1's goal/WM, we plan to gradually introduce Soar-style resolution where those changes break matching of parent rules and retract proposals.

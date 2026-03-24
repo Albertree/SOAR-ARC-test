@@ -1,8 +1,8 @@
 """
-전체 시스템의 단일 진입점.
-ARCEnvironment 초기화 → ActiveSoarAgent 초기화 → env.run_benchmark(agent) 실행.
+Single entry point for the entire system.
+ARCEnvironment init → ActiveSoarAgent init → env.run_benchmark(agent) execution.
 
-MUST NOT: 어떤 solve 로직도 여기에 두지 마. 환경 루프만 있어야 한다.
+MUST NOT: Do not put any solve logic here. Only the environment loop should be here.
 """
 
 from arc2_env.arc_environment import ARCEnvironment
@@ -11,7 +11,7 @@ from agent.active_agent import ActiveSoarAgent
 
 def main():
     env = ARCEnvironment(
-        task_list=None,          # None이면 data/ 전체 태스크
+        task_list=None,          # None means all tasks in data/
         time_budget_sec=300,
         max_attempts_per_task=3,
     )
