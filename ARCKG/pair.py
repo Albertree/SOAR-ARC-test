@@ -29,6 +29,9 @@ class Pair:
         self.node_id = pair_id
         self.input_grid = input_grid
         self.output_grid = output_grid
+        # Aliases used by run_task.py evaluation
+        self.input = input_grid
+        self.output = output_grid
         # pair-level program loaded after program generation
         self.program: list = []
 

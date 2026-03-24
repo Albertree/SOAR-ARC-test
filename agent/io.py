@@ -35,6 +35,8 @@ def inject_arc_task(task, wm) -> None:
     # by following current-task or through a separate input function.
     in_link["task"] = task.task_hex
     wm.register_wme("input-link", "task", task.task_hex)
+    # Store full task object for operator access
+    wm.task = task
 
 
 def clear_input_link(wm) -> None:

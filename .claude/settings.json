@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": ["Bash", "Write", "Read"]
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "matcher": "",
+        "hooks": [
+          {
+            "type": "command",
+            "command": ".claude/ralph-hook.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

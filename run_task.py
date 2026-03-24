@@ -31,7 +31,7 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    print("\n[*] WM + SOAR cycle (Elaborate → Propose → Select → Apply)...")
+    print("\n[*] WM + SOAR cycle (Elaborate -> Propose -> Select -> Apply)...")
     try:
         from agent.wm import WorkingMemory
         from agent.wm_logger import print_wm_triplets, reset_wm_snapshot
@@ -140,9 +140,9 @@ def _print_result(correct: bool, error: bool = False):
     if error:
         print("RESULT  : ERROR (unable to evaluate)")
     elif correct:
-        print("RESULT  : CORRECT ✅")
+        print("RESULT  : CORRECT")
     else:
-        print("RESULT  : INCORRECT ❌")
+        print("RESULT  : INCORRECT")
     print("=" * 40)
 
 

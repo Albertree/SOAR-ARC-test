@@ -1,0 +1,76 @@
+{
+  "id": "T08ed6ac7.Pa.G1.O1",
+  "result": {
+    "area": 3,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": true,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        6,
+        3
+      ],
+      [
+        7,
+        3
+      ],
+      [
+        8,
+        3
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": true,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 6,
+        "col_index": 3
+      },
+      "right_top": {
+        "row_index": 6,
+        "col_index": 3
+      },
+      "left_bottom": {
+        "row_index": 8,
+        "col_index": 3
+      },
+      "right_bottom": {
+        "row_index": 8,
+        "col_index": 3
+      }
+    },
+    "shape": [
+      [
+        1
+      ],
+      [
+        1
+      ],
+      [
+        1
+      ]
+    ],
+    "size": {
+      "height": 3,
+      "width": 1
+    },
+    "symmetry": {
+      "hori_symm": true,
+      "verti_symm": true,
+      "diag_symm": false,
+      "anti_symm": false
+    }
+  }
+}

@@ -1,5 +1,8 @@
 #!/bin/bash
 
+# Windows PATH fix: ensure node, python, claude are found in Git Bash
+export PATH="/c/Program Files/nodejs:/c/Users/Sir_K/anaconda3:/c/Users/Sir_K/AppData/Roaming/npm:$PATH"
+
 # ============================================================
 # SOAR-ARC Inner Loop Pipeline
 # Claude Code repeatedly runs run_task.py until "CORRECT" is achieved
