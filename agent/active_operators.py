@@ -351,6 +351,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_stripe_zone_fill(task)
 
+        # Strategy 11: cross/arrow shapes project center color to grid borders
+        if rule is None:
+            rule = self._try_cross_border_project(task)
+
+        # Strategy 12: grid lines oscillate with zigzag pattern
+        if rule is None:
+            rule = self._try_grid_zigzag(task)
+
+        # Strategy 13: three blocks in a line, middle slides through splittable outer
+        if rule is None:
+            rule = self._try_block_slide_split(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1796,6 +1808,392 @@ class GeneralizeOperator(Operator):
         return (sep_color, row_ranges, col_ranges, regions)
 
 
+    # ---- strategy: cross border projection ---------------------------------
+
+    def _try_cross_border_project(self, task):
+        """
+        Detect pattern: cross/arrow shapes made of structural color with a
+        unique center marker. Each cross has a 'missing arm' direction.
+        The center color projects every 2 cells toward the grid edge in that
+        direction, then fills the entire border row/column. Corners where
+        two border fills meet become 0.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            bg = self._most_common_color(raw_in, h, w)
+            crosses = self._find_arrow_crosses(raw_in, h, w, bg)
+            if not crosses:
+                return None
+
+            predicted = self._build_cross_border_output(raw_in, h, w, crosses)
+            for r in range(h):
+                for c in range(w):
+                    if predicted[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "cross_border_project", "confidence": 1.0}
+
+    @staticmethod
+    def _most_common_color(raw, h, w):
+        counts = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                counts[v] = counts.get(v, 0) + 1
+        return max(counts, key=counts.get)
+
+    @staticmethod
+    def _find_arrow_crosses(raw, h, w, bg):
+        """Find cross/arrow shapes: structural color body + single center marker."""
+        non_bg = set()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    non_bg.add((r, c))
+
+        visited = set()
+        components = []
+        for pos in non_bg:
+            if pos in visited:
+                continue
+            comp = []
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited:
+                    continue
+                visited.add(p)
+                comp.append(p)
+                pr, pc = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (pr + dr, pc + dc)
+                    if nb in non_bg and nb not in visited:
+                        queue.append(nb)
+            components.append(comp)
+
+        crosses = []
+        for comp in components:
+            color_counts = {}
+            for r, c in comp:
+                v = raw[r][c]
+                color_counts[v] = color_counts.get(v, 0) + 1
+            if len(color_counts) < 2:
+                continue
+            structural = max(color_counts, key=color_counts.get)
+
+            markers = [(r, c, raw[r][c]) for r, c in comp if raw[r][c] != structural]
+            if len(markers) != 1:
+                continue
+
+            cr, cc, center_color = markers[0]
+            comp_set = set(comp)
+            arms = {}
+            for direction, (dr, dc) in [("up", (-1, 0)), ("down", (1, 0)),
+                                         ("left", (0, -1)), ("right", (0, 1))]:
+                length = 0
+                nr, nc = cr + dr, cc + dc
+                while (nr, nc) in comp_set and raw[nr][nc] == structural:
+                    length += 1
+                    nr += dr
+                    nc += dc
+                arms[direction] = length
+
+            min_arm = min(arms.values())
+            missing_dirs = [d for d, l in arms.items() if l == min_arm]
+            if len(missing_dirs) != 1:
+                continue
+
+            crosses.append({
+                "center": (cr, cc),
+                "center_color": center_color,
+                "missing_dir": missing_dirs[0],
+            })
+
+        return crosses
+
+    @staticmethod
+    def _build_cross_border_output(raw_in, h, w, crosses):
+        """Build output by projecting center colors to borders."""
+        output = [row[:] for row in raw_in]
+        dir_vec = {"up": (-1, 0), "down": (1, 0), "left": (0, -1), "right": (0, 1)}
+        border_map = {"up": ("row", 0), "down": ("row", h - 1),
+                      "left": ("col", 0), "right": ("col", w - 1)}
+
+        border_fills = {}
+        for cross in crosses:
+            cr, cc = cross["center"]
+            color = cross["center_color"]
+            direction = cross["missing_dir"]
+            dr, dc = dir_vec[direction]
+
+            # Project dots every 2 cells from center toward border
+            nr, nc = cr + 2 * dr, cc + 2 * dc
+            while 0 <= nr < h and 0 <= nc < w:
+                output[nr][nc] = color
+                nr += 2 * dr
+                nc += 2 * dc
+
+            kind, idx = border_map[direction]
+            border_fills[(kind, idx)] = color
+
+        # Fill border rows/columns
+        for (kind, idx), color in border_fills.items():
+            if kind == "row":
+                for c in range(w):
+                    output[idx][c] = color
+            else:
+                for r in range(h):
+                    output[r][idx] = color
+
+        # Corners where two border fills meet -> 0
+        border_rows = {idx for (kind, idx), _ in border_fills.items() if kind == "row"}
+        border_cols = {idx for (kind, idx), _ in border_fills.items() if kind == "col"}
+        for r in border_rows:
+            for c in border_cols:
+                output[r][c] = 0
+
+        return output
+
+    # ---- strategy: block slide split ----------------------------------------
+
+    def _try_block_slide_split(self, task):
+        """
+        Detect pattern: three single-colored blocks in a line. The middle
+        block slides through one outer block (which splits in the
+        perpendicular axis) all the way to the grid boundary. The other
+        outer block stays unchanged.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            bg = self._most_common_color(raw_in, h, w)
+            result = self._analyze_three_blocks(raw_in, h, w, bg)
+            if result is None:
+                return None
+
+            blocks, axis, middle_idx, split_idx, stay_idx = result
+            predicted = self._build_block_slide_output(
+                h, w, bg, blocks, axis, middle_idx, split_idx, stay_idx)
+            for r in range(h):
+                for c in range(w):
+                    if predicted[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "block_slide_split", "confidence": 1.0}
+
+    @staticmethod
+    def _analyze_three_blocks(raw, h, w, bg):
+        """Find 3 single-colored blocks (grouped by color) and determine roles."""
+        # Group non-bg cells by color (blocks may be touching)
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != bg:
+                    color_cells.setdefault(v, []).append((r, c))
+
+        if len(color_cells) != 3:
+            return None
+
+        blocks = []
+        for color, cells in color_cells.items():
+            rows = [r for r, c in cells]
+            cols = [c for r, c in cells]
+            blocks.append({
+                "cells": set(cells),
+                "color": color,
+                "bbox": (min(rows), min(cols),
+                         max(rows) - min(rows) + 1,
+                         max(cols) - min(cols) + 1),
+                "center_r": sum(rows) / len(rows),
+                "center_c": sum(cols) / len(cols),
+            })
+
+        row_spread = max(b["center_r"] for b in blocks) - min(b["center_r"] for b in blocks)
+        col_spread = max(b["center_c"] for b in blocks) - min(b["center_c"] for b in blocks)
+
+        if row_spread >= col_spread:
+            axis = "vertical"
+            sorted_idx = sorted(range(3), key=lambda i: blocks[i]["center_r"])
+        else:
+            axis = "horizontal"
+            sorted_idx = sorted(range(3), key=lambda i: blocks[i]["center_c"])
+
+        middle_idx = sorted_idx[1]
+        outer_indices = [sorted_idx[0], sorted_idx[2]]
+        middle = blocks[middle_idx]
+
+        mid_r, mid_c, mid_h, mid_w = middle["bbox"]
+        if len(middle["cells"]) != mid_h * mid_w:
+            return None
+
+        split_candidates = []
+        stay_candidates = []
+        for oi in outer_indices:
+            outer = blocks[oi]
+            _, _, bh, bw = outer["bbox"]
+            is_rect = (bh * bw == len(outer["cells"]))
+            if axis == "vertical":
+                can_split = is_rect and bw > mid_w
+            else:
+                can_split = is_rect and bh > mid_h
+            if can_split:
+                split_candidates.append(oi)
+            else:
+                stay_candidates.append(oi)
+
+        if len(split_candidates) != 1 or len(stay_candidates) != 1:
+            return None
+
+        return blocks, axis, middle_idx, split_candidates[0], stay_candidates[0]
+
+    @staticmethod
+    def _build_block_slide_output(h, w, bg, blocks, axis, middle_idx, split_idx, stay_idx):
+        """Build output: stay block unchanged, split block splits, middle slides to edge."""
+        output = [[bg] * w for _ in range(h)]
+        middle = blocks[middle_idx]
+        split_b = blocks[split_idx]
+        stay_b = blocks[stay_idx]
+
+        # 1. Place stay block unchanged
+        for r, c in stay_b["cells"]:
+            output[r][c] = stay_b["color"]
+
+        # 2. Place split block halves (shifted outward in perpendicular axis)
+        sb_r, sb_c, sb_h, sb_w = split_b["bbox"]
+        mid_r, mid_c, mid_h, mid_w = middle["bbox"]
+
+        if axis == "vertical":
+            shift = mid_w // 2
+            col_center = sb_c + sb_w // 2
+            for r, c in split_b["cells"]:
+                if c < col_center:
+                    nc = c - shift
+                else:
+                    nc = c + shift
+                if 0 <= nc < w:
+                    output[r][nc] = split_b["color"]
+        else:
+            shift = mid_h // 2
+            row_center = sb_r + sb_h // 2
+            for r, c in split_b["cells"]:
+                if r < row_center:
+                    nr = r - shift
+                else:
+                    nr = r + shift
+                if 0 <= nr < h:
+                    output[nr][c] = split_b["color"]
+
+        # 3. Place middle block at grid boundary (toward split block)
+        if axis == "vertical":
+            if split_b["center_r"] < middle["center_r"]:
+                new_min_r = 0
+            else:
+                new_min_r = h - mid_h
+            for r, c in middle["cells"]:
+                nr = r - mid_r + new_min_r
+                if 0 <= nr < h:
+                    output[nr][c] = middle["color"]
+        else:
+            if split_b["center_c"] < middle["center_c"]:
+                new_min_c = 0
+            else:
+                new_min_c = w - mid_w
+            for r, c in middle["cells"]:
+                nc = c - mid_c + new_min_c
+                if 0 <= nc < w:
+                    output[r][nc] = middle["color"]
+
+        return output
+
+    # ---- strategy: grid zigzag ---------------------------------------------
+
+    def _try_grid_zigzag(self, task):
+        """
+        Detect pattern: a rectangular grid shape (single non-bg color) whose
+        rows oscillate horizontally with a zigzag pattern. From the bottom
+        row upward, offsets cycle: 0, -1, 0, +1, 0, -1, 0, +1, ...
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            bg = self._most_common_color(raw_in, h, w)
+            non_bg_colors = set()
+            grid_rows = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != bg:
+                        non_bg_colors.add(raw_in[r][c])
+                        grid_rows.add(r)
+            if len(non_bg_colors) != 1 or not grid_rows:
+                return None
+
+            min_r = min(grid_rows)
+            max_r = max(grid_rows)
+            if max_r - min_r < 2:
+                return None
+
+            shifts = [0, -1, 0, 1]
+            predicted = [row[:] for row in raw_in]
+            for i, r in enumerate(range(max_r, min_r - 1, -1)):
+                s = shifts[i % 4]
+                if s == 0:
+                    continue
+                new_row = [bg] * w
+                for c in range(w):
+                    src = c - s
+                    if 0 <= src < w:
+                        new_row[c] = raw_in[r][src]
+                predicted[r] = new_row
+
+            for r in range(h):
+                for c in range(w):
+                    if predicted[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "grid_zigzag", "confidence": 1.0}
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -1888,6 +2286,12 @@ class PredictOperator(Operator):
             return self._apply_arrow_slide_mirror(rule, input_grid)
         if rule_type == "quadrant_shape_swap":
             return self._apply_quadrant_shape_swap(rule, input_grid)
+        if rule_type == "cross_border_project":
+            return self._apply_cross_border_project(rule, input_grid)
+        if rule_type == "grid_zigzag":
+            return self._apply_grid_zigzag(rule, input_grid)
+        if rule_type == "block_slide_split":
+            return self._apply_block_slide_split(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2261,6 +2665,51 @@ class PredictOperator(Operator):
                         output[r][c] = l_bg if rel in l_pat else r_bg
 
         return output
+
+    def _apply_cross_border_project(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = GeneralizeOperator._most_common_color(raw, h, w)
+        crosses = GeneralizeOperator._find_arrow_crosses(raw, h, w, bg)
+        if not crosses:
+            return [row[:] for row in raw]
+        return GeneralizeOperator._build_cross_border_output(raw, h, w, crosses)
+
+    def _apply_grid_zigzag(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = GeneralizeOperator._most_common_color(raw, h, w)
+        grid_rows = [r for r in range(h) if any(raw[r][c] != bg for c in range(w))]
+        if not grid_rows:
+            return [row[:] for row in raw]
+        min_r, max_r = min(grid_rows), max(grid_rows)
+        shifts = [0, -1, 0, 1]
+        output = [row[:] for row in raw]
+        for i, r in enumerate(range(max_r, min_r - 1, -1)):
+            s = shifts[i % 4]
+            if s == 0:
+                continue
+            new_row = [bg] * w
+            for c in range(w):
+                src = c - s
+                if 0 <= src < w:
+                    new_row[c] = raw[r][src]
+            output[r] = new_row
+        return output
+
+    def _apply_block_slide_split(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = GeneralizeOperator._most_common_color(raw, h, w)
+        result = GeneralizeOperator._analyze_three_blocks(raw, h, w, bg)
+        if result is None:
+            return [row[:] for row in raw]
+        blocks, axis, middle_idx, split_idx, stay_idx = result
+        return GeneralizeOperator._build_block_slide_output(
+            h, w, bg, blocks, axis, middle_idx, split_idx, stay_idx)
 
     # ---- helpers ---------------------------------------------------------
 

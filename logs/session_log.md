@@ -219,3 +219,75 @@
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 01:50
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 23 -> 23 (+0 learned)
+- Stored rule hits: 13
+- Time: 59s
+- Log: logs/learn_20260325_014931.log
+
+---
+## Session 6 Analysis — 2026-03-25 02:21
+
+### Strategies added (agent/active_operators.py)
+
+1. **cross_border_project** — cross/arrow shapes project center marker color to grid borders
+   - `_try_cross_border_project`: finds connected cross shapes (structural color + single center marker), determines missing arm direction (shortest arm), verifies projection rule against all training pairs
+   - `_apply_cross_border_project`: finds crosses in test input, projects center color every 2 cells toward grid edge, fills border row/column, corners where two borders meet become 0
+   - Helpers: `_find_arrow_crosses`, `_build_cross_border_output`, `_most_common_color`
+
+2. **grid_zigzag** — rectangular grid shape oscillates with zigzag horizontal shifts
+   - `_try_grid_zigzag`: verifies single non-bg color forming a grid, checks that from the bottom row upward, offsets cycle 0, -1, 0, +1
+   - `_apply_grid_zigzag`: finds grid bounding box, applies cyclic zigzag shift to each row from bottom up
+
+3. **block_slide_split** — three colored blocks in a line; middle slides through one outer block to grid boundary
+   - `_try_block_slide_split`: groups non-bg cells by color (3 colors), determines arrangement axis, identifies which outer block is rectangular with perpendicular dim > middle, verifies output
+   - `_apply_block_slide_split`: stay block unchanged, split block halves shift outward by middle's perpendicular size // 2, middle slides to grid edge toward split block
+   - Helper: `_analyze_three_blocks`, `_build_block_slide_output`
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 13f06aa5 | INCORRECT (identity) | CORRECT | cross_border_project |
+| 1c56ad9f | INCORRECT (identity) | CORRECT | grid_zigzag |
+| 9f669b64 | INCORRECT (identity) | CORRECT | block_slide_split |
+
+**Score: 13/20 (65.0%) → 16/20 (80.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 02:23
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 25 -> 26 (+1 learned)
+- Stored rule hits: 15
+- Time: 56s
+- Log: logs/learn_20260325_022344.log
+
+---
+## Learning Loop -- 2026-03-25 02:22
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 23 -> 25 (+2 learned)
+- Stored rule hits: 13
+- Time: 61s
+- Log: logs/learn_20260325_022125.log
+
+---
+## Learning Loop -- 2026-03-25 02:24
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 25 -> 26 (+1 learned)
+- Stored rule hits: 15
+- Time: 56s
+- Log: logs/learn_20260325_022344.log
