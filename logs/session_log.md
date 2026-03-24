@@ -952,3 +952,80 @@ All 20 tasks in the standard batch (seed 42) were already at 100%. Ran a new bat
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 05:38
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 118 -> 118 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_053709.log
+
+---
+## Learning Loop -- 2026-03-25 05:39
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 118 -> 118 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_053830.log
+
+---
+## Learning Loop -- 2026-03-25 05:40
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 118 -> 122 (+4 learned)
+- Stored rule hits: 5
+- Time: 39s
+- Log: logs/learn_20260325_053940.log
+
+---
+## Learning Loop -- 2026-03-25 05:48
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 122 -> 122 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_054759.log
+
+---
+## Learning Loop -- 2026-03-25 05:49
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 122 -> 129 (+7 learned)
+- Stored rule hits: 5
+- Time: 41s
+- Log: logs/learn_20260325_054905.log
+
+---
+## Session 13 Analysis — 2026-03-25 05:38
+
+### Input
+- Default seed (42): 20/20 CORRECT (100%) — no failures in primary batch
+- Ran seed 99 to find new failures: 6/20 CORRECT (30%), 14 INCORRECT
+
+### Strategies added (agent/active_operators.py)
+
+1. **nonzero_count_scale** — input NxN grid with K non-zero cells; output scales each cell to a KxK block (task ac0a08a4)
+   - `_try_nonzero_count_scale`: counts non-zero cells, verifies scale factor matches, validates all blocks
+   - `_apply_nonzero_count_scale`: expands each cell by the dynamic count factor
+
+2. **stripe_rotate** — vertical colored stripes on right side collapse into a single cycling column (task e7b06bea)
+   - `_try_stripe_rotate`: detects marker height (color 5) and uniform stripe columns, validates cycling output
+   - `_apply_stripe_rotate`: builds output with cycling column at position width - num_stripes - 1
+
+3. **frame_solid_compose** — same-sized colored rectangles: tile only hollow frames, ignore solid ones (task a680ac02)
+   - `_try_frame_solid_compose`: finds colored rects, classifies frame vs solid, determines layout direction
+   - `_apply_frame_solid_compose`: tiles frames horizontally (by col) or vertically (by row) based on spread
+
+### Results
+- Regression gate (08ed6ac7): CORRECT
+- Default seed (42): 20/20 (100%) — no regression
+- Seed 99: improved from 6/20 (30%) to 9/20 (45%) — 3 new tasks solved
+- Stored rules: 118 → 122 (after seed 42 re-run) → 129 (after seed 99 run)

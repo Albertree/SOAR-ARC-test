@@ -703,6 +703,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_binary_grid_xor(task)
 
+        # Strategy 32: nonzero count scale (each cell -> KxK block, K = # non-zero)
+        if rule is None:
+            rule = self._try_nonzero_count_scale(task)
+
+        # Strategy 33: stripe rotate (vertical stripes -> cycling column)
+        if rule is None:
+            rule = self._try_stripe_rotate(task)
+
+        # Strategy 34: frame solid compose (tile framed rects, ignore solid)
+        if rule is None:
+            rule = self._try_frame_solid_compose(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -3939,6 +3951,278 @@ class GeneralizeOperator(Operator):
                 "confidence": 0.95}
 
 
+    # ---- strategy: nonzero count scale ------------------------------------
+
+    def _try_nonzero_count_scale(self, task):
+        """
+        Detect pattern: output is a scaled version of the input where the
+        scale factor equals the number of non-zero cells.  Each input cell
+        becomes a KxK block of its color in the output.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            r0, r1 = g0.raw, g1.raw
+            h0 = len(r0)
+            w0 = len(r0[0]) if r0 else 0
+            h1 = len(r1)
+            w1 = len(r1[0]) if r1 else 0
+            if h0 == 0 or w0 == 0:
+                return None
+
+            # Count non-zero cells
+            nz = sum(1 for row in r0 for v in row if v != 0)
+            if nz <= 1:
+                return None
+
+            # Check scale factor matches nz
+            if h1 != h0 * nz or w1 != w0 * nz:
+                return None
+
+            # Verify each cell maps to a uniform block
+            for r in range(h0):
+                for c in range(w0):
+                    expected = r0[r][c]
+                    for dr in range(nz):
+                        for dc in range(nz):
+                            if r1[r * nz + dr][c * nz + dc] != expected:
+                                return None
+
+        return {
+            "type": "nonzero_count_scale",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: stripe rotate -----------------------------------------
+
+    def _try_stripe_rotate(self, task):
+        """
+        Detect pattern: input has vertical stripes of uniform color on the
+        right side and a marker (single non-zero color) in the left column.
+        Output collapses the stripes into a single cycling column, each color
+        repeating for the marker-height rows.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0]) if ri else 0
+            oh = len(ro)
+            ow = len(ro[0]) if ro else 0
+            if h != oh or w != ow:
+                return None
+
+            # Find stripe columns on the right: each column all same non-zero
+            stripe_colors = []
+            stripe_start = None
+            for c in range(w - 1, -1, -1):
+                col_vals = [ri[r][c] for r in range(h)]
+                unique = set(col_vals)
+                if len(unique) == 1 and 0 not in unique:
+                    if stripe_start is None:
+                        stripe_start = c
+                    stripe_colors.append(col_vals[0])
+                else:
+                    if stripe_start is not None:
+                        break
+            if not stripe_colors:
+                return None
+            stripe_colors.reverse()  # left-to-right order
+            num_stripes = len(stripe_colors)
+
+            # Find marker: non-zero cells in the leftmost column(s)
+            marker_color = None
+            marker_height = 0
+            for r in range(h):
+                if ri[r][0] != 0:
+                    if marker_color is None:
+                        marker_color = ri[r][0]
+                    elif ri[r][0] != marker_color:
+                        return None
+                    marker_height += 1
+            if marker_color is None or marker_height == 0:
+                return None
+            # Marker must not be a stripe color
+            if marker_color in stripe_colors:
+                return None
+
+            # Output column position
+            out_col = w - num_stripes - 1
+
+            # Build expected output
+            expected = [[0] * w for _ in range(h)]
+            for r in range(h):
+                if ri[r][0] == marker_color:
+                    expected[r][0] = marker_color
+            for r in range(h):
+                cidx = (r // marker_height) % num_stripes
+                expected[r][out_col] = stripe_colors[cidx]
+
+            if expected != ro:
+                return None
+
+        return {
+            "type": "stripe_rotate",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: frame solid compose -----------------------------------
+
+    def _try_frame_solid_compose(self, task):
+        """
+        Detect pattern: grid has same-sized colored rectangles on a black
+        background.  Some are hollow frames (border colored, interior 0),
+        others are solid.  Output tiles only the frames in spatial order.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0]) if ri else 0
+
+            # Find colored rectangular objects
+            rects = self._find_colored_rects(ri, 0)
+            if len(rects) < 2:
+                return None
+
+            # All rects must be the same size
+            sizes = set((r["h"], r["w"]) for r in rects)
+            if len(sizes) != 1:
+                return None
+            rh, rw = sizes.pop()
+            if rh < 3 or rw < 3:
+                # Too small to have a meaningful interior
+                # Could be solid only; allow size 4 or above
+                pass
+
+            # Classify: frame (has 0 interior) vs solid
+            frames = []
+            for rect in rects:
+                is_frame = False
+                for r in range(rect["r"] + 1, rect["r"] + rect["h"] - 1):
+                    for c in range(rect["c"] + 1, rect["c"] + rect["w"] - 1):
+                        if ri[r][c] == 0:
+                            is_frame = True
+                            break
+                    if is_frame:
+                        break
+                if is_frame:
+                    frames.append(rect)
+
+            if not frames:
+                return None
+
+            # Determine tiling direction from frame positions
+            row_spread = max(f["r"] for f in frames) - min(f["r"] for f in frames)
+            col_spread = max(f["c"] for f in frames) - min(f["c"] for f in frames)
+
+            if col_spread >= row_spread:
+                # Horizontal: sort by column
+                frames.sort(key=lambda f: f["c"])
+                exp_h = rh
+                exp_w = rw * len(frames)
+            else:
+                # Vertical: sort by row
+                frames.sort(key=lambda f: f["r"])
+                exp_h = rh * len(frames)
+                exp_w = rw
+
+            oh = len(ro)
+            ow = len(ro[0]) if ro else 0
+            if oh != exp_h or ow != exp_w:
+                return None
+
+            # Build expected output
+            expected = [[0] * exp_w for _ in range(exp_h)]
+            for fi, f in enumerate(frames):
+                for r in range(rh):
+                    for c in range(rw):
+                        if col_spread >= row_spread:
+                            expected[r][fi * rw + c] = ri[f["r"] + r][f["c"] + c]
+                        else:
+                            expected[fi * rh + r][c] = ri[f["r"] + r][f["c"] + c]
+
+            if expected != ro:
+                return None
+
+        return {
+            "type": "frame_solid_compose",
+            "confidence": 1.0,
+        }
+
+    def _find_colored_rects(self, grid, bg=0):
+        """Find all solid or framed rectangular blocks of one color on bg."""
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        visited = [[False] * w for _ in range(h)]
+        rects = []
+
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] != bg and not visited[r][c]:
+                    color = grid[r][c]
+                    # Find extent of this colored rectangle (border color)
+                    # Scan right for width
+                    cw = 0
+                    while c + cw < w and grid[r][c + cw] == color:
+                        cw += 1
+                    # Scan down for height
+                    ch = 0
+                    ok = True
+                    while r + ch < h and ok:
+                        if grid[r + ch][c] == color:
+                            ch += 1
+                        else:
+                            ok = False
+                    # Check this forms a valid rect (at least border is colored)
+                    if ch >= 2 and cw >= 2:
+                        # Verify top and bottom rows are all this color
+                        top_ok = all(grid[r][c + j] == color for j in range(cw))
+                        bot_ok = all(grid[r + ch - 1][c + j] == color for j in range(cw))
+                        left_ok = all(grid[r + i][c] == color for i in range(ch))
+                        right_ok = all(grid[r + i][c + cw - 1] == color for i in range(ch))
+                        if top_ok and bot_ok and left_ok and right_ok:
+                            # Interior must be either all-color (solid) or has bg (frame)
+                            interior_ok = True
+                            for ir in range(r + 1, r + ch - 1):
+                                for ic in range(c + 1, c + cw - 1):
+                                    v = grid[ir][ic]
+                                    if v != color and v != bg:
+                                        interior_ok = False
+                                        break
+                                if not interior_ok:
+                                    break
+                            if interior_ok:
+                                rects.append({"r": r, "c": c, "h": ch, "w": cw, "color": color})
+                                for ir in range(r, r + ch):
+                                    for ic in range(c, c + cw):
+                                        visited[ir][ic] = True
+                                continue
+                    # Mark this cell visited even if not a rectangle
+                    visited[r][c] = True
+
+        return rects
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -4075,6 +4359,12 @@ class PredictOperator(Operator):
             return self._apply_crop_bbox(rule, input_grid)
         if rule_type == "binary_grid_xor":
             return self._apply_binary_grid_xor(rule, input_grid)
+        if rule_type == "nonzero_count_scale":
+            return self._apply_nonzero_count_scale(rule, input_grid)
+        if rule_type == "stripe_rotate":
+            return self._apply_stripe_rotate(rule, input_grid)
+        if rule_type == "frame_solid_compose":
+            return self._apply_frame_solid_compose(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5016,6 +5306,164 @@ class PredictOperator(Operator):
                 row.append(result_color if (a_set != b_set) else 0)
             output.append(row)
         return output
+
+    def _apply_nonzero_count_scale(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        nz = sum(1 for row in raw for v in row if v != 0)
+        if nz <= 0:
+            return None
+        output = []
+        for r in range(h):
+            for _dr in range(nz):
+                row = []
+                for c in range(w):
+                    for _dc in range(nz):
+                        row.append(raw[r][c])
+                output.append(row)
+        return output
+
+    def _apply_stripe_rotate(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find stripe columns on the right
+        stripe_colors = []
+        for c in range(w - 1, -1, -1):
+            col_vals = [raw[r][c] for r in range(h)]
+            unique = set(col_vals)
+            if len(unique) == 1 and 0 not in unique:
+                stripe_colors.append(col_vals[0])
+            else:
+                break
+        if not stripe_colors:
+            return None
+        stripe_colors.reverse()
+        num_stripes = len(stripe_colors)
+
+        # Find marker height
+        marker_color = None
+        marker_height = 0
+        for r in range(h):
+            if raw[r][0] != 0:
+                if marker_color is None:
+                    marker_color = raw[r][0]
+                marker_height += 1
+        if marker_height == 0:
+            return None
+
+        out_col = w - num_stripes - 1
+
+        output = [[0] * w for _ in range(h)]
+        for r in range(h):
+            if raw[r][0] == marker_color:
+                output[r][0] = marker_color
+        for r in range(h):
+            cidx = (r // marker_height) % num_stripes
+            output[r][out_col] = stripe_colors[cidx]
+        return output
+
+    def _apply_frame_solid_compose(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Reuse the rect-finding helper from GeneralizeOperator
+        rects = self._find_colored_rects_raw(raw, 0)
+        if len(rects) < 2:
+            return None
+
+        sizes = set((r["h"], r["w"]) for r in rects)
+        if len(sizes) != 1:
+            return None
+        rh, rw = sizes.pop()
+
+        # Classify frames vs solids
+        frames = []
+        for rect in rects:
+            is_frame = False
+            for r in range(rect["r"] + 1, rect["r"] + rect["h"] - 1):
+                for c in range(rect["c"] + 1, rect["c"] + rect["w"] - 1):
+                    if raw[r][c] == 0:
+                        is_frame = True
+                        break
+                if is_frame:
+                    break
+            if is_frame:
+                frames.append(rect)
+
+        if not frames:
+            return None
+
+        row_spread = max(f["r"] for f in frames) - min(f["r"] for f in frames)
+        col_spread = max(f["c"] for f in frames) - min(f["c"] for f in frames)
+
+        if col_spread >= row_spread:
+            frames.sort(key=lambda f: f["c"])
+            out_h = rh
+            out_w = rw * len(frames)
+        else:
+            frames.sort(key=lambda f: f["r"])
+            out_h = rh * len(frames)
+            out_w = rw
+
+        output = [[0] * out_w for _ in range(out_h)]
+        for fi, f in enumerate(frames):
+            for r in range(rh):
+                for c in range(rw):
+                    if col_spread >= row_spread:
+                        output[r][fi * rw + c] = raw[f["r"] + r][f["c"] + c]
+                    else:
+                        output[fi * rh + r][c] = raw[f["r"] + r][f["c"] + c]
+        return output
+
+    def _find_colored_rects_raw(self, grid, bg=0):
+        """Find all solid or framed rectangular blocks of one color on bg."""
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        visited = [[False] * w for _ in range(h)]
+        rects = []
+
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] != bg and not visited[r][c]:
+                    color = grid[r][c]
+                    cw = 0
+                    while c + cw < w and grid[r][c + cw] == color:
+                        cw += 1
+                    ch = 0
+                    ok = True
+                    while r + ch < h and ok:
+                        if grid[r + ch][c] == color:
+                            ch += 1
+                        else:
+                            ok = False
+                    if ch >= 2 and cw >= 2:
+                        top_ok = all(grid[r][c + j] == color for j in range(cw))
+                        bot_ok = all(grid[r + ch - 1][c + j] == color for j in range(cw))
+                        left_ok = all(grid[r + i][c] == color for i in range(ch))
+                        right_ok = all(grid[r + i][c + cw - 1] == color for i in range(ch))
+                        if top_ok and bot_ok and left_ok and right_ok:
+                            interior_ok = True
+                            for ir in range(r + 1, r + ch - 1):
+                                for ic in range(c + 1, c + cw - 1):
+                                    v = grid[ir][ic]
+                                    if v != color and v != bg:
+                                        interior_ok = False
+                                        break
+                                if not interior_ok:
+                                    break
+                            if interior_ok:
+                                rects.append({"r": r, "c": c, "h": ch, "w": cw, "color": color})
+                                for ir in range(r, r + ch):
+                                    for ic in range(c, c + cw):
+                                        visited[ir][ic] = True
+                                continue
+                    visited[r][c] = True
+
+        return rects
 
 
 # ======================================================================
