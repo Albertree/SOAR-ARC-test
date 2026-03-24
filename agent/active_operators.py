@@ -600,6 +600,11 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_rect_outline_decorate(task)
 
+        # Strategy 46: cross center mark (equidistant pair-cross intersections get marked)
+        # (must run before color_mapping to avoid false match on bg->mark transitions)
+        if rule is None:
+            rule = self._try_cross_center_mark(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -764,10 +769,6 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_bar_frame_gravity(task)
 
-        # Strategy 46: cross center mark (equidistant pair-cross intersections get marked with 4)
-        if rule is None:
-            rule = self._try_cross_center_mark(task)
-
         # Strategy 47: corner L-extension (dots extend to nearest corner in L-shape)
         if rule is None:
             rule = self._try_corner_L_extend(task)
@@ -783,6 +784,10 @@ class GeneralizeOperator(Operator):
         # Strategy 50: most frequent cross color (find 4-centered crosses, output majority color)
         if rule is None:
             rule = self._try_most_frequent_cross_color(task)
+
+        # Strategy 51: grid separator invert (0-divided grid, base<->blank swap, 5=corruption)
+        if rule is None:
+            rule = self._try_grid_separator_invert(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -5797,6 +5802,150 @@ class GeneralizeOperator(Operator):
 
         return {"type": "most_frequent_cross_color", "confidence": 1.0}
 
+    # ---- strategy 51: grid separator invert --------------------------------
+
+    def _try_grid_separator_invert(self, task):
+        """
+        Detect: grid divided by 0-separator rows/cols into equal-sized
+        quadrants. A base pattern tiles some quadrants, others are blank
+        (all minority color). 5s mark corruption. Output inverts:
+        base -> all-majority, blank -> base, separators cleaned.
+        Category: grid partition inversion with noise.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0]) if ri else 0
+            if h != len(ro) or w != (len(ro[0]) if ro else 0):
+                return None
+
+            result = self._verify_sep_invert(ri, ro, h, w)
+            if result is None:
+                return None
+
+        return {"type": "grid_separator_invert", "confidence": 0.95}
+
+    def _verify_sep_invert(self, ri, ro, h, w):
+        """Verify one input/output pair matches separator-invert pattern."""
+        sep_rows = [r for r in range(h)
+                    if all(ri[r][c] in (0, 5) for c in range(w))]
+        sep_cols = [c for c in range(w)
+                    if all(ri[r][c] in (0, 5) for r in range(h))]
+        if not sep_rows or not sep_cols:
+            return None
+
+        row_bounds = self._sep_bounds(sep_rows, h)
+        col_bounds = self._sep_bounds(sep_cols, w)
+        if len(row_bounds) < 2 or len(col_bounds) < 2:
+            return None
+
+        qh = row_bounds[0][1] - row_bounds[0][0]
+        qw = col_bounds[0][1] - col_bounds[0][0]
+        if qh < 1 or qw < 1:
+            return None
+        if any(b - a != qh for a, b in row_bounds):
+            return None
+        if any(b - a != qw for a, b in col_bounds):
+            return None
+
+        quads_in = self._extract_quads(ri, row_bounds, col_bounds, qh, qw)
+        quads_out = self._extract_quads(ro, row_bounds, col_bounds, qh, qw)
+
+        # Find clean base pattern (no 5, not uniform)
+        base = None
+        for qrow in quads_in:
+            for q in qrow:
+                if any(q[r][c] == 5 for r in range(qh) for c in range(qw)):
+                    continue
+                colors = set(q[r][c] for r in range(qh) for c in range(qw))
+                if len(colors) > 1:
+                    if base is None:
+                        base = [row[:] for row in q]
+                    elif q != base:
+                        return None
+        if base is None:
+            return None
+
+        cc = {}
+        for r in range(qh):
+            for c in range(qw):
+                cc[base[r][c]] = cc.get(base[r][c], 0) + 1
+        sc = sorted(cc, key=cc.get, reverse=True)
+        if len(sc) < 2:
+            return None
+        maj, mnr = sc[0], sc[1]
+
+        all_maj = [[maj] * qw for _ in range(qh)]
+
+        for qi in range(len(row_bounds)):
+            for qj in range(len(col_bounds)):
+                q = quads_in[qi][qj]
+                qtype = self._classify_quad(q, base, mnr, qh, qw)
+                if qtype is None:
+                    return None
+                expected = all_maj if qtype == 'base' else base
+                if quads_out[qi][qj] != expected:
+                    return None
+
+        for sr in sep_rows:
+            if any(ro[sr][c] != 0 for c in range(w)):
+                return None
+        for sc_v in sep_cols:
+            if any(ro[r][sc_v] != 0 for r in range(h)):
+                return None
+
+        return True
+
+    @staticmethod
+    def _sep_bounds(seps, size):
+        """Convert separator indices to (start, end) bounds for quadrants."""
+        bounds = []
+        prev = 0
+        for s in seps:
+            if s > prev:
+                bounds.append((prev, s))
+            prev = s + 1
+        if prev < size:
+            bounds.append((prev, size))
+        return bounds
+
+    @staticmethod
+    def _extract_quads(grid, row_bounds, col_bounds, qh, qw):
+        """Extract 2D list of quadrant sub-grids."""
+        result = []
+        for rs, re in row_bounds:
+            row_q = []
+            for cs, ce in col_bounds:
+                q = [grid[r][cs:ce] for r in range(rs, re)]
+                row_q.append(q)
+            result.append(row_q)
+        return result
+
+    @staticmethod
+    def _classify_quad(q, base, minority, qh, qw):
+        """Classify a quadrant as 'base' or 'blank'. Returns None on failure."""
+        base_ok = True
+        blank_ok = True
+        for r in range(qh):
+            for c in range(qw):
+                v = q[r][c]
+                if v == 5:
+                    continue
+                if v != base[r][c]:
+                    base_ok = False
+                if v != minority:
+                    blank_ok = False
+        if blank_ok:
+            return 'blank'
+        if base_ok:
+            return 'base'
+        return None
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5972,6 +6121,8 @@ class PredictOperator(Operator):
             return self._apply_rect_outline_decorate(rule, input_grid)
         if rule_type == "most_frequent_cross_color":
             return self._apply_most_frequent_cross_color(rule, input_grid)
+        if rule_type == "grid_separator_invert":
+            return self._apply_grid_separator_invert(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7418,6 +7569,65 @@ class PredictOperator(Operator):
         counts = Counter(cross_colors)
         majority = counts.most_common(1)[0][0]
         return [[majority]]
+
+    def _apply_grid_separator_invert(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find separator rows/cols (cells in {0, 5})
+        sep_rows = [r for r in range(h)
+                    if all(raw[r][c] in (0, 5) for c in range(w))]
+        sep_cols = [c for c in range(w)
+                    if all(raw[r][c] in (0, 5) for r in range(h))]
+        if not sep_rows or not sep_cols:
+            return None
+
+        row_bounds = GeneralizeOperator._sep_bounds(sep_rows, h)
+        col_bounds = GeneralizeOperator._sep_bounds(sep_cols, w)
+        if len(row_bounds) < 2 or len(col_bounds) < 2:
+            return None
+
+        qh = row_bounds[0][1] - row_bounds[0][0]
+        qw = col_bounds[0][1] - col_bounds[0][0]
+
+        quads = GeneralizeOperator._extract_quads(raw, row_bounds, col_bounds, qh, qw)
+
+        # Find clean base pattern from this grid
+        base = None
+        for qrow in quads:
+            for q in qrow:
+                if any(q[r][c] == 5 for r in range(qh) for c in range(qw)):
+                    continue
+                colors = set(q[r][c] for r in range(qh) for c in range(qw))
+                if len(colors) > 1:
+                    if base is None:
+                        base = [row[:] for row in q]
+        if base is None:
+            return None
+
+        cc = {}
+        for r in range(qh):
+            for c in range(qw):
+                cc[base[r][c]] = cc.get(base[r][c], 0) + 1
+        sc = sorted(cc, key=cc.get, reverse=True)
+        if len(sc) < 2:
+            return None
+        maj, mnr = sc[0], sc[1]
+
+        all_maj = [[maj] * qw for _ in range(qh)]
+        output = [[0] * w for _ in range(h)]
+
+        for rs, re in row_bounds:
+            for cs, ce in col_bounds:
+                q = [raw[r][cs:ce] for r in range(rs, re)]
+                qtype = GeneralizeOperator._classify_quad(q, base, mnr, qh, qw)
+                fill = all_maj if qtype == 'base' else base
+                for r in range(qh):
+                    for c in range(qw):
+                        output[rs + r][cs + c] = fill[r][c]
+
+        return output
 
     def _find_colored_rects_raw(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""

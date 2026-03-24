@@ -1490,3 +1490,82 @@ All 20 tasks in the standard batch were already CORRECT (100%). Ran with --limit
 **Ending state:** 20/20 (100%) on base set, 35/40 (87.5%) on extended set (+4 tasks fixed)
 
 **Remaining failures (5/40):** 7837ac64, a2d730bd, 9f5f939b, 6350f1f4, 84db8fc4
+
+---
+## Learning Loop -- 2026-03-25 08:10
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 167 -> 167 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_080900.log
+
+---
+## Learning Loop -- 2026-03-25 08:12
+
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 167 -> 168 (+1 learned)
+- Stored rule hits: 34
+- Time: 143s
+- Log: logs/learn_20260325_081025.log
+
+---
+## Learning Loop -- 2026-03-25 08:27
+
+- Split: training, Tasks: 40
+- Correct: 36 / 40 (90.0%)
+- Rules: 168 -> 169 (+1 learned)
+- Stored rule hits: 34
+- Time: 143s
+- Log: logs/learn_20260325_082523.log
+
+---
+## Learning Loop -- 2026-03-25 08:36
+
+- Split: training, Tasks: 40
+- Correct: 37 / 40 (92.5%)
+- Rules: 170 -> 170 (+0 learned)
+- Stored rule hits: 36
+- Time: 142s
+- Log: logs/learn_20260325_083352.log
+
+---
+## Learning Loop -- 2026-03-25 08:37
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 170 -> 170 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_083625.log
+
+---
+## Session 19 Analysis — 2026-03-25 08:37
+
+### Strategies modified/added (agent/active_operators.py)
+
+1. **cross_center_mark** (priority fix) — moved before color_mapping in strategy order
+   - Previously at strategy 46 (after color_mapping at strategy 5)
+   - color_mapping was falsely matching 9f5f939b (bg→mark transition looked like 1:1 mapping)
+   - Now runs before color_mapping to avoid false preemption
+
+2. **grid_separator_invert** (new) — grid divided by 0-separator rows/cols into equal quadrants
+   - `_try_grid_separator_invert`: detects 0-separator grid, base pattern vs blank quadrants, optional 5-corruption
+   - `_apply_grid_separator_invert`: inverts base→all-majority, blank→base pattern, cleans separators
+   - Per-example verification (base/colors vary across training examples within same task)
+   - Category: grid partition inversion with noise marking
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 9f5f939b | INCORRECT (color_mapping) | CORRECT | cross_center_mark |
+| 6350f1f4 | INCORRECT (identity) | CORRECT | grid_separator_invert |
+
+**Score: 35/40 (87.5%) → 37/40 (92.5%)**
+**Standard 20-task set: 20/20 (100%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
