@@ -583,6 +583,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_fill_rect_interior(task)
 
+        # Strategy 4b: flood fill interior of closed boundary regions
+        if rule is None:
+            rule = self._try_flood_fill_interior(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -654,6 +658,14 @@ class GeneralizeOperator(Operator):
         # Strategy 20: boolean NOR of two grid sections split by divider row
         if rule is None:
             rule = self._try_mask_nor(task)
+
+        # Strategy 21: count marker color inside frame, encode as filled 3x3
+        if rule is None:
+            rule = self._try_count_inside_frame(task)
+
+        # Strategy 23: rotation quad tile (0°, 90°CCW, 180°, 90°CW)
+        if rule is None:
+            rule = self._try_rotation_quad_tile(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -2954,6 +2966,243 @@ class GeneralizeOperator(Operator):
 
         return {"type": "tile_mirror", "confidence": 1.0}
 
+    # ---- strategy: count marker color inside frame -----------------------
+
+    def _try_count_inside_frame(self, task):
+        """
+        Detect: input has a rectangular frame of 1s.  A marker color (non-0,
+        non-1) is scattered inside and outside the frame.  Output is a fixed
+        3x3 grid with the marker color filled left-to-right, top-to-bottom,
+        count = number of marker cells INSIDE the frame interior.
+        Category: count-and-encode / frame extraction.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            oh, ow = len(ro), len(ro[0])
+            if oh != 3 or ow != 3:
+                return None
+
+            h, w = len(ri), len(ri[0])
+            # Find rectangular frame of 1s
+            frame = self._find_one_frame(ri)
+            if frame is None:
+                return None
+            r1, c1, r2, c2 = frame
+
+            # Identify marker color (non-0, non-1 in grid)
+            marker = None
+            for r in range(h):
+                for c in range(w):
+                    v = ri[r][c]
+                    if v != 0 and v != 1:
+                        if marker is None:
+                            marker = v
+                        elif v != marker:
+                            return None
+            if marker is None:
+                return None
+
+            # Count marker cells strictly inside the frame
+            count = 0
+            for r in range(r1 + 1, r2):
+                for c in range(c1 + 1, c2):
+                    if ri[r][c] == marker:
+                        count += 1
+
+            # Verify output: first `count` cells = marker, rest = 0
+            for idx in range(9):
+                rr, cc = divmod(idx, 3)
+                expected = marker if idx < count else 0
+                if ro[rr][cc] != expected:
+                    return None
+
+        return {"type": "count_inside_frame", "confidence": 1.0}
+
+    def _find_one_frame(self, raw):
+        """Find a single rectangular frame made of 1s in the grid.
+        Returns (r1, c1, r2, c2) for the bounding box of the frame."""
+        h, w = len(raw), len(raw[0])
+        ones = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == 1]
+        if not ones:
+            return None
+        r1 = min(r for r, c in ones)
+        r2 = max(r for r, c in ones)
+        c1 = min(c for r, c in ones)
+        c2 = max(c for r, c in ones)
+        # Verify top/bottom rows and left/right columns are all 1s
+        for c in range(c1, c2 + 1):
+            if raw[r1][c] != 1 or raw[r2][c] != 1:
+                return None
+        for r in range(r1, r2 + 1):
+            if raw[r][c1] != 1 or raw[r][c2] != 1:
+                return None
+        return (r1, c1, r2, c2)
+
+    # ---- strategy: flood fill interior of closed boundary regions --------
+
+    def _try_flood_fill_interior(self, task):
+        """
+        Detect: grid has regions bounded by a boundary color (e.g. 2).
+        Interior 0-cells that cannot be reached from the grid edge without
+        crossing a boundary cell are filled with a fill color (e.g. 1).
+        Category: flood fill / enclosed region detection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        boundary_color = None
+        fill_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if h != oh or w != ow:
+                return None
+
+            # Find cells that changed from 0 to something
+            bc = None
+            fc = None
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != ro[r][c]:
+                        if ri[r][c] != 0:
+                            return None  # only 0s should change
+                        if fc is None:
+                            fc = ro[r][c]
+                        elif ro[r][c] != fc:
+                            return None
+
+            if fc is None:
+                return None  # no changes
+
+            # Determine boundary color: the non-0, non-fill color
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        colors.add(ri[r][c])
+            colors.discard(fc)
+            if len(colors) != 1:
+                return None
+            bc = colors.pop()
+
+            if boundary_color is None:
+                boundary_color = bc
+                fill_color = fc
+            elif bc != boundary_color or fc != fill_color:
+                return None
+
+            # Verify: flood fill from edges through non-boundary cells
+            predicted = self._compute_flood_fill(ri, boundary_color, fill_color)
+            if predicted != ro:
+                return None
+
+        return {
+            "type": "flood_fill_interior",
+            "boundary_color": boundary_color,
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
+    def _compute_flood_fill(self, raw, boundary_color, fill_color):
+        """Flood fill from edges: 0-cells reachable from edge without crossing
+        boundary stay 0; unreachable 0-cells become fill_color."""
+        h, w = len(raw), len(raw[0])
+        reachable = [[False] * w for _ in range(h)]
+        queue = []
+        # Seed from all edge cells that are not the boundary color
+        for r in range(h):
+            for c in range(w):
+                if (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                    if raw[r][c] != boundary_color and not reachable[r][c]:
+                        reachable[r][c] = True
+                        queue.append((r, c))
+        while queue:
+            r, c = queue.pop(0)
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < h and 0 <= nc < w and not reachable[nr][nc]:
+                    if raw[nr][nc] != boundary_color:
+                        reachable[nr][nc] = True
+                        queue.append((nr, nc))
+        result = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 0 and not reachable[r][c]:
+                    result[r][c] = fill_color
+        return result
+
+    # ---- strategy: rotation quad tile (0°, 90°CCW, 180°, 90°CW) ---------
+
+    def _try_rotation_quad_tile(self, task):
+        """
+        Detect: output is 2x the input dimensions.  The four quadrants are
+        the input rotated by 0° (TL), 90° CCW (TR), 180° (BL), 90° CW (BR).
+        Category: rotation tiling / symmetry expansion.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if oh != 2 * h or ow != 2 * w:
+                return None
+
+            # Build the four rotations
+            # 90° CCW: new[i][j] = old[j][N-1-i] where N = width for cols
+            rot90ccw = [[ri[c][h_idx] for c in range(w)] for h_idx in range(h - 1, -1, -1)]
+            # Wait, need to be careful with non-square grids
+            # For 90° CCW of HxW grid → WxH grid
+            # new[i][j] = old[j][W-1-i], shape is (W, H)
+            rot90ccw = [[ri[j][w - 1 - i] for j in range(h)] for i in range(w)]
+            # 180°: new[i][j] = old[H-1-i][W-1-j]
+            rot180 = [[ri[h - 1 - i][w - 1 - j] for j in range(w)] for i in range(h)]
+            # 90° CW: new[i][j] = old[H-1-j][i], shape is (W, H)
+            rot90cw = [[ri[h - 1 - j][i] for j in range(h)] for i in range(w)]
+
+            # For 2x tiling to work, rotated shapes must match original dims
+            # This only works for square grids (h == w)
+            if h != w:
+                return None
+
+            # Verify quadrants
+            for r in range(h):
+                for c in range(w):
+                    if ro[r][c] != ri[r][c]:             # TL = original
+                        return None
+                    if ro[r][w + c] != rot90ccw[r][c]:    # TR = 90° CCW
+                        return None
+                    if ro[h + r][c] != rot180[r][c]:      # BL = 180°
+                        return None
+                    if ro[h + r][w + c] != rot90cw[r][c]: # BR = 90° CW
+                        return None
+
+        return {"type": "rotation_quad_tile", "confidence": 1.0}
+
     # ---- strategy: boolean NOR of two grid sections ----------------------
 
     def _try_mask_nor(self, task):
@@ -3138,6 +3387,12 @@ class PredictOperator(Operator):
             return self._apply_tile_mirror(rule, input_grid)
         if rule_type == "mask_nor":
             return self._apply_mask_nor(rule, input_grid)
+        if rule_type == "count_inside_frame":
+            return self._apply_count_inside_frame(rule, input_grid)
+        if rule_type == "flood_fill_interior":
+            return self._apply_flood_fill_interior(rule, input_grid)
+        if rule_type == "rotation_quad_tile":
+            return self._apply_rotation_quad_tile(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3662,6 +3917,87 @@ class PredictOperator(Operator):
                 result[r][w + c] = vflip[r][c]
                 result[h + r][c] = hflip[r][c]
                 result[h + r][w + c] = raw[r][c]
+        return result
+
+    def _apply_count_inside_frame(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        # Find frame of 1s
+        ones = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == 1]
+        if not ones:
+            return None
+        r1 = min(r for r, c in ones)
+        r2 = max(r for r, c in ones)
+        c1 = min(c for r, c in ones)
+        c2 = max(c for r, c in ones)
+        # Find marker color
+        marker = None
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0 and v != 1:
+                    marker = v
+                    break
+            if marker is not None:
+                break
+        if marker is None:
+            return None
+        # Count marker inside frame
+        count = 0
+        for r in range(r1 + 1, r2):
+            for c in range(c1 + 1, c2):
+                if raw[r][c] == marker:
+                    count += 1
+        # Build 3x3 output
+        result = [[0] * 3 for _ in range(3)]
+        for idx in range(min(count, 9)):
+            rr, cc = divmod(idx, 3)
+            result[rr][cc] = marker
+        return result
+
+    def _apply_flood_fill_interior(self, rule, input_grid):
+        raw = input_grid.raw
+        bc = rule["boundary_color"]
+        fc = rule["fill_color"]
+        h, w = len(raw), len(raw[0])
+        reachable = [[False] * w for _ in range(h)]
+        queue = []
+        for r in range(h):
+            for c in range(w):
+                if (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                    if raw[r][c] != bc and not reachable[r][c]:
+                        reachable[r][c] = True
+                        queue.append((r, c))
+        while queue:
+            r, c = queue.pop(0)
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < h and 0 <= nc < w and not reachable[nr][nc]:
+                    if raw[nr][nc] != bc:
+                        reachable[nr][nc] = True
+                        queue.append((nr, nc))
+        result = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 0 and not reachable[r][c]:
+                    result[r][c] = fc
+        return result
+
+    def _apply_rotation_quad_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        if h != w:
+            return None
+        rot90ccw = [[raw[j][w - 1 - i] for j in range(h)] for i in range(w)]
+        rot180 = [[raw[h - 1 - i][w - 1 - j] for j in range(w)] for i in range(h)]
+        rot90cw = [[raw[h - 1 - j][i] for j in range(h)] for i in range(w)]
+        result = [[0] * (2 * w) for _ in range(2 * h)]
+        for r in range(h):
+            for c in range(w):
+                result[r][c] = raw[r][c]
+                result[r][w + c] = rot90ccw[r][c]
+                result[h + r][c] = rot180[r][c]
+                result[h + r][w + c] = rot90cw[r][c]
         return result
 
     def _apply_mask_nor(self, rule, input_grid):

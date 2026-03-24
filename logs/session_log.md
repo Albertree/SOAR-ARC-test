@@ -547,3 +547,116 @@
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 04:20
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 55 -> 55 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_041905.log
+
+---
+## Learning Loop -- 2026-03-25 04:22
+
+- Split: training, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 55 -> 60 (+5 learned)
+- Stored rule hits: 19
+- Time: 133s
+- Log: logs/learn_20260325_042026.log
+
+---
+## Session 9 Analysis — 2026-03-25 04:32
+
+### Strategies added (agent/active_operators.py)
+
+1. **count_inside_frame** — rectangular frame of 1s with marker color scattered inside and outside; count interior markers, encode as filled 3x3
+   - `_try_count_inside_frame`: finds rectangular frame of 1s, identifies single marker color (non-0, non-1), counts markers strictly inside frame interior, verifies output = 3x3 with first N cells filled left-to-right
+   - `_apply_count_inside_frame`: detects frame, finds marker, counts interior occurrences, builds 3x3 output
+   - Helper: `_find_one_frame` — locates bounding box of rectangular frame of 1s
+
+2. **flood_fill_interior** — regions bounded by a boundary color; interior 0-cells unreachable from grid edge become fill color
+   - `_try_flood_fill_interior`: determines boundary color (single non-0 non-fill color), fill color (what 0s change to), verifies flood-fill-from-edges algorithm matches all training outputs
+   - `_apply_flood_fill_interior`: BFS from edge cells through non-boundary cells; remaining 0s become fill color
+   - Helper: `_compute_flood_fill` — shared edge-flood algorithm used by both try and apply
+
+3. **rotation_quad_tile** — output is 2× input dimensions (square grids only); four quadrants are 0°, 90°CCW, 180°, 90°CW rotations
+   - `_try_rotation_quad_tile`: verifies output = 2H×2W, H==W, checks TL=original, TR=rot90ccw, BL=rot180, BR=rot90cw
+   - `_apply_rotation_quad_tile`: builds four rotations and tiles into 2×2 quadrant output
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| c8b7cc0f | INCORRECT (identity) | CORRECT | count_inside_frame |
+| a5313dff | INCORRECT (color_mapping) | CORRECT | flood_fill_interior |
+| ed98d772 | INCORRECT (identity) | CORRECT | rotation_quad_tile |
+
+**Score on original 20-task set: 20/20 (100.0%) maintained**
+**Broader test (40 tasks): 20/40 (50.0%) → 23/40 (57.5%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 04:32
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 67 -> 72 (+5 learned)
+- Stored rule hits: 21
+- Time: 122s
+- Log: logs/learn_20260325_043051.log
+
+---
+## Learning Loop -- 2026-03-25 04:34
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 72 -> 72 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_043319.log
+
+---
+## Learning Loop -- 2026-03-25 04:29
+
+- Split: training, Tasks: 40
+- Correct: 22 / 40 (55.0%)
+- Rules: 60 -> 67 (+7 learned)
+- Stored rule hits: 19
+- Time: 121s
+- Log: logs/learn_20260325_042742.log
+
+---
+## Learning Loop -- 2026-03-25 04:32
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 67 -> 72 (+5 learned)
+- Stored rule hits: 21
+- Time: 122s
+- Log: logs/learn_20260325_043011.log
+
+---
+## Learning Loop -- 2026-03-25 04:33
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 72 -> 72 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_043218.log
+
+---
+## Learning Loop -- 2026-03-25 04:34
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 72 -> 72 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_043324.log
