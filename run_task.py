@@ -9,6 +9,9 @@ import sys
 import traceback
 
 TASK_HEX = "08ed6ac7"
+# TASK_HEX = "00d62c1b" #"0ca9ddb6" # "0a2355a6"
+
+
 MAX_STEPS = 500  # Allow enough iterations until goal is achieved
 
 
@@ -31,7 +34,7 @@ def main():
         traceback.print_exc()
         sys.exit(1)
 
-    print("\n[*] WM + SOAR cycle (Elaborate → Propose → Select → Apply)...")
+    print("\n[*] WM + SOAR cycle (Elaborate -> Propose -> Select -> Apply)...")
     try:
         from agent.wm import WorkingMemory
         from agent.wm_logger import print_wm_triplets, reset_wm_snapshot
@@ -73,6 +76,7 @@ def main():
         predicted = _extract_prediction(wm)
         answer = _load_answer(task)
         correct = _check_correct(predicted, answer)
+        _show_output(task, predicted, answer, correct)
         _print_result(correct)
         sys.exit(0 if correct else 1)
 
@@ -135,14 +139,55 @@ def _check_correct(predicted, answer):
     return True
 
 
+def _show_output(task, predicted, answer, correct):
+    """Display predicted output vs expected answer side by side."""
+    from basics.viz import _print_side_by_side
+
+    if predicted is None:
+        print("\n[output] No prediction produced.")
+        return
+
+    # Normalize to list of grids
+    pred_grids = predicted
+    if pred_grids and not isinstance(pred_grids[0], list):
+        pred_grids = [pred_grids]
+
+    ans_grids = answer if answer else []
+
+    print("\n" + "-" * 40)
+    for i in range(max(len(pred_grids), len(ans_grids))):
+        test_input = task.test_pairs[i].input_grid.raw if i < len(task.test_pairs) else None
+        pred = pred_grids[i] if i < len(pred_grids) else None
+        ans = ans_grids[i] if i < len(ans_grids) else None
+
+        label_parts = []
+        grids = []
+
+        if test_input is not None:
+            label_parts.append("input")
+            grids.append(test_input)
+        if pred is not None:
+            label_parts.append("predicted")
+            grids.append(pred)
+        if ans is not None:
+            label_parts.append("answer")
+            grids.append(ans)
+
+        match_str = " << MATCH" if pred == ans else " << MISMATCH"
+        print(f"  test_{i}:  {'  |  '.join(label_parts)}{match_str}")
+        if grids:
+            _print_side_by_side(grids, gap=6)
+    print("-" * 40)
+
+
 def _print_result(correct: bool, error: bool = False):
     print("\n" + "=" * 40)
     if error:
         print("RESULT  : ERROR (unable to evaluate)")
     elif correct:
-        print("RESULT  : CORRECT ✅")
+        print("RESULT  : CORRECT")
     else:
-        print("RESULT  : INCORRECT ❌")
+        print("RESULT  : INCORRECT")
     print("=" * 40)
 
 

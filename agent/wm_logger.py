@@ -47,7 +47,7 @@ _LINE_WIDTH = 62
 _L1      = "  "       # depth 0 (root identifier S1/S2/WM) line indentation
 _L2      = "    "     # depth 1 (direct children: I1, etc.) indentation
 _L3      = "      "   # depth 2+ (grandchildren and below: I2, I3, etc.) indentation
-_DIVIDER = "═" * _LINE_WIDTH
+_DIVIDER = "=" * _LINE_WIDTH
 
 # S1/WM family identifier detection
 _ROOT_IDS = {"S1", "S2", "S3", "S4", "WM"}

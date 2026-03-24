@@ -1,24 +1,30 @@
 """
 elaboration_rules — Elaboration rules for SOAR Production Memory.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 [SOAR MANDATORY] The Elaborate phase runs first in every cycle.
                  Elaborator applies rules repeatedly until fixed-point.
-                 ElaborationRule interface (condition → derive) is SOAR protocol.
+                 ElaborationRule interface (condition -> derive) is SOAR protocol.
 
 [DESIGN FREE] What derived facts to create (entire rule content).
               Names and values of derived facts.
               List of rules to register with Elaborator.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Pipeline state machine (all state lives in wm.s1, flags derived into wm.active):
+  1. current-task ^ !comparison-agenda         -> needs_target_selection
+  2. pending-comparisons non-empty             -> has_pending_comparison
+  3. agenda ^ !pending ^ comparisons ^ !patterns -> ready_for_pattern_extraction
+  4. patterns ^ !active-rules                  -> ready_for_generalization
+  5. active-rules ^ !predictions               -> ready_for_prediction
+  6. predictions for all test pairs            -> all_outputs_found
 """
 
 
 class ElaborationRule:
     """
     [SOAR MANDATORY] Elaboration rule interface.
-                     When condition(wm) → True, derive(wm) returns a derived fact dict.
+                     When condition(wm) -> True, derive(wm) returns a derived fact dict.
     [DESIGN FREE] Content of condition, content of derive (defined by concrete rule classes).
-    MUST NOT: Do not modify WM — only return derived fact dict.
+    MUST NOT: Do not modify WM -- only return derived fact dict.
     """
 
     def __init__(self, name: str):
@@ -55,7 +61,7 @@ class Elaborator:
 
     def run(self, wm):
         """
-        [SOAR MANDATORY] Fixed-point iteration engine — called every cycle.
+        [SOAR MANDATORY] Fixed-point iteration engine -- called every cycle.
         """
         iterations = 0
         while iterations < self.MAX_ITERATIONS:
@@ -95,7 +101,7 @@ class Elaborator:
 
 
 # ------------------------------------------------------------------ #
-# Concrete ElaborationRule implementations — all [DESIGN FREE]
+# Concrete ElaborationRule implementations -- all [DESIGN FREE]
 # ------------------------------------------------------------------ #
 
 
@@ -108,14 +114,6 @@ class InputTaskToStateRule(ElaborationRule):
       -->
         (<s> ^current-task <t>)
       }
-
-    In this implementation:
-      - When wm.s1['io']['input-link']['task'] exists and
-      - wm.s1 does not yet have a 'current-task' slot,
-        derive(wm) is interpreted as returning {"current-task": <task_dict>}.
-
-    The actual method of attaching to WM is determined by the Elaborator.run implementation.
-    (e.g., wm.active.update(derive_dict))
     """
 
     def condition(self, wm) -> bool:
@@ -132,19 +130,21 @@ class InputTaskToStateRule(ElaborationRule):
         in_link = io.get("input-link") or {}
         task_val = in_link.get("task")
         if task_val is None:
-            # Defensive handling, though this should only be called when condition is True.
             return {}
         return {"current-task": task_val}
 
+
 class NeedsTargetSelectionRule(ElaborationRule):
     """
-    [DESIGN FREE] When comparison_agenda has unprocessed items and
-                   pending_comparisons is empty,
-                   derives elaborated["needs_target_selection"] = True.
+    Fires in S2 when S1 has a current-task but no comparison-agenda yet.
+    This means the pipeline hasn't started -- we need to select comparison targets.
     """
 
     def condition(self, wm) -> bool:
-        raise NotImplementedError("NeedsTargetSelectionRule.condition() not implemented.")
+        if wm.depth == 0:
+            return False
+        s1 = wm.s1
+        return bool(s1.get("current-task")) and not s1.get("comparison-agenda")
 
     def derive(self, wm) -> dict:
         return {"needs_target_selection": True}
@@ -152,40 +152,39 @@ class NeedsTargetSelectionRule(ElaborationRule):
 
 class HasPendingComparisonRule(ElaborationRule):
     """
-    [DESIGN FREE] When there are items in the pending_comparisons queue,
-                   derives elaborated["has_pending_comparison"] = True.
+    Fires in S2 when S1 has pending comparisons waiting to be executed.
     """
 
     def condition(self, wm) -> bool:
-        raise NotImplementedError("HasPendingComparisonRule.condition() not implemented.")
+        if wm.depth == 0:
+            return False
+        pending = wm.s1.get("pending-comparisons")
+        return isinstance(pending, list) and len(pending) > 0
 
     def derive(self, wm) -> dict:
         return {"has_pending_comparison": True}
 
 
-class AllComparisonsDoneRule(ElaborationRule):
-    """
-    [DESIGN FREE] When both agenda and pending are empty and
-                   all required comparisons exist in relations,
-                   derives elaborated["all_comparisons_done"] = True.
-    """
-
-    def condition(self, wm) -> bool:
-        raise NotImplementedError("AllComparisonsDoneRule.condition() not implemented.")
-
-    def derive(self, wm) -> dict:
-        return {"all_comparisons_done": True}
-
-
 class ReadyForPatternExtractionRule(ElaborationRule):
     """
-    [DESIGN FREE] When all_comparisons_done == True AND
-                   both invariants and diff_patterns are empty,
-                   derives elaborated["ready_for_pattern_extraction"] = True.
+    Fires in S2 when all comparisons are done (agenda set, pending empty,
+    results exist) but patterns haven't been extracted yet.
     """
 
     def condition(self, wm) -> bool:
-        raise NotImplementedError("ReadyForPatternExtractionRule.condition() not implemented.")
+        if wm.depth == 0:
+            return False
+        s1 = wm.s1
+        agenda = s1.get("comparison-agenda")
+        pending = s1.get("pending-comparisons")
+        comparisons = s1.get("comparisons")
+        patterns = s1.get("patterns")
+        return (
+            isinstance(agenda, list) and len(agenda) > 0
+            and isinstance(pending, list) and len(pending) == 0
+            and isinstance(comparisons, dict) and len(comparisons) > 0
+            and not patterns
+        )
 
     def derive(self, wm) -> dict:
         return {"ready_for_pattern_extraction": True}
@@ -193,12 +192,16 @@ class ReadyForPatternExtractionRule(ElaborationRule):
 
 class ReadyForGeneralizationRule(ElaborationRule):
     """
-    [DESIGN FREE] When both invariants and diff_patterns are populated,
-                   derives elaborated["ready_for_generalization"] = True.
+    Fires in S2 when patterns have been extracted but no rules created yet.
     """
 
     def condition(self, wm) -> bool:
-        raise NotImplementedError("ReadyForGeneralizationRule.condition() not implemented.")
+        if wm.depth == 0:
+            return False
+        s1 = wm.s1
+        patterns = s1.get("patterns")
+        active_rules = s1.get("active-rules")
+        return isinstance(patterns, dict) and bool(patterns) and not active_rules
 
     def derive(self, wm) -> dict:
         return {"ready_for_generalization": True}
@@ -206,13 +209,20 @@ class ReadyForGeneralizationRule(ElaborationRule):
 
 class ReadyForPredictionRule(ElaborationRule):
     """
-    [DESIGN FREE] When active_rules is not empty and
-                   there is at least one pending test subgoal,
-                   derives elaborated["ready_for_prediction"] = True.
+    Fires in S2 when rules exist but predictions haven't been made yet.
     """
 
     def condition(self, wm) -> bool:
-        raise NotImplementedError("ReadyForPredictionRule.condition() not implemented.")
+        if wm.depth == 0:
+            return False
+        s1 = wm.s1
+        active_rules = s1.get("active-rules")
+        if not active_rules:
+            return False
+        predictions = s1.get("predictions")
+        if isinstance(predictions, dict) and len(predictions) > 0:
+            return False
+        return True
 
     def derive(self, wm) -> dict:
         return {"ready_for_prediction": True}
@@ -220,12 +230,23 @@ class ReadyForPredictionRule(ElaborationRule):
 
 class AllOutputsFoundRule(ElaborationRule):
     """
-    [DESIGN FREE] When all test subgoals are solved,
-                   derives elaborated["all_outputs_found"] = True.
+    Fires in S2 when predictions exist for every test pair.
     """
 
     def condition(self, wm) -> bool:
-        raise NotImplementedError("AllOutputsFoundRule.condition() not implemented.")
+        if wm.depth == 0:
+            return False
+        s1 = wm.s1
+        predictions = s1.get("predictions")
+        if not isinstance(predictions, dict) or not predictions:
+            return False
+        task = wm.task
+        if task is None:
+            return False
+        for i in range(len(task.test_pairs)):
+            if f"test_{i}" not in predictions:
+                return False
+        return True
 
     def derive(self, wm) -> dict:
         return {"all_outputs_found": True}
@@ -236,15 +257,13 @@ def build_elaborator() -> Elaborator:
     [DESIGN FREE] Which ElaborationRules to register.
                    Created at ActiveSoarAgent.solve() call time.
     """
-    # Currently only the rule that pulls the input task into state is activated.
     rules = [
         InputTaskToStateRule("elaborate_input_task"),
-        # NeedsTargetSelectionRule("needs_target_selection"),
-        # HasPendingComparisonRule("has_pending_comparison"),
-        # AllComparisonsDoneRule("all_comparisons_done"),
-        # ReadyForPatternExtractionRule("ready_for_pattern_extraction"),
-        # ReadyForGeneralizationRule("ready_for_generalization"),
-        # ReadyForPredictionRule("ready_for_prediction"),
-        # AllOutputsFoundRule("all_outputs_found"),
+        NeedsTargetSelectionRule("needs_target_selection"),
+        HasPendingComparisonRule("has_pending_comparison"),
+        ReadyForPatternExtractionRule("ready_for_pattern_extraction"),
+        ReadyForGeneralizationRule("ready_for_generalization"),
+        ReadyForPredictionRule("ready_for_prediction"),
+        AllOutputsFoundRule("all_outputs_found"),
     ]
     return Elaborator(rules)

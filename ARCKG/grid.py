@@ -27,6 +27,11 @@ class Grid:
         self.pixels: list = []   # grid-level Pixel nodes (based on absolute coordinates)
 
     @property
+    def contents(self) -> list:
+        """Alias for self.raw — used by run_task.py evaluation."""
+        return self.raw
+
+    @property
     def height(self) -> int:
         return len(self.raw)
 
