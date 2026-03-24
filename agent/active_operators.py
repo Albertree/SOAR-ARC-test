@@ -739,6 +739,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_stamp_pattern(task)
 
+        # Strategy 41: global color swap (cell-level 1:1 color remap)
+        if rule is None:
+            rule = self._try_global_color_swap(task)
+
+        # Strategy 42: quadrant extract (separator lines -> extract shapes -> tile)
+        if rule is None:
+            rule = self._try_quadrant_extract(task)
+
+        # Strategy 43: key color swap (2x2 key in corner defines pairwise color swaps)
+        if rule is None:
+            rule = self._try_key_color_swap(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -4774,6 +4786,223 @@ class GeneralizeOperator(Operator):
 
         return rects
 
+    # ---- strategy: global color swap (cell-level 1:1 remap) ---------------
+
+    def _try_global_color_swap(self, task):
+        """
+        Detect: every cell's color maps to exactly one output color (1:1 remap).
+        Works at cell level, not group level, so handles grids where all cells
+        change and form one big connected component.
+        Category: global color substitution, color permutation, fixed swap tables.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        # Grid sizes must be preserved
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            if len(ri) != len(ro):
+                return None
+            if (len(ri[0]) if ri else 0) != (len(ro[0]) if ro else 0):
+                return None
+
+        # Build per-cell color mapping across all pairs
+        mapping = {}
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            for r in range(len(ri)):
+                for c in range(len(ri[0])):
+                    ic, oc = ri[r][c], ro[r][c]
+                    if ic in mapping:
+                        if mapping[ic] != oc:
+                            return None  # inconsistent
+                    else:
+                        mapping[ic] = oc
+
+        # Must actually change something (not identity)
+        if all(k == v for k, v in mapping.items()):
+            return None
+
+        # Verify: applying the mapping reproduces all outputs exactly
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            for r in range(len(ri)):
+                for c in range(len(ri[0])):
+                    if mapping.get(ri[r][c], ri[r][c]) != ro[r][c]:
+                        return None
+
+        return {
+            "type": "global_color_swap",
+            "mapping": {str(k): v for k, v in mapping.items()},
+            "confidence": 0.85,
+        }
+
+    # ---- strategy: quadrant extract (separator lines -> tile shapes) -------
+
+    def _try_quadrant_extract(self, task):
+        """
+        Detect: input grid divided into quadrants by a full-span horizontal row
+        and vertical column of the same non-zero color (separator). Sep color may
+        vary per pair. Each quadrant has one small shape. Output tiles them 2x2.
+        Category: separator-based quadrant extraction and reassembly.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        def find_separators(raw):
+            """Find separator row and column (full-span row/col of same non-zero color)."""
+            h = len(raw)
+            w = len(raw[0]) if raw else 0
+            sr, sc, sclr = None, None, None
+            for r in range(h):
+                vals = set(raw[r])
+                if len(vals) == 1 and 0 not in vals:
+                    sr = r
+                    sclr = raw[r][0]
+                    break
+            if sr is None or sclr is None:
+                return None, None, None
+            for c in range(w):
+                if all(raw[r][c] == sclr for r in range(h)):
+                    sc = c
+                    break
+            return sr, sc, sclr
+
+        def extract_shape(raw, r_start, r_end, c_start, c_end, sep_clr):
+            """Extract tight bounding box of non-zero non-sep cells in a region."""
+            cells = []
+            for r in range(r_start, r_end):
+                for c in range(c_start, c_end):
+                    if raw[r][c] != 0 and raw[r][c] != sep_clr:
+                        cells.append((r - r_start, c - c_start, raw[r][c]))
+            if not cells:
+                return None
+            min_r = min(r for r, c, v in cells)
+            max_r = max(r for r, c, v in cells)
+            min_c = min(c for r, c, v in cells)
+            max_c = max(c for r, c, v in cells)
+            sh = max_r - min_r + 1
+            sw = max_c - min_c + 1
+            shape = [[0] * sw for _ in range(sh)]
+            for r, c, v in cells:
+                shape[r - min_r][c - min_c] = v
+            return shape
+
+        shape_h = None
+        shape_w = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0]) if ri else 0
+
+            sr, sc, sclr = find_separators(ri)
+            if sr is None or sc is None:
+                return None
+
+            quads = [
+                extract_shape(ri, 0, sr, 0, sc, sclr),
+                extract_shape(ri, 0, sr, sc + 1, w, sclr),
+                extract_shape(ri, sr + 1, h, 0, sc, sclr),
+                extract_shape(ri, sr + 1, h, sc + 1, w, sclr),
+            ]
+
+            if any(q is None for q in quads):
+                return None
+
+            shapes_h = set(len(q) for q in quads)
+            shapes_w = set(len(q[0]) for q in quads)
+            if len(shapes_h) != 1 or len(shapes_w) != 1:
+                return None
+
+            qh, qw = len(quads[0]), len(quads[0][0])
+            if shape_h is None:
+                shape_h = qh
+                shape_w = qw
+            elif qh != shape_h or qw != shape_w:
+                return None
+
+            # Verify output = 2x2 tile of extracted shapes
+            oh, ow = len(ro), len(ro[0]) if ro else 0
+            if oh != shape_h * 2 or ow != shape_w * 2:
+                return None
+
+            expected = [[0] * (shape_w * 2) for _ in range(shape_h * 2)]
+            for qi, (dr, dc) in enumerate([(0, 0), (0, shape_w), (shape_h, 0), (shape_h, shape_w)]):
+                for r in range(shape_h):
+                    for c in range(shape_w):
+                        expected[dr + r][dc + c] = quads[qi][r][c]
+            if expected != ro:
+                return None
+
+        return {
+            "type": "quadrant_extract",
+            "shape_h": shape_h,
+            "shape_w": shape_w,
+            "confidence": 0.9,
+        }
+
+    # ---- strategy: key color swap (2x2 key defines pairwise swaps) ---------
+
+    def _try_key_color_swap(self, task):
+        """
+        Detect: a 2x2 key block in the top-left corner defines color swap pairs.
+        Key = [[A, B], [C, D]]. Swap rule: A<->B, C<->D applied to all non-bg
+        cells outside the key. Grid size is preserved; only colors change.
+        Category: key-driven color permutation / lookup-table recoloring.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0]) if ri else 0
+            oh, ow = len(ro), len(ro[0]) if ro else 0
+            if h != oh or w != ow or h < 3 or w < 3:
+                return None
+
+            # Check 2x2 key exists (4 distinct non-zero colors)
+            a, b, c, d = ri[0][0], ri[0][1], ri[1][0], ri[1][1]
+            if len({a, b, c, d}) != 4:
+                return None
+            if 0 in {a, b, c, d}:
+                return None
+
+            # Key must be preserved in output
+            if ro[0][0] != a or ro[0][1] != b or ro[1][0] != c or ro[1][1] != d:
+                return None
+
+            # Build swap mapping: A<->B, C<->D
+            swap = {a: b, b: a, c: d, d: c}
+
+            # Verify: every non-zero cell outside key is swapped correctly
+            for r in range(h):
+                for col in range(w):
+                    # Skip the 2x2 key area
+                    if r < 2 and col < 2:
+                        continue
+                    iv = ri[r][col]
+                    ov = ro[r][col]
+                    if iv == 0:
+                        if ov != 0:
+                            return None
+                    else:
+                        if swap.get(iv, iv) != ov:
+                            return None
+
+        return {
+            "type": "key_color_swap",
+            "confidence": 0.9,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -4929,6 +5158,12 @@ class PredictOperator(Operator):
             return self._apply_quadrant_rotation_completion(rule, input_grid)
         if rule_type == "stamp_pattern":
             return self._apply_stamp_pattern(rule, input_grid)
+        if rule_type == "global_color_swap":
+            return self._apply_global_color_swap(rule, input_grid)
+        if rule_type == "quadrant_extract":
+            return self._apply_quadrant_extract(rule, input_grid)
+        if rule_type == "key_color_swap":
+            return self._apply_key_color_swap(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6165,6 +6400,85 @@ class PredictOperator(Operator):
                 nr, nc = mr + dr, mc + dc
                 if 0 <= nr < h and 0 <= nc < w:
                     output[nr][nc] = clr
+        return output
+
+    def _apply_global_color_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        mapping = {int(k): v for k, v in rule["mapping"].items()}
+        return [[mapping.get(cell, cell) for cell in row] for row in raw]
+
+    def _apply_quadrant_extract(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        shape_h = rule["shape_h"]
+        shape_w = rule["shape_w"]
+
+        # Find separator row and column dynamically
+        sep_row = None
+        sep_color = None
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and 0 not in vals:
+                sep_row = r
+                sep_color = raw[r][0]
+                break
+        if sep_row is None:
+            return [row[:] for row in raw]
+
+        sep_col = None
+        for c in range(w):
+            if all(raw[r][c] == sep_color for r in range(h)):
+                sep_col = c
+                break
+        if sep_col is None:
+            return [row[:] for row in raw]
+
+        def extract_shape(r_start, r_end, c_start, c_end):
+            cells = []
+            for r in range(r_start, r_end):
+                for c in range(c_start, c_end):
+                    if raw[r][c] != 0 and raw[r][c] != sep_color:
+                        cells.append((r - r_start, c - c_start, raw[r][c]))
+            if not cells:
+                return [[0] * shape_w for _ in range(shape_h)]
+            min_r = min(r for r, c, v in cells)
+            min_c = min(c for r, c, v in cells)
+            shape = [[0] * shape_w for _ in range(shape_h)]
+            for r, c, v in cells:
+                nr, nc = r - min_r, c - min_c
+                if 0 <= nr < shape_h and 0 <= nc < shape_w:
+                    shape[nr][nc] = v
+            return shape
+
+        quads = [
+            extract_shape(0, sep_row, 0, sep_col),
+            extract_shape(0, sep_row, sep_col + 1, w),
+            extract_shape(sep_row + 1, h, 0, sep_col),
+            extract_shape(sep_row + 1, h, sep_col + 1, w),
+        ]
+
+        output = [[0] * (shape_w * 2) for _ in range(shape_h * 2)]
+        for qi, (dr, dc) in enumerate([(0, 0), (0, shape_w), (shape_h, 0), (shape_h, shape_w)]):
+            for r in range(shape_h):
+                for c in range(shape_w):
+                    output[dr + r][dc + c] = quads[qi][r][c]
+        return output
+
+    def _apply_key_color_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        a, b, c, d = raw[0][0], raw[0][1], raw[1][0], raw[1][1]
+        swap = {a: b, b: a, c: d, d: c}
+        output = [row[:] for row in raw]
+        for r in range(h):
+            for col in range(w):
+                if r < 2 and col < 2:
+                    continue
+                v = raw[r][col]
+                if v != 0:
+                    output[r][col] = swap.get(v, v)
         return output
 
     def _find_colored_rects_raw(self, grid, bg=0):
