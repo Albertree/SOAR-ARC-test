@@ -727,6 +727,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_checkerboard_tile(task)
 
+        # Strategy 38: point to line (colored dots expand to full-span row/column lines)
+        if rule is None:
+            rule = self._try_point_to_line(task)
+
+        # Strategy 39: quadrant rotation completion (separator-split grid, missing 4th rotation)
+        if rule is None:
+            rule = self._try_quadrant_rotation_completion(task)
+
+        # Strategy 40: stamp pattern (marker pixels replaced by fixed local pattern)
+        if rule is None:
+            rule = self._try_stamp_pattern(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -4366,6 +4378,349 @@ class GeneralizeOperator(Operator):
 
         return {"type": "checkerboard_tile", "confidence": 1.0}
 
+    # ---- strategy 38: point to line ----------------------------------------
+
+    def _try_point_to_line(self, task):
+        """
+        Detect: each non-bg pixel in the input expands to a full-span line.
+        Some colors become horizontal lines (fill the row), others become
+        vertical lines (fill the column).  At intersections, one axis wins.
+        Category: color-conditioned point-to-line projection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        # Determine background color (most common in first input)
+        ri0 = pairs[0].input_grid.raw
+        from collections import Counter
+        flat = [v for row in ri0 for v in row]
+        bg = Counter(flat).most_common(1)[0][0]
+
+        # Collect color -> axis mapping from all pairs
+        # For each non-bg pixel, count how many cells in its row vs column
+        # match that color. Higher coverage indicates the axis.
+        h_colors = set()  # colors that fill rows (horizontal)
+        v_colors = set()  # colors that fill columns (vertical)
+        all_colors = set()
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0])
+            oh = len(ro)
+            ow = len(ro[0])
+            if oh != h or ow != w:
+                return None
+
+            for r in range(h):
+                for c in range(w):
+                    clr = ri[r][c]
+                    if clr != bg:
+                        all_colors.add(clr)
+
+        if not all_colors:
+            return None
+
+        # For each color, determine axis by checking first pair
+        pair0 = pairs[0]
+        ri = pair0.input_grid.raw
+        ro = pair0.output_grid.raw
+        h = len(ri)
+        w = len(ri[0])
+
+        for clr in all_colors:
+            # Find a seed of this color
+            seed_r = seed_c = None
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] == clr:
+                        seed_r, seed_c = r, c
+                        break
+                if seed_r is not None:
+                    break
+            if seed_r is None:
+                continue
+
+            # Count how many cells in this row/col match this color
+            row_count = sum(1 for cc in range(w) if ro[seed_r][cc] == clr)
+            col_count = sum(1 for rr in range(h) if ro[rr][seed_c] == clr)
+
+            if row_count > col_count:
+                h_colors.add(clr)
+            elif col_count > row_count:
+                v_colors.add(clr)
+            elif row_count == w:
+                h_colors.add(clr)
+            elif col_count == h:
+                v_colors.add(clr)
+            else:
+                return None
+
+        if not h_colors and not v_colors:
+            return None
+
+        if h_colors & v_colors:
+            return None
+
+        # Verify: reconstruct output for all pairs
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0])
+
+            # Collect seeds
+            seeds = []
+            for r in range(h):
+                for c in range(w):
+                    clr = ri[r][c]
+                    if clr != bg:
+                        seeds.append((r, c, clr))
+
+            # Build predicted output: vertical first, then horizontal overwrites
+            pred = [[bg] * w for _ in range(h)]
+            # Draw vertical lines first
+            for r, c, clr in seeds:
+                if clr in v_colors:
+                    for rr in range(h):
+                        pred[rr][c] = clr
+            # Draw horizontal lines on top (overwrite at intersections)
+            for r, c, clr in seeds:
+                if clr in h_colors:
+                    for cc in range(w):
+                        pred[r][cc] = clr
+
+            if pred != ro:
+                return None
+
+        return {
+            "type": "point_to_line",
+            "confidence": 1.0,
+            "bg": bg,
+            "h_colors": sorted(h_colors),
+            "v_colors": sorted(v_colors),
+        }
+
+    # ---- strategy 39: quadrant rotation completion -------------------------
+
+    def _try_quadrant_rotation_completion(self, task):
+        """
+        Detect: grid split by zero-separator row and column into 4 quadrants.
+        One quadrant is a solid marker (uniform non-0 color). The other 3 form
+        a 90-degree rotation cycle. Output = the missing 4th rotation.
+        Category: rotational symmetry completion.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        def find_separator(grid):
+            """Find the separator row and column (all zeros)."""
+            h = len(grid)
+            w = len(grid[0])
+            sep_r = None
+            sep_c = None
+            for r in range(h):
+                if all(grid[r][c] == 0 for c in range(w)):
+                    sep_r = r
+                    break
+            for c in range(w):
+                if all(grid[r][c] == 0 for r in range(h)):
+                    sep_c = c
+                    break
+            return sep_r, sep_c
+
+        def extract_quadrants(grid, sep_r, sep_c):
+            """Extract the 4 quadrants around the separator."""
+            tl = [row[:sep_c] for row in grid[:sep_r]]
+            tr = [row[sep_c + 1:] for row in grid[:sep_r]]
+            bl = [row[:sep_c] for row in grid[sep_r + 1:]]
+            br = [row[sep_c + 1:] for row in grid[sep_r + 1:]]
+            return tl, tr, bl, br
+
+        def is_uniform(quad):
+            """Check if a quadrant is all the same non-zero value."""
+            if not quad or not quad[0]:
+                return False
+            v = quad[0][0]
+            if v == 0:
+                return False
+            return all(quad[r][c] == v for r in range(len(quad)) for c in range(len(quad[0])))
+
+        def rot90cw(grid):
+            """Rotate a 2D list 90 degrees clockwise."""
+            h = len(grid)
+            w = len(grid[0]) if grid else 0
+            return [[grid[h - 1 - r][c] for r in range(h)] for c in range(w)]
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro_expected = pair.output_grid.raw
+            sep_r, sep_c = find_separator(ri)
+            if sep_r is None or sep_c is None:
+                return None
+
+            tl, tr, bl, br = extract_quadrants(ri, sep_r, sep_c)
+
+            # All quadrants must be same size
+            sizes = [(len(q), len(q[0]) if q else 0) for q in [tl, tr, bl, br]]
+            if len(set(sizes)) != 1:
+                return None
+
+            # Find which quadrant is the marker
+            quads = [tl, tr, bl, br]
+            marker_idx = None
+            for i, q in enumerate(quads):
+                if is_uniform(q):
+                    marker_idx = i
+                    break
+
+            if marker_idx is None:
+                return None
+
+            # The 3 data quadrants in rotation order: TL(0°) -> TR(90°) -> BL(180°) -> BR(270°)
+            # Actually the spatial order is: TL -> TR -> BR -> BL for clockwise,
+            # but based on analysis: A(TL)->B(TR)->C(BL)->D(BR) = 0->90->180->270
+            # So the rotation chain is TL -> TR -> BL -> BR
+            # Missing one = rot90cw of its predecessor in chain
+            chain = [0, 1, 2, 3]  # TL, TR, BL, BR
+            pred_in_chain = {0: 3, 1: 0, 2: 1, 3: 2}  # predecessor
+
+            pred_idx = pred_in_chain[marker_idx]
+            expected_output = rot90cw(quads[pred_idx])
+
+            # Verify against actual output
+            if expected_output != ro_expected:
+                # Try alternate chain: TL -> TR -> BR -> BL
+                chain2_pred = {0: 3, 1: 0, 2: 3, 3: 1}
+                # Actually let's just try: output = rot90cw of each non-marker quad
+                found = False
+                for src_idx in range(4):
+                    if src_idx == marker_idx:
+                        continue
+                    candidate = rot90cw(quads[src_idx])
+                    if candidate == ro_expected:
+                        found = True
+                        break
+                if not found:
+                    return None
+
+        return {
+            "type": "quadrant_rotation_completion",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 40: stamp pattern ----------------------------------------
+
+    def _try_stamp_pattern(self, task):
+        """
+        Detect: isolated marker pixels in input. In output, each marker is
+        replaced by a fixed small pattern (stamp/kernel) centered on the
+        marker position. The marker pixel itself may be cleared.
+        Category: single-pixel marker expansion to fixed local pattern.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        # Determine background (most common value in first input)
+        from collections import Counter
+        ri0 = pairs[0].input_grid.raw
+        flat = [v for row in ri0 for v in row]
+        bg = Counter(flat).most_common(1)[0][0]
+
+        # Find marker color: the non-bg pixels in input (should be isolated single pixels)
+        # All markers should be same color across all pairs
+        marker_color = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            h, w = len(ri), len(ri[0])
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != bg:
+                        if marker_color is None:
+                            marker_color = ri[r][c]
+                        elif ri[r][c] != marker_color:
+                            return None  # Multiple non-bg colors; not a simple stamp task
+
+        if marker_color is None:
+            return None
+
+        # From first pair, learn the stamp pattern
+        pair0 = pairs[0]
+        ri = pair0.input_grid.raw
+        ro = pair0.output_grid.raw
+        h, w = len(ri), len(ri[0])
+        oh, ow = len(ro), len(ro[0])
+        if oh != h or ow != w:
+            return None
+
+        # Find first marker position
+        markers = []
+        for r in range(h):
+            for c in range(w):
+                if ri[r][c] == marker_color:
+                    markers.append((r, c))
+
+        if not markers:
+            return None
+
+        # Use first marker to extract the stamp (offsets from marker center)
+        mr, mc = markers[0]
+        # Determine stamp radius by scanning the output around this marker
+        # Find all non-bg output cells that are close to this marker
+        # (and not closer to any other marker)
+        stamp_offsets = {}  # (dr, dc) -> color
+        max_radius = min(h, w) // 2
+        for dr in range(-max_radius, max_radius + 1):
+            for dc in range(-max_radius, max_radius + 1):
+                nr, nc = mr + dr, mc + dc
+                if 0 <= nr < h and 0 <= nc < w:
+                    val = ro[nr][nc]
+                    if val != bg:
+                        # Check this cell isn't closer to another marker
+                        closest = min(markers, key=lambda m: abs(m[0] - nr) + abs(m[1] - nc))
+                        if closest == (mr, mc):
+                            stamp_offsets[(dr, dc)] = val
+
+        if not stamp_offsets:
+            return None
+
+        # Verify the stamp works for ALL markers in ALL pairs
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+
+            pair_markers = [(r, c) for r in range(h) for c in range(w) if ri[r][c] == marker_color]
+
+            # Build predicted output
+            pred = [[bg] * w for _ in range(h)]
+            for pmr, pmc in pair_markers:
+                for (dr, dc), clr in stamp_offsets.items():
+                    nr, nc = pmr + dr, pmc + dc
+                    if 0 <= nr < h and 0 <= nc < w:
+                        pred[nr][nc] = clr
+
+            if pred != ro:
+                return None
+
+        return {
+            "type": "stamp_pattern",
+            "confidence": 1.0,
+            "bg": bg,
+            "marker_color": marker_color,
+            "stamp_offsets": {f"{dr},{dc}": clr for (dr, dc), clr in stamp_offsets.items()},
+        }
+
     def _find_colored_rects(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""
         h = len(grid)
@@ -4568,6 +4923,12 @@ class PredictOperator(Operator):
             return self._apply_separator_and(rule, input_grid)
         if rule_type == "checkerboard_tile":
             return self._apply_checkerboard_tile(rule, input_grid)
+        if rule_type == "point_to_line":
+            return self._apply_point_to_line(rule, input_grid)
+        if rule_type == "quadrant_rotation_completion":
+            return self._apply_quadrant_rotation_completion(rule, input_grid)
+        if rule_type == "stamp_pattern":
+            return self._apply_stamp_pattern(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5697,6 +6058,113 @@ class PredictOperator(Operator):
                 for r in range(h):
                     for c in range(w):
                         output[tr * h + r][tc * w + c] = tile[r][c]
+        return output
+
+    # ---- apply: point_to_line ----------------------------------------------
+
+    def _apply_point_to_line(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        h_colors = set(rule["h_colors"])
+        v_colors = set(rule["v_colors"])
+
+        seeds = []
+        for r in range(h):
+            for c in range(w):
+                clr = raw[r][c]
+                if clr != bg:
+                    seeds.append((r, c, clr))
+
+        output = [[bg] * w for _ in range(h)]
+        # Vertical lines first
+        for r, c, clr in seeds:
+            if clr in v_colors:
+                for rr in range(h):
+                    output[rr][c] = clr
+        # Horizontal lines on top (overwrite at intersections)
+        for r, c, clr in seeds:
+            if clr in h_colors:
+                for cc in range(w):
+                    output[r][cc] = clr
+        return output
+
+    # ---- apply: quadrant_rotation_completion --------------------------------
+
+    def _apply_quadrant_rotation_completion(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find separator row and column
+        sep_r = sep_c = None
+        for r in range(h):
+            if all(raw[r][c] == 0 for c in range(w)):
+                sep_r = r
+                break
+        for c in range(w):
+            if all(raw[r][c] == 0 for r in range(h)):
+                sep_c = c
+                break
+        if sep_r is None or sep_c is None:
+            return [row[:] for row in raw]
+
+        # Extract quadrants
+        tl = [row[:sep_c] for row in raw[:sep_r]]
+        tr = [row[sep_c + 1:] for row in raw[:sep_r]]
+        bl = [row[:sep_c] for row in raw[sep_r + 1:]]
+        br = [row[sep_c + 1:] for row in raw[sep_r + 1:]]
+
+        def is_uniform(quad):
+            if not quad or not quad[0]:
+                return False
+            v = quad[0][0]
+            if v == 0:
+                return False
+            return all(quad[r][c] == v for r in range(len(quad)) for c in range(len(quad[0])))
+
+        def rot90cw(grid):
+            gh = len(grid)
+            gw = len(grid[0]) if grid else 0
+            return [[grid[gh - 1 - r][c] for r in range(gh)] for c in range(gw)]
+
+        quads = [tl, tr, bl, br]
+        marker_idx = None
+        for i, q in enumerate(quads):
+            if is_uniform(q):
+                marker_idx = i
+                break
+        if marker_idx is None:
+            return [row[:] for row in raw]
+
+        # Try rot90cw of each non-marker quad to find the right source
+        # The rotation chain: TL->TR->BL->BR, so predecessor map
+        pred_map = {0: 3, 1: 0, 2: 1, 3: 2}
+        result = rot90cw(quads[pred_map[marker_idx]])
+        return result
+
+    # ---- apply: stamp_pattern -----------------------------------------------
+
+    def _apply_stamp_pattern(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        marker_color = rule["marker_color"]
+        stamp_offsets = {}
+        for key, clr in rule["stamp_offsets"].items():
+            dr, dc = map(int, key.split(","))
+            stamp_offsets[(dr, dc)] = clr
+
+        markers = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == marker_color]
+
+        output = [[bg] * w for _ in range(h)]
+        for mr, mc in markers:
+            for (dr, dc), clr in stamp_offsets.items():
+                nr, nc = mr + dr, mc + dc
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = clr
         return output
 
     def _find_colored_rects_raw(self, grid, bg=0):

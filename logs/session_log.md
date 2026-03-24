@@ -1136,3 +1136,95 @@ All 20 tasks in the standard batch (seed 42) were already at 100%. Ran a new bat
 - Stored rule hits: 19
 - Time: 61s
 - Log: logs/learn_20260325_060603.log
+
+---
+## Learning Loop -- 2026-03-25 06:09
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_060801.log
+
+---
+## Learning Loop -- 2026-03-25 06:10
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_060922.log
+
+---
+## Learning Loop -- 2026-03-25 06:12
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 133 -> 136 (+3 learned)
+- Stored rule hits: 1
+- Time: 85s
+- Log: logs/learn_20260325_061040.log
+
+---
+## Learning Loop -- 2026-03-25 06:31
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 136 -> 139 (+3 learned)
+- Stored rule hits: 1
+- Time: 72s
+- Log: logs/learn_20260325_063022.log
+
+---
+## Learning Loop -- 2026-03-25 06:33
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 139 -> 141 (+2 learned)
+- Stored rule hits: 3
+- Time: 70s
+- Log: logs/learn_20260325_063226.log
+
+---
+## Learning Loop -- 2026-03-25 06:34
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 141 -> 141 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_063342.log
+
+---
+## Session 15 Analysis — 2026-03-25 06:34
+
+### Strategies added (agent/active_operators.py)
+
+1. **point_to_line** — colored seed pixels expand to full-span row/column lines
+   - `_try_point_to_line`: determines per-color axis (horizontal vs vertical) by coverage ratio; verifies reconstruction matches output with horizontal-over-vertical priority at intersections
+   - `_apply_point_to_line`: draws vertical lines first, then horizontal on top
+
+2. **quadrant_rotation_completion** — grid split by zero-separator into 4 quadrants; one is a uniform marker; output is the missing 90° rotation
+   - `_try_quadrant_rotation_completion`: finds separator row/col, identifies uniform marker quadrant, verifies rot90cw of predecessor matches expected output
+   - `_apply_quadrant_rotation_completion`: extracts quadrants, returns rot90cw of the predecessor quadrant
+
+3. **stamp_pattern** — isolated marker pixels replaced by a fixed local pattern (kernel/stamp) centered on each marker
+   - `_try_stamp_pattern`: learns stamp offsets from first marker in first pair, verifies all markers in all pairs reproduce the output
+   - `_apply_stamp_pattern`: places learned stamp at each marker position in test input
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 178fcbfb | INCORRECT (identity) | CORRECT | point_to_line |
+| be03b35f | INCORRECT (identity) | CORRECT | quadrant_rotation_completion |
+| b60334d2 | INCORRECT (identity) | CORRECT | stamp_pattern |
+
+**Score (seed 999): 2/20 (10.0%) → 5/20 (25.0%)**
+**Score (seed 42, original 20): 20/20 (100.0%) — no regression**
+**Stored rules: 133 → 141**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
