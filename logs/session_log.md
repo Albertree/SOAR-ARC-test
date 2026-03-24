@@ -1029,3 +1029,110 @@ All 20 tasks in the standard batch (seed 42) were already at 100%. Ran a new bat
 - Default seed (42): 20/20 (100%) — no regression
 - Seed 99: improved from 6/20 (30%) to 9/20 (45%) — 3 new tasks solved
 - Stored rules: 118 → 122 (after seed 42 re-run) → 129 (after seed 99 run)
+
+---
+## Learning Loop -- 2026-03-25 05:51
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 129 -> 129 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_055035.log
+
+---
+## Session 14 Analysis — 2026-03-25 06:07
+
+### Input
+- Default seed (42): 20/20 CORRECT (100%) — no failures in primary batch
+- Ran seed 77 to find new failures: 2/20 CORRECT (10%), 18 INCORRECT
+
+### Strategies added (agent/active_operators.py)
+
+1. **self_tile** — NxN input grid tiled into N²xN² output; non-zero cells map to copies (or complement) of the input (tasks 007bbfb7, 0692e18c)
+   - `_try_self_tile`: detects square input with one non-zero color, verifies NxN block structure, auto-detects "copy" vs "complement" mode
+   - `_apply_self_tile`: builds N²xN² output, placing tile or zeros per input cell
+
+2. **separator_and** — grid split by a separator column of uniform color; output = AND of left/right halves marked with a result color (task 0520fde7)
+   - `_try_separator_and`: finds separator column, splits halves, validates AND logic across all examples
+   - `_apply_separator_and`: finds separator, computes cell-wise AND of both halves
+
+3. **checkerboard_tile** — HxW input tiled 3×3 with alternating horizontal flips on odd tile-rows (task 00576224)
+   - `_try_checkerboard_tile`: verifies output is 3H×3W, validates even rows = normal, odd rows = h-flipped
+   - `_apply_checkerboard_tile`: builds 3H×3W grid with alternating flip pattern
+
+### Results
+- Regression gate (08ed6ac7): CORRECT
+- Default seed (42): 20/20 (100%) — no regression
+- Seed 77: improved from 2/20 (10%) to 6/20 (30%) — 4 new tasks solved (00576224, 007bbfb7, 0520fde7, 0692e18c)
+- Stored rules: 129 → 133 (after seed 77 re-run)
+
+---
+## Learning Loop -- 2026-03-25 06:07
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_060603.log
+
+---
+## Learning Loop -- 2026-03-25 06:05 (seed 77)
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 6
+- Time: 84s
+- Log: logs/learn_20260325_060433.log
+
+---
+## Learning Loop -- 2026-03-25 05:53
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 129 -> 129 (+0 learned)
+- Stored rule hits: 2
+- Time: 84s
+- Log: logs/learn_20260325_055202.log
+
+---
+## Learning Loop -- 2026-03-25 06:00
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 129 -> 133 (+4 learned)
+- Stored rule hits: 2
+- Time: 84s
+- Log: logs/learn_20260325_055911.log
+
+---
+## Learning Loop -- 2026-03-25 06:01
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 6
+- Time: 82s
+- Log: logs/learn_20260325_060035.log
+
+---
+## Learning Loop -- 2026-03-25 06:05
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 6
+- Time: 84s
+- Log: logs/learn_20260325_060433.log
+
+---
+## Learning Loop -- 2026-03-25 06:07
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 133 -> 133 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_060603.log

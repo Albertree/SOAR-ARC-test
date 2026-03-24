@@ -715,6 +715,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_frame_solid_compose(task)
 
+        # Strategy 35: self tile (NxN input → N²xN² by placing copies/complement at non-zero positions)
+        if rule is None:
+            rule = self._try_self_tile(task)
+
+        # Strategy 36: separator AND (grid split by separator column, AND of halves)
+        if rule is None:
+            rule = self._try_separator_and(task)
+
+        # Strategy 37: checkerboard tile (HxW tiled 3x3 with alternating horizontal flip)
+        if rule is None:
+            rule = self._try_checkerboard_tile(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -4169,6 +4181,191 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: self tile (NxN -> N²xN²) ------------------------------
+
+    def _try_self_tile(self, task):
+        """
+        Detect: NxN input with one non-zero color.  Output is (N*N)x(N*N)
+        grid divided into NxN blocks.  Where input cell is non-zero, the
+        block contains either a COPY of the input or the COMPLEMENT (swap
+        0 and the color).  Where input cell is 0, block is all zeros.
+        Category: fractal self-reference / self-tiling.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        mode = None  # "copy" or "complement"
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Must be square input and output = N² x N²
+            if h != w or oh != h * h or ow != w * w:
+                return None
+            n = h
+
+            # Must have exactly one non-zero color
+            colors = {v for row in ri for v in row if v != 0}
+            if len(colors) != 1:
+                return None
+            color = colors.pop()
+
+            # Build the expected tile for copy and complement
+            tile_copy = [row[:] for row in ri]
+            tile_comp = [[color if v == 0 else 0 for v in row] for row in ri]
+            zero_tile = [[0] * n for _ in range(n)]
+
+            # Check each NxN block
+            local_mode = None
+            for br in range(n):
+                for bc in range(n):
+                    block = [ro[br * n + r][bc * n: bc * n + n] for r in range(n)]
+                    if ri[br][bc] == 0:
+                        if block != zero_tile:
+                            return None
+                    else:
+                        if block == tile_copy:
+                            if local_mode is None:
+                                local_mode = "copy"
+                            elif local_mode != "copy":
+                                return None
+                        elif block == tile_comp:
+                            if local_mode is None:
+                                local_mode = "complement"
+                            elif local_mode != "complement":
+                                return None
+                        else:
+                            return None
+
+            if local_mode is None:
+                return None
+            if mode is None:
+                mode = local_mode
+            elif mode != local_mode:
+                return None
+
+        return {"type": "self_tile", "mode": mode, "confidence": 1.0}
+
+    # ---- strategy: separator AND (column separator) ----------------------
+
+    def _try_separator_and(self, task):
+        """
+        Detect: input grid has a separator COLUMN of uniform non-zero
+        color splitting it into two equal halves (left and right).  Each
+        half is binary (0 vs non-zero).  Output = AND of the two binary
+        masks (cells where both halves are non-zero), with a result color.
+        Category: binary comparison / mask intersection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        result_color = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Find separator column (all cells same non-zero value)
+            sep_col = None
+            for c in range(w):
+                vals = set(ri[r][c] for r in range(h))
+                if len(vals) == 1 and 0 not in vals:
+                    sep_col = c
+                    break
+            if sep_col is None:
+                return None
+
+            left = [row[:sep_col] for row in ri]
+            right = [row[sep_col + 1:] for row in ri]
+            lw = len(left[0]) if left else 0
+            rw_ = len(right[0]) if right else 0
+            if lw != rw_ or lw != ow or h != oh:
+                return None
+
+            # Determine result color from output
+            out_colors = {v for row in ro for v in row if v != 0}
+            if len(out_colors) > 1:
+                return None
+            if len(out_colors) == 0:
+                # All zero output is possible; just need to check AND is empty
+                local_result = None
+            else:
+                local_result = out_colors.pop()
+
+            # Build expected AND output
+            expected = []
+            for r in range(h):
+                row = []
+                for c in range(lw):
+                    a_set = left[r][c] != 0
+                    b_set = right[r][c] != 0
+                    if a_set and b_set:
+                        row.append(local_result if local_result else 0)
+                    else:
+                        row.append(0)
+                expected.append(row)
+
+            if expected != ro:
+                return None
+
+            if local_result is not None:
+                if result_color is None:
+                    result_color = local_result
+                elif result_color != local_result:
+                    return None
+
+        if result_color is None:
+            return None
+
+        return {"type": "separator_and", "result_color": result_color,
+                "confidence": 0.95}
+
+    # ---- strategy: checkerboard tile (HxW -> 3H x 3W) -------------------
+
+    def _try_checkerboard_tile(self, task):
+        """
+        Detect: output is exactly 3x the input dimensions.  The output is
+        a 3x3 tiling of the input where even tile-rows use the input as-is
+        and odd tile-rows use a horizontally-flipped version.  Both are
+        repeated 3 times across the width.
+        Category: tiling with alternating reflection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            if oh != 3 * h or ow != 3 * w:
+                return None
+
+            hflip = [row[::-1] for row in ri]
+
+            for tr in range(3):  # tile row
+                tile = ri if tr % 2 == 0 else hflip
+                for tc in range(3):  # tile col
+                    for r in range(h):
+                        for c in range(w):
+                            if ro[tr * h + r][tc * w + c] != tile[r][c]:
+                                return None
+
+        return {"type": "checkerboard_tile", "confidence": 1.0}
+
     def _find_colored_rects(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""
         h = len(grid)
@@ -4365,6 +4562,12 @@ class PredictOperator(Operator):
             return self._apply_stripe_rotate(rule, input_grid)
         if rule_type == "frame_solid_compose":
             return self._apply_frame_solid_compose(rule, input_grid)
+        if rule_type == "self_tile":
+            return self._apply_self_tile(rule, input_grid)
+        if rule_type == "separator_and":
+            return self._apply_separator_and(rule, input_grid)
+        if rule_type == "checkerboard_tile":
+            return self._apply_checkerboard_tile(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5417,6 +5620,83 @@ class PredictOperator(Operator):
                         output[r][fi * rw + c] = raw[f["r"] + r][f["c"] + c]
                     else:
                         output[fi * rh + r][c] = raw[f["r"] + r][f["c"] + c]
+        return output
+
+    def _apply_self_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        n = len(raw)
+        w = len(raw[0]) if raw else 0
+        if n != w or n == 0:
+            return None
+        colors = {v for row in raw for v in row if v != 0}
+        if len(colors) != 1:
+            return None
+        color = colors.pop()
+        mode = rule.get("mode", "copy")
+
+        if mode == "copy":
+            tile = [row[:] for row in raw]
+        else:
+            tile = [[color if v == 0 else 0 for v in row] for row in raw]
+        zero_tile = [[0] * n for _ in range(n)]
+
+        out_size = n * n
+        output = [[0] * out_size for _ in range(out_size)]
+        for br in range(n):
+            for bc in range(n):
+                t = tile if raw[br][bc] != 0 else zero_tile
+                for r in range(n):
+                    for c in range(n):
+                        output[br * n + r][bc * n + c] = t[r][c]
+        return output
+
+    def _apply_separator_and(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else (0, 0)
+        if h == 0 or w < 3:
+            return None
+        result_color = rule["result_color"]
+
+        # Find separator column
+        sep_col = None
+        for c in range(w):
+            vals = set(raw[r][c] for r in range(h))
+            if len(vals) == 1 and 0 not in vals:
+                sep_col = c
+                break
+        if sep_col is None:
+            return None
+
+        left = [row[:sep_col] for row in raw]
+        right = [row[sep_col + 1:] for row in raw]
+        lw = len(left[0]) if left else 0
+        rw_ = len(right[0]) if right else 0
+        if lw == 0 or lw != rw_:
+            return None
+
+        output = []
+        for r in range(h):
+            row = []
+            for c in range(lw):
+                if left[r][c] != 0 and right[r][c] != 0:
+                    row.append(result_color)
+                else:
+                    row.append(0)
+            output.append(row)
+        return output
+
+    def _apply_checkerboard_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        hflip = [row[::-1] for row in raw]
+
+        output = [[0] * (3 * w) for _ in range(3 * h)]
+        for tr in range(3):
+            tile = raw if tr % 2 == 0 else hflip
+            for tc in range(3):
+                for r in range(h):
+                    for c in range(w):
+                        output[tr * h + r][tc * w + c] = tile[r][c]
         return output
 
     def _find_colored_rects_raw(self, grid, bg=0):
