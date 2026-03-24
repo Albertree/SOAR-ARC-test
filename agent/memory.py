@@ -1,43 +1,131 @@
 """
 memory — SOAR Chunking and LTM storage.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[SOAR MANDATORY] Chunking is triggered when a subgoal is resolved.
-                 reasoning trace → compressed into a production rule.
+Rules are stored as JSON files in procedural_memory/:
+  procedural_memory/rule_001.json
+  procedural_memory/rule_002.json
+  ...
 
-[DESIGN FREE] Form of the compressed production rule.
-              Format for storing in LTM (ARCKG edge JSON, etc.).
-              Load timing and method.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Each file:
+  {
+    "id": 1,
+    "rule": { ... },
+    "source_task": "08ed6ac7",
+    "created_at": "2026-03-24T19:00:00",
+    "times_reused": 0
+  }
 """
 
+import json
+import os
+from datetime import datetime
 
-def chunk_from_substate(substate: dict) -> dict:
-    """
-    [SOAR MANDATORY] Chunking is triggered when a subgoal is resolved.
-    [DESIGN FREE] Form of the compression result (rule dict).
-                  trigger, ops_applied, result, confidence, etc.
-    MUST NOT: Do not chunk a failed substate.
-    """
-    raise NotImplementedError("chunk_from_substate() not implemented.")
+PROCEDURAL_MEMORY_ROOT = "procedural_memory"
 
 
 def save_rule_to_ltm(rule: dict, task_hex: str,
-                     semantic_memory_root: str) -> str:
+                     procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
     """
-    [DESIGN FREE] In what format to save the rule to LTM.
-                  Save path: semantic_memory/N_T{hex}/E_rule_{n}.json
-                  Return value: ref path (used in active_rules).
-    MUST NOT: Do not overwrite existing rule files — create new files by incrementing n.
+    Save a learned rule to procedural_memory as a new JSON file.
+    Returns the file path of the saved rule.
     """
-    raise NotImplementedError("save_rule_to_ltm() not implemented.")
+    os.makedirs(procedural_memory_root, exist_ok=True)
+
+    # Find next available ID
+    existing = [
+        f for f in os.listdir(procedural_memory_root)
+        if f.startswith("rule_") and f.endswith(".json")
+    ]
+    next_id = len(existing) + 1
+
+    # Don't save duplicate rules (same type + same key params)
+    for f in existing:
+        try:
+            path = os.path.join(procedural_memory_root, f)
+            with open(path, "r") as fh:
+                stored = json.load(fh)
+            if _rules_equivalent(stored.get("rule", {}), rule):
+                return path
+        except (json.JSONDecodeError, IOError):
+            continue
+
+    entry = {
+        "id": next_id,
+        "rule": rule,
+        "source_task": task_hex,
+        "created_at": datetime.now().isoformat(),
+        "times_reused": 0,
+    }
+
+    filename = f"rule_{next_id:03d}.json"
+    path = os.path.join(procedural_memory_root, filename)
+    with open(path, "w") as f:
+        json.dump(entry, f, indent=2)
+
+    return path
 
 
-def load_rules_from_ltm(task_hex: str, semantic_memory_root: str) -> list:
+def load_all_rules(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:
     """
-    [DESIGN FREE] Read rules from LTM and return in active_rules format.
-                  Format: [{"ref": path, "confidence": float, "rule": dict}, ...]
-    MUST NOT: Do not call inside the solve loop — only once before solve() starts.
-    REF: CLAUDE.md § Memory System Design Target (LTM → WM: one load at session start)
+    Load all stored rules from procedural_memory.
+    Returns list of entry dicts (each has "id", "rule", "source_task", etc).
+    Sorted by times_reused descending (most reused first).
     """
-    raise NotImplementedError("load_rules_from_ltm() not implemented.")
+    if not os.path.isdir(procedural_memory_root):
+        return []
+
+    rules = []
+    for f in sorted(os.listdir(procedural_memory_root)):
+        if not (f.startswith("rule_") and f.endswith(".json")):
+            continue
+        path = os.path.join(procedural_memory_root, f)
+        try:
+            with open(path, "r") as fh:
+                entry = json.load(fh)
+            entry["_path"] = path
+            rules.append(entry)
+        except (json.JSONDecodeError, IOError):
+            continue
+
+    rules.sort(key=lambda e: e.get("times_reused", 0), reverse=True)
+    return rules
+
+
+def increment_reuse_count(entry: dict) -> None:
+    """Increment the times_reused counter for a stored rule and save back."""
+    path = entry.get("_path")
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, "r") as f:
+            data = json.load(f)
+        data["times_reused"] = data.get("times_reused", 0) + 1
+        with open(path, "w") as f:
+            json.dump(data, f, indent=2)
+    except (json.JSONDecodeError, IOError):
+        pass
+
+
+def load_rules_from_ltm(task_hex: str,
+                        semantic_memory_root: str = "semantic_memory") -> list:
+    """Legacy interface — loads all rules (task_hex unused for now)."""
+    return load_all_rules()
+
+
+def chunk_from_substate(substate: dict) -> dict:
+    """Placeholder — extract rule from resolved substate."""
+    return {}
+
+
+def _rules_equivalent(a: dict, b: dict) -> bool:
+    """Check if two rules are functionally the same."""
+    if a.get("type") != b.get("type"):
+        return False
+    t = a.get("type")
+    if t == "recolor_sequential":
+        return (a.get("sort_key") == b.get("sort_key")
+                and a.get("start_color") == b.get("start_color")
+                and a.get("source_colors") == b.get("source_colors"))
+    if t == "color_mapping":
+        return a.get("mapping") == b.get("mapping")
+    return a == b

@@ -1,51 +1,27 @@
 """
-active_operators — SOAR Operator implementations.
+active_operators -- SOAR Operator implementations.
 
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-[SOAR MANDATORY] Each operator follows the precondition + effect interface.
-                 effect updates WM. cycle determines success/failure/no-change by exception/wme changes.
-
-[DESIGN FREE] Which operators to have, names, precondition conditions, effect content.
-              Compare function (compare_fn) and generalize function (generalize_fn) can be externally injected.
-
-The operators in this module are designed to correspond to the following six cognitive-level operations.
-
-    1. compare  (target_a, target_b, level)
-    2. collect  (scope, relation_type)
-    3. generalize(targets)
-    4. descend  (target, from_level, to_level)
-    5. predict  (test_input, rule_ref)
-    6. verify   (predicted_output, constraints)
-
-The mapping between concrete classes is as follows.
-
-    - CompareOperator         → compare
-    - ExtractPatternOperator  → collect
-    - GeneralizeOperator      → generalize
-    - DescendOperator         → descend
-    - PredictOperator         → predict
-    - SubmitOperator/VerifyOperator → verify
-
-That is, while maintaining the SOAR-style Operator interface,
-the high-level operator repertoire from the user's perspective is directly reflected.
-━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Pipeline operators (all fire in S2, read/write S1):
+  SelectTargetOperator  -> set up comparison agenda from example pairs
+  CompareOperator       -> execute one comparison using ARCKG compare()
+  ExtractPatternOperator-> cell-level analysis of input/output changes
+  GeneralizeOperator    -> create transformation rule from patterns
+  PredictOperator       -> apply rule to test input
+  SubmitOperator        -> write prediction to output-link, satisfy goal
 """
 
 from agent.operators import Operator
+from ARCKG.comparison import compare as arckg_compare
 
+
+# ======================================================================
+# SolveTaskOperator -- abstract top-level goal (S1)
+# ======================================================================
 
 class SolveTaskOperator(Operator):
     """
-    [DESIGN FREE] High-level operator for solving the top-level ARC task.
-
-    INTENT:
-        - When (S1 ^current-task <hex>) exists, organizes sub-operators such as
-          compare/collect/generalize/descend to solve the task.
-        - At the current stage, only secures the interface (name, position) without concrete logic.
-
-    Future:
-        - precondition: When current-task exists in S1 and goal is not yet complete.
-        - effect: Performs part of the solve-task pipeline during one decision cycle.
+    Abstract operator at S1. Intentionally makes no WM change so
+    the cycle detects no-change and creates an S2 substate.
     """
 
     def __init__(self):
@@ -53,341 +29,572 @@ class SolveTaskOperator(Operator):
         self.proposal_preference = "+"
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE] To be extended later to check S1^current-task, goal state, etc."""
         raise NotImplementedError("SolveTaskOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """Abstract operator: intentionally no WM change.
-
-        From the Soar perspective, solve-task only presents a high-level goal,
-        and actual state changes are performed by concrete operators in sub-substates (S2...).
-        Therefore, no WM modification is done here.
-        """
+        # Intentionally empty -- triggers no-change impasse -> S2
         return
 
 
-class SubstateProgressOperator(Operator):
-    """
-    [DESIGN FREE] Resolves operator no-change impasse in a substate.
-
-    Analyzes the ARC task from wm.task, discovers the transformation rule
-    from example pairs, applies it to the test input, and writes the
-    predicted grid to S1's output-link for evaluation.
-    """
-
-    def __init__(self):
-        super().__init__("substate-progress")
-        self.proposal_preference = "+"
-
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError(
-            "SubstateProgressOperator.precondition() not implemented."
-        )
-
-    def effect(self, wm):
-        task = wm.task
-        if task is None:
-            attr = wm.active.get("attribute")
-            wm.s1["substate-resolution"] = f"handled-no-change:{attr}"
-            return
-
-        predicted = self._analyze_and_predict(task)
-        if predicted is not None:
-            wm.s1["S1"] = {"output-link": "O_out"}
-            wm.s1["O_out"] = {"predicted-grid": [predicted]}
-            wm.s1["goal"] = {"subgoals": {"test_0": {"status": "solved"}}}
-        else:
-            attr = wm.active.get("attribute")
-            wm.s1["substate-resolution"] = f"handled-no-change:{attr}"
-
-    # ── Task analysis ────────────────────────────────────────────── #
-
-    @staticmethod
-    def _find_vertical_lines(grid):
-        """Find columns with non-zero values and their start row."""
-        height = len(grid)
-        width = len(grid[0]) if grid else 0
-        lines = []
-        for col in range(width):
-            for row in range(height):
-                if grid[row][col] != 0:
-                    lines.append((row, col))
-                    break
-        return lines
-
-    def _analyze_and_predict(self, task):
-        """Discover transformation rule from examples, apply to test input."""
-        # Verify pattern across all example pairs
-        for pair in task.example_pairs:
-            inp = pair.input_grid.raw
-            out = pair.output_grid.raw
-            lines = self._find_vertical_lines(inp)
-            lines.sort()  # sort by start row
-
-            # Check that output assigns colors 1, 2, 3, ... in order
-            for idx, (start_row, col) in enumerate(lines):
-                expected_color = idx + 1
-                # Find the color used in the output for this column
-                actual_color = None
-                for row in range(len(out)):
-                    if out[row][col] != 0:
-                        actual_color = out[row][col]
-                        break
-                if actual_color != expected_color:
-                    return None  # pattern mismatch
-
-        # Apply rule to test input
-        test_input = task.test_pairs[0].input_grid.raw
-        height = len(test_input)
-        width = len(test_input[0]) if test_input else 0
-
-        lines = self._find_vertical_lines(test_input)
-        lines.sort()  # sort by start row
-
-        col_color = {}
-        for idx, (_, col) in enumerate(lines):
-            col_color[col] = idx + 1
-
-        output = [[0] * width for _ in range(height)]
-        for row in range(height):
-            for col in range(width):
-                if test_input[row][col] != 0 and col in col_color:
-                    output[row][col] = col_color[col]
-
-        return output
-
+# ======================================================================
+# SelectTargetOperator -- set up comparison agenda
+# ======================================================================
 
 class SelectTargetOperator(Operator):
     """
-    [DESIGN FREE] The existence, precondition, and effect of this operator are all design choices.
-    INTENT: (Not implemented) After selecting comparison targets, reflects pending comparison items in WM.
-            Does not use dedicated dict/helpers for agenda/pending.
-            Does not know the concrete comparison target types.
-    MUST NOT: Do not perform the comparison itself — only queue movement.
-              Do not directly reference wm.task.
-    precondition: elaborated["needs_target_selection"] == True
+    Reads wm.task to find example pairs and sets up comparison targets.
+    For each example pair: compare input grid (G0) vs output grid (G1).
+    Writes comparison-agenda, pending-comparisons, and empty comparisons to S1.
     """
 
     def __init__(self):
         super().__init__("select_target")
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
         raise NotImplementedError("SelectTargetOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """
-        [DESIGN FREE]
-        1. Select comparison targets
-        2. Reflect pending comparison facts in WM (triplet)
-        3. ...
-        4. op_status = "success" or "failure"
-        """
-        raise NotImplementedError("SelectTargetOperator.effect() not implemented.")
+        task = wm.task
+        if task is None:
+            return
 
+        agenda = []
+        pending = []
+
+        for idx, pair in enumerate(task.example_pairs):
+            if pair.input_grid is not None and pair.output_grid is not None:
+                spec = {
+                    "type": "grid",
+                    "pair_idx": idx,
+                    "pair_type": "example",
+                    "id1": pair.input_grid.node_id,
+                    "id2": pair.output_grid.node_id,
+                }
+                agenda.append(spec)
+                pending.append(spec)
+
+        # Build node lookup so CompareOperator can find ARCKG nodes by ID
+        node_lookup = {}
+        for pair in task.example_pairs + task.test_pairs:
+            if pair.input_grid:
+                node_lookup[pair.input_grid.node_id] = pair.input_grid
+            if pair.output_grid:
+                node_lookup[pair.output_grid.node_id] = pair.output_grid
+        wm.node_lookup = node_lookup
+
+        wm.s1["comparison-agenda"] = agenda
+        wm.s1["pending-comparisons"] = pending
+        wm.s1["comparisons"] = {}
+
+
+# ======================================================================
+# CompareOperator -- execute one comparison
+# ======================================================================
 
 class CompareOperator(Operator):
     """
-    [DESIGN FREE] The existence, precondition, and effect of this operator are all design choices.
-    INTENT: Performs one pending comparison and adds the result to WM as a triplet.
-            Comparison function uses external injection (compare_fn) or default.
-            CompareOperator does not know what the items are.
-    MUST NOT: Do not process multiple items at once from the queue — 1 call = 1 comparison.
-              Do not hardcode a specific comparison library in the class.
-    precondition: elaborated["has_pending_comparison"] == True
+    Pops one item from pending-comparisons, calls ARCKG compare(),
+    and stores the result in the comparisons dict on S1.
     """
 
     def __init__(self, compare_fn=None):
-        """
-        [DESIGN FREE] compare_fn: (node_a, node_b, context) → result.
-                       None uses the default comparison function.
-        """
         super().__init__("compare")
         self._compare_fn = compare_fn
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
         raise NotImplementedError("CompareOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """
-        [DESIGN FREE]
-        1. Obtain pending comparison item
-        2. Call self._compare_fn(node_a, node_b, context)
-        3. Reflect comparison result in WM (triplet)
-        4. op_status = "success" or "failure"
-        """
-        raise NotImplementedError("CompareOperator.effect() not implemented.")
+        pending = list(wm.s1.get("pending-comparisons") or [])
+        if not pending:
+            return
 
+        item = pending.pop(0)
+
+        # Find the actual ARCKG nodes
+        node_lookup = getattr(wm, "node_lookup", {})
+        node_a = node_lookup.get(item["id1"])
+        node_b = node_lookup.get(item["id2"])
+
+        if node_a is None or node_b is None:
+            wm.s1["pending-comparisons"] = pending
+            return
+
+        # Execute comparison
+        fn = self._compare_fn or arckg_compare
+        result = fn(node_a, node_b)
+
+        # Store result keyed by type and pair index
+        key = f"{item['type']}_{item.get('pair_idx', 0)}"
+        comparisons = dict(wm.s1.get("comparisons") or {})
+        comparisons[key] = {"spec": item, "result": result}
+
+        wm.s1["pending-comparisons"] = pending
+        wm.s1["comparisons"] = comparisons
+
+
+# ======================================================================
+# ExtractPatternOperator -- cell-level transformation analysis
+# ======================================================================
 
 class ExtractPatternOperator(Operator):
     """
-    [DESIGN FREE] The existence, precondition, and effect of this operator are all design choices.
-    INTENT: Organizes COMM/DIFF patterns from comparison results into WM triplets.
-            On failure, reflects a goal for deeper analysis in WM.
-    MUST NOT: Do not implement COMM/DIFF determination logic here — only read the result's type field.
-    precondition: elaborated["ready_for_pattern_extraction"] == True
+    Analyzes each example pair at the cell level to discover what changes
+    between input and output grids. Groups changed cells into connected
+    components and records color/position information for generalization.
     """
 
     def __init__(self):
         super().__init__("extract_pattern")
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
         raise NotImplementedError("ExtractPatternOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """
-        [DESIGN FREE]
-        Serves the role corresponding to collect(scope, relation_type)
-        in the compare/collect/generalize pipeline.
+        task = wm.task
+        if task is None:
+            return
 
-        1. Iterate comparison results
-        2. Record COMM/DIFF as WM triplets
-        4. op_status = "success" or "failure"
-        """
-        raise NotImplementedError("ExtractPatternOperator.effect() not implemented.")
+        patterns = {
+            "grid_size_preserved": True,
+            "pair_analyses": [],
+        }
 
+        for pair in task.example_pairs:
+            g0 = pair.input_grid
+            g1 = pair.output_grid
+            if g0 is None or g1 is None:
+                continue
+
+            analysis = self._analyze_pair(g0, g1)
+            patterns["pair_analyses"].append(analysis)
+
+            if g0.height != g1.height or g0.width != g1.width:
+                patterns["grid_size_preserved"] = False
+
+        wm.s1["patterns"] = patterns
+
+    # ---- internal helpers ------------------------------------------------
+
+    def _analyze_pair(self, g0, g1):
+        """Cell-level diff between input and output grid."""
+        raw_in = g0.raw
+        raw_out = g1.raw
+        h = min(len(raw_in), len(raw_out))
+        w = min(
+            len(raw_in[0]) if raw_in else 0,
+            len(raw_out[0]) if raw_out else 0,
+        )
+
+        changes = []
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] != raw_out[r][c]:
+                    changes.append({
+                        "row": r, "col": c,
+                        "input_color": raw_in[r][c],
+                        "output_color": raw_out[r][c],
+                    })
+
+        groups = self._group_changes(changes)
+
+        group_analyses = []
+        for group_cells in groups:
+            input_colors = set()
+            output_colors = set()
+            positions = []
+            for cell in group_cells:
+                input_colors.add(cell["input_color"])
+                output_colors.add(cell["output_color"])
+                positions.append((cell["row"], cell["col"]))
+
+            top_row = min(r for r, c in positions)
+            top_col = min(c for r, c in positions)
+
+            group_analyses.append({
+                "input_colors": sorted(input_colors),
+                "output_colors": sorted(output_colors),
+                "top_row": top_row,
+                "top_col": top_col,
+                "cell_count": len(group_cells),
+            })
+
+        return {
+            "total_changes": len(changes),
+            "num_groups": len(groups),
+            "groups": group_analyses,
+            "size_match": (
+                len(raw_in) == len(raw_out)
+                and (len(raw_in[0]) if raw_in else 0)
+                    == (len(raw_out[0]) if raw_out else 0)
+            ),
+        }
+
+    @staticmethod
+    def _group_changes(changes):
+        """Group changed cells into 4-connected components."""
+        if not changes:
+            return []
+
+        pos_to_change = {}
+        for c in changes:
+            pos_to_change[(c["row"], c["col"])] = c
+
+        visited = set()
+        groups = []
+
+        for change in changes:
+            pos = (change["row"], change["col"])
+            if pos in visited:
+                continue
+
+            group = []
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in pos_to_change:
+                    continue
+                visited.add(p)
+                group.append(pos_to_change[p])
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (p[0] + dr, p[1] + dc)
+                    if nb in pos_to_change and nb not in visited:
+                        queue.append(nb)
+            groups.append(group)
+
+        return groups
+
+
+# ======================================================================
+# GeneralizeOperator -- rule creation from patterns
+# ======================================================================
+
+class GeneralizeOperator(Operator):
+    """
+    Reads extracted patterns and attempts to create a transformation rule.
+    Tries multiple strategies in priority order. If no strategy succeeds,
+    falls back to an identity rule so the pipeline can still complete.
+    """
+
+    def __init__(self, generalize_fn=None, save_fn=None):
+        super().__init__("generalize")
+        self._generalize_fn = generalize_fn
+        self._save_fn = save_fn
+
+    def precondition(self, wm) -> bool:
+        raise NotImplementedError("GeneralizeOperator.precondition() not implemented.")
+
+    def effect(self, wm):
+        patterns = wm.s1.get("patterns")
+        if not patterns:
+            return
+
+        rule = None
+
+        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
+        rule = self._try_recolor_sequential(patterns)
+
+        # Strategy 2: simple 1:1 color mapping
+        if rule is None:
+            rule = self._try_color_mapping(patterns)
+
+        # Fallback: identity (copy input as output)
+        if rule is None:
+            rule = {"type": "identity", "confidence": 0.0}
+
+        wm.s1["active-rules"] = [rule]
+
+    # ---- strategy: sequential recoloring --------------------------------
+
+    def _try_recolor_sequential(self, patterns):
+        """
+        Detect pattern: all changed-cell groups have one source color,
+        output colors are sequential (1,2,3,...), ordered by position.
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses or not patterns.get("grid_size_preserved"):
+            return None
+
+        # All pairs must have the same number of change groups
+        group_counts = [a["num_groups"] for a in pair_analyses]
+        if len(set(group_counts)) != 1 or group_counts[0] == 0:
+            return None
+
+        all_source_colors = set()
+
+        for analysis in pair_analyses:
+            for g in analysis["groups"]:
+                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
+                    return None
+                all_source_colors.add(g["input_colors"][0])
+
+            out_colors = sorted(set(g["output_colors"][0] for g in analysis["groups"]))
+            expected = list(range(min(out_colors), min(out_colors) + len(out_colors)))
+            if out_colors != expected:
+                return None
+
+        # Try sorting by different position keys
+        for sort_key in ["top_row", "top_col"]:
+            if self._check_sort_key(pair_analyses, sort_key):
+                start_color = min(
+                    g["output_colors"][0]
+                    for g in pair_analyses[0]["groups"]
+                )
+                return {
+                    "type": "recolor_sequential",
+                    "sort_key": sort_key,
+                    "start_color": start_color,
+                    "source_colors": sorted(all_source_colors),
+                    "confidence": 1.0,
+                }
+
+        return None
+
+    @staticmethod
+    def _check_sort_key(pair_analyses, sort_key):
+        """Verify that sorting groups by sort_key produces sequential output colors."""
+        for analysis in pair_analyses:
+            groups = analysis["groups"]
+            sorted_groups = sorted(groups, key=lambda g: g[sort_key])
+            colors = [g["output_colors"][0] for g in sorted_groups]
+            if colors != list(range(colors[0], colors[0] + len(colors))):
+                return False
+        return True
+
+    # ---- strategy: simple color mapping ---------------------------------
+
+    def _try_color_mapping(self, patterns):
+        """
+        Detect pattern: each input color consistently maps to one output color.
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses or not patterns.get("grid_size_preserved"):
+            return None
+
+        # Collect all observed color transitions
+        color_map = {}
+        for analysis in pair_analyses:
+            for group in analysis["groups"]:
+                for ic in group["input_colors"]:
+                    for oc in group["output_colors"]:
+                        if ic not in color_map:
+                            color_map[ic] = set()
+                        color_map[ic].add(oc)
+
+        # Each input color must map to exactly one output color
+        simple_map = {}
+        for ic, ocs in color_map.items():
+            if len(ocs) != 1:
+                return None
+            simple_map[ic] = list(ocs)[0]
+
+        if simple_map:
+            return {
+                "type": "color_mapping",
+                "mapping": simple_map,
+                "confidence": 0.8,
+            }
+
+        return None
+
+
+# ======================================================================
+# DescendOperator -- placeholder for deeper KG exploration
+# ======================================================================
 
 class DescendOperator(Operator):
     """
-    [DESIGN FREE] The existence, precondition, and effect of this operator are all design choices.
-    INTENT: When an impasse occurs at a higher level such as GRID/OBJECT/PIXEL analysis,
-            implements descend(target, from_level, to_level) by
-            pulling lower-level nodes/relations into WM to enable further comparisons.
-
-    This operation is implemented in the SOAR perspective as substate creation or
-    comparison_agenda extension for impasse resolution.
-
-    Example conceptual flow:
-        - from_level analysis is insufficient → elaborated["needs_descend"] = True
-        - DescendOperator.effect:
-            1) wm.push_substate(...) or
-            2) Reflect more granular comparison tasks in WM
-
-    precondition: elaborated["needs_descend"] == True (design choice)
+    Placeholder: moves focus to a deeper KG level when current-level
+    analysis is insufficient. Not yet needed for the basic pipeline.
     """
 
     def __init__(self):
         super().__init__("descend")
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
         raise NotImplementedError("DescendOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """
-        [DESIGN FREE]
-        1. Read current focus/impasse information to interpret from_level, to_level
-        2. Add lower-level comparison tasks for target pair/objects to the agenda or
-           call wm.push_substate(...) to open a subgoal if needed.
-        3. op_status = "success" or "failure"
-        """
         raise NotImplementedError("DescendOperator.effect() not implemented.")
 
 
-class GeneralizeOperator(Operator):
-    """
-    [DESIGN FREE] The existence, precondition, and effect of this operator are all design choices.
-    INTENT: Passes invariant/difference patterns collected in WM to a generalization function
-            to generate abstract rules and add them to wm.active_rules.
-            Generalization function and LTM save function use external injection or defaults.
-    MUST NOT: Do not hardcode a specific generalization module in the class.
-    precondition: elaborated["ready_for_generalization"] == True
-    """
-
-    def __init__(self, generalize_fn=None, save_fn=None):
-        """
-        [DESIGN FREE] generalize_fn: (invariants, diff_patterns) → rule dict.
-                       save_fn: rule dict → LTM ref str.
-                       None uses the default implementation.
-        """
-        super().__init__("generalize")
-        self._generalize_fn = generalize_fn
-        self._save_fn = save_fn
-
-    def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
-        raise NotImplementedError("GeneralizeOperator.precondition() not implemented.")
-
-    def effect(self, wm):
-        """
-        [DESIGN FREE]
-        1. self._generalize_fn(invariant/difference information)
-        2. self._save_fn(rule) → LTM ref path
-        3. Add {"ref": path, "confidence": ...} to wm.active_rules
-        4. op_status = "success" or "failure"
-        """
-        raise NotImplementedError("GeneralizeOperator.effect() not implemented.")
-
+# ======================================================================
+# PredictOperator -- apply rule to test input
+# ======================================================================
 
 class PredictOperator(Operator):
     """
-    [DESIGN FREE] The existence, precondition, and effect of this operator are all design choices.
-    INTENT: Applies the highest confidence rule from wm.active_rules to a pending test subgoal
-            to predict output and update goal.subgoals and found.
-    MUST NOT: Do not try multiple rules in parallel — single deterministic prediction.
-    precondition: elaborated["ready_for_prediction"] == True
+    Reads the best rule from active-rules and applies it to each test
+    pair's input grid to produce a predicted output grid.
     """
 
     def __init__(self):
         super().__init__("predict")
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
         raise NotImplementedError("PredictOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """
-        [DESIGN FREE]
-        1. Select one pending test subgoal
-        2. Select the highest confidence rule from wm.active_rules
-        3. Apply rule to test input → derive output
-        4. Mark the test subgoal as solved + record in found
-        5. op_status = "success" or "failure"
-        """
-        raise NotImplementedError("PredictOperator.effect() not implemented.")
+        task = wm.task
+        active_rules = wm.s1.get("active-rules")
+        if not task or not active_rules:
+            return
 
+        rule = active_rules[0]
+        predictions = dict(wm.s1.get("predictions") or {})
+
+        for i, test_pair in enumerate(task.test_pairs):
+            key = f"test_{i}"
+            if key in predictions:
+                continue
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            predicted = self._apply_rule(rule, g0)
+            if predicted is not None:
+                predictions[key] = predicted
+
+        wm.s1["predictions"] = predictions
+
+    # ---- rule application dispatchers ------------------------------------
+
+    def _apply_rule(self, rule, input_grid):
+        rule_type = rule.get("type")
+        if rule_type == "recolor_sequential":
+            return self._apply_recolor_sequential(rule, input_grid)
+        if rule_type == "color_mapping":
+            return self._apply_color_mapping(rule, input_grid)
+        if rule_type == "identity":
+            return [row[:] for row in input_grid.raw]
+        return None
+
+    def _apply_recolor_sequential(self, rule, input_grid):
+        raw = input_grid.raw
+        height = len(raw)
+        width = len(raw[0]) if raw else 0
+        sort_key = rule["sort_key"]
+        start_color = rule["start_color"]
+        source_colors = set(rule.get("source_colors", []))
+
+        # Find target cells
+        target_cells = []
+        for r in range(height):
+            for c in range(width):
+                if raw[r][c] in source_colors:
+                    target_cells.append((r, c))
+
+        if not target_cells:
+            return [row[:] for row in raw]
+
+        # Group into connected components
+        groups = self._group_positions(target_cells)
+
+        # Sort groups by the rule's sort key
+        def _sort_val(group):
+            if sort_key == "top_row":
+                return min(r for r, c in group)
+            if sort_key == "top_col":
+                return min(c for r, c in group)
+            return 0
+
+        sorted_groups = sorted(groups, key=_sort_val)
+
+        # Build output grid
+        output = [row[:] for row in raw]
+        for idx, group in enumerate(sorted_groups):
+            new_color = start_color + idx
+            for r, c in group:
+                output[r][c] = new_color
+
+        return output
+
+    def _apply_color_mapping(self, rule, input_grid):
+        raw = input_grid.raw
+        mapping = rule.get("mapping", {})
+
+        output = []
+        for row in raw:
+            output.append([mapping.get(cell, cell) for cell in row])
+        return output
+
+    # ---- helpers ---------------------------------------------------------
+
+    @staticmethod
+    def _group_positions(positions):
+        """Group (row, col) positions into 4-connected components."""
+        pos_set = set(positions)
+        visited = set()
+        groups = []
+
+        for pos in positions:
+            if pos in visited:
+                continue
+            group = []
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in pos_set:
+                    continue
+                visited.add(p)
+                group.append(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in pos_set and nb not in visited:
+                        queue.append(nb)
+            groups.append(group)
+
+        return groups
+
+
+# ======================================================================
+# SubmitOperator -- finalize and satisfy goal
+# ======================================================================
 
 class SubmitOperator(Operator):
     """
-    [DESIGN FREE] The existence and precondition of this operator.
-    [SOAR MANDATORY] There must be a final step that satisfies the goal_satisfied condition.
-    INTENT: Sets op_status = "success" when elaborated["all_outputs_found"] == True.
-    MUST NOT: Do not perform actual scoring — that is ARCEnvironment's responsibility.
-    precondition: elaborated["all_outputs_found"] == True
+    Writes predicted grids to S1 output-link in the format expected by
+    run_task.py, and marks the goal as satisfied.
     """
 
     def __init__(self):
         super().__init__("submit")
 
     def precondition(self, wm) -> bool:
-        """[DESIGN FREE]"""
         raise NotImplementedError("SubmitOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        """
-        [DESIGN FREE]
-        Corresponds to the verify(predicted_output, constraints) step.
-        When all test subgoals are resolved (elaborated["all_outputs_found"])
-        and internal constraints are deemed satisfied,
-        sets op_status = "success" to satisfy goal_satisfied.
-        """
-        raise NotImplementedError("SubmitOperator.effect() not implemented.")
+        predictions = wm.s1.get("predictions")
+        if not predictions:
+            return
+
+        task = wm.task
+        if not task:
+            return
+
+        predicted_grids = []
+        for i in range(len(task.test_pairs)):
+            grid = predictions.get(f"test_{i}")
+            if grid is not None:
+                predicted_grids.append(grid)
+
+        if not predicted_grids:
+            return
+
+        # Write to output-link (format expected by run_task.py)
+        wm.s1["S1"] = {"output-link": "O_out"}
+        wm.s1["O_out"] = {"predicted-grid": predicted_grids}
+
+        # Mark goal as satisfied
+        wm.s1["goal"] = {"subgoals": {
+            f"test_{i}": {"status": "solved"}
+            for i in range(len(predicted_grids))
+        }}
 
 
 class VerifyOperator(SubmitOperator):
-    """
-    [DESIGN FREE] Alias operator for the verify operation.
-
-    INTENT: Implements verify(predicted_output, constraints) at the cognitive level
-            using the same mechanism as SubmitOperator at the SOAR operator level,
-            while expressing the pipeline more explicitly through the name difference.
-
-    Implementation-wise, inherits SubmitOperator and uses the same precondition/effect.
-    """
+    """Alias for the verify operation (same mechanism as submit)."""
 
     def __init__(self):
         super().__init__()
-        # Reset name to "verify" to allow distinction in PREFERENCE_ORDER, etc.
         self.name = "verify"

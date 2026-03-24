@@ -1,7 +1,7 @@
 #!/bin/bash
 OUTPUT=$(cat)
 STATE_FILE=".claude/ralph-state.txt"
-MAX_ITER=30
+MAX_ITER=1
 
 # Don't loop if no PROMPT.md exists
 if [ ! -f "PROMPT.md" ]; then
