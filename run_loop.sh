@@ -1,7 +1,12 @@
 #!/bin/bash
 
-# Windows PATH fix
-export PATH="/c/Program Files/nodejs:/c/Users/Sir_K/anaconda3:/c/Users/Sir_K/AppData/Roaming/npm:$PATH"
+# Windows PATH fix — detect WSL vs Git Bash
+if [ -d "/mnt/c" ]; then
+    PRE="/mnt/c"
+else
+    PRE="/c"
+fi
+export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/Sir_K/AppData/Roaming/npm:${PRE}/Users/Sir_K/AppData/Local/Microsoft/WindowsApps:$PATH"
 
 # ============================================================
 # SOAR-ARC Infinite Loop
@@ -144,8 +149,7 @@ PROMPT
     git add -A
     if ! git diff --cached --quiet; then
         git commit -m "Session $SESSION: $SCORE_LINE ($TIMESTAMP)" 2>&1 | tee -a "$PIPELINE_LOG"
-        git push origin "$BRANCH" 2>&1 | tee -a "$PIPELINE_LOG"
-        log "Pushed."
+        GIT_TERMINAL_PROMPT=0 git push origin "$BRANCH" 2>&1 | tee -a "$PIPELINE_LOG" && log "Pushed." || log "Push skipped (no credentials cached)."
     else
         log "No changes."
     fi
