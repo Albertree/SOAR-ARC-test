@@ -416,3 +416,134 @@
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 03:49
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 30 -> 30 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_034823.log
+
+---
+## Learning Loop -- 2026-03-25 03:50
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 30 -> 30 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_034955.log
+
+---
+## Learning Loop -- 2026-03-25 03:54
+
+- Split: training, Tasks: 40
+- Correct: 2 / 40 (5.0%)
+- Rules: 30 -> 36 (+6 learned)
+- Stored rule hits: 1
+- Time: 181s
+- Log: logs/learn_20260325_035120.log
+
+---
+## Learning Loop -- 2026-03-25 04:02
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 36 -> 36 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_040107.log
+
+---
+## Learning Loop -- 2026-03-25 04:04
+
+- Split: training, Tasks: 40
+- Correct: 4 / 40 (10.0%)
+- Rules: 36 -> 42 (+6 learned)
+- Stored rule hits: 2
+- Time: 154s
+- Log: logs/learn_20260325_040218.log
+
+---
+## Learning Loop -- 2026-03-25 04:07
+
+- Split: training, Tasks: 40
+- Correct: 4 / 40 (10.0%)
+- Rules: 42 -> 46 (+4 learned)
+- Stored rule hits: 4
+- Time: 154s
+- Log: logs/learn_20260325_040500.log
+
+---
+## Learning Loop -- 2026-03-25 04:08
+
+- Split: training, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 46 -> 46 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260325_040846.log
+
+---
+## Learning Loop -- 2026-03-25 04:12
+
+- Split: training, Tasks: 40
+- Correct: 4 / 40 (10.0%)
+- Rules: 46 -> 50 (+4 learned)
+- Stored rule hits: 4
+- Time: 153s
+- Log: logs/learn_20260325_040934.log
+
+---
+## Learning Loop -- 2026-03-25 04:14
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 50 -> 50 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_041358.log
+
+---
+## Learning Loop -- 2026-03-25 04:17
+
+- Split: training, Tasks: 40
+- Correct: 5 / 40 (12.5%)
+- Rules: 50 -> 55 (+5 learned)
+- Stored rule hits: 4
+- Time: 155s
+- Log: logs/learn_20260325_041506.log
+
+---
+## Session 8 (continued) Analysis — 2026-03-25 04:17
+
+### Strategies added (agent/active_operators.py)
+
+1. **cross_decorator** — isolated single-color pixels get cross (+) or diagonal (×) decorations
+   - `_try_cross_decorator`: learns color→(pattern_type, deco_color) mapping from first pair; validates by building predicted output for all training pairs
+   - `_apply_cross_decorator`: copies input, places decoration offsets (cross or diagonal) around each decorated color pixel
+
+2. **tile_mirror** — output is 2× input dimensions with point-symmetric 2×2 tiling
+   - `_try_tile_mirror`: verifies output = 2×height, 2×width; checks four quadrants: rot180 (top-left), vflip (top-right), hflip (bottom-left), original (bottom-right)
+   - `_apply_tile_mirror`: constructs 2×2 tiling from the four transformations
+
+3. **mask_nor** — two grid sections separated by uniform-color divider row; output = NOR
+   - `_try_mask_nor`: finds divider row that splits grid into two equal halves matching output height; verifies result_color appears where both sections are 0
+   - `_apply_mask_nor`: finds equal-split divider, outputs result_color at NOR positions
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 0ca9ddb6 | INCORRECT (identity) | CORRECT | cross_decorator |
+| 0c786b71 | INCORRECT (identity) | CORRECT | tile_mirror |
+| 0c9aba6e | INCORRECT (identity) | CORRECT | mask_nor |
+
+**Score: 20/20 (100.0%) maintained on original 20-task set**
+**Broader test (40 tasks, seed 42): 2/40 → 5/40**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

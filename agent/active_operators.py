@@ -643,6 +643,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_block_count_gravity(task)
 
+        # Strategy 18: cross/diagonal decoration around isolated pixels
+        if rule is None:
+            rule = self._try_cross_decorator(task)
+
+        # Strategy 19: 2x2 point-symmetric tiling (double dimensions)
+        if rule is None:
+            rule = self._try_tile_mirror(task)
+
+        # Strategy 20: boolean NOR of two grid sections split by divider row
+        if rule is None:
+            rule = self._try_mask_nor(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2796,6 +2808,223 @@ class GeneralizeOperator(Operator):
 
         return {"type": "block_count_gravity", "confidence": 1.0}
 
+    # ---- strategy: cross/diagonal decorator around isolated pixels ------
+
+    def _try_cross_decorator(self, task):
+        """
+        Detect: isolated single-color pixels on a background grid.
+        Some colors get cross (+) decorations, others get diagonal (×)
+        decorations with a specific color.  Remaining colors stay unchanged.
+        Category: marker decoration.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        CROSS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        DIAG = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+
+        # Learn decoration rules from first pair
+        g0, g1 = pairs[0].input_grid, pairs[0].output_grid
+        if g0 is None or g1 is None:
+            return None
+        raw0, raw1 = g0.raw, g1.raw
+        h, w = len(raw0), len(raw0[0])
+        if len(raw1) != h or len(raw1[0]) != w:
+            return None
+
+        # All non-zero cells must be isolated single pixels
+        pixels = []
+        for r in range(h):
+            for c in range(w):
+                if raw0[r][c] != 0:
+                    pixels.append((r, c, raw0[r][c]))
+        if not pixels:
+            return None
+
+        # For each color, determine decoration type from first occurrence
+        deco_map = {}
+        for r, c, col in pixels:
+            if col in deco_map:
+                continue
+            found = False
+            for pat_name, offsets in [("cross", CROSS), ("diagonal", DIAG)]:
+                deco_color = None
+                ok = True
+                checked = 0
+                for dr, dc in offsets:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < h and 0 <= nc < w and raw0[nr][nc] == 0:
+                        val = raw1[nr][nc]
+                        if val == 0:
+                            ok = False
+                            break
+                        if deco_color is None:
+                            deco_color = val
+                        elif val != deco_color:
+                            ok = False
+                            break
+                        checked += 1
+                if ok and deco_color is not None and checked > 0:
+                    deco_map[col] = (pat_name, deco_color)
+                    found = True
+                    break
+            if not found:
+                deco_map[col] = ("none", 0)
+
+        if not any(d[0] != "none" for d in deco_map.values()):
+            return None
+
+        # Validate: build predicted output and compare for ALL pairs
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            ph, pw = len(ri), len(ri[0])
+            if len(ro) != ph or len(ro[0]) != pw:
+                return None
+            pred = [row[:] for row in ri]
+            for r2 in range(ph):
+                for c2 in range(pw):
+                    col = ri[r2][c2]
+                    if col != 0 and col in deco_map:
+                        pat, dcol = deco_map[col]
+                        if pat == "cross":
+                            offsets = CROSS
+                        elif pat == "diagonal":
+                            offsets = DIAG
+                        else:
+                            continue
+                        for dr, dc in offsets:
+                            nr, nc = r2 + dr, c2 + dc
+                            if 0 <= nr < ph and 0 <= nc < pw and pred[nr][nc] == 0:
+                                pred[nr][nc] = dcol
+            if pred != ro:
+                return None
+
+        return {
+            "type": "cross_decorator",
+            "deco_map": {str(k): list(v) for k, v in deco_map.items()},
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: 2x2 point-symmetric tiling ----------------------------
+
+    def _try_tile_mirror(self, task):
+        """
+        Detect: output dimensions are exactly 2x input dimensions.
+        Output is a 2x2 tiling with point symmetry:
+          top-left = 180° rotation, top-right = vertical flip,
+          bottom-left = horizontal flip, bottom-right = original.
+        Category: symmetry tiling / grid doubling.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if oh != 2 * h or ow != 2 * w:
+                return None
+
+            rot180 = [row[::-1] for row in ri[::-1]]
+            vflip = ri[::-1]
+            hflip = [row[::-1] for row in ri]
+
+            for r in range(h):
+                for c in range(w):
+                    if ro[r][c] != rot180[r][c]:
+                        return None
+                    if ro[r][w + c] != vflip[r][c]:
+                        return None
+                    if ro[h + r][c] != hflip[r][c]:
+                        return None
+                    if ro[h + r][w + c] != ri[r][c]:
+                        return None
+
+        return {"type": "tile_mirror", "confidence": 1.0}
+
+    # ---- strategy: boolean NOR of two grid sections ----------------------
+
+    def _try_mask_nor(self, task):
+        """
+        Detect: input has two equal-sized sections separated by a uniform-
+        color divider row.  Output cell = result_color where BOTH sections
+        have 0 (NOR), else 0.
+        Category: boolean grid operations / set difference.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        result_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Find divider row: uniform non-zero row that splits grid into
+            # two equal halves whose height matches the output height
+            div_row = None
+            for r in range(h):
+                vals = set(ri[r])
+                if len(vals) == 1 and ri[r][0] != 0:
+                    t = ri[:r]
+                    b = ri[r + 1:]
+                    if len(t) == len(b) and len(t) == oh and w == ow:
+                        div_row = r
+                        break
+            if div_row is None:
+                return None
+
+            top = ri[:div_row]
+            bottom = ri[div_row + 1:]
+
+            # Determine result color from output
+            rc = None
+            for r in range(oh):
+                for c in range(ow):
+                    if ro[r][c] != 0:
+                        if rc is None:
+                            rc = ro[r][c]
+                        elif ro[r][c] != rc:
+                            return None
+            if rc is None:
+                return None
+            if result_color is None:
+                result_color = rc
+            elif rc != result_color:
+                return None
+
+            # Verify NOR logic
+            for r in range(oh):
+                for c in range(ow):
+                    expected = result_color if (top[r][c] == 0 and bottom[r][c] == 0) else 0
+                    if ro[r][c] != expected:
+                        return None
+
+        return {
+            "type": "mask_nor",
+            "result_color": result_color,
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -2903,6 +3132,12 @@ class PredictOperator(Operator):
             return self._apply_anchor_template_place(rule, input_grid)
         if rule_type == "block_count_gravity":
             return self._apply_block_count_gravity(rule, input_grid)
+        if rule_type == "cross_decorator":
+            return self._apply_cross_decorator(rule, input_grid)
+        if rule_type == "tile_mirror":
+            return self._apply_tile_mirror(rule, input_grid)
+        if rule_type == "mask_nor":
+            return self._apply_mask_nor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3387,6 +3622,72 @@ class PredictOperator(Operator):
 
     def _apply_block_count_gravity(self, rule, input_grid):
         return _block_gravity_predict(input_grid.raw)
+
+    def _apply_cross_decorator(self, rule, input_grid):
+        CROSS = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+        DIAG = [(-1, -1), (-1, 1), (1, -1), (1, 1)]
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        result = [row[:] for row in raw]
+        deco_map = {}
+        for k, v in rule["deco_map"].items():
+            deco_map[int(k)] = (v[0], v[1])
+        for r in range(h):
+            for c in range(w):
+                col = raw[r][c]
+                if col != 0 and col in deco_map:
+                    pat, dcol = deco_map[col]
+                    if pat == "cross":
+                        offsets = CROSS
+                    elif pat == "diagonal":
+                        offsets = DIAG
+                    else:
+                        continue
+                    for dr, dc in offsets:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < h and 0 <= nc < w and result[nr][nc] == 0:
+                            result[nr][nc] = dcol
+        return result
+
+    def _apply_tile_mirror(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        rot180 = [row[::-1] for row in raw[::-1]]
+        vflip = raw[::-1]
+        hflip = [row[::-1] for row in raw]
+        result = [[0] * (2 * w) for _ in range(2 * h)]
+        for r in range(h):
+            for c in range(w):
+                result[r][c] = rot180[r][c]
+                result[r][w + c] = vflip[r][c]
+                result[h + r][c] = hflip[r][c]
+                result[h + r][w + c] = raw[r][c]
+        return result
+
+    def _apply_mask_nor(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        rc = rule["result_color"]
+        div_row = None
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and raw[r][0] != 0:
+                t = raw[:r]
+                b = raw[r + 1:]
+                if len(t) == len(b) and len(t) > 0:
+                    div_row = r
+                    break
+        if div_row is None:
+            return None
+        top = raw[:div_row]
+        bottom = raw[div_row + 1:]
+        oh = len(top)
+        result = [[0] * w for _ in range(oh)]
+        for r in range(oh):
+            for c in range(w):
+                if top[r][c] == 0 and bottom[r][c] == 0:
+                    result[r][c] = rc
+        return result
 
 
 # ======================================================================
