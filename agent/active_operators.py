@@ -289,6 +289,7 @@ class GeneralizeOperator(Operator):
         if not patterns:
             return
 
+        task = wm.task
         rule = None
 
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
@@ -297,6 +298,18 @@ class GeneralizeOperator(Operator):
         # Strategy 2: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
+
+        # Strategy 3: recolor connected components by size rank
+        if rule is None:
+            rule = self._try_recolor_by_size(patterns)
+
+        # Strategy 4: scale up (each cell -> NxN block)
+        if rule is None:
+            rule = self._try_scale_up(task)
+
+        # Strategy 5: flip and stack (mirror reflection)
+        if rule is None:
+            rule = self._try_flip_stack(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -397,6 +410,164 @@ class GeneralizeOperator(Operator):
 
         return None
 
+    # ---- strategy: recolor by component size ----------------------------
+
+    def _try_recolor_by_size(self, patterns):
+        """
+        Detect pattern: all objects share one source color; each connected
+        component is recolored based on its size (cell count).  Components
+        of the same size receive the same output color.
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses or not patterns.get("grid_size_preserved"):
+            return None
+
+        source_colors = set()
+        for analysis in pair_analyses:
+            if analysis["num_groups"] == 0:
+                return None
+            for g in analysis["groups"]:
+                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
+                    return None
+                source_colors.add(g["input_colors"][0])
+
+        if len(source_colors) != 1:
+            return None
+        source_color = list(source_colors)[0]
+
+        # Need at least 2 distinct sizes (otherwise color_mapping suffices)
+        all_sizes = set()
+        for analysis in pair_analyses:
+            for g in analysis["groups"]:
+                all_sizes.add(g["cell_count"])
+        if len(all_sizes) < 2:
+            return None
+
+        # Build size -> color mapping; must be consistent across all pairs
+        size_to_color = {}
+        for analysis in pair_analyses:
+            for g in analysis["groups"]:
+                size = g["cell_count"]
+                color = g["output_colors"][0]
+                if size in size_to_color:
+                    if size_to_color[size] != color:
+                        return None
+                else:
+                    size_to_color[size] = color
+
+        # Different sizes must map to different colors
+        if len(set(size_to_color.values())) != len(size_to_color):
+            return None
+
+        return {
+            "type": "recolor_by_size",
+            "source_color": source_color,
+            "size_to_color": {str(k): v for k, v in size_to_color.items()},
+            "confidence": 0.9,
+        }
+
+    # ---- strategy: scale up (pixel doubling / tripling) -----------------
+
+    def _try_scale_up(self, task):
+        """
+        Detect pattern: output is an integer scale of the input -- each
+        input cell becomes an NxN block of the same color.
+        """
+        if task is None:
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        factors = set()
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            h0, w0 = len(g0.raw), len(g0.raw[0]) if g0.raw else 0
+            h1, w1 = len(g1.raw), len(g1.raw[0]) if g1.raw else 0
+            if h0 == 0 or w0 == 0:
+                return None
+            if h1 % h0 != 0 or w1 % w0 != 0:
+                return None
+            fh, fw = h1 // h0, w1 // w0
+            if fh != fw or fh <= 1:
+                return None
+            factors.add(fh)
+
+        if len(factors) != 1:
+            return None
+        factor = list(factors)[0]
+
+        # Verify every cell maps to a uniform NxN block
+        for pair in pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            for r in range(len(raw_in)):
+                for c in range(len(raw_in[0])):
+                    expected = raw_in[r][c]
+                    for dr in range(factor):
+                        for dc in range(factor):
+                            if raw_out[r * factor + dr][c * factor + dc] != expected:
+                                return None
+
+        return {
+            "type": "scale_up",
+            "factor": factor,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: flip and stack (mirror reflection) -------------------
+
+    def _try_flip_stack(self, task):
+        """
+        Detect pattern: output is the input stacked with its mirror image
+        either vertically (height doubles) or horizontally (width doubles).
+        """
+        if task is None:
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        if self._check_flip_stack_axis(pairs, "vertical"):
+            return {"type": "flip_stack", "axis": "vertical", "confidence": 1.0}
+        if self._check_flip_stack_axis(pairs, "horizontal"):
+            return {"type": "flip_stack", "axis": "horizontal", "confidence": 1.0}
+        return None
+
+    @staticmethod
+    def _check_flip_stack_axis(pairs, axis):
+        for pair in pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+
+            if axis == "vertical":
+                if oh != 2 * h or ow != w:
+                    return False
+                for r in range(h):
+                    for c in range(w):
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return False
+                        if raw_out[h + r][c] != raw_in[h - 1 - r][c]:
+                            return False
+            else:  # horizontal
+                if oh != h or ow != 2 * w:
+                    return False
+                for r in range(h):
+                    for c in range(w):
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return False
+                        if raw_out[r][w + c] != raw_in[r][w - 1 - c]:
+                            return False
+        return True
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -464,6 +635,12 @@ class PredictOperator(Operator):
             return self._apply_recolor_sequential(rule, input_grid)
         if rule_type == "color_mapping":
             return self._apply_color_mapping(rule, input_grid)
+        if rule_type == "recolor_by_size":
+            return self._apply_recolor_by_size(rule, input_grid)
+        if rule_type == "scale_up":
+            return self._apply_scale_up(rule, input_grid)
+        if rule_type == "flip_stack":
+            return self._apply_flip_stack(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -516,6 +693,59 @@ class PredictOperator(Operator):
         for row in raw:
             output.append([mapping.get(cell, cell) for cell in row])
         return output
+
+    def _apply_recolor_by_size(self, rule, input_grid):
+        raw = input_grid.raw
+        source_color = rule["source_color"]
+        size_to_color = {int(k): v for k, v in rule["size_to_color"].items()}
+
+        height = len(raw)
+        width = len(raw[0]) if raw else 0
+
+        target_cells = [
+            (r, c)
+            for r in range(height)
+            for c in range(width)
+            if raw[r][c] == source_color
+        ]
+        if not target_cells:
+            return [row[:] for row in raw]
+
+        groups = self._group_positions(target_cells)
+        output = [row[:] for row in raw]
+
+        for group in groups:
+            size = len(group)
+            color = size_to_color.get(size)
+            if color is None:
+                # Nearest known size as fallback
+                known = sorted(size_to_color.keys())
+                closest = min(known, key=lambda s: abs(s - size))
+                color = size_to_color[closest]
+            for r, c in group:
+                output[r][c] = color
+        return output
+
+    def _apply_scale_up(self, rule, input_grid):
+        raw = input_grid.raw
+        factor = rule["factor"]
+        output = []
+        for row in raw:
+            new_row = []
+            for cell in row:
+                new_row.extend([cell] * factor)
+            for _ in range(factor):
+                output.append(new_row[:])
+        return output
+
+    def _apply_flip_stack(self, rule, input_grid):
+        raw = input_grid.raw
+        axis = rule["axis"]
+        if axis == "vertical":
+            return [row[:] for row in raw] + [row[:] for row in reversed(raw)]
+        if axis == "horizontal":
+            return [row + row[::-1] for row in raw]
+        return [row[:] for row in raw]
 
     # ---- helpers ---------------------------------------------------------
 
