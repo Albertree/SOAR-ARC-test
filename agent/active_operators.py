@@ -587,6 +587,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_flood_fill_interior(task)
 
+        # Strategy 26: noise removal -- keep only cells in 2x2+ solid rectangles
+        if rule is None:
+            rule = self._try_noise_remove_rect(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -666,6 +670,14 @@ class GeneralizeOperator(Operator):
         # Strategy 23: rotation quad tile (0°, 90°CCW, 180°, 90°CW)
         if rule is None:
             rule = self._try_rotation_quad_tile(task)
+
+        # Strategy 24: diagonal line extension from 2x2 block
+        if rule is None:
+            rule = self._try_diagonal_extend(task)
+
+        # Strategy 25: 2x2 core quadrant fill (diag-opposite color in each quadrant)
+        if rule is None:
+            rule = self._try_core_quadrant_fill(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -3274,6 +3286,225 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: diagonal line extension from 2x2 block ----------------
+
+    def _try_diagonal_extend(self, task):
+        """
+        Detect: a 2x2 block of one non-zero color with 1+ single pixels
+        diagonally adjacent to its corners.  Each tail pixel is extended
+        along the same diagonal direction until hitting the grid edge.
+        Category: directional line continuation / diagonal propagation.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Collect non-zero cells and ensure single color
+            cells = []
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        cells.append((r, c))
+                        colors.add(ri[r][c])
+            if len(colors) != 1 or len(cells) < 5:
+                return None
+            color = next(iter(colors))
+
+            # Find a 2x2 block
+            block = None
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    if (ri[r][c] == color and ri[r][c + 1] == color and
+                            ri[r + 1][c] == color and ri[r + 1][c + 1] == color):
+                        block = (r, c)
+                        break
+                if block:
+                    break
+            if block is None:
+                return None
+
+            br, bc = block
+            block_cells = {(br, bc), (br, bc + 1), (br + 1, bc), (br + 1, bc + 1)}
+
+            # Diagonal corners map to directions
+            corners = {
+                (br - 1, bc - 1): (-1, -1),
+                (br - 1, bc + 2): (-1, 1),
+                (br + 2, bc - 1): (1, -1),
+                (br + 2, bc + 2): (1, 1),
+            }
+
+            tails = [(r, c) for r, c in cells if (r, c) not in block_cells]
+            if not tails:
+                return None
+            for tr, tc in tails:
+                if (tr, tc) not in corners:
+                    return None
+
+            # Build predicted output
+            predicted = [row[:] for row in ri]
+            for tr, tc in tails:
+                dr, dc = corners[(tr, tc)]
+                nr, nc = tr + dr, tc + dc
+                while 0 <= nr < h and 0 <= nc < w:
+                    predicted[nr][nc] = color
+                    nr += dr
+                    nc += dc
+
+            if predicted != ro:
+                return None
+
+        return {"type": "diagonal_extend", "confidence": 1.0}
+
+    # ---- strategy: 2x2 core quadrant fill --------------------------------
+
+    def _try_core_quadrant_fill(self, task):
+        """
+        Detect: a single 2x2 block of 4 distinct non-zero colors in an
+        otherwise empty grid.  Each of the 4 surrounding quadrants gets a
+        2x2 fill (clipped to grid) of the diagonally opposite core color.
+        Category: color reflection / quadrant projection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Find the unique 2x2 block of 4 distinct non-zero colors
+            block = None
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    vals = [ri[r][c], ri[r][c + 1], ri[r + 1][c], ri[r + 1][c + 1]]
+                    if all(v != 0 for v in vals) and len(set(vals)) == 4:
+                        block = (r, c)
+                        break
+                if block:
+                    break
+            if block is None:
+                return None
+
+            # Verify only 4 non-zero cells in input
+            nz = sum(1 for r in range(h) for c in range(w) if ri[r][c] != 0)
+            if nz != 4:
+                return None
+
+            br, bc = block
+            core_tl = ri[br][bc]
+            core_tr = ri[br][bc + 1]
+            core_bl = ri[br + 1][bc]
+            core_br = ri[br + 1][bc + 1]
+
+            # Build predicted output
+            predicted = [[0] * w for _ in range(h)]
+            predicted[br][bc] = core_tl
+            predicted[br][bc + 1] = core_tr
+            predicted[br + 1][bc] = core_bl
+            predicted[br + 1][bc + 1] = core_br
+
+            # TL quadrant fill with core_br (diag opposite)
+            for r in range(max(0, br - 2), br):
+                for c in range(max(0, bc - 2), bc):
+                    predicted[r][c] = core_br
+            # TR quadrant fill with core_bl
+            for r in range(max(0, br - 2), br):
+                for c in range(bc + 2, min(w, bc + 4)):
+                    predicted[r][c] = core_bl
+            # BL quadrant fill with core_tr
+            for r in range(br + 2, min(h, br + 4)):
+                for c in range(max(0, bc - 2), bc):
+                    predicted[r][c] = core_tr
+            # BR quadrant fill with core_tl
+            for r in range(br + 2, min(h, br + 4)):
+                for c in range(bc + 2, min(w, bc + 4)):
+                    predicted[r][c] = core_tl
+
+            if predicted != ro:
+                return None
+
+        return {"type": "core_quadrant_fill", "confidence": 1.0}
+
+    # ---- strategy: noise removal -- keep rectangular blocks only ----------
+
+    def _try_noise_remove_rect(self, task):
+        """
+        Detect: single non-zero color forms solid rectangular blocks plus
+        scattered isolated pixels (noise).  Output removes all pixels that
+        are not part of any 2x2+ solid block of the same color.
+        Category: noise removal / rectangular component filtering.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Single non-zero color
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        colors.add(ri[r][c])
+            if len(colors) != 1:
+                return None
+
+            # Keep cells that belong to at least one 2x2 block
+            keep = set()
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    v = ri[r][c]
+                    if (v != 0 and ri[r][c + 1] == v and
+                            ri[r + 1][c] == v and ri[r + 1][c + 1] == v):
+                        keep.add((r, c))
+                        keep.add((r, c + 1))
+                        keep.add((r + 1, c))
+                        keep.add((r + 1, c + 1))
+
+            # Need at least one rectangle and at least one removed pixel
+            removed = [(r, c) for r in range(h) for c in range(w)
+                        if ri[r][c] != 0 and (r, c) not in keep]
+            if not keep or not removed:
+                return None
+
+            # Verify output
+            predicted = [[0] * w for _ in range(h)]
+            for r, c in keep:
+                predicted[r][c] = ri[r][c]
+            if predicted != ro:
+                return None
+
+        return {"type": "noise_remove_rect", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -3393,6 +3624,12 @@ class PredictOperator(Operator):
             return self._apply_flood_fill_interior(rule, input_grid)
         if rule_type == "rotation_quad_tile":
             return self._apply_rotation_quad_tile(rule, input_grid)
+        if rule_type == "diagonal_extend":
+            return self._apply_diagonal_extend(rule, input_grid)
+        if rule_type == "core_quadrant_fill":
+            return self._apply_core_quadrant_fill(rule, input_grid)
+        if rule_type == "noise_remove_rect":
+            return self._apply_noise_remove_rect(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4023,6 +4260,107 @@ class PredictOperator(Operator):
             for c in range(w):
                 if top[r][c] == 0 and bottom[r][c] == 0:
                     result[r][c] = rc
+        return result
+
+    def _apply_diagonal_extend(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        color = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    color = raw[r][c]
+                    break
+            if color:
+                break
+        if color is None:
+            return None
+        block = None
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (raw[r][c] == color and raw[r][c + 1] == color and
+                        raw[r + 1][c] == color and raw[r + 1][c + 1] == color):
+                    block = (r, c)
+                    break
+            if block:
+                break
+        if block is None:
+            return None
+        br, bc = block
+        block_cells = {(br, bc), (br, bc + 1), (br + 1, bc), (br + 1, bc + 1)}
+        corners = {
+            (br - 1, bc - 1): (-1, -1),
+            (br - 1, bc + 2): (-1, 1),
+            (br + 2, bc - 1): (1, -1),
+            (br + 2, bc + 2): (1, 1),
+        }
+        result = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == color and (r, c) not in block_cells:
+                    if (r, c) in corners:
+                        dr, dc = corners[(r, c)]
+                        nr, nc = r + dr, c + dc
+                        while 0 <= nr < h and 0 <= nc < w:
+                            result[nr][nc] = color
+                            nr += dr
+                            nc += dc
+        return result
+
+    def _apply_core_quadrant_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        block = None
+        for r in range(h - 1):
+            for c in range(w - 1):
+                vals = [raw[r][c], raw[r][c + 1], raw[r + 1][c], raw[r + 1][c + 1]]
+                if all(v != 0 for v in vals) and len(set(vals)) == 4:
+                    block = (r, c)
+                    break
+            if block:
+                break
+        if block is None:
+            return None
+        br, bc = block
+        core_tl = raw[br][bc]
+        core_tr = raw[br][bc + 1]
+        core_bl = raw[br + 1][bc]
+        core_br = raw[br + 1][bc + 1]
+        result = [[0] * w for _ in range(h)]
+        result[br][bc] = core_tl
+        result[br][bc + 1] = core_tr
+        result[br + 1][bc] = core_bl
+        result[br + 1][bc + 1] = core_br
+        for r in range(max(0, br - 2), br):
+            for c in range(max(0, bc - 2), bc):
+                result[r][c] = core_br
+        for r in range(max(0, br - 2), br):
+            for c in range(bc + 2, min(w, bc + 4)):
+                result[r][c] = core_bl
+        for r in range(br + 2, min(h, br + 4)):
+            for c in range(max(0, bc - 2), bc):
+                result[r][c] = core_tr
+        for r in range(br + 2, min(h, br + 4)):
+            for c in range(bc + 2, min(w, bc + 4)):
+                result[r][c] = core_tl
+        return result
+
+    def _apply_noise_remove_rect(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        keep = set()
+        for r in range(h - 1):
+            for c in range(w - 1):
+                v = raw[r][c]
+                if (v != 0 and raw[r][c + 1] == v and
+                        raw[r + 1][c] == v and raw[r + 1][c + 1] == v):
+                    keep.add((r, c))
+                    keep.add((r, c + 1))
+                    keep.add((r + 1, c))
+                    keep.add((r + 1, c + 1))
+        result = [[0] * w for _ in range(h)]
+        for r, c in keep:
+            result[r][c] = raw[r][c]
         return result
 
 

@@ -660,3 +660,85 @@
 - Stored rule hits: 19
 - Time: 60s
 - Log: logs/learn_20260325_043324.log
+
+---
+## Learning Loop -- 2026-03-25 04:36
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 72 -> 72 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_043523.log
+
+---
+## Learning Loop -- 2026-03-25 04:38
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 72 -> 76 (+4 learned)
+- Stored rule hits: 22
+- Time: 122s
+- Log: logs/learn_20260325_043644.log
+
+---
+## Learning Loop -- 2026-03-25 04:49
+
+- Split: training, Tasks: 40
+- Correct: 25 / 40 (62.5%)
+- Rules: 76 -> 82 (+6 learned)
+- Stored rule hits: 22
+- Time: 120s
+- Log: logs/learn_20260325_044712.log
+
+---
+## Learning Loop -- 2026-03-25 04:52
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 82 -> 86 (+4 learned)
+- Stored rule hits: 24
+- Time: 117s
+- Log: logs/learn_20260325_045035.log
+
+---
+## Learning Loop -- 2026-03-25 04:53
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 86 -> 86 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_045238.log
+
+---
+## Session 10 Analysis — 2026-03-25 04:53
+
+### Strategies added (agent/active_operators.py)
+
+1. **diagonal_extend** — 2x2 block with diagonally adjacent single pixels; each tail pixel extended along its diagonal to grid edge
+   - `_try_diagonal_extend`: finds 2x2 block of single non-zero color, identifies tail pixels at diagonal corners, verifies extension against all training pairs
+   - `_apply_diagonal_extend`: locates 2x2 block and corner pixels, extends each along its diagonal direction
+
+2. **core_quadrant_fill** — single 2x2 block of 4 distinct colors; surrounding quadrants each get diagonally opposite core color as 2x2 fill
+   - `_try_core_quadrant_fill`: finds unique 2x2 block with 4 distinct non-zero colors, verifies quadrant fills (clipped to grid bounds) match output
+   - `_apply_core_quadrant_fill`: finds 2x2 core, places 2x2 fills of diag-opposite colors in each corner quadrant
+
+3. **noise_remove_rect** — single non-zero color with solid rectangular blocks plus scattered isolated pixels; removes all pixels not part of any 2x2+ solid block
+   - `_try_noise_remove_rect`: verifies single non-zero color, checks that keeping only 2x2-member cells matches output for all training pairs
+   - `_apply_noise_remove_rect`: scans for 2x2 blocks, keeps only cells belonging to at least one such block
+   - Placed before color_mapping in priority chain to prevent false positive matching
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 7ddcd7ec | INCORRECT (identity) | CORRECT | diagonal_extend |
+| 93b581b8 | INCORRECT (identity) | CORRECT | core_quadrant_fill |
+| 7f4411dc | INCORRECT (color_mapping) | CORRECT | noise_remove_rect |
+
+**Score on original 20-task set: 20/20 (100.0%) maintained**
+**Broader test (40 tasks): 23/40 (57.5%) → 26/40 (65.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
