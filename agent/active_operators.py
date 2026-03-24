@@ -595,6 +595,11 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_mirror_symmetric_recolor(task)
 
+        # Strategy 49: rect outline decorate (square outlines get color-2 corner marks)
+        # (must run before color_mapping to avoid false match)
+        if rule is None:
+            rule = self._try_rect_outline_decorate(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -762,6 +767,22 @@ class GeneralizeOperator(Operator):
         # Strategy 46: cross center mark (equidistant pair-cross intersections get marked with 4)
         if rule is None:
             rule = self._try_cross_center_mark(task)
+
+        # Strategy 47: corner L-extension (dots extend to nearest corner in L-shape)
+        if rule is None:
+            rule = self._try_corner_L_extend(task)
+
+        # Strategy 48: rotation quad tile 4x (NxN -> 4Nx4N with 2x2-repeated rotation quadrants)
+        if rule is None:
+            rule = self._try_rotation_quad_tile_4x(task)
+
+        # Strategy 49: rect outline decorate (square outlines get color-2 corner marks)
+        if rule is None:
+            rule = self._try_rect_outline_decorate(task)
+
+        # Strategy 50: most frequent cross color (find 4-centered crosses, output majority color)
+        if rule is None:
+            rule = self._try_most_frequent_cross_color(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -5451,6 +5472,331 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy 47: corner L-extension ---------------------------------
+
+    def _try_corner_L_extend(self, task):
+        """
+        Detect: sparse colored dots on a background grid. Each dot extends
+        its color to the nearest grid corner in an L-shape (row arm + column
+        arm toward that corner).
+        Category: directional point-to-edge expansion.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        from collections import Counter
+
+        ri0 = pairs[0].input_grid.raw
+        flat = [v for row in ri0 for v in row]
+        bg = Counter(flat).most_common(1)[0][0]
+
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if h != oh or w != ow:
+                return None
+
+            # Collect non-bg dots
+            dots = []
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != bg:
+                        dots.append((r, c, ri[r][c]))
+
+            if not dots:
+                return None
+
+            # All dots must be isolated (no non-bg 4-neighbor)
+            non_bg = set((r, c) for r, c, _ in dots)
+            for r, c, _ in dots:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    if (r + dr, c + dc) in non_bg:
+                        return None
+
+            # Build predicted output
+            pred = [[bg] * w for _ in range(h)]
+            for r, c, color in dots:
+                # Find nearest corner by Manhattan distance
+                corners = [
+                    (r + c, 'TL'),
+                    (r + (w - 1 - c), 'TR'),
+                    ((h - 1 - r) + c, 'BL'),
+                    ((h - 1 - r) + (w - 1 - c), 'BR'),
+                ]
+                corners.sort(key=lambda x: x[0])
+                _, nearest = corners[0]
+
+                if nearest == 'TL':
+                    for cc in range(0, c + 1):
+                        pred[r][cc] = color
+                    for rr in range(0, r):
+                        pred[rr][c] = color
+                elif nearest == 'TR':
+                    for cc in range(c, w):
+                        pred[r][cc] = color
+                    for rr in range(0, r):
+                        pred[rr][c] = color
+                elif nearest == 'BL':
+                    for cc in range(0, c + 1):
+                        pred[r][cc] = color
+                    for rr in range(r + 1, h):
+                        pred[rr][c] = color
+                elif nearest == 'BR':
+                    for cc in range(c, w):
+                        pred[r][cc] = color
+                    for rr in range(r + 1, h):
+                        pred[rr][c] = color
+
+            if pred != ro:
+                return None
+
+        return {"type": "corner_L_extend", "bg": bg, "confidence": 1.0}
+
+    # ---- strategy 48: rotation quad tile 4x ------------------------------
+
+    def _try_rotation_quad_tile_4x(self, task):
+        """
+        Detect: NxN input -> 4Nx4N output. The output is a 4x4 arrangement
+        of NxN tiles grouped into 2x2 quadrants, each quadrant a different
+        rotation: TL=180°, TR=90°CW, BL=90°CCW, BR=0° (identity).
+        Category: rotation-symmetry tiling / kaleidoscope expansion.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if h != w:
+                return None
+            if oh != 4 * h or ow != 4 * w:
+                return None
+
+            n = h
+            # Build rotations
+            rot0 = ri
+            rot180 = [[ri[n - 1 - r][n - 1 - c] for c in range(n)] for r in range(n)]
+            rot_cw = [[ri[n - 1 - c][r] for c in range(n)] for r in range(n)]
+            rot_ccw = [[ri[c][n - 1 - r] for c in range(n)] for r in range(n)]
+
+            # Quadrant mapping: TL=180°, TR=CW, BL=CCW, BR=0°
+            quads = {
+                (0, 0): rot180, (0, 1): rot180, (1, 0): rot180, (1, 1): rot180,
+                (0, 2): rot_cw, (0, 3): rot_cw, (1, 2): rot_cw, (1, 3): rot_cw,
+                (2, 0): rot_ccw, (2, 1): rot_ccw, (3, 0): rot_ccw, (3, 1): rot_ccw,
+                (2, 2): rot0, (2, 3): rot0, (3, 2): rot0, (3, 3): rot0,
+            }
+
+            for tr in range(4):
+                for tc in range(4):
+                    tile = quads[(tr, tc)]
+                    for r in range(n):
+                        for c in range(n):
+                            if ro[tr * n + r][tc * n + c] != tile[r][c]:
+                                return None
+
+        return {"type": "rotation_quad_tile_4x", "confidence": 1.0}
+
+    # ---- strategy 49: rectangle outline decorate -------------------------
+
+    def _try_rect_outline_decorate(self, task):
+        """
+        Detect: background with shapes of a foreground color. Square-shaped
+        outlines (closed rectangle borders where H==W, border 1-cell wide,
+        interior is bg) get color-2 marks extending from each corner.
+        Category: geometric shape classification + corner marking.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        from collections import Counter
+
+        ri0 = pairs[0].input_grid.raw
+        flat = [v for row in ri0 for v in row]
+        bg = Counter(flat).most_common(1)[0][0]
+
+        mark_color = None
+
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if h != oh or w != ow:
+                return None
+
+            # Determine mark color from changed cells
+            mc = set()
+            for r in range(h):
+                for c in range(w):
+                    if ro[r][c] != ri[r][c]:
+                        mc.add(ro[r][c])
+            if len(mc) != 1:
+                return None
+            this_mark = mc.pop()
+            if mark_color is None:
+                mark_color = this_mark
+            elif this_mark != mark_color:
+                return None
+
+            pred = self._compute_rect_outline_decorate(ri, h, w, bg, mark_color)
+            if pred != ro:
+                return None
+
+        return {
+            "type": "rect_outline_decorate",
+            "bg": bg,
+            "mark_color": mark_color,
+            "confidence": 0.95,
+        }
+
+    def _compute_rect_outline_decorate(self, grid, h, w, bg, mark_color):
+        """Find square outline components and add corner marks."""
+        raw = grid if isinstance(grid, list) else grid.raw
+        output = [row[:] for row in raw]
+
+        # Find connected components of non-bg cells
+        visited = [[False] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == bg or visited[r][c]:
+                    continue
+                # BFS to find component
+                color = raw[r][c]
+                comp = []
+                queue = [(r, c)]
+                visited[r][c] = True
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == color:
+                            visited[nr][nc] = True
+                            queue.append((nr, nc))
+
+                # Check if component forms a square outline
+                if len(comp) < 4:
+                    continue
+                comp_set = set(comp)
+                min_r = min(r for r, c in comp)
+                max_r = max(r for r, c in comp)
+                min_c = min(c for r, c in comp)
+                max_c = max(c for r, c in comp)
+                bh = max_r - min_r + 1
+                bw = max_c - min_c + 1
+                if bh != bw or bh < 2:
+                    continue
+
+                # Check that border cells are all present
+                border = set()
+                for rr in range(min_r, max_r + 1):
+                    for cc in range(min_c, max_c + 1):
+                        if rr == min_r or rr == max_r or cc == min_c or cc == max_c:
+                            border.add((rr, cc))
+
+                if not border.issubset(comp_set):
+                    continue
+
+                # Check that interior is bg (if interior exists)
+                interior_ok = True
+                for rr in range(min_r + 1, max_r):
+                    for cc in range(min_c + 1, max_c):
+                        if (rr, cc) in comp_set:
+                            interior_ok = False
+                            break
+                    if not interior_ok:
+                        break
+                if not interior_ok:
+                    continue
+
+                # Component equals border (no extra cells outside border)
+                if comp_set != border:
+                    continue
+
+                # It's a valid square outline — add corner marks
+                # Each corner gets two marks: one extending the vertical edge,
+                # one extending the horizontal edge (NOT the diagonal)
+                corners = [
+                    (min_r, min_c, -1, -1),  # TL: up and left
+                    (min_r, max_c, -1, 1),   # TR: up and right
+                    (max_r, min_c, 1, -1),   # BL: down and left
+                    (max_r, max_c, 1, 1),    # BR: down and right
+                ]
+                for cr, cc, dr, dc in corners:
+                    # Extend vertical edge direction
+                    nr, nc = cr + dr, cc
+                    if 0 <= nr < h and 0 <= nc < w:
+                        output[nr][nc] = mark_color
+                    # Extend horizontal edge direction
+                    nr2, nc2 = cr, cc + dc
+                    if 0 <= nr2 < h and 0 <= nc2 < w:
+                        output[nr2][nc2] = mark_color
+
+        return output
+
+    # ---- strategy 50: most frequent cross color --------------------------
+
+    def _try_most_frequent_cross_color(self, task):
+        """
+        Detect: large grid with several cross-shaped patterns (color X above,
+        below, left, right of a center cell with value 4). Output is 1x1 grid
+        containing the color X that appears in the most crosses.
+        Category: cross pattern counting / majority vote.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        center_val = 4  # the center of each cross is always 4
+
+        for pair in pairs:
+            ri, ro = pair.input_grid.raw, pair.output_grid.raw
+            # Output must be 1x1
+            if len(ro) != 1 or len(ro[0]) != 1:
+                return None
+
+            h, w = len(ri), len(ri[0])
+
+            # Find crosses: cell with value 4 surrounded by same-color
+            # orthogonal neighbors
+            cross_colors = []
+            for r in range(1, h - 1):
+                for c in range(1, w - 1):
+                    if ri[r][c] != center_val:
+                        continue
+                    up, down, left, right = ri[r - 1][c], ri[r + 1][c], ri[r][c - 1], ri[r][c + 1]
+                    if up == down == left == right and up != center_val:
+                        cross_colors.append(up)
+
+            if not cross_colors:
+                return None
+
+            # Most frequent color
+            from collections import Counter
+            counts = Counter(cross_colors)
+            majority = counts.most_common(1)[0][0]
+
+            if ro[0][0] != majority:
+                return None
+
+        return {"type": "most_frequent_cross_color", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5618,6 +5964,14 @@ class PredictOperator(Operator):
             return self._apply_bar_frame_gravity(rule, input_grid)
         if rule_type == "cross_center_mark":
             return self._apply_cross_center_mark(rule, input_grid)
+        if rule_type == "corner_L_extend":
+            return self._apply_corner_L_extend(rule, input_grid)
+        if rule_type == "rotation_quad_tile_4x":
+            return self._apply_rotation_quad_tile_4x(rule, input_grid)
+        if rule_type == "rect_outline_decorate":
+            return self._apply_rect_outline_decorate(rule, input_grid)
+        if rule_type == "most_frequent_cross_color":
+            return self._apply_most_frequent_cross_color(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6969,6 +7323,101 @@ class PredictOperator(Operator):
         mark_color = rule["mark_color"]
         gen = GeneralizeOperator()
         return gen._compute_cross_centers(raw, h, w, bg, fg, mark_color)
+
+    def _apply_corner_L_extend(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        output = [[bg] * w for _ in range(h)]
+        dots = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    dots.append((r, c, raw[r][c]))
+        for r, c, color in dots:
+            corners = [
+                (r + c, 'TL'),
+                (r + (w - 1 - c), 'TR'),
+                ((h - 1 - r) + c, 'BL'),
+                ((h - 1 - r) + (w - 1 - c), 'BR'),
+            ]
+            corners.sort(key=lambda x: x[0])
+            _, nearest = corners[0]
+            if nearest == 'TL':
+                for cc in range(0, c + 1):
+                    output[r][cc] = color
+                for rr in range(0, r):
+                    output[rr][c] = color
+            elif nearest == 'TR':
+                for cc in range(c, w):
+                    output[r][cc] = color
+                for rr in range(0, r):
+                    output[rr][c] = color
+            elif nearest == 'BL':
+                for cc in range(0, c + 1):
+                    output[r][cc] = color
+                for rr in range(r + 1, h):
+                    output[rr][c] = color
+            elif nearest == 'BR':
+                for cc in range(c, w):
+                    output[r][cc] = color
+                for rr in range(r + 1, h):
+                    output[rr][c] = color
+        return output
+
+    def _apply_rotation_quad_tile_4x(self, rule, input_grid):
+        raw = input_grid.raw
+        n = len(raw)
+        if n != len(raw[0]):
+            return None
+        rot0 = raw
+        rot180 = [[raw[n - 1 - r][n - 1 - c] for c in range(n)] for r in range(n)]
+        rot_cw = [[raw[n - 1 - c][r] for c in range(n)] for r in range(n)]
+        rot_ccw = [[raw[c][n - 1 - r] for c in range(n)] for r in range(n)]
+        quads = {
+            (0, 0): rot180, (0, 1): rot180, (1, 0): rot180, (1, 1): rot180,
+            (0, 2): rot_cw, (0, 3): rot_cw, (1, 2): rot_cw, (1, 3): rot_cw,
+            (2, 0): rot_ccw, (2, 1): rot_ccw, (3, 0): rot_ccw, (3, 1): rot_ccw,
+            (2, 2): rot0, (2, 3): rot0, (3, 2): rot0, (3, 3): rot0,
+        }
+        result = [[0] * (4 * n) for _ in range(4 * n)]
+        for tr in range(4):
+            for tc in range(4):
+                tile = quads[(tr, tc)]
+                for r in range(n):
+                    for c in range(n):
+                        result[tr * n + r][tc * n + c] = tile[r][c]
+        return result
+
+    def _apply_rect_outline_decorate(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        mark_color = rule["mark_color"]
+        gen = GeneralizeOperator()
+        return gen._compute_rect_outline_decorate(raw, h, w, bg, mark_color)
+
+    def _apply_most_frequent_cross_color(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        center_val = 4
+        from collections import Counter
+        cross_colors = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if raw[r][c] != center_val:
+                    continue
+                up, down, left, right = raw[r - 1][c], raw[r + 1][c], raw[r][c - 1], raw[r][c + 1]
+                if up == down == left == right and up != center_val:
+                    cross_colors.append(up)
+        if not cross_colors:
+            return None
+        counts = Counter(cross_colors)
+        majority = counts.most_common(1)[0][0]
+        return [[majority]]
 
     def _find_colored_rects_raw(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""

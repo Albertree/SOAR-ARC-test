@@ -1405,3 +1405,88 @@ All 20 tasks in the standard batch were already CORRECT (100%). Ran with --limit
 - New tasks solved: ce039d91 (mirror_symmetric_recolor), 5daaa586 (bar_frame_gravity)
 - Remaining failures at 30 tasks: 7837ac64, a2d730bd, 9f5f939b, 6350f1f4
 - Total stored rules: 156
+
+---
+## Learning Loop -- 2026-03-25 07:41
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 156 -> 156 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_074000.log
+
+---
+## Learning Loop -- 2026-03-25 07:43
+
+- Split: training, Tasks: 40
+- Correct: 31 / 40 (77.5%)
+- Rules: 156 -> 158 (+2 learned)
+- Stored rule hits: 30
+- Time: 155s
+- Log: logs/learn_20260325_074113.log
+
+---
+## Learning Loop -- 2026-03-25 07:56
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 158 -> 158 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_075512.log
+
+---
+## Learning Loop -- 2026-03-25 07:58
+
+- Split: training, Tasks: 40
+- Correct: 33 / 40 (82.5%)
+- Rules: 158 -> 162 (+4 learned)
+- Stored rule hits: 30
+- Time: 143s
+- Log: logs/learn_20260325_075617.log
+
+---
+## Learning Loop -- 2026-03-25 08:03
+
+- Split: training, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 162 -> 165 (+3 learned)
+- Stored rule hits: 32
+- Time: 155s
+- Log: logs/learn_20260325_080031.log
+
+---
+## Learning Loop -- 2026-03-25 08:07
+
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 165 -> 167 (+2 learned)
+- Stored rule hits: 33
+- Time: 155s
+- Log: logs/learn_20260325_080433.log
+
+---
+## Learning Loop -- 2026-03-25 08:08
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 167 -> 167 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_080713.log
+
+---
+## Session 18 Summary -- 2026-03-25 08:08
+
+**Starting state:** 20/20 (100%) on base set, 31/40 (77.5%) on extended set
+
+**New strategies added (4):**
+1. `corner_L_extend` — isolated dots extend to nearest grid corner in L-shape (row + column arms). Fixes: 705a3229, cf5fd0ad
+2. `rotation_quad_tile_4x` — NxN input → 4Nx4N output; 2x2 quadrants of 2x2 rotation tiles (TL=180°, TR=CW, BL=CCW, BR=0°). Fixes: cf5fd0ad
+3. `rect_outline_decorate` — square outline shapes (hollow rect borders) get color-2 marks extending from each corner's edge directions. Fixes: 14b8e18c
+4. `most_frequent_cross_color` — find cross patterns (color surrounding center=4), output the color appearing in most crosses. Fixes: 642d658d
+
+**Ending state:** 20/20 (100%) on base set, 35/40 (87.5%) on extended set (+4 tasks fixed)
+
+**Remaining failures (5/40):** 7837ac64, a2d730bd, 9f5f939b, 6350f1f4, 84db8fc4
