@@ -1569,3 +1569,85 @@ All 20 tasks in the standard batch were already CORRECT (100%). Ran with --limit
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 08:39
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 170 -> 170 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_083820.log
+
+---
+## Learning Loop -- 2026-03-25 08:42
+
+- Split: training, Tasks: 40
+- Correct: 37 / 40 (92.5%)
+- Rules: 170 -> 170 (+0 learned)
+- Stored rule hits: 36
+- Time: 140s
+- Log: logs/learn_20260325_083944.log
+
+---
+## Learning Loop -- 2026-03-25 08:50
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 170 -> 171 (+1 learned)
+- Stored rule hits: 36
+- Time: 144s
+- Log: logs/learn_20260325_084803.log
+
+---
+## Learning Loop -- 2026-03-25 08:58
+
+- Split: training, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 172 -> 172 (+0 learned)
+- Stored rule hits: 38
+- Time: 131s
+- Log: logs/learn_20260325_085552.log
+
+---
+## Learning Loop -- 2026-03-25 08:59
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 172 -> 172 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260325_085810.log
+
+---
+## Session 20 Analysis — 2026-03-25 08:38
+
+### Strategies added (agent/active_operators.py)
+
+1. **zero_region_classify** — 0-cells classified into edge-touching (exterior) vs fully-enclosed (interior) connected components, each colored differently
+   - `_try_zero_region_classify`: finds 4-connected components of 0-cells, verifies edge-touching → color A, interior → color B consistently across all examples
+   - `_apply_zero_region_classify`: flood-fill classifies 0-regions, assigns exterior/interior colors
+   - Category: boundary/interior region classification
+
+2. **grid_intersection_vote** — large grid with separator lines (no bg cells) → 3x3 output via 2×2 corner agreement at grid-line intersections
+   - `_try_grid_intersection_vote`: finds grid-line rows/cols (no bg), identifies non-separator colors at intersections forming a 4×4 sub-grid, maps to 3×3 via unanimous 2×2 corner rule
+   - `_apply_grid_intersection_vote`: applies same logic to test input
+   - Category: grid-line intersection analysis / voting
+
+### Bug fix
+
+- **_build_count_diamond** (line 2857): added bounds check `if h > H or w > W: return None` to prevent `IndexError` when diamond dimensions exceed grid size. This bug was silently crashing `GeneralizeOperator.effect()` for any task where `_try_count_diamond` received oversized dimensions, preventing ALL subsequent strategies (including identity fallback) from running.
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 84db8fc4 | INCORRECT (none — crash in count_diamond) | CORRECT | zero_region_classify |
+| 7837ac64 | INCORRECT (identity) | CORRECT | grid_intersection_vote |
+
+**Score: 37/40 (92.5%) → 39/40 (97.5%)**
+**Standard 20-task set: 20/20 (100%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

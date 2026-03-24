@@ -789,6 +789,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_grid_separator_invert(task)
 
+        # Strategy 52: zero region classify (0-cells split into edge-touching vs interior)
+        if rule is None:
+            rule = self._try_zero_region_classify(task)
+
+        # Strategy 53: grid intersection vote (large gridline grid -> small output via intersection colors)
+        if rule is None:
+            rule = self._try_grid_intersection_vote(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2847,6 +2855,8 @@ class GeneralizeOperator(Operator):
     @staticmethod
     def _build_count_diamond(H, W, bg, w, h):
         """Build output grid with V/diamond pattern at bottom-left."""
+        if h > H or w > W:
+            return None
         output = [[bg] * W for _ in range(H)]
         max_d = (w - 1) // 2
 
@@ -5947,6 +5957,207 @@ class GeneralizeOperator(Operator):
         return None
 
 
+    # ---- strategy: zero region classify (edge-touching vs interior 0-regions) ----
+
+    def _try_zero_region_classify(self, task):
+        """
+        Detect: non-zero cells (walls) stay unchanged. 0-cells are classified
+        into two groups by 4-connected flood fill: those whose connected
+        component touches the grid edge get one color, fully-enclosed 0-regions
+        get a different color.
+        Category: boundary / interior region classification.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        exterior_color = None
+        interior_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            if h != len(ro) or w != (len(ro[0]) if ro else 0):
+                return None
+
+            # Non-zero cells must be unchanged
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0 and ri[r][c] != ro[r][c]:
+                        return None
+
+            # All 0-cells must change to something
+            changed_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] == 0:
+                        if ro[r][c] == 0:
+                            return None  # 0-cell stayed 0 — not this pattern
+                        changed_colors.add(ro[r][c])
+
+            if len(changed_colors) != 2:
+                return None
+
+            # Find connected components of 0-cells
+            visited = [[False] * w for _ in range(h)]
+            components = []
+            for sr in range(h):
+                for sc in range(w):
+                    if ri[sr][sc] == 0 and not visited[sr][sc]:
+                        comp = []
+                        touches_edge = False
+                        queue = [(sr, sc)]
+                        visited[sr][sc] = True
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            comp.append((cr, cc))
+                            if cr == 0 or cr == h - 1 or cc == 0 or cc == w - 1:
+                                touches_edge = True
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                nr, nc = cr + dr, cc + dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and ri[nr][nc] == 0:
+                                    visited[nr][nc] = True
+                                    queue.append((nr, nc))
+                        components.append((comp, touches_edge))
+
+            # Determine which color goes to edge-touching vs interior
+            ec, ic = None, None
+            for comp, touches_edge in components:
+                out_color = ro[comp[0][0]][comp[0][1]]
+                # Verify all cells in component have the same output color
+                if not all(ro[r][c] == out_color for r, c in comp):
+                    return None
+                if touches_edge:
+                    if ec is None:
+                        ec = out_color
+                    elif ec != out_color:
+                        return None
+                else:
+                    if ic is None:
+                        ic = out_color
+                    elif ic != out_color:
+                        return None
+
+            if ec is None or ic is None:
+                return None
+
+            if exterior_color is None:
+                exterior_color = ec
+                interior_color = ic
+            elif ec != exterior_color or ic != interior_color:
+                return None
+
+        return {
+            "type": "zero_region_classify",
+            "exterior_color": exterior_color,
+            "interior_color": interior_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: grid intersection vote (large separator grid -> small output) ----
+
+    def _try_grid_intersection_vote(self, task):
+        """
+        Detect: large input grid with separator rows/cols (all same non-0 color)
+        forming a regular lattice. At grid-line intersections, some cells have
+        special (non-separator) colors forming two rectangular blocks in a 4x4
+        intersection sub-grid. Output is 3x3: each cell is colored if all 4
+        bounding intersection corners share the same color, else 0.
+        Category: grid-line intersection analysis / voting.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ro = g1.raw
+            if len(ro) != 3 or len(ro[0]) != 3:
+                return None
+            predicted = self._compute_grid_intersection_vote(g0.raw)
+            if predicted is None or predicted != ro:
+                return None
+
+        return {"type": "grid_intersection_vote", "confidence": 1.0}
+
+    def _compute_grid_intersection_vote(self, raw):
+        """Compute 3x3 output from grid-line intersection colors."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 5 or w < 5:
+            return None
+
+        bg = 0
+
+        # Find grid-line rows: rows with NO background (0) cells
+        grid_rows = [r for r in range(h) if all(raw[r][c] != bg for c in range(w))]
+        grid_cols = [c for c in range(w) if all(raw[r][c] != bg for r in range(h))]
+
+        if len(grid_rows) < 4 or len(grid_cols) < 4:
+            return None
+
+        # Determine separator color: most common color on grid lines
+        from collections import Counter
+        color_counts = Counter()
+        for r in grid_rows:
+            for c in range(w):
+                color_counts[raw[r][c]] += 1
+        for c in grid_cols:
+            for r in range(h):
+                color_counts[raw[r][c]] += 1
+        sep_color = color_counts.most_common(1)[0][0]
+
+        # Find intersections with non-separator colors
+        special = {}
+        for r in grid_rows:
+            for c in grid_cols:
+                v = raw[r][c]
+                if v != sep_color:
+                    ri_idx = grid_rows.index(r)
+                    ci_idx = grid_cols.index(c)
+                    special[(ri_idx, ci_idx)] = v
+
+        if not special:
+            return None
+
+        # Find bounding box of special intersections
+        min_ri = min(k[0] for k in special)
+        max_ri = max(k[0] for k in special)
+        min_ci = min(k[1] for k in special)
+        max_ci = max(k[1] for k in special)
+
+        # Must span a 4x4 region of intersection indices
+        if max_ri - min_ri != 3 or max_ci - min_ci != 3:
+            return None
+
+        # Build 4x4 mini-grid of intersection colors
+        mini = [[0] * 4 for _ in range(4)]
+        for (ri, ci), v in special.items():
+            mini[ri - min_ri][ci - min_ci] = v
+
+        # Map to 3x3 output: each cell gets color if all 4 bounding corners agree
+        output = [[0] * 3 for _ in range(3)]
+        for r in range(3):
+            for c in range(3):
+                tl = mini[r][c]
+                tr = mini[r][c + 1]
+                bl = mini[r + 1][c]
+                br = mini[r + 1][c + 1]
+                if tl != 0 and tl == tr == bl == br:
+                    output[r][c] = tl
+
+        return output
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -6123,6 +6334,10 @@ class PredictOperator(Operator):
             return self._apply_most_frequent_cross_color(rule, input_grid)
         if rule_type == "grid_separator_invert":
             return self._apply_grid_separator_invert(rule, input_grid)
+        if rule_type == "zero_region_classify":
+            return self._apply_zero_region_classify(rule, input_grid)
+        if rule_type == "grid_intersection_vote":
+            return self._apply_grid_intersection_vote(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7628,6 +7843,45 @@ class PredictOperator(Operator):
                         output[rs + r][cs + c] = fill[r][c]
 
         return output
+
+    def _apply_zero_region_classify(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        ec = rule["exterior_color"]
+        ic = rule["interior_color"]
+
+        # Find connected components of 0-cells
+        visited = [[False] * w for _ in range(h)]
+        components = []
+        for sr in range(h):
+            for sc in range(w):
+                if raw[sr][sc] == 0 and not visited[sr][sc]:
+                    comp = []
+                    touches_edge = False
+                    queue = [(sr, sc)]
+                    visited[sr][sc] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        if cr == 0 or cr == h - 1 or cc == 0 or cc == w - 1:
+                            touches_edge = True
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == 0:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    components.append((comp, touches_edge))
+
+        result = [row[:] for row in raw]
+        for comp, touches_edge in components:
+            color = ec if touches_edge else ic
+            for r, c in comp:
+                result[r][c] = color
+        return result
+
+    def _apply_grid_intersection_vote(self, rule, input_grid):
+        return GeneralizeOperator._compute_grid_intersection_vote(None, input_grid.raw)
 
     def _find_colored_rects_raw(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""
