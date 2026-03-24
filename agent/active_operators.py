@@ -299,7 +299,15 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_max_column(task)
 
-        # Strategy 3: simple 1:1 color mapping
+        # Strategy 3: connect aligned diamond shapes
+        if rule is None:
+            rule = self._try_connect_diamonds(task)
+
+        # Strategy 4: fill rectangular interiors by area
+        if rule is None:
+            rule = self._try_fill_rect_interior(task)
+
+        # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -326,6 +334,10 @@ class GeneralizeOperator(Operator):
         # Strategy 9: corner quadrant fill
         if rule is None:
             rule = self._try_corner_quadrant(task)
+
+        # Strategy 10: stripe zone fill (colored stripes expand to fill zones)
+        if rule is None:
+            rule = self._try_stripe_zone_fill(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -871,6 +883,411 @@ class GeneralizeOperator(Operator):
                         blocks.append((min_r, max_r, min_c, max_c))
         return blocks
 
+    # ---- strategy: fill rectangular interiors by area -------------------------
+
+    def _try_fill_rect_interior(self, task):
+        """
+        Detect pattern: rectangular frames of a single border color with hollow
+        interiors that get filled with a color determined by interior area.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        border_color = None
+        area_to_color = {}
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            frames = self._find_rect_frames(raw_in, 0)
+            if not frames:
+                return None
+
+            for bc, min_r, max_r, min_c, max_c in frames:
+                if border_color is None:
+                    border_color = bc
+                elif border_color != bc:
+                    return None
+
+                int_h = max_r - min_r - 1
+                int_w = max_c - min_c - 1
+                if int_h <= 0 or int_w <= 0:
+                    return None
+
+                area = int_h * int_w
+
+                # All interior cells should be one fill color in output
+                fill_color = None
+                valid = True
+                for r in range(min_r + 1, max_r):
+                    for c in range(min_c + 1, max_c):
+                        if raw_in[r][c] != 0:
+                            valid = False
+                            break
+                        oc = raw_out[r][c]
+                        if fill_color is None:
+                            fill_color = oc
+                        elif oc != fill_color:
+                            valid = False
+                            break
+                    if not valid:
+                        break
+                if not valid or fill_color is None or fill_color == 0:
+                    return None
+
+                if area in area_to_color:
+                    if area_to_color[area] != fill_color:
+                        return None
+                else:
+                    area_to_color[area] = fill_color
+
+            # Verify all non-frame cells unchanged
+            frame_cells = set()
+            for bc, min_r, max_r, min_c, max_c in frames:
+                for r in range(min_r, max_r + 1):
+                    for c in range(min_c, max_c + 1):
+                        frame_cells.add((r, c))
+            for r in range(h):
+                for c in range(w):
+                    if (r, c) not in frame_cells:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+        if not area_to_color or border_color is None:
+            return None
+
+        return {
+            "type": "fill_rect_interior",
+            "border_color": border_color,
+            "area_to_color": {str(k): v for k, v in area_to_color.items()},
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_rect_frames(raw, bg=0):
+        """Find hollow rectangular frames. Returns list of (border_color, min_r, max_r, min_c, max_c)."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        frames = []
+
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != bg:
+                    color_cells.setdefault(v, []).append((r, c))
+
+        for color, cells in color_cells.items():
+            cell_set = set(cells)
+            visited = set()
+            for start in cells:
+                if start in visited:
+                    continue
+                component = []
+                queue = [start]
+                while queue:
+                    p = queue.pop(0)
+                    if p in visited:
+                        continue
+                    visited.add(p)
+                    component.append(p)
+                    cr, cc = p
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nb = (cr + dr, cc + dc)
+                        if nb in cell_set and nb not in visited:
+                            queue.append(nb)
+
+                if len(component) < 4:
+                    continue
+
+                min_r = min(r for r, c in component)
+                max_r = max(r for r, c in component)
+                min_c = min(c for r, c in component)
+                max_c = max(c for r, c in component)
+
+                if max_r - min_r < 2 or max_c - min_c < 2:
+                    continue
+
+                border_cells = set()
+                for r in range(min_r, max_r + 1):
+                    for c in range(min_c, max_c + 1):
+                        if r == min_r or r == max_r or c == min_c or c == max_c:
+                            border_cells.add((r, c))
+
+                comp_set = set(component)
+                if comp_set == border_cells:
+                    interior_ok = True
+                    for r in range(min_r + 1, max_r):
+                        for c in range(min_c + 1, max_c):
+                            if raw[r][c] != bg:
+                                interior_ok = False
+                                break
+                        if not interior_ok:
+                            break
+                    if interior_ok:
+                        frames.append((color, min_r, max_r, min_c, max_c))
+
+        return frames
+
+    # ---- strategy: connect aligned diamond shapes -----------------------------
+
+    def _try_connect_diamonds(self, task):
+        """
+        Detect pattern: diamond/cross shapes (4 cells of same color in +
+        pattern around empty center) connected by bridges of a fill color
+        when they are adjacent on the same row or column.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        diamond_color = None
+        bridge_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            diamonds = self._find_diamonds(raw_in)
+            if len(diamonds) < 2:
+                return None
+
+            dc = diamonds[0][2]
+            if diamond_color is None:
+                diamond_color = dc
+            elif diamond_color != dc:
+                return None
+            if any(d[2] != dc for d in diamonds):
+                return None
+
+            # Determine bridge color from changes
+            bc = None
+            for r in range(h):
+                for c in range(w):
+                    if raw_out[r][c] != raw_in[r][c]:
+                        if bc is None:
+                            bc = raw_out[r][c]
+                        elif raw_out[r][c] != bc:
+                            return None
+            if bc is None:
+                return None
+            if bridge_color is None:
+                bridge_color = bc
+            elif bridge_color != bc:
+                return None
+
+            # Build expected output with bridges (adjacent pairs only)
+            expected = [row[:] for row in raw_in]
+            centers = [(d[0], d[1]) for d in diamonds]
+
+            row_groups = {}
+            col_groups = {}
+            for r, c in centers:
+                row_groups.setdefault(r, []).append(c)
+                col_groups.setdefault(c, []).append(r)
+
+            for r, cols in row_groups.items():
+                cols_sorted = sorted(cols)
+                for i in range(len(cols_sorted) - 1):
+                    c1, c2 = cols_sorted[i], cols_sorted[i + 1]
+                    for c in range(c1 + 2, c2 - 1):
+                        expected[r][c] = bridge_color
+
+            for c, rows in col_groups.items():
+                rows_sorted = sorted(rows)
+                for i in range(len(rows_sorted) - 1):
+                    r1, r2 = rows_sorted[i], rows_sorted[i + 1]
+                    for r in range(r1 + 2, r2 - 1):
+                        expected[r][c] = bridge_color
+
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {
+            "type": "connect_diamonds",
+            "diamond_color": diamond_color,
+            "bridge_color": bridge_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_diamonds(raw):
+        """Find diamond/cross shapes: 4 cells in + pattern around empty center."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        diamonds = []
+        used = set()
+
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if raw[r][c] == 0 and (r, c) not in used:
+                    up = raw[r - 1][c]
+                    down = raw[r + 1][c]
+                    left = raw[r][c - 1]
+                    right = raw[r][c + 1]
+                    if up != 0 and up == down == left == right:
+                        # Diagonals should be background
+                        if (raw[r - 1][c - 1] == 0 and raw[r - 1][c + 1] == 0 and
+                                raw[r + 1][c - 1] == 0 and raw[r + 1][c + 1] == 0):
+                            diamonds.append((r, c, up))
+                            used.update([(r - 1, c), (r + 1, c),
+                                         (r, c - 1), (r, c + 1)])
+
+        return diamonds
+
+    # ---- strategy: stripe zone fill -------------------------------------------
+
+    def _try_stripe_zone_fill(self, task):
+        """
+        Detect pattern: grid with a vertical stripe column and horizontal
+        colored stripe rows. Output expands each stripe to fill its zone,
+        with intersection colors at stripe positions.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        bg_color = None
+        col_color = None
+        int_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            # Find background (most common color)
+            cc = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    cc[v] = cc.get(v, 0) + 1
+            bg = max(cc, key=cc.get)
+            if bg_color is None:
+                bg_color = bg
+            elif bg_color != bg:
+                return None
+
+            # Find stripe column (no background cells)
+            stripe_col = self._detect_stripe_col(raw_in, h, w, bg)
+            if stripe_col is None:
+                return None
+
+            # Column has exactly 2 colors: column color and intersection color
+            col_vals = {}
+            for r in range(h):
+                v = raw_in[r][stripe_col]
+                col_vals[v] = col_vals.get(v, 0) + 1
+            if len(col_vals) != 2:
+                return None
+            local_col = max(col_vals, key=col_vals.get)
+            local_int = [v for v in col_vals if v != local_col][0]
+
+            if col_color is None:
+                col_color = local_col
+            elif col_color != local_col:
+                return None
+            if int_color is None:
+                int_color = local_int
+            elif int_color != local_int:
+                return None
+
+            # Find stripe rows
+            stripes = []
+            for r in range(h):
+                if raw_in[r][stripe_col] != int_color:
+                    continue
+                row_vals = set(raw_in[r][c] for c in range(w) if c != stripe_col)
+                if len(row_vals) == 1:
+                    sc = list(row_vals)[0]
+                    if sc != bg:
+                        stripes.append((r, sc))
+            if not stripes:
+                return None
+
+            # Verify output matches expected
+            expected = self._build_stripe_zone_output(
+                raw_in, h, w, bg, stripe_col, col_color, int_color, stripes
+            )
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {
+            "type": "stripe_zone_fill",
+            "bg_color": bg_color,
+            "col_color": col_color,
+            "intersection_color": int_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _detect_stripe_col(raw, h, w, bg):
+        """Find the column with no background cells."""
+        for c in range(w):
+            if all(raw[r][c] != bg for r in range(h)):
+                return c
+        return None
+
+    @staticmethod
+    def _build_stripe_zone_output(raw, h, w, bg, stripe_col, col_color,
+                                   intersection_color, stripes):
+        """Build output for stripe zone fill."""
+        output = []
+        for r in range(h):
+            is_stripe = any(sr == r for sr, _ in stripes)
+            if is_stripe:
+                row = [intersection_color] * w
+                row[stripe_col] = col_color
+                output.append(row)
+            else:
+                min_dist = h + 1
+                nearest_colors = set()
+                for sr, sc in stripes:
+                    d = abs(r - sr)
+                    if d < min_dist:
+                        min_dist = d
+                        nearest_colors = {sc}
+                    elif d == min_dist:
+                        nearest_colors.add(sc)
+
+                if len(nearest_colors) > 1:
+                    row = [intersection_color] * w
+                else:
+                    nc = list(nearest_colors)[0]
+                    row = [nc] * w
+                    row[stripe_col] = intersection_color
+                output.append(row)
+        return output
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -952,6 +1369,12 @@ class PredictOperator(Operator):
             return self._apply_staircase_fill(rule, input_grid)
         if rule_type == "corner_quadrant":
             return self._apply_corner_quadrant(rule, input_grid)
+        if rule_type == "fill_rect_interior":
+            return self._apply_fill_rect_interior(rule, input_grid)
+        if rule_type == "connect_diamonds":
+            return self._apply_connect_diamonds(rule, input_grid)
+        if rule_type == "stripe_zone_fill":
+            return self._apply_stripe_zone_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1156,6 +1579,89 @@ class PredictOperator(Operator):
             for cr, cc in corners:
                 output[cr][cc] = 0
         return output
+
+    def _apply_fill_rect_interior(self, rule, input_grid):
+        raw = input_grid.raw
+        border_color = rule["border_color"]
+        area_to_color = {int(k): v for k, v in rule["area_to_color"].items()}
+
+        output = [row[:] for row in raw]
+        frames = GeneralizeOperator._find_rect_frames(raw, bg=0)
+
+        for fc, min_r, max_r, min_c, max_c in frames:
+            if fc != border_color:
+                continue
+            int_h = max_r - min_r - 1
+            int_w = max_c - min_c - 1
+            if int_h <= 0 or int_w <= 0:
+                continue
+            area = int_h * int_w
+            fill = area_to_color.get(area)
+            if fill is None:
+                continue
+            for r in range(min_r + 1, max_r):
+                for c in range(min_c + 1, max_c):
+                    output[r][c] = fill
+
+        return output
+
+    def _apply_connect_diamonds(self, rule, input_grid):
+        raw = input_grid.raw
+        bridge_color = rule["bridge_color"]
+
+        output = [row[:] for row in raw]
+        diamonds = GeneralizeOperator._find_diamonds(raw)
+        centers = [(d[0], d[1]) for d in diamonds]
+
+        row_groups = {}
+        col_groups = {}
+        for r, c in centers:
+            row_groups.setdefault(r, []).append(c)
+            col_groups.setdefault(c, []).append(r)
+
+        for r, cols in row_groups.items():
+            cols_sorted = sorted(cols)
+            for i in range(len(cols_sorted) - 1):
+                c1, c2 = cols_sorted[i], cols_sorted[i + 1]
+                for c in range(c1 + 2, c2 - 1):
+                    output[r][c] = bridge_color
+
+        for c, rows in col_groups.items():
+            rows_sorted = sorted(rows)
+            for i in range(len(rows_sorted) - 1):
+                r1, r2 = rows_sorted[i], rows_sorted[i + 1]
+                for r in range(r1 + 2, r2 - 1):
+                    output[r][c] = bridge_color
+
+        return output
+
+    def _apply_stripe_zone_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg_color"]
+        col_color = rule["col_color"]
+        int_color = rule["intersection_color"]
+
+        stripe_col = GeneralizeOperator._detect_stripe_col(raw, h, w, bg)
+        if stripe_col is None:
+            return [row[:] for row in raw]
+
+        stripes = []
+        for r in range(h):
+            if raw[r][stripe_col] == int_color:
+                row_vals = set(raw[r][c] for c in range(w) if c != stripe_col)
+                if len(row_vals) == 1:
+                    sc = list(row_vals)[0]
+                    if sc != bg:
+                        stripes.append((r, sc))
+
+        if not stripes:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._build_stripe_zone_output(
+            raw, h, w, bg, stripe_col, col_color, int_color, stripes
+        )
 
     # ---- helpers ---------------------------------------------------------
 
