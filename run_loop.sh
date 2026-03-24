@@ -20,9 +20,9 @@ export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:$
 #   4. Git commit & push
 #   5. Repeat
 #
-# Usage:
-#   ./run_loop.sh
-#   ./run_loop.sh --max-sessions 10
+# Usage (from PowerShell — must use Git Bash, NOT WSL):
+#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh
+#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --max-sessions 10
 #   ./run_loop.sh --tasks-per-session 30
 # ============================================================
 
