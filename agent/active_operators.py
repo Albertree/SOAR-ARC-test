@@ -889,6 +889,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_corner_rect_fill(task)
 
+        # Strategy 76: diagonal stripe tile (sparse diagonals -> full grid tiling)
+        if rule is None:
+            rule = self._try_diagonal_stripe_tile(task)
+
+        # Strategy 77: cross diamond expand (plus-shapes expand with diagonal center fill)
+        if rule is None:
+            rule = self._try_cross_diamond_expand(task)
+
+        # Strategy 78: diagonal block chain (colored blocks stacked diagonally from top-left)
+        if rule is None:
+            rule = self._try_diagonal_block_chain(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -8212,6 +8224,208 @@ class GeneralizeOperator(Operator):
 
         return {"type": "column_staircase_shadow", "confidence": 1.0}
 
+    # ---- strategy 76: diagonal stripe tile ---------------------------------
+
+    def _try_diagonal_stripe_tile(self, task):
+        """
+        Detect: square grid with sparse diagonal stripes of non-zero colors.
+        Output fills entire grid with repeating diagonal pattern: each cell
+        (r,c) gets color_seq[(r+c) % period] where period = number of
+        distinct non-zero colors in input.
+        Category: diagonal color-sequence tiling.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Collect non-zero cells
+            nz = []
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        nz.append((r, c, ri[r][c]))
+            if len(nz) < 3:
+                return None
+
+            colors = set(v for _, _, v in nz)
+            if len(colors) < 2:
+                return None
+            period = len(colors)
+
+            # Each diagonal (r+c) % period must have one consistent color
+            diag_colors = {}
+            for r, c, v in nz:
+                d = (r + c) % period
+                if d in diag_colors:
+                    if diag_colors[d] != v:
+                        return None
+                else:
+                    diag_colors[d] = v
+
+            if len(diag_colors) != period:
+                return None
+
+            seq = [diag_colors[i] for i in range(period)]
+
+            # Verify output
+            for r in range(h):
+                for c in range(w):
+                    if ro[r][c] != seq[(r + c) % period]:
+                        return None
+
+        return {"type": "diagonal_stripe_tile", "confidence": 1.0}
+
+    # ---- strategy 77: cross diamond expand ---------------------------------
+
+    def _try_cross_diamond_expand(self, task):
+        """
+        Detect: small plus/cross patterns (center + 4 cardinal neighbors of
+        different color) are expanded into diamond patterns. Arms extend along
+        axes with arm_color, center_color fills diagonal positions, up to
+        distance 2 from center.
+        Category: cross/plus pattern expansion with diagonal fill.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            crosses = self._find_crosses(ri, h, w)
+            if not crosses:
+                return None
+
+            expected = self._build_cross_diamond(crosses, h, w)
+            if expected != ro:
+                return None
+
+        return {"type": "cross_diamond_expand", "confidence": 1.0}
+
+    def _find_crosses(self, raw, h, w):
+        """Find plus-shaped patterns: center color != arm color, 4 cardinal neighbors same."""
+        crosses = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                center = raw[r][c]
+                if center == 0:
+                    continue
+                arm = raw[r - 1][c]
+                if arm == 0 or arm == center:
+                    continue
+                if (raw[r + 1][c] == arm and raw[r][c - 1] == arm and
+                        raw[r][c + 1] == arm):
+                    crosses.append((r, c, center, arm))
+        return crosses
+
+    def _build_cross_diamond(self, crosses, h, w):
+        """Build grid with diamond-expanded crosses."""
+        output = [[0] * w for _ in range(h)]
+        for cr, cc, center_color, arm_color in crosses:
+            for d in range(3):  # distance 0, 1, 2
+                if d == 0:
+                    output[cr][cc] = center_color
+                else:
+                    # Axis positions: arm_color
+                    for dr, dc in [(-d, 0), (d, 0), (0, -d), (0, d)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = arm_color
+                    # Diagonal positions: center_color
+                    for dr, dc in [(-d, -d), (-d, d), (d, -d), (d, d)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = center_color
+        return output
+
+    # ---- strategy 78: diagonal block chain ---------------------------------
+
+    def _try_diagonal_block_chain(self, task):
+        """
+        Detect: colored rectangular blocks at the bottom of the grid are
+        rearranged into a diagonal chain from top-left. Each block's top-left
+        corner aligns with the previous block's bottom-right corner, creating
+        a staircase of overlapping blocks.
+        Category: diagonal block assembly / stacking.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            blocks = self._extract_rect_blocks(ri, h, w)
+            if len(blocks) < 2:
+                return None
+
+            # Sort blocks left-to-right by min column
+            blocks.sort(key=lambda b: b[2])
+
+            expected = self._build_block_chain(blocks, h, w)
+            if expected != ro:
+                return None
+
+        return {"type": "diagonal_block_chain", "confidence": 1.0}
+
+    def _extract_rect_blocks(self, raw, h, w):
+        """Extract rectangular blocks: (color, height, min_col, width).
+        Returns list of (color, bh, min_c, bw) tuples, or empty if non-rectangular."""
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0:
+                    color_cells.setdefault(v, []).append((r, c))
+
+        blocks = []
+        for color, cells in color_cells.items():
+            min_r = min(r for r, c in cells)
+            max_r = max(r for r, c in cells)
+            min_c = min(c for r, c in cells)
+            max_c = max(c for r, c in cells)
+            bh = max_r - min_r + 1
+            bw = max_c - min_c + 1
+            if bh * bw != len(cells):
+                return []  # not rectangular
+            blocks.append((color, bh, min_c, bw))
+        return blocks
+
+    def _build_block_chain(self, blocks, h, w):
+        """Build output with blocks chained diagonally from top-left."""
+        output = [[0] * w for _ in range(h)]
+        cur_r, cur_c = 0, 0
+        for color, bh, _min_c, bw in blocks:
+            for dr in range(bh):
+                for dc in range(bw):
+                    nr, nc = cur_r + dr, cur_c + dc
+                    if 0 <= nr < h and 0 <= nc < w:
+                        output[nr][nc] = color
+            cur_r += bh - 1
+            cur_c += bw - 1
+        return output
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -8437,6 +8651,12 @@ class PredictOperator(Operator):
             return self._apply_fill_square_holes(rule, input_grid)
         if rule_type == "column_staircase_shadow":
             return self._apply_column_staircase_shadow(rule, input_grid)
+        if rule_type == "diagonal_stripe_tile":
+            return self._apply_diagonal_stripe_tile(rule, input_grid)
+        if rule_type == "cross_diamond_expand":
+            return self._apply_cross_diamond_expand(rule, input_grid)
+        if rule_type == "diagonal_block_chain":
+            return self._apply_diagonal_block_chain(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -11097,6 +11317,126 @@ class PredictOperator(Operator):
                     grid[r][col_pos + c] = 6
 
         return grid
+
+    # ---- apply: diagonal stripe tile ---------------------------------------
+
+    def _apply_diagonal_stripe_tile(self, rule, input_grid):
+        """Fill grid with repeating diagonal color sequence."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        nz = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    nz.append((r, c, raw[r][c]))
+
+        if not nz:
+            return [row[:] for row in raw]
+
+        colors = set(v for _, _, v in nz)
+        period = len(colors)
+        if period < 2:
+            return [row[:] for row in raw]
+
+        diag_colors = {}
+        for r, c, v in nz:
+            d = (r + c) % period
+            diag_colors[d] = v
+
+        if len(diag_colors) != period:
+            return [row[:] for row in raw]
+
+        seq = [diag_colors[i] for i in range(period)]
+        output = [[seq[(r + c) % period] for c in range(w)] for r in range(h)]
+        return output
+
+    # ---- apply: cross diamond expand ---------------------------------------
+
+    def _apply_cross_diamond_expand(self, rule, input_grid):
+        """Expand plus-shaped patterns into diamond with diagonal center-color fill."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find crosses
+        crosses = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                center = raw[r][c]
+                if center == 0:
+                    continue
+                arm = raw[r - 1][c]
+                if arm == 0 or arm == center:
+                    continue
+                if (raw[r + 1][c] == arm and raw[r][c - 1] == arm and
+                        raw[r][c + 1] == arm):
+                    crosses.append((r, c, center, arm))
+
+        if not crosses:
+            return [row[:] for row in raw]
+
+        output = [[0] * w for _ in range(h)]
+        for cr, cc, center_color, arm_color in crosses:
+            for d in range(3):
+                if d == 0:
+                    output[cr][cc] = center_color
+                else:
+                    for dr, dc in [(-d, 0), (d, 0), (0, -d), (0, d)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = arm_color
+                    for dr, dc in [(-d, -d), (-d, d), (d, -d), (d, d)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = center_color
+        return output
+
+    # ---- apply: diagonal block chain ---------------------------------------
+
+    def _apply_diagonal_block_chain(self, rule, input_grid):
+        """Stack colored blocks diagonally from top-left corner."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Extract rectangular blocks per color
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0:
+                    color_cells.setdefault(v, []).append((r, c))
+
+        blocks = []
+        for color, cells in color_cells.items():
+            min_r = min(r for r, c in cells)
+            max_r = max(r for r, c in cells)
+            min_c = min(c for r, c in cells)
+            max_c = max(c for r, c in cells)
+            bh = max_r - min_r + 1
+            bw = max_c - min_c + 1
+            if bh * bw != len(cells):
+                return [row[:] for row in raw]
+            blocks.append((color, bh, min_c, bw))
+
+        if len(blocks) < 2:
+            return [row[:] for row in raw]
+
+        blocks.sort(key=lambda b: b[2])
+
+        output = [[0] * w for _ in range(h)]
+        cur_r, cur_c = 0, 0
+        for color, bh, _min_c, bw in blocks:
+            for dr in range(bh):
+                for dc in range(bw):
+                    nr, nc = cur_r + dr, cur_c + dc
+                    if 0 <= nr < h and 0 <= nc < w:
+                        output[nr][nc] = color
+            cur_r += bh - 1
+            cur_c += bw - 1
+        return output
 
 
 # ======================================================================

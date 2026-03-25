@@ -2341,3 +2341,72 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 - Extended 40-task (seed 99): 23/40 (57.5%) — up from 20/40 (50.0%) baseline
 - Net improvement: +3 tasks (44d8ac46, 5207a7b5, 855e0971)
 - Regression gate: CORRECT (08ed6ac7)
+
+---
+## Learning Loop -- 2026-03-25 12:18
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 63s
+- Log: logs/learn_20260325_121707.log
+
+---
+## Learning Loop -- 2026-03-25 12:21
+
+- Split: training, Tasks: 40
+- Correct: 16 / 40 (40.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 16
+- Time: 197s
+- Log: logs/learn_20260325_121831.log
+
+---
+## Learning Loop -- 2026-03-25 12:33
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_123231.log
+
+---
+## Learning Loop -- 2026-03-25 12:36
+
+- Split: training, Tasks: 40
+- Correct: 19 / 40 (47.5%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 16
+- Time: 195s
+- Log: logs/learn_20260325_123339.log
+
+---
+## Session 28 Analysis — 2026-03-25 12:36
+
+### New strategies added (agent/active_operators.py)
+
+1. **diagonal_stripe_tile** — square grid with sparse diagonal color stripes gets fully tiled with repeating diagonal pattern; each cell (r,c) = color_seq[(r+c) % period]
+   - `_try_diagonal_stripe_tile`: groups non-zero cells by (r+c) % period, verifies one color per diagonal class, validates output
+   - `_apply_diagonal_stripe_tile`: extracts color sequence from input diagonals, fills entire grid
+   - Category: diagonal color-sequence tiling
+   - Solves: 05269061
+
+2. **cross_diamond_expand** — plus-shaped patterns (center + 4 cardinal neighbors of different color) expand into 5x5 diamond: arm_color extends along axes, center_color fills diagonal positions, to distance 2
+   - `_try_cross_diamond_expand`: finds crosses in input, builds expected diamond output, validates
+   - `_apply_cross_diamond_expand`: detects crosses and paints diamond expansion
+   - Category: cross/plus pattern expansion with diagonal fill
+   - Solves: 0962bcdd
+
+3. **diagonal_block_chain** — colored rectangular blocks at bottom of grid are rearranged into diagonal chain from top-left; each block's top-left aligns with previous block's bottom-right corner
+   - `_try_diagonal_block_chain`: extracts rectangular blocks, sorts left-to-right, builds chain, validates
+   - `_apply_diagonal_block_chain`: same extraction and chain-building at apply time
+   - Category: diagonal block assembly / stacking
+   - Solves: 03560426
+
+### Results
+- Standard 20-task: 20/20 (100%) — no regression
+- Extended 40-task (seed 99): 19/40 (47.5%) — up from 16/40 (40.0%) baseline
+- Net improvement: +3 tasks (03560426, 05269061, 0962bcdd)
+- Regression gate: CORRECT (08ed6ac7)
