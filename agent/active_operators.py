@@ -335,6 +335,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_band_section_fill(patterns, task)
 
+        # Strategy 11: path waypoint drawing (3=start, 6=right turn, 8=left turn)
+        if rule is None:
+            rule = self._try_path_waypoint(patterns, task)
+
+        # Strategy 12: diamond bridge (connect aligned cross shapes with 1s)
+        if rule is None:
+            rule = self._try_diamond_bridge(patterns, task)
+
+        # Strategy 13: mirror separator (9-row divides grid, 2+6 move, 5 mirrors)
+        if rule is None:
+            rule = self._try_mirror_separator(patterns, task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -363,6 +375,8 @@ class GeneralizeOperator(Operator):
             for g in analysis["groups"]:
                 if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
                     return None
+                if g["input_colors"][0] == 0:
+                    return None  # Skip if recoloring background
                 all_source_colors.add(g["input_colors"][0])
 
             out_colors = sorted(set(g["output_colors"][0] for g in analysis["groups"]))
@@ -423,6 +437,8 @@ class GeneralizeOperator(Operator):
         for ic, ocs in color_map.items():
             if len(ocs) != 1:
                 return None
+            if ic == 0:
+                return None  # Skip if mapping background
             simple_map[ic] = list(ocs)[0]
 
         if simple_map:
@@ -1207,6 +1223,514 @@ class GeneralizeOperator(Operator):
             'confidence': 1.0,
         }
 
+    # ---- strategy: path waypoint drawing ------------------------------------
+
+    def _try_path_waypoint(self, patterns, task):
+        """
+        Detect pattern: grid has a start marker (color A), and waypoint markers
+        (one or two other colors B and C). A path of color A is drawn from start
+        going right initially, turning right-relative at B markers and
+        left-relative at C markers, until grid edge after last waypoint.
+        Some pairs may only use one waypoint color.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        # First pass: identify start color and collect all waypoint colors
+        start_color = None
+        all_wp_colors = set()
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            in_colors = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != 0:
+                        if v not in in_colors:
+                            in_colors[v] = []
+                        in_colors[v].append((r, c))
+
+            if len(in_colors) < 2:
+                return None
+
+            candidates = []
+            for color, positions in in_colors.items():
+                out_count = sum(1 for r in range(h) for c in range(w)
+                                if raw_out[r][c] == color)
+                if len(positions) == 1 and out_count > 1:
+                    candidates.append(color)
+
+            if len(candidates) != 1:
+                return None
+
+            sc = candidates[0]
+            if start_color is None:
+                start_color = sc
+            elif start_color != sc:
+                return None
+
+            for c in in_colors:
+                if c != start_color:
+                    all_wp_colors.add(c)
+
+        if start_color is None or len(all_wp_colors) != 2:
+            return None
+
+        wp_list = sorted(all_wp_colors)
+
+        # Second pass: try both turn assignments, validate all pairs
+        right_turn_color = None
+        left_turn_color = None
+
+        for assign in [(wp_list[0], wp_list[1]),
+                       (wp_list[1], wp_list[0])]:
+            rt, lt = assign
+            all_match = True
+            for pair in task.example_pairs:
+                g0, g1 = pair.input_grid, pair.output_grid
+                raw_in = g0.raw
+                raw_out = g1.raw
+                h, w = g0.height, g0.width
+
+                start_pos = None
+                waypoints = {}
+                for r in range(h):
+                    for c in range(w):
+                        v = raw_in[r][c]
+                        if v == start_color:
+                            start_pos = (r, c)
+                        elif v in all_wp_colors:
+                            waypoints[(r, c)] = v
+
+                if start_pos is None:
+                    all_match = False
+                    break
+
+                simulated = self._simulate_path(
+                    raw_in, h, w, start_pos, start_color, rt, lt, waypoints)
+                if simulated != raw_out:
+                    all_match = False
+                    break
+
+            if all_match:
+                right_turn_color = rt
+                left_turn_color = lt
+                break
+
+        if right_turn_color is None:
+            return None
+
+        return {
+            'type': 'path_waypoint',
+            'start_color': start_color,
+            'right_turn_color': right_turn_color,
+            'left_turn_color': left_turn_color,
+            'confidence': 1.0,
+        }
+
+    @staticmethod
+    def _simulate_path(raw_in, h, w, start_pos, path_color,
+                       right_turn_color, left_turn_color, waypoints):
+        """Simulate path drawing and return expected output grid."""
+        output = [row[:] for row in raw_in]
+        sr, sc = start_pos
+        # Initial direction: right
+        dr, dc = 0, 1
+
+        # Relative turn mappings
+        def turn_right(dr, dc):
+            return dc, -dr
+
+        def turn_left(dr, dc):
+            return -dc, dr
+
+        r, c = sr, sc
+        output[r][c] = path_color
+
+        max_steps = h * w * 2
+        steps = 0
+        while steps < max_steps:
+            steps += 1
+            nr, nc = r + dr, c + dc
+            if nr < 0 or nr >= h or nc < 0 or nc >= w:
+                break
+            if (nr, nc) in waypoints:
+                wp_color = waypoints[(nr, nc)]
+                # Don't overwrite waypoint cell; turn based on its color
+                if wp_color == right_turn_color:
+                    dr, dc = turn_right(dr, dc)
+                elif wp_color == left_turn_color:
+                    dr, dc = turn_left(dr, dc)
+                # Continue from current position in new direction
+                continue
+            output[nr][nc] = path_color
+            r, c = nr, nc
+
+        return output
+
+    # ---- strategy: diamond bridge ------------------------------------------
+
+    def _try_diamond_bridge(self, patterns, task):
+        """
+        Detect pattern: cross/diamond shapes (4 cells in a plus pattern)
+        of one color. When two diamonds' tips align horizontally or vertically,
+        the gap between them is filled with a bridge color (e.g. 1).
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        diamond_color = None
+        bridge_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            # Find diamonds (cross/plus shapes)
+            diamonds = self._find_diamonds(raw_in, h, w)
+            if not diamonds:
+                return None
+
+            dc = diamonds[0]['color']
+            if diamond_color is None:
+                diamond_color = dc
+            elif diamond_color != dc:
+                return None
+
+            # Find bridge color: new color in output not in input
+            new_cells = []
+            for r in range(h):
+                for c in range(w):
+                    if raw_out[r][c] != raw_in[r][c] and raw_out[r][c] != 0:
+                        new_cells.append((r, c, raw_out[r][c]))
+
+            if not new_cells:
+                return None
+
+            bc = new_cells[0][2]
+            if not all(nc[2] == bc for nc in new_cells):
+                return None
+
+            if bridge_color is None:
+                bridge_color = bc
+            elif bridge_color != bc:
+                return None
+
+            # Verify: simulate bridging and compare
+            simulated = self._simulate_diamond_bridge(
+                raw_in, h, w, diamonds, bridge_color)
+            if simulated != raw_out:
+                return None
+
+        if diamond_color is None or bridge_color is None:
+            return None
+
+        return {
+            'type': 'diamond_bridge',
+            'diamond_color': diamond_color,
+            'bridge_color': bridge_color,
+            'confidence': 1.0,
+        }
+
+    @staticmethod
+    def _find_diamonds(grid, h, w):
+        """Find cross/plus shapes: center cell with 4 orthogonal neighbors
+        of the same non-zero color, center cell is background (0)."""
+        diamonds = []
+        visited_centers = set()
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if grid[r][c] != 0 or (r, c) in visited_centers:
+                    continue
+                top = grid[r - 1][c]
+                bot = grid[r + 1][c]
+                left = grid[r][c - 1]
+                right = grid[r][c + 1]
+                if top != 0 and top == bot == left == right:
+                    visited_centers.add((r, c))
+                    diamonds.append({
+                        'center': (r, c),
+                        'color': top,
+                        'top': (r - 1, c),
+                        'bottom': (r + 1, c),
+                        'left': (r, c - 1),
+                        'right': (r, c + 1),
+                    })
+        return diamonds
+
+    @staticmethod
+    def _simulate_diamond_bridge(raw_in, h, w, diamonds, bridge_color):
+        """Connect aligned diamond tips with bridge lines.
+        Only bridges tips with a clear path (all gap cells are 0)."""
+        output = [row[:] for row in raw_in]
+
+        def _gap_clear_h(row, c_start, c_end):
+            """Check all cells in horizontal gap are background (0)."""
+            for c in range(c_start, c_end + 1):
+                if raw_in[row][c] != 0:
+                    return False
+            return True
+
+        def _gap_clear_v(col, r_start, r_end):
+            """Check all cells in vertical gap are background (0)."""
+            for r in range(r_start, r_end + 1):
+                if raw_in[r][col] != 0:
+                    return False
+            return True
+
+        for i in range(len(diamonds)):
+            for j in range(i + 1, len(diamonds)):
+                d1 = diamonds[i]
+                d2 = diamonds[j]
+
+                # Horizontal: d1 right -> d2 left
+                if d1['right'][0] == d2['left'][0]:
+                    row = d1['right'][0]
+                    c1, c2 = d1['right'][1], d2['left'][1]
+                    if c1 < c2:
+                        gs, ge = c1 + 1, c2 - 1
+                        if gs <= ge and _gap_clear_h(row, gs, ge):
+                            for c in range(gs, ge + 1):
+                                output[row][c] = bridge_color
+
+                # Horizontal: d2 right -> d1 left
+                if d2['right'][0] == d1['left'][0]:
+                    row = d2['right'][0]
+                    c1, c2 = d2['right'][1], d1['left'][1]
+                    if c1 < c2:
+                        gs, ge = c1 + 1, c2 - 1
+                        if gs <= ge and _gap_clear_h(row, gs, ge):
+                            for c in range(gs, ge + 1):
+                                output[row][c] = bridge_color
+
+                # Vertical: d1 bottom -> d2 top
+                if d1['bottom'][1] == d2['top'][1]:
+                    col = d1['bottom'][1]
+                    r1, r2 = d1['bottom'][0], d2['top'][0]
+                    if r1 < r2:
+                        gs, ge = r1 + 1, r2 - 1
+                        if gs <= ge and _gap_clear_v(col, gs, ge):
+                            for r in range(gs, ge + 1):
+                                output[r][col] = bridge_color
+
+                # Vertical: d2 bottom -> d1 top
+                if d2['bottom'][1] == d1['top'][1]:
+                    col = d2['bottom'][1]
+                    r1, r2 = d2['bottom'][0], d1['top'][0]
+                    if r1 < r2:
+                        gs, ge = r1 + 1, r2 - 1
+                        if gs <= ge and _gap_clear_v(col, gs, ge):
+                            for r in range(gs, ge + 1):
+                                output[r][col] = bridge_color
+
+        return output
+
+    # ---- strategy: mirror separator ----------------------------------------
+
+    def _try_mirror_separator(self, patterns, task):
+        """
+        Detect pattern: a row of 9s separates the grid into top and bottom
+        halves. Bottom half has 'object' pixels and 'arrow' pixels. Each object
+        pixel is adjacent to one arrow pixel defining its movement direction.
+        Top half has mirror pixels at reflected positions that move in the
+        vertically-mirrored direction.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        sep_color = None
+        obj_color = None
+        arrow_color = None
+        mirror_color = None
+        bg_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            # Find background color (most common in the grid)
+            color_freq = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    color_freq[v] = color_freq.get(v, 0) + 1
+            bg = max(color_freq, key=color_freq.get)
+
+            # Find separator row: uniform non-background color
+            sep_row = None
+            for r in range(h):
+                row = raw_in[r]
+                vals = set(row)
+                if len(vals) == 1 and row[0] != bg:
+                    if sep_row is None:
+                        sep_row = r
+                        sc = row[0]
+                    else:
+                        return None  # Multiple separator rows
+            if sep_row is None:
+                return None
+
+            if sep_color is None:
+                sep_color = sc
+            elif sep_color != sc:
+                return None
+
+            # bg already computed above from color_freq
+
+            if bg_color is None:
+                bg_color = bg
+            elif bg_color != bg:
+                return None
+
+            # Identify colors in bottom and top halves
+            bottom_colors = set()
+            top_colors = set()
+            for r in range(sep_row + 1, h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        bottom_colors.add(v)
+            for r in range(sep_row):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        top_colors.add(v)
+
+            if len(bottom_colors) != 2 or len(top_colors) != 1:
+                return None
+
+            mc = list(top_colors)[0]
+
+            # Determine which bottom color is object, which is arrow
+            # by checking: in output, arrows disappear, objects move
+            for assign in list(bottom_colors):
+                other = [c for c in bottom_colors if c != assign][0]
+                oc, ac = assign, other
+                # Verify: simulate and compare
+                result = self._simulate_mirror_sep(
+                    raw_in, raw_out, h, w, sep_row, bg, oc, ac, mc)
+                if result is not None:
+                    if obj_color is None:
+                        obj_color = oc
+                        arrow_color = ac
+                        mirror_color = mc
+                    elif obj_color != oc or arrow_color != ac:
+                        return None
+                    break
+            else:
+                return None
+
+        if obj_color is None:
+            return None
+
+        return {
+            'type': 'mirror_separator',
+            'sep_color': sep_color,
+            'bg_color': bg_color,
+            'obj_color': obj_color,
+            'arrow_color': arrow_color,
+            'mirror_color': mirror_color,
+            'confidence': 1.0,
+        }
+
+    @staticmethod
+    def _simulate_mirror_sep(raw_in, raw_out, h, w, sep_row, bg,
+                             obj_color, arrow_color, mirror_color):
+        """Simulate mirror-separator transformation. Returns output if valid."""
+        output = [[bg] * w for _ in range(h)]
+        # Copy separator row
+        for c in range(w):
+            output[sep_row][c] = raw_in[sep_row][c]
+
+        # Bottom half: find each obj pixel and its adjacent arrow
+        obj_positions = []
+        arrow_positions = []
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if raw_in[r][c] == obj_color:
+                    obj_positions.append((r, c))
+                elif raw_in[r][c] == arrow_color:
+                    arrow_positions.append((r, c))
+
+        arrow_set = set(arrow_positions)
+        movements = []
+
+        for (or_, oc_) in obj_positions:
+            # Find adjacent arrow
+            adj_arrow = None
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = or_ + dr, oc_ + dc
+                if (nr, nc) in arrow_set:
+                    adj_arrow = (nr, nc, dr, dc)
+                    break
+            if adj_arrow is None:
+                return None
+
+            ar, ac, dr, dc = adj_arrow
+            # Follow chain of arrows in that direction
+            final_r, final_c = ar, ac
+            while True:
+                next_r = final_r + dr
+                next_c = final_c + dc
+                if (next_r, next_c) in arrow_set:
+                    final_r, final_c = next_r, next_c
+                else:
+                    break
+
+            move_dr = final_r - or_
+            move_dc = final_c - oc_
+            movements.append((or_, oc_, final_r, final_c, move_dr, move_dc))
+
+        # Place objects at new positions in bottom half
+        for (_, _, fr, fc, _, _) in movements:
+            output[fr][fc] = obj_color
+
+        # Top half: mirror each movement
+        for (or_, oc_, _, _, move_dr, move_dc) in movements:
+            # Mirror position of object
+            dist = or_ - sep_row
+            mirror_r = sep_row - dist
+            mirror_c = oc_
+            # Mirror movement: negate vertical, keep horizontal
+            new_r = mirror_r - move_dr
+            new_c = mirror_c + move_dc
+            if 0 <= new_r < h and 0 <= new_c < w:
+                output[new_r][new_c] = mirror_color
+
+        if output == raw_out:
+            return output
+        return None
+
     @staticmethod
     def _compute_band_fill(h, w, axis_col, axis_color, intersect_color,
                            sep_rows, sep_colors):
@@ -1347,6 +1871,12 @@ class PredictOperator(Operator):
             return self._apply_concentric_ring_reversal(rule, input_grid)
         if rule_type == "band_section_fill":
             return self._apply_band_section_fill(rule, input_grid)
+        if rule_type == "path_waypoint":
+            return self._apply_path_waypoint(rule, input_grid)
+        if rule_type == "diamond_bridge":
+            return self._apply_diamond_bridge(rule, input_grid)
+        if rule_type == "mirror_separator":
+            return self._apply_mirror_separator(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1626,6 +2156,111 @@ class PredictOperator(Operator):
 
         return GeneralizeOperator._compute_band_fill(
             h, w, axis_col, axis_color, intersect_color, sep_rows, sep_colors)
+
+    def _apply_path_waypoint(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        start_color = rule['start_color']
+        right_turn_color = rule['right_turn_color']
+        left_turn_color = rule['left_turn_color']
+
+        # Find start position
+        start_pos = None
+        waypoints = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v == start_color:
+                    start_pos = (r, c)
+                elif v in (right_turn_color, left_turn_color):
+                    waypoints[(r, c)] = v
+
+        if start_pos is None:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._simulate_path(
+            raw, h, w, start_pos, start_color,
+            right_turn_color, left_turn_color, waypoints)
+
+    def _apply_diamond_bridge(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bridge_color = rule['bridge_color']
+
+        diamonds = GeneralizeOperator._find_diamonds(raw, h, w)
+        return GeneralizeOperator._simulate_diamond_bridge(
+            raw, h, w, diamonds, bridge_color)
+
+    def _apply_mirror_separator(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        sep_color = rule['sep_color']
+        bg = rule['bg_color']
+        obj_color = rule['obj_color']
+        arrow_color = rule['arrow_color']
+        mirror_color = rule['mirror_color']
+
+        # Find separator row
+        sep_row = None
+        for r in range(h):
+            if all(raw[r][c] == sep_color for c in range(w)):
+                sep_row = r
+                break
+        if sep_row is None:
+            return [row[:] for row in raw]
+
+        output = [[bg] * w for _ in range(h)]
+        for c in range(w):
+            output[sep_row][c] = sep_color
+
+        # Bottom half: find objects and arrows
+        obj_positions = []
+        arrow_set = set()
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if raw[r][c] == obj_color:
+                    obj_positions.append((r, c))
+                elif raw[r][c] == arrow_color:
+                    arrow_set.add((r, c))
+
+        for (or_, oc_) in obj_positions:
+            # Find adjacent arrow
+            adj_arrow = None
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = or_ + dr, oc_ + dc
+                if (nr, nc) in arrow_set:
+                    adj_arrow = (nr, nc, dr, dc)
+                    break
+            if adj_arrow is None:
+                output[or_][oc_] = obj_color
+                continue
+
+            ar, ac, dr, dc = adj_arrow
+            final_r, final_c = ar, ac
+            while True:
+                next_r = final_r + dr
+                next_c = final_c + dc
+                if (next_r, next_c) in arrow_set:
+                    final_r, final_c = next_r, next_c
+                else:
+                    break
+
+            move_dr = final_r - or_
+            move_dc = final_c - oc_
+            output[final_r][final_c] = obj_color
+
+            # Mirror in top half
+            dist = or_ - sep_row
+            mirror_r = sep_row - dist
+            new_r = mirror_r - move_dr
+            new_c = oc_ + move_dc
+            if 0 <= new_r < h and 0 <= new_c < w:
+                output[new_r][new_c] = mirror_color
+
+        return output
 
     # ---- helpers ---------------------------------------------------------
 

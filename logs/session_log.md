@@ -85,3 +85,37 @@
 - Stored rule hits: 8
 - Time: 57s
 - Log: logs/learn_20260325_152129.log
+
+---
+## Learning Loop -- 2026-03-25 15:24
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 22 -> 23 (+1 learned)
+- Stored rule hits: 9
+- Time: 57s
+- Log: logs/learn_20260325_152326.log
+
+---
+## Session 4 -- 2026-03-25 15:47
+
+**Strategies added:**
+1. `path_waypoint` -- draws a path from a start marker (color 3), turning right at one waypoint color (6) and left at another (8) relative to current direction; handles L-shaped paths through multiple waypoints to grid edge
+2. `diamond_bridge` -- cross/plus shapes (4 cells around an empty center) of one color; when two crosses' tips align horizontally or vertically with a clear gap, fills the gap with a bridge color (1)
+3. `mirror_separator` -- a row of uniform non-background color (e.g. 9) divides the grid; bottom half has object pixels adjacent to arrow pixels defining movement direction (chain-following); top half has mirror pixels at reflected positions that move in the vertically-mirrored direction
+
+**Bugfixes:**
+- `recolor_sequential` now rejects patterns where source color is 0 (background); prevents false-matching path/bridge tasks
+- `color_mapping` now rejects mappings from color 0; prevents false-matching tasks where new cells are added
+- Cleaned 10 stale stored rules from procedural_memory (wrong rules from earlier false matches)
+
+**Tasks solved:** e5790162 (path_waypoint), 60a26a3e (diamond_bridge), c9680e90 (mirror_separator)
+
+**Results:** 9/20 (45.0%) -> 12/20 (60.0%)
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 15 -> 16 (+1 learned)
+- Stored rule hits: 10
+- Time: 57s
+- Log: logs/learn_20260325_154652.log
