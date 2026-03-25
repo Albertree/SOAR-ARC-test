@@ -311,6 +311,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_recolor_by_size(patterns, task)
 
+        # Strategy 6: corner quadrant fill (placeholder block + diagonal corner markers)
+        if rule is None:
+            rule = self._try_corner_quadrant_fill(patterns, task)
+
+        # Strategy 7: fill hollow frames by interior size
+        if rule is None:
+            rule = self._try_frame_fill_by_size(patterns, task)
+
+        # Strategy 8: staircase growth (1D row -> 2D incremental triangle)
+        if rule is None:
+            rule = self._try_staircase_growth(patterns, task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -665,6 +677,323 @@ class GeneralizeOperator(Operator):
 
         return components
 
+    @staticmethod
+    def _find_solid_blocks(grid, color):
+        """Find all solid rectangular blocks of the given color via BFS."""
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        visited = set()
+        blocks = []
+
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] != color or (r, c) in visited:
+                    continue
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    pr, pc = queue.pop(0)
+                    comp.append((pr, pc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = pr + dr, pc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == color:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                min_r = min(p[0] for p in comp)
+                max_r = max(p[0] for p in comp)
+                min_c = min(p[1] for p in comp)
+                max_c = max(p[1] for p in comp)
+                bh = max_r - min_r + 1
+                bw = max_c - min_c + 1
+                if len(comp) == bh * bw:
+                    blocks.append({
+                        'top_row': min_r, 'top_col': min_c,
+                        'height': bh, 'width': bw,
+                    })
+
+        return blocks
+
+    @staticmethod
+    def _find_frames(grid):
+        """Find all hollow rectangular frames (border of one color, interior all 0)."""
+        h_grid = len(grid)
+        w_grid = len(grid[0]) if grid else 0
+        used = set()
+        frames = []
+
+        for r in range(h_grid):
+            for c in range(w_grid):
+                if grid[r][c] == 0 or (r, c) in used:
+                    continue
+                color = grid[r][c]
+                fw = 0
+                while c + fw < w_grid and grid[r][c + fw] == color and (r, c + fw) not in used:
+                    fw += 1
+                if fw < 3:
+                    continue
+                fh = None
+                broken = False
+                for rr in range(r + 1, h_grid):
+                    is_full = all(grid[rr][c + cc] == color for cc in range(fw))
+                    has_edges = (grid[rr][c] == color and grid[rr][c + fw - 1] == color)
+                    if is_full:
+                        fh = rr - r + 1
+                        break
+                    elif has_edges:
+                        continue
+                    else:
+                        broken = True
+                        break
+                if broken or fh is None or fh < 3:
+                    continue
+                interior_ok = True
+                for rr in range(r + 1, r + fh - 1):
+                    for cc in range(c + 1, c + fw - 1):
+                        if grid[rr][cc] != 0:
+                            interior_ok = False
+                            break
+                    if not interior_ok:
+                        break
+                if not interior_ok:
+                    continue
+                for rr in range(r, r + fh):
+                    for cc in range(c, c + fw):
+                        if rr == r or rr == r + fh - 1 or cc == c or cc == c + fw - 1:
+                            used.add((rr, cc))
+                frames.append({
+                    'color': color,
+                    'top_row': r, 'top_col': c,
+                    'frame_height': fh, 'frame_width': fw,
+                    'inner_row': r + 1, 'inner_col': c + 1,
+                    'inner_height': fh - 2, 'inner_width': fw - 2,
+                })
+
+        return frames
+
+    # ---- strategy: corner quadrant fill -----------------------------------
+
+    def _try_corner_quadrant_fill(self, patterns, task):
+        """
+        Detect pattern: rectangular block of a placeholder color with four
+        colored corner markers diagonally adjacent. Output replaces the block
+        with four quadrants colored by the corresponding corners.
+        """
+        if not task or not task.example_pairs:
+            return None
+
+        placeholder = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            colors = set()
+            for row in raw_in:
+                for cell in row:
+                    if cell != 0:
+                        colors.add(cell)
+
+            found_ph = None
+            for color in colors:
+                blocks = self._find_solid_blocks(raw_in, color)
+                if not blocks:
+                    continue
+                all_valid = True
+                for block in blocks:
+                    br, bc = block['top_row'], block['top_col']
+                    bh, bw = block['height'], block['width']
+                    if bh < 2 or bw < 2 or bh % 2 != 0 or bw % 2 != 0:
+                        all_valid = False
+                        break
+                    corners = [
+                        (br - 1, bc - 1), (br - 1, bc + bw),
+                        (br + bh, bc - 1), (br + bh, bc + bw),
+                    ]
+                    corner_colors = []
+                    for cr, cc in corners:
+                        if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                            all_valid = False
+                            break
+                        cv = raw_in[cr][cc]
+                        if cv == 0 or cv == color:
+                            all_valid = False
+                            break
+                        corner_colors.append(cv)
+                    if not all_valid:
+                        break
+                    mid_r = br + bh // 2
+                    mid_c = bc + bw // 2
+                    quads = [
+                        (br, bc, mid_r, mid_c),
+                        (br, mid_c, mid_r, bc + bw),
+                        (mid_r, bc, br + bh, mid_c),
+                        (mid_r, mid_c, br + bh, bc + bw),
+                    ]
+                    for qi, (qr1, qc1, qr2, qc2) in enumerate(quads):
+                        for rr in range(qr1, qr2):
+                            for cc in range(qc1, qc2):
+                                if raw_out[rr][cc] != corner_colors[qi]:
+                                    all_valid = False
+                                    break
+                            if not all_valid:
+                                break
+                        if not all_valid:
+                            break
+                    if not all_valid:
+                        break
+                    for cr, cc in corners:
+                        if raw_out[cr][cc] != 0:
+                            all_valid = False
+                            break
+                    if not all_valid:
+                        break
+                if all_valid and blocks:
+                    found_ph = color
+                    break
+            if found_ph is None:
+                return None
+            if placeholder is None:
+                placeholder = found_ph
+            elif placeholder != found_ph:
+                return None
+
+        return {
+            'type': 'corner_quadrant_fill',
+            'placeholder': placeholder,
+            'confidence': 1.0,
+        }
+
+    # ---- strategy: frame fill by interior size ----------------------------
+
+    def _try_frame_fill_by_size(self, patterns, task):
+        """
+        Detect pattern: hollow rectangular frames of a single color with 0-interiors.
+        Each frame's interior is filled with a color based on interior side length.
+        """
+        if not task or not task.example_pairs:
+            return None
+
+        frame_color = None
+        size_to_color = {}
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            frames = self._find_frames(raw_in)
+            if not frames:
+                return None
+
+            for frame in frames:
+                fc = frame['color']
+                if frame_color is None:
+                    frame_color = fc
+                elif frame_color != fc:
+                    return None
+                ih, iw = frame['inner_height'], frame['inner_width']
+                if ih != iw:
+                    return None
+                ir, ic = frame['inner_row'], frame['inner_col']
+                fill = raw_out[ir][ic]
+                if fill == 0:
+                    return None
+                ok = True
+                for rr in range(ir, ir + ih):
+                    for cc in range(ic, ic + iw):
+                        if raw_out[rr][cc] != fill:
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                if not ok:
+                    return None
+                if ih in size_to_color:
+                    if size_to_color[ih] != fill:
+                        return None
+                else:
+                    size_to_color[ih] = fill
+
+        if not size_to_color:
+            return None
+
+        formula = all(size_to_color[s] == frame_color + s for s in size_to_color)
+
+        return {
+            'type': 'frame_fill_by_size',
+            'frame_color': frame_color,
+            'size_to_color': size_to_color,
+            'additive_formula': formula,
+            'confidence': 1.0,
+        }
+
+    # ---- strategy: staircase growth --------------------------------------
+
+    def _try_staircase_growth(self, patterns, task):
+        """
+        Detect pattern: input is a single row with C colored cells on the left.
+        Output grows to (W//2) rows, each row i has (C+i) colored cells.
+        """
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+
+            if g0.height != 1:
+                return None
+
+            w = g0.width
+            row = raw_in[0]
+            c_count = 0
+            c_color = None
+            for v in row:
+                if v != 0:
+                    if c_color is None:
+                        c_color = v
+                    elif v != c_color:
+                        return None
+                    c_count += 1
+                else:
+                    break
+            if c_count == 0 or c_color is None:
+                return None
+            if any(v != 0 for v in row[c_count:]):
+                return None
+
+            expected_rows = w // 2
+            if g1.height != expected_rows or g1.width != w:
+                return None
+
+            for i in range(expected_rows):
+                count = c_count + i
+                for j in range(w):
+                    if j < count:
+                        if raw_out[i][j] != c_color:
+                            return None
+                    else:
+                        if raw_out[i][j] != 0:
+                            return None
+
+        return {'type': 'staircase_growth', 'confidence': 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -738,6 +1067,12 @@ class PredictOperator(Operator):
             return self._apply_tile_reflect(rule, input_grid)
         if rule_type == "recolor_by_size":
             return self._apply_recolor_by_size(rule, input_grid)
+        if rule_type == "corner_quadrant_fill":
+            return self._apply_corner_quadrant_fill(rule, input_grid)
+        if rule_type == "frame_fill_by_size":
+            return self._apply_frame_fill_by_size(rule, input_grid)
+        if rule_type == "staircase_growth":
+            return self._apply_staircase_growth(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -842,6 +1177,104 @@ class PredictOperator(Operator):
             color = rank_to_color.get(rank, source_color)
             for r, c in comp:
                 output[r][c] = color
+        return output
+
+    def _apply_corner_quadrant_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        placeholder = rule['placeholder']
+
+        blocks = GeneralizeOperator._find_solid_blocks(raw, placeholder)
+        output = [row[:] for row in raw]
+
+        for block in blocks:
+            br, bc = block['top_row'], block['top_col']
+            bh, bw = block['height'], block['width']
+            corners = [
+                (br - 1, bc - 1), (br - 1, bc + bw),
+                (br + bh, bc - 1), (br + bh, bc + bw),
+            ]
+            corner_colors = []
+            valid = True
+            for cr, cc in corners:
+                if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                    valid = False
+                    break
+                cv = raw[cr][cc]
+                if cv == 0 or cv == placeholder:
+                    valid = False
+                    break
+                corner_colors.append(cv)
+            if not valid:
+                continue
+            mid_r = br + bh // 2
+            mid_c = bc + bw // 2
+            for r in range(br, mid_r):
+                for c in range(bc, mid_c):
+                    output[r][c] = corner_colors[0]
+            for r in range(br, mid_r):
+                for c in range(mid_c, bc + bw):
+                    output[r][c] = corner_colors[1]
+            for r in range(mid_r, br + bh):
+                for c in range(bc, mid_c):
+                    output[r][c] = corner_colors[2]
+            for r in range(mid_r, br + bh):
+                for c in range(mid_c, bc + bw):
+                    output[r][c] = corner_colors[3]
+            for cr, cc in corners:
+                output[cr][cc] = 0
+        return output
+
+    def _apply_frame_fill_by_size(self, rule, input_grid):
+        raw = input_grid.raw
+        frame_color = rule['frame_color']
+        size_to_color = {int(k): v for k, v in rule['size_to_color'].items()}
+        additive = rule.get('additive_formula', False)
+
+        frames = GeneralizeOperator._find_frames(raw)
+        output = [row[:] for row in raw]
+
+        for frame in frames:
+            if frame['color'] != frame_color:
+                continue
+            ih = frame['inner_height']
+            if ih in size_to_color:
+                fill = size_to_color[ih]
+            elif additive:
+                fill = frame_color + ih
+            else:
+                continue
+            ir, ic = frame['inner_row'], frame['inner_col']
+            iw = frame['inner_width']
+            for r in range(ir, ir + ih):
+                for c in range(ic, ic + iw):
+                    output[r][c] = fill
+        return output
+
+    def _apply_staircase_growth(self, rule, input_grid):
+        raw = input_grid.raw
+        if len(raw) != 1:
+            return [row[:] for row in raw]
+
+        w = len(raw[0])
+        row = raw[0]
+        c_count = 0
+        c_color = 0
+        for v in row:
+            if v != 0:
+                c_color = v
+                c_count += 1
+            else:
+                break
+        if c_count == 0:
+            return [row[:]]
+
+        num_rows = w // 2
+        output = []
+        for i in range(num_rows):
+            count = c_count + i
+            output.append([c_color if j < count else 0 for j in range(w)])
         return output
 
     # ---- helpers ---------------------------------------------------------
