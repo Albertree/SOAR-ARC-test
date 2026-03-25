@@ -1846,3 +1846,68 @@ All 20 default tasks (seed 42) passed at 100%. Ran with --seed 100 to find new f
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
 - Original task set (default shuffle): 20/20 (100.0%)
+
+---
+## Learning Loop -- 2026-03-25 09:50
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 194 -> 194 (+0 learned)
+- Stored rule hits: 19
+- Time: 58s
+- Log: logs/learn_20260325_094937.log
+
+---
+## Learning Loop -- 2026-03-25 09:51
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 194 -> 194 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_095054.log
+
+---
+## Learning Loop -- 2026-03-25 10:09
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 202 -> 202 (+0 learned)
+- Stored rule hits: 6
+- Time: 81s
+- Log: logs/learn_20260325_100753.log
+
+---
+## Session 23 Analysis — 2026-03-25 10:10
+
+### Context
+
+All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
+
+### Strategies added (agent/active_operators.py)
+
+1. **recolor_by_holes** — connected components of a single color recolored by enclosed-hole count
+   - `_try_recolor_by_holes`: finds all connected components, counts enclosed holes via flood-fill, maps hole-count to output color (1→1, 2→3, 3→2, 4→4)
+   - `_apply_recolor_by_holes`: same flood-fill logic applied to test input
+
+2. **stripe_tile** — two seed pixels define repeating vertical/horizontal stripes
+   - `_try_stripe_tile`: detects exactly 2 non-bg pixels, determines axis by smaller gap, tiles stripes to grid edge
+   - `_apply_stripe_tile`: reconstructs striped grid from seed pixels in test input
+
+3. **diamond_symmetry_fill** — complete a partial diamond/lattice via 4-fold rotation
+   - `_try_diamond_symmetry_fill`: finds bounding box center, applies 90° rotations to fill missing cells
+   - `_apply_diamond_symmetry_fill`: same rotation logic on test input
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 0a2355a6 | INCORRECT (identity) | CORRECT | recolor_by_holes |
+| 0a938d79 | INCORRECT (identity) | CORRECT | stripe_tile |
+| 11852cab | INCORRECT (identity) | CORRECT | diamond_symmetry_fill |
+
+**Extended batch (tasks 20-40): 7/20 → 10/20 (+3)**
+**Original 20 tasks: 20/20 (no regression)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

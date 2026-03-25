@@ -821,6 +821,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_rect_patch_overlay(task)
 
+        # Strategy 60: recolor by enclosed holes (shapes recolored by hole count)
+        if rule is None:
+            rule = self._try_recolor_by_holes(task)
+
+        # Strategy 61: stripe tile (two seed pixels define repeating stripes)
+        if rule is None:
+            rule = self._try_stripe_tile(task)
+
+        # Strategy 62: diamond symmetry fill (complete symmetric lattice pattern)
+        if rule is None:
+            rule = self._try_diamond_symmetry_fill(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -6693,6 +6705,349 @@ class GeneralizeOperator(Operator):
 
         return {"type": "pair_diagonal_reflect", "confidence": 1.0}
 
+    # ---- strategy 60: recolor by enclosed holes ----------------------------
+
+    def _try_recolor_by_holes(self, task):
+        """
+        Detect: all non-bg connected components are a single color (e.g. 8).
+        Each component is recolored based on the number of enclosed holes
+        (connected regions of bg completely surrounded by the component).
+        Mapping: 1 hole -> 1, 2 holes -> 3, 3 holes -> 2, 4 holes -> 4.
+        Category: shape classification by topology (hole count).
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        from collections import Counter
+
+        def _get_connected_components(grid, h, w, target_color):
+            """Find connected components of target_color using flood fill."""
+            visited = [[False] * w for _ in range(h)]
+            components = []
+            for r in range(h):
+                for c in range(w):
+                    if grid[r][c] == target_color and not visited[r][c]:
+                        comp = []
+                        stack = [(r, c)]
+                        visited[r][c] = True
+                        while stack:
+                            cr, cc = stack.pop()
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                nr, nc = cr + dr, cc + dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == target_color:
+                                    visited[nr][nc] = True
+                                    stack.append((nr, nc))
+                        components.append(set(comp))
+            return components
+
+        def _count_enclosed_holes(grid, h, w, comp_cells):
+            """Count enclosed hole regions (bg cells fully surrounded by comp)."""
+            # Flood fill from all boundary bg cells to find external bg
+            external = set()
+            stack = []
+            for r in range(h):
+                for c in range(w):
+                    if (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                        if (r, c) not in comp_cells and grid[r][c] not in comp_cells:
+                            if (r, c) not in external:
+                                external.add((r, c))
+                                stack.append((r, c))
+            # Also add any cell not in the component that's on the boundary
+            for r in range(h):
+                for c in [0, w - 1]:
+                    if (r, c) not in comp_cells and (r, c) not in external:
+                        external.add((r, c))
+                        stack.append((r, c))
+            for c in range(w):
+                for r in [0, h - 1]:
+                    if (r, c) not in comp_cells and (r, c) not in external:
+                        external.add((r, c))
+                        stack.append((r, c))
+
+            while stack:
+                cr, cc = stack.pop()
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in comp_cells and (nr, nc) not in external:
+                        external.add((nr, nc))
+                        stack.append((nr, nc))
+
+            # Internal bg cells = not in comp and not external
+            internal = set()
+            for r in range(h):
+                for c in range(w):
+                    if (r, c) not in comp_cells and (r, c) not in external:
+                        internal.add((r, c))
+
+            # Count connected groups of internal cells
+            visited = set()
+            hole_count = 0
+            for cell in internal:
+                if cell not in visited:
+                    hole_count += 1
+                    q = [cell]
+                    visited.add(cell)
+                    while q:
+                        cr, cc = q.pop()
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if (nr, nc) in internal and (nr, nc) not in visited:
+                                visited.add((nr, nc))
+                                q.append((nr, nc))
+            return hole_count
+
+        # Detect: all non-bg cells are a single color
+        ri0 = pairs[0].input_grid.raw
+        flat = [v for row in ri0 for v in row]
+        bg = Counter(flat).most_common(1)[0][0]
+        non_bg_colors = set(v for v in flat if v != bg)
+        if len(non_bg_colors) != 1:
+            return None
+        shape_color = non_bg_colors.pop()
+
+        # Build hole_count -> output_color mapping from examples
+        hole_to_color = {}
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Check all non-bg cells in input are shape_color
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != bg and ri[r][c] != shape_color:
+                        return None
+
+            comps = _get_connected_components(ri, h, w, shape_color)
+            if not comps:
+                return None
+
+            for comp in comps:
+                holes = _count_enclosed_holes(ri, h, w, comp)
+                # Find output color for this component
+                sample_r, sample_c = next(iter(comp))
+                out_color = ro[sample_r][sample_c]
+                if out_color == bg or out_color == shape_color:
+                    return None
+
+                if holes in hole_to_color:
+                    if hole_to_color[holes] != out_color:
+                        return None
+                else:
+                    hole_to_color[holes] = out_color
+
+            # Verify: all component cells map correctly
+            for comp in comps:
+                holes = _count_enclosed_holes(ri, h, w, comp)
+                expected_color = hole_to_color.get(holes)
+                if expected_color is None:
+                    return None
+                for r, c in comp:
+                    if ro[r][c] != expected_color:
+                        return None
+
+            # Verify: bg cells stay bg
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] == bg and ro[r][c] != bg:
+                        return None
+
+        if not hole_to_color:
+            return None
+
+        return {
+            "type": "recolor_by_holes",
+            "confidence": 1.0,
+            "bg": bg,
+            "shape_color": shape_color,
+            "hole_to_color": hole_to_color,
+        }
+
+    # ---- strategy 61: stripe tile ------------------------------------------
+
+    def _try_stripe_tile(self, task):
+        """
+        Detect: exactly two non-bg pixels in the input. They define repeating
+        stripes (vertical columns or horizontal rows) that tile to the grid edge.
+        The axis with the smaller non-zero gap determines stripe direction.
+        Category: seed-pixel repeating stripe/line patterns.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        from collections import Counter
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Find exactly 2 non-zero pixels
+            seeds = []
+            bg = 0
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != bg:
+                        seeds.append((r, c, ri[r][c]))
+            if len(seeds) != 2:
+                return None
+
+            r1, c1, clr1 = seeds[0]
+            r2, c2, clr2 = seeds[1]
+
+            row_gap = abs(r2 - r1)
+            col_gap = abs(c2 - c1)
+
+            if row_gap == 0 and col_gap == 0:
+                return None
+
+            # Determine axis: smaller non-zero gap wins
+            if col_gap == 0:
+                axis = "row"
+            elif row_gap == 0:
+                axis = "col"
+            elif col_gap <= row_gap:
+                axis = "col"
+            else:
+                axis = "row"
+
+            # Build predicted output
+            pred = [[bg] * w for _ in range(h)]
+            if axis == "col":
+                # Vertical stripes at columns
+                start_col = min(c1, c2)
+                gap = col_gap
+                # Order colors by column position
+                if c1 < c2:
+                    colors = [clr1, clr2]
+                else:
+                    colors = [clr2, clr1]
+                col = start_col
+                ci = 0
+                while col < w:
+                    for r in range(h):
+                        pred[r][col] = colors[ci % 2]
+                    col += gap
+                    ci += 1
+            else:
+                # Horizontal stripes at rows
+                start_row = min(r1, r2)
+                gap = row_gap
+                if r1 < r2:
+                    colors = [clr1, clr2]
+                else:
+                    colors = [clr2, clr1]
+                row = start_row
+                ri_idx = 0
+                while row < h:
+                    for c in range(w):
+                        pred[row][c] = colors[ri_idx % 2]
+                    row += gap
+                    ri_idx += 1
+
+            if pred != ro:
+                return None
+
+        return {
+            "type": "stripe_tile",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 62: diamond symmetry fill --------------------------------
+
+    def _try_diamond_symmetry_fill(self, task):
+        """
+        Detect: a partially-drawn diamond/lattice pattern on a bg grid.
+        The output completes the pattern using 4-fold rotational symmetry
+        (90 degree rotations) around the pattern's center.
+        Category: symmetric pattern completion (checkerboard lattice).
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h = len(ri)
+            w = len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Find all non-zero cells in input
+            nz_cells = []
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        nz_cells.append((r, c))
+
+            if len(nz_cells) < 3:
+                return None
+
+            # Find bounding box of non-zero region
+            min_r = min(r for r, c in nz_cells)
+            max_r = max(r for r, c in nz_cells)
+            min_c = min(c for r, c in nz_cells)
+            max_c = max(c for r, c in nz_cells)
+
+            # Center of symmetry (may be half-integer)
+            center_r = (min_r + max_r) / 2.0
+            center_c = (min_c + max_c) / 2.0
+
+            # Build the full pattern via 4-fold rotation (0, 90, 180, 270 degrees)
+            pred = [[0] * w for _ in range(h)]
+
+            # Place original cells
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        pred[r][c] = ri[r][c]
+
+            # For each non-zero cell, generate all 4 rotations around center
+            for r, c in nz_cells:
+                color = ri[r][c]
+                dr = r - center_r
+                dc = c - center_c
+
+                # 4 rotations: (dr,dc), (dc,-dr), (-dr,-dc), (-dc,dr)
+                rotations = [
+                    (dr, dc),       # 0 degrees (original)
+                    (dc, -dr),      # 90 CW
+                    (-dr, -dc),     # 180
+                    (-dc, dr),      # 270 CW
+                ]
+                for rdr, rdc in rotations:
+                    nr = center_r + rdr
+                    nc = center_c + rdc
+                    # Round to nearest int
+                    nri = int(nr + 0.5) if nr >= 0 else int(nr - 0.5)
+                    nci = int(nc + 0.5) if nc >= 0 else int(nc - 0.5)
+                    if 0 <= nri < h and 0 <= nci < w and pred[nri][nci] == 0:
+                        pred[nri][nci] = color
+
+            if pred != ro:
+                return None
+
+        return {
+            "type": "diamond_symmetry_fill",
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -6886,6 +7241,12 @@ class PredictOperator(Operator):
             return self._apply_rect_patch_overlay(rule, input_grid)
         if rule_type == "pair_diagonal_reflect":
             return self._apply_pair_diagonal_reflect(rule, input_grid)
+        if rule_type == "recolor_by_holes":
+            return self._apply_recolor_by_holes(rule, input_grid)
+        if rule_type == "stripe_tile":
+            return self._apply_stripe_tile(rule, input_grid)
+        if rule_type == "diamond_symmetry_fill":
+            return self._apply_diamond_symmetry_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -8784,6 +9145,193 @@ class PredictOperator(Operator):
                     visited[r][c] = True
 
         return rects
+
+    # ---- apply: recolor_by_holes -------------------------------------------
+
+    def _apply_recolor_by_holes(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule.get("bg", 0)
+        shape_color = rule.get("shape_color", 8)
+        hole_to_color = rule.get("hole_to_color", {})
+        # Convert string keys back to int (JSON serialization)
+        htc = {int(k): v for k, v in hole_to_color.items()}
+
+        def _get_components(grid, h, w, target):
+            visited = [[False] * w for _ in range(h)]
+            comps = []
+            for r in range(h):
+                for c in range(w):
+                    if grid[r][c] == target and not visited[r][c]:
+                        comp = set()
+                        stack = [(r, c)]
+                        visited[r][c] = True
+                        while stack:
+                            cr, cc = stack.pop()
+                            comp.add((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                nr, nc = cr + dr, cc + dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == target:
+                                    visited[nr][nc] = True
+                                    stack.append((nr, nc))
+                        comps.append(comp)
+            return comps
+
+        def _count_holes(grid, h, w, comp_cells):
+            external = set()
+            stack = []
+            for r in range(h):
+                for c in range(w):
+                    if (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                        if (r, c) not in comp_cells:
+                            if (r, c) not in external:
+                                external.add((r, c))
+                                stack.append((r, c))
+            while stack:
+                cr, cc = stack.pop()
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in comp_cells and (nr, nc) not in external:
+                        external.add((nr, nc))
+                        stack.append((nr, nc))
+            internal = set()
+            for r in range(h):
+                for c in range(w):
+                    if (r, c) not in comp_cells and (r, c) not in external:
+                        internal.add((r, c))
+            visited = set()
+            count = 0
+            for cell in internal:
+                if cell not in visited:
+                    count += 1
+                    q = [cell]
+                    visited.add(cell)
+                    while q:
+                        cr, cc = q.pop()
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if (nr, nc) in internal and (nr, nc) not in visited:
+                                visited.add((nr, nc))
+                                q.append((nr, nc))
+            return count
+
+        output = [[bg] * w for _ in range(h)]
+        comps = _get_components(raw, h, w, shape_color)
+        for comp in comps:
+            holes = _count_holes(raw, h, w, comp)
+            color = htc.get(holes, shape_color)
+            for r, c in comp:
+                output[r][c] = color
+        return output
+
+    # ---- apply: stripe_tile ------------------------------------------------
+
+    def _apply_stripe_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find exactly 2 non-zero pixels
+        seeds = []
+        bg = 0
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    seeds.append((r, c, raw[r][c]))
+        if len(seeds) != 2:
+            return [row[:] for row in raw]
+
+        r1, c1, clr1 = seeds[0]
+        r2, c2, clr2 = seeds[1]
+
+        row_gap = abs(r2 - r1)
+        col_gap = abs(c2 - c1)
+
+        if row_gap == 0 and col_gap == 0:
+            return [row[:] for row in raw]
+
+        if col_gap == 0:
+            axis = "row"
+        elif row_gap == 0:
+            axis = "col"
+        elif col_gap <= row_gap:
+            axis = "col"
+        else:
+            axis = "row"
+
+        pred = [[bg] * w for _ in range(h)]
+        if axis == "col":
+            start_col = min(c1, c2)
+            gap = col_gap
+            colors = [clr1, clr2] if c1 < c2 else [clr2, clr1]
+            col = start_col
+            ci = 0
+            while col < w:
+                for r in range(h):
+                    pred[r][col] = colors[ci % 2]
+                col += gap
+                ci += 1
+        else:
+            start_row = min(r1, r2)
+            gap = row_gap
+            colors = [clr1, clr2] if r1 < r2 else [clr2, clr1]
+            row = start_row
+            ri_idx = 0
+            while row < h:
+                for c in range(w):
+                    pred[row][c] = colors[ri_idx % 2]
+                row += gap
+                ri_idx += 1
+        return pred
+
+    # ---- apply: diamond_symmetry_fill --------------------------------------
+
+    def _apply_diamond_symmetry_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find all non-zero cells
+        nz_cells = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    nz_cells.append((r, c))
+
+        if not nz_cells:
+            return [row[:] for row in raw]
+
+        min_r = min(r for r, c in nz_cells)
+        max_r = max(r for r, c in nz_cells)
+        min_c = min(c for r, c in nz_cells)
+        max_c = max(c for r, c in nz_cells)
+
+        center_r = (min_r + max_r) / 2.0
+        center_c = (min_c + max_c) / 2.0
+
+        pred = [row[:] for row in raw]
+
+        for r, c in nz_cells:
+            color = raw[r][c]
+            dr = r - center_r
+            dc = c - center_c
+
+            rotations = [
+                (dr, dc),
+                (dc, -dr),
+                (-dr, -dc),
+                (-dc, dr),
+            ]
+            for rdr, rdc in rotations:
+                nr = center_r + rdr
+                nc = center_c + rdc
+                nri = int(nr + 0.5) if nr >= 0 else int(nr - 0.5)
+                nci = int(nc + 0.5) if nc >= 0 else int(nc - 0.5)
+                if 0 <= nri < h and 0 <= nci < w and pred[nri][nci] == 0:
+                    pred[nri][nci] = color
+
+        return pred
 
 
 # ======================================================================
