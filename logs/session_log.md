@@ -56,3 +56,32 @@
 - Stored rule hits: 3
 - Time: 63s
 - Log: logs/learn_20260325_150302.log
+
+---
+## Learning Loop -- 2026-03-25 15:06
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 15 -> 17 (+2 learned)
+- Stored rule hits: 6
+- Time: 63s
+- Log: logs/learn_20260325_150459.log
+
+---
+## Session 3 -- 2026-03-25 15:22
+
+**Strategies added:**
+1. `center_column_extract` -- output keeps only the center column (index W//2) of the input grid, zeroing everything else; generalizes to single-axis extraction tasks
+2. `concentric_ring_reversal` -- grid of concentric rectangular rings with uniform colors per ring; output reverses the ring color order (outermost↔innermost)
+3. `band_section_fill` -- grid with a vertical axis column and horizontal colored separator rows; fills sections between separators with separator colors, turns separators into border rows; axis column position varies per grid
+
+**Tasks solved:** d23f8c26 (center_column_extract), 85c4e7cd (concentric_ring_reversal), 332202d5 (band_section_fill)
+
+**Results:** 6/20 (30.0%) -> 9/20 (45.0%)
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 20 -> 22 (+2 learned)
+- Stored rule hits: 8
+- Time: 57s
+- Log: logs/learn_20260325_152129.log

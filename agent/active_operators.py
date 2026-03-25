@@ -295,7 +295,11 @@ class GeneralizeOperator(Operator):
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         rule = self._try_recolor_sequential(patterns)
 
-        # Strategy 2: simple 1:1 color mapping
+        # Strategy 2: keep only the center column
+        if rule is None:
+            rule = self._try_center_column_extract(patterns, task)
+
+        # Strategy 3: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -322,6 +326,14 @@ class GeneralizeOperator(Operator):
         # Strategy 8: staircase growth (1D row -> 2D incremental triangle)
         if rule is None:
             rule = self._try_staircase_growth(patterns, task)
+
+        # Strategy 9: concentric ring color reversal (outside↔inside)
+        if rule is None:
+            rule = self._try_concentric_ring_reversal(patterns, task)
+
+        # Strategy 10: band section fill (separator rows + axis column)
+        if rule is None:
+            rule = self._try_band_section_fill(patterns, task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -994,6 +1006,262 @@ class GeneralizeOperator(Operator):
 
         return {'type': 'staircase_growth', 'confidence': 1.0}
 
+    # ---- strategy: center column extraction --------------------------------
+
+    def _try_center_column_extract(self, patterns, task):
+        """
+        Detect pattern: output keeps only the center column (index W//2)
+        of the input grid and zeros everything else. Generalizes to any
+        task that filters to a single axis line.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+            if w < 3:
+                return None
+            center = w // 2
+
+            for r in range(h):
+                for c in range(w):
+                    if c == center:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+                    else:
+                        if raw_out[r][c] != 0:
+                            return None
+
+        return {'type': 'center_column_extract', 'confidence': 1.0}
+
+    # ---- strategy: concentric ring reversal --------------------------------
+
+    def _try_concentric_ring_reversal(self, patterns, task):
+        """
+        Detect pattern: grid consists of concentric rectangular rings of
+        uniform colors. Output reverses the ring color order (outside↔inside).
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            in_layers = self._peel_concentric_layers(g0.raw)
+            out_layers = self._peel_concentric_layers(g1.raw)
+
+            if in_layers is None or out_layers is None:
+                return None
+            if len(in_layers) < 2:
+                return None
+            if in_layers != list(reversed(out_layers)):
+                return None
+
+        return {'type': 'concentric_ring_reversal', 'confidence': 1.0}
+
+    @staticmethod
+    def _peel_concentric_layers(grid):
+        """Extract concentric ring colors from outside in."""
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        if h == 0 or w == 0:
+            return None
+
+        layers = []
+        top, bottom, left, right = 0, h - 1, 0, w - 1
+
+        while top <= bottom and left <= right:
+            color = grid[top][left]
+            for c in range(left, right + 1):
+                if grid[top][c] != color:
+                    return None
+                if top != bottom and grid[bottom][c] != color:
+                    return None
+            for r in range(top + 1, bottom):
+                if grid[r][left] != color:
+                    return None
+                if left != right and grid[r][right] != color:
+                    return None
+            layers.append(color)
+            top += 1
+            bottom -= 1
+            left += 1
+            right -= 1
+
+        return layers
+
+    # ---- strategy: band section fill ---------------------------------------
+
+    def _try_band_section_fill(self, patterns, task):
+        """
+        Detect pattern: grid with a vertical axis column (one color) and
+        horizontal colored separator rows. Background is uniform. Output
+        fills sections between separators with the separator colors and
+        turns separators into border rows.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        axis_col = None
+        axis_color = None
+        intersect_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            found = False
+            for col in range(w):
+                col_vals = [raw_in[r][col] for r in range(h)]
+                unique = set(col_vals)
+                if len(unique) != 2:
+                    continue
+
+                counts = {v: col_vals.count(v) for v in unique}
+                ax_c = max(counts, key=counts.get)
+                int_c = min(counts, key=counts.get)
+
+                sep_rows = [r for r in range(h) if raw_in[r][col] == int_c]
+                if len(sep_rows) < 2:
+                    continue
+
+                seps_valid = True
+                sep_colors = []
+                for sr in sep_rows:
+                    row_vals = set()
+                    for c in range(w):
+                        if c != col:
+                            row_vals.add(raw_in[sr][c])
+                    if len(row_vals) != 1:
+                        seps_valid = False
+                        break
+                    sep_colors.append(list(row_vals)[0])
+                if not seps_valid:
+                    continue
+
+                bg_color = None
+                bg_valid = True
+                sep_set = set(sep_rows)
+                for r in range(h):
+                    if r in sep_set:
+                        continue
+                    for c in range(w):
+                        if c == col:
+                            if raw_in[r][c] != ax_c:
+                                bg_valid = False
+                                break
+                        else:
+                            if bg_color is None:
+                                bg_color = raw_in[r][c]
+                            elif raw_in[r][c] != bg_color:
+                                bg_valid = False
+                                break
+                    if not bg_valid:
+                        break
+                if not bg_valid or bg_color is None:
+                    continue
+
+                expected = self._compute_band_fill(
+                    h, w, col, ax_c, int_c, sep_rows, sep_colors)
+                if expected == raw_out:
+                    if axis_color is None:
+                        axis_color = ax_c
+                        intersect_color = int_c
+                    elif axis_color != ax_c or intersect_color != int_c:
+                        return None
+                    found = True
+                    break
+
+            if not found:
+                return None
+
+        return {
+            'type': 'band_section_fill',
+            'axis_color': axis_color,
+            'intersect_color': intersect_color,
+            'confidence': 1.0,
+        }
+
+    @staticmethod
+    def _compute_band_fill(h, w, axis_col, axis_color, intersect_color,
+                           sep_rows, sep_colors):
+        """Compute the expected band fill output grid."""
+        output = [[0] * w for _ in range(h)]
+
+        sections = []
+
+        if sep_rows[0] > 0:
+            sections.append((0, sep_rows[0] - 1, sep_colors[0]))
+
+        for i in range(len(sep_rows) - 1):
+            gap_start = sep_rows[i] + 1
+            gap_end = sep_rows[i + 1] - 1
+            if gap_start > gap_end:
+                continue
+            upper_color = sep_colors[i]
+            lower_color = sep_colors[i + 1]
+            gap_size = gap_end - gap_start + 1
+
+            if upper_color == lower_color:
+                sections.append((gap_start, gap_end, upper_color))
+            else:
+                half = gap_size // 2
+                if gap_size % 2 == 0:
+                    sections.append((gap_start, gap_start + half - 1,
+                                     upper_color))
+                    sections.append((gap_start + half, gap_end, lower_color))
+                else:
+                    sections.append((gap_start, gap_start + half - 1,
+                                     upper_color))
+                    sections.append((gap_start + half, gap_start + half,
+                                     'mid_separator'))
+                    sections.append((gap_start + half + 1, gap_end,
+                                     lower_color))
+
+        if sep_rows[-1] < h - 1:
+            sections.append((sep_rows[-1] + 1, h - 1, sep_colors[-1]))
+
+        for sr in sep_rows:
+            for c in range(w):
+                output[sr][c] = intersect_color if c != axis_col else axis_color
+
+        for start, end, color in sections:
+            if color == 'mid_separator':
+                for c in range(w):
+                    output[start][c] = intersect_color
+            else:
+                for r in range(start, end + 1):
+                    for c in range(w):
+                        output[r][c] = (color if c != axis_col
+                                        else intersect_color)
+
+        return output
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -1073,6 +1341,12 @@ class PredictOperator(Operator):
             return self._apply_frame_fill_by_size(rule, input_grid)
         if rule_type == "staircase_growth":
             return self._apply_staircase_growth(rule, input_grid)
+        if rule_type == "center_column_extract":
+            return self._apply_center_column_extract(rule, input_grid)
+        if rule_type == "concentric_ring_reversal":
+            return self._apply_concentric_ring_reversal(rule, input_grid)
+        if rule_type == "band_section_fill":
+            return self._apply_band_section_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1276,6 +1550,82 @@ class PredictOperator(Operator):
             count = c_count + i
             output.append([c_color if j < count else 0 for j in range(w)])
         return output
+
+    def _apply_center_column_extract(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        center = w // 2
+        output = [[0] * w for _ in range(h)]
+        for r in range(h):
+            output[r][center] = raw[r][center]
+        return output
+
+    def _apply_concentric_ring_reversal(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        layers = GeneralizeOperator._peel_concentric_layers(raw)
+        if layers is None:
+            return [row[:] for row in raw]
+
+        reversed_layers = list(reversed(layers))
+        output = [[0] * w for _ in range(h)]
+        top, bottom, left, right = 0, h - 1, 0, w - 1
+        idx = 0
+
+        while top <= bottom and left <= right:
+            color = reversed_layers[idx]
+            for r in range(top, bottom + 1):
+                for c in range(left, right + 1):
+                    if r == top or r == bottom or c == left or c == right:
+                        output[r][c] = color
+            top += 1
+            bottom -= 1
+            left += 1
+            right -= 1
+            idx += 1
+
+        return output
+
+    def _apply_band_section_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        axis_color = rule['axis_color']
+        intersect_color = rule['intersect_color']
+
+        # Find axis column in this input
+        axis_col = None
+        for col in range(w):
+            col_vals = [raw[r][col] for r in range(h)]
+            unique = set(col_vals)
+            if unique == {axis_color, intersect_color}:
+                axis_col = col
+                break
+        if axis_col is None:
+            return [row[:] for row in raw]
+
+        sep_rows = []
+        sep_colors = []
+        for r in range(h):
+            if raw[r][axis_col] == intersect_color:
+                sep_rows.append(r)
+                row_vals = set()
+                for c in range(w):
+                    if c != axis_col:
+                        row_vals.add(raw[r][c])
+                if len(row_vals) == 1:
+                    sep_colors.append(list(row_vals)[0])
+                else:
+                    return [row[:] for row in raw]
+
+        if len(sep_rows) < 2:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._compute_band_fill(
+            h, w, axis_col, axis_color, intersect_color, sep_rows, sep_colors)
 
     # ---- helpers ---------------------------------------------------------
 
