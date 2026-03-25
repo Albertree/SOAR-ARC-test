@@ -609,6 +609,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_pair_diagonal_reflect(task)
 
+        # Strategy 72: corner rect fill (must run before color_mapping to avoid false match)
+        if rule is None:
+            rule = self._try_corner_rect_fill(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -856,6 +860,22 @@ class GeneralizeOperator(Operator):
         # Strategy 68: hub assembly (shapes with color-5 anchors assembled into 3x3 centered grid)
         if rule is None:
             rule = self._try_hub_assembly(task)
+
+        # Strategy 69: shape pixel scale (extract shape bbox, scale each cell to NxN block)
+        if rule is None:
+            rule = self._try_shape_pixel_scale(task)
+
+        # Strategy 70: quadrant color template (4 scattered pixels fill NxN template by quadrant)
+        if rule is None:
+            rule = self._try_quadrant_color_template(task)
+
+        # Strategy 71: sort bars right-align (horizontal bars sorted by length, right-aligned above floor)
+        if rule is None:
+            rule = self._try_sort_bars_right_align(task)
+
+        # Strategy 72: corner rect fill (4 corner markers define rectangle, fill interior with color)
+        if rule is None:
+            rule = self._try_corner_rect_fill(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -7511,6 +7531,366 @@ class GeneralizeOperator(Operator):
 
         return {"type": "hub_assembly", "hub_color": hub_color, "confidence": 1.0}
 
+    # ---- strategy 69: shape pixel scale ----------------------------------
+
+    def _try_shape_pixel_scale(self, task):
+        """
+        Detect: input contains a single non-zero shape on a zero background.
+        Output is the shape's bounding box with each cell scaled by an integer
+        factor (each cell → NxN block). The output dimensions = bbox * factor.
+        Category: shape extraction + pixel magnification.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        factor = None
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Find bounding box of non-zero cells in input
+            min_r, max_r, min_c, max_c = ih, -1, iw, -1
+            for r in range(ih):
+                for c in range(iw):
+                    if ri[r][c] != 0:
+                        min_r = min(min_r, r)
+                        max_r = max(max_r, r)
+                        min_c = min(min_c, c)
+                        max_c = max(max_c, c)
+            if max_r < 0:
+                return None
+
+            bbox_h = max_r - min_r + 1
+            bbox_w = max_c - min_c + 1
+            if bbox_h == 0 or bbox_w == 0:
+                return None
+
+            # Determine scale factor
+            if oh % bbox_h != 0 or ow % bbox_w != 0:
+                return None
+            fh = oh // bbox_h
+            fw = ow // bbox_w
+            if fh != fw or fh < 2:
+                return None
+
+            if factor is None:
+                factor = fh
+            elif factor != fh:
+                return None
+
+            # Verify output matches scaled shape
+            for r in range(bbox_h):
+                for c in range(bbox_w):
+                    val = ri[min_r + r][min_c + c]
+                    for dr in range(factor):
+                        for dc in range(factor):
+                            if ro[r * factor + dr][c * factor + dc] != val:
+                                return None
+
+        return {"type": "shape_pixel_scale", "factor": factor, "confidence": 1.0}
+
+    # ---- strategy 70: quadrant color template ----------------------------
+
+    def _try_quadrant_color_template(self, task):
+        """
+        Detect: input has an NxN block of a 'template' color and N*N single
+        pixels of other colors scattered around. Each pixel's quadrant position
+        relative to the template center determines which template cell it fills.
+        Output = same-size grid, all zeros except the template block now has
+        the scattered pixel colors placed by their quadrant.
+        Category: spatial assignment to template.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        template_color = None
+        block_size = None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            if ih != oh or iw != ow:
+                return None
+
+            # Find connected non-zero components
+            comps = _find_nonzero_components(ri)
+            if not comps:
+                return None
+
+            # Find the block (multi-cell single-color rectangle)
+            block_comp = None
+            singles = []
+            for comp in comps:
+                if len(comp) > 1:
+                    colors = set(v for _, _, v in comp)
+                    if len(colors) != 1:
+                        return None
+                    if block_comp is not None:
+                        return None  # multiple multi-cell components
+                    block_comp = comp
+                else:
+                    singles.append(comp[0])
+
+            if block_comp is None or not singles:
+                return None
+
+            bc = block_comp[0][2]  # template color
+            if template_color is None:
+                template_color = bc
+            elif template_color != bc:
+                return None
+
+            # Get block bounding box
+            brs = [r for r, c, v in block_comp]
+            bcs = [c for r, c, v in block_comp]
+            br0, br1 = min(brs), max(brs)
+            bc0, bc1 = min(bcs), max(bcs)
+            bh = br1 - br0 + 1
+            bw = bc1 - bc0 + 1
+
+            # Must be a filled rectangle
+            if len(block_comp) != bh * bw:
+                return None
+            if bh != bw:
+                return None  # square block
+
+            if block_size is None:
+                block_size = bh
+            elif block_size != bh:
+                return None
+
+            n = block_size
+            if len(singles) != n * n:
+                return None
+
+            # Block center
+            center_r = (br0 + br1) / 2.0
+            center_c = (bc0 + bc1) / 2.0
+
+            # Assign each single pixel to a block cell by quadrant
+            # Sort singles by (row relative to center, col relative to center)
+            # The pixel above-left of center → top-left cell, etc.
+            # Classify: row < center_r → top rows, row > center_r → bottom rows
+            above = sorted([(r, c, v) for r, c, v in singles if r < center_r],
+                           key=lambda x: (x[0], x[1]))
+            below = sorted([(r, c, v) for r, c, v in singles if r > center_r],
+                           key=lambda x: (x[0], x[1]))
+            at_center = [(r, c, v) for r, c, v in singles
+                         if abs(r - center_r) < 0.5]
+
+            # For 2x2 block: need exactly 2 above, 2 below (by row relative to center)
+            # For NxN: more complex — use sorting approach
+            # Assign by sorting: left of center → left col, right → right col
+            left_pixels = sorted([(r, c, v) for r, c, v in singles if c < center_c],
+                                 key=lambda x: (x[0], x[1]))
+            right_pixels = sorted([(r, c, v) for r, c, v in singles if c > center_c],
+                                  key=lambda x: (x[0], x[1]))
+
+            if len(left_pixels) != n or len(right_pixels) != n:
+                return None
+
+            # Build expected output
+            expected = [[0] * iw for _ in range(ih)]
+            for i in range(n):
+                expected[br0 + i][bc0] = left_pixels[i][2]
+                expected[br0 + i][bc1] = right_pixels[i][2]
+
+            if expected != ro:
+                return None
+
+        return {"type": "quadrant_color_template", "template_color": template_color,
+                "block_size": block_size, "confidence": 1.0}
+
+    # ---- strategy 71: sort bars right-align ------------------------------
+
+    def _try_sort_bars_right_align(self, task):
+        """
+        Detect: input has several horizontal bars of different colors/lengths
+        scattered across rows, plus one full-width 'floor' bar at the bottom.
+        Output: all non-floor bars sorted by length (ascending top-to-bottom),
+        right-aligned, stacked just above the floor row.
+        Category: sorting + gravity + alignment.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            if ih != oh or iw != ow:
+                return None
+
+            # Extract bars: each row's contiguous non-zero run
+            bars = []  # (length, color, original_row)
+            floor_row = None
+            for r in range(ih):
+                nonzero = [(c, ri[r][c]) for c in range(iw) if ri[r][c] != 0]
+                if not nonzero:
+                    continue
+                # Check all same color
+                colors = set(v for _, v in nonzero)
+                if len(colors) != 1:
+                    return None
+                color = nonzero[0][1]
+                length = len(nonzero)
+
+                if length == iw:
+                    # Full-width floor bar
+                    if floor_row is not None:
+                        return None  # multiple floors
+                    floor_row = (r, color)
+                else:
+                    bars.append((length, color))
+
+            if floor_row is None or not bars:
+                return None
+
+            floor_r, floor_color = floor_row
+
+            # Sort bars by length ascending
+            bars_sorted = sorted(bars, key=lambda x: x[0])
+
+            # Build expected output: bars right-aligned, stacked above floor
+            expected = [[0] * iw for _ in range(ih)]
+            # Place floor
+            expected[floor_r] = [floor_color] * iw
+
+            # Place bars from bottom (just above floor) to top
+            row = floor_r - 1
+            for length, color in reversed(bars_sorted):
+                if row < 0:
+                    return None
+                for c in range(iw - length, iw):
+                    expected[row][c] = color
+                row -= 1
+
+            if expected != ro:
+                return None
+
+        return {"type": "sort_bars_right_align", "confidence": 1.0}
+
+    # ---- strategy 72: corner rect fill -----------------------------------
+
+    def _try_corner_rect_fill(self, task):
+        """
+        Detect: input has groups of 4 corner-marker pixels forming rectangles.
+        Output fills the interior between each set of 4 corners with a specific
+        color (typically 2), keeping corner markers in place.
+        Category: corner detection + interior fill.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        fill_color = None
+        marker_color = None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            if ih != oh or iw != ow:
+                return None
+
+            # Find all non-zero pixels in input (all should be same color = marker)
+            markers = []
+            for r in range(ih):
+                for c in range(iw):
+                    if ri[r][c] != 0:
+                        markers.append((r, c, ri[r][c]))
+
+            if not markers:
+                return None
+
+            mc = set(v for _, _, v in markers)
+            if len(mc) != 1:
+                return None
+            mc = markers[0][2]
+
+            if marker_color is None:
+                marker_color = mc
+            elif marker_color != mc:
+                return None
+
+            # Find what color was added in output
+            added_color = None
+            for r in range(ih):
+                for c in range(iw):
+                    if ro[r][c] != 0 and ri[r][c] == 0:
+                        if added_color is None:
+                            added_color = ro[r][c]
+                        elif added_color != ro[r][c]:
+                            return None
+
+            if added_color is None:
+                return None
+            if fill_color is None:
+                fill_color = added_color
+            elif fill_color != added_color:
+                return None
+
+            # Group markers into rectangle sets
+            # Each set has 4 corners: (r1,c1), (r1,c2), (r2,c1), (r2,c2)
+            positions = [(r, c) for r, c, _ in markers]
+            rows = sorted(set(r for r, c in positions))
+            cols = sorted(set(c for r, c in positions))
+
+            # Find all valid rectangles from the marker positions
+            pos_set = set(positions)
+            used = set()
+            rects = []
+
+            for i, r1 in enumerate(rows):
+                for j, r2 in enumerate(rows):
+                    if r2 <= r1:
+                        continue
+                    for k, c1 in enumerate(cols):
+                        for l, c2 in enumerate(cols):
+                            if c2 <= c1:
+                                continue
+                            corners = {(r1, c1), (r1, c2), (r2, c1), (r2, c2)}
+                            if corners.issubset(pos_set) and not corners.intersection(used):
+                                rects.append((r1, r2, c1, c2))
+                                used.update(corners)
+
+            if not rects or used != pos_set:
+                return None
+
+            # Build expected output: input + fill interior of each rect
+            expected = [row[:] for row in ri]
+            for r1, r2, c1, c2 in rects:
+                for r in range(r1 + 1, r2):
+                    for c in range(c1 + 1, c2):
+                        expected[r][c] = fill_color
+                # Markers stay as-is (already in expected from ri copy)
+
+            if expected != ro:
+                return None
+
+        return {"type": "corner_rect_fill", "marker_color": marker_color,
+                "fill_color": fill_color, "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -7722,6 +8102,14 @@ class PredictOperator(Operator):
             return self._apply_shape_complement_merge(rule, input_grid)
         if rule_type == "hub_assembly":
             return self._apply_hub_assembly(rule, input_grid)
+        if rule_type == "shape_pixel_scale":
+            return self._apply_shape_pixel_scale(rule, input_grid)
+        if rule_type == "quadrant_color_template":
+            return self._apply_quadrant_color_template(rule, input_grid)
+        if rule_type == "sort_bars_right_align":
+            return self._apply_sort_bars_right_align(rule, input_grid)
+        if rule_type == "corner_rect_fill":
+            return self._apply_corner_rect_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -10068,6 +10456,155 @@ class PredictOperator(Operator):
         grid[0 - min_dr][0 - min_dc] = hub_color
         for (dr, dc), color in placements.items():
             grid[dr - min_dr][dc - min_dc] = color
+        return grid
+
+    def _apply_shape_pixel_scale(self, rule, input_grid):
+        """Extract non-zero shape bbox and scale each cell by factor."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        factor = rule.get("factor", 2)
+
+        # Find bounding box
+        min_r, max_r, min_c, max_c = h, -1, w, -1
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    min_r = min(min_r, r)
+                    max_r = max(max_r, r)
+                    min_c = min(min_c, c)
+                    max_c = max(max_c, c)
+        if max_r < 0:
+            return None
+
+        bbox_h = max_r - min_r + 1
+        bbox_w = max_c - min_c + 1
+        oh = bbox_h * factor
+        ow = bbox_w * factor
+
+        grid = [[0] * ow for _ in range(oh)]
+        for r in range(bbox_h):
+            for c in range(bbox_w):
+                val = raw[min_r + r][min_c + c]
+                for dr in range(factor):
+                    for dc in range(factor):
+                        grid[r * factor + dr][c * factor + dc] = val
+        return grid
+
+    def _apply_quadrant_color_template(self, rule, input_grid):
+        """Scattered pixels fill template block by quadrant position."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        template_color = rule.get("template_color", 8)
+        n = rule.get("block_size", 2)
+
+        comps = _find_nonzero_components(raw)
+        block_comp = None
+        singles = []
+        for comp in comps:
+            if len(comp) > 1:
+                block_comp = comp
+            else:
+                singles.append(comp[0])
+
+        if block_comp is None or not singles:
+            return None
+
+        brs = [r for r, c, v in block_comp]
+        bcs = [c for r, c, v in block_comp]
+        br0, br1 = min(brs), max(brs)
+        bc0, bc1 = min(bcs), max(bcs)
+        center_r = (br0 + br1) / 2.0
+        center_c = (bc0 + bc1) / 2.0
+
+        left_pixels = sorted([(r, c, v) for r, c, v in singles if c < center_c],
+                             key=lambda x: (x[0], x[1]))
+        right_pixels = sorted([(r, c, v) for r, c, v in singles if c > center_c],
+                              key=lambda x: (x[0], x[1]))
+
+        grid = [[0] * w for _ in range(h)]
+        for i in range(min(n, len(left_pixels))):
+            grid[br0 + i][bc0] = left_pixels[i][2]
+        for i in range(min(n, len(right_pixels))):
+            grid[br0 + i][bc1] = right_pixels[i][2]
+        return grid
+
+    def _apply_sort_bars_right_align(self, rule, input_grid):
+        """Sort horizontal bars by length, right-align above floor."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        bars = []
+        floor_row = None
+        floor_color = None
+        for r in range(h):
+            nonzero = [(c, raw[r][c]) for c in range(w) if raw[r][c] != 0]
+            if not nonzero:
+                continue
+            color = nonzero[0][1]
+            length = len(nonzero)
+            if length == w:
+                floor_row = r
+                floor_color = color
+            else:
+                bars.append((length, color))
+
+        if floor_row is None:
+            return None
+
+        bars_sorted = sorted(bars, key=lambda x: x[0])
+        grid = [[0] * w for _ in range(h)]
+        grid[floor_row] = [floor_color] * w
+
+        row = floor_row - 1
+        for length, color in reversed(bars_sorted):
+            if row < 0:
+                break
+            for c in range(w - length, w):
+                grid[row][c] = color
+            row -= 1
+        return grid
+
+    def _apply_corner_rect_fill(self, rule, input_grid):
+        """Fill interior of rectangles defined by 4 corner markers."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        marker_color = rule.get("marker_color", 4)
+        fill_color = rule.get("fill_color", 2)
+
+        positions = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == marker_color:
+                    positions.append((r, c))
+
+        pos_set = set(positions)
+        rows = sorted(set(r for r, c in positions))
+        cols = sorted(set(c for r, c in positions))
+
+        used = set()
+        rects = []
+        for i, r1 in enumerate(rows):
+            for j, r2 in enumerate(rows):
+                if r2 <= r1:
+                    continue
+                for k, c1 in enumerate(cols):
+                    for l, c2 in enumerate(cols):
+                        if c2 <= c1:
+                            continue
+                        corners = {(r1, c1), (r1, c2), (r2, c1), (r2, c2)}
+                        if corners.issubset(pos_set) and not corners.intersection(used):
+                            rects.append((r1, r2, c1, c2))
+                            used.update(corners)
+
+        grid = [row[:] for row in raw]
+        for r1, r2, c1, c2 in rects:
+            for r in range(r1 + 1, r2):
+                for c in range(c1 + 1, c2):
+                    grid[r][c] = fill_color
         return grid
 
 

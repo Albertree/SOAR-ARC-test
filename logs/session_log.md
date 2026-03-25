@@ -2116,3 +2116,109 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 - Regression gate (08ed6ac7): CORRECT
 - 40-task test (seed 99): 16/40 (40.0%) — up from 13/40 (32.5%), +3 correct
 - Stored rules: 214 → 229
+
+---
+## Learning Loop -- 2026-03-25 11:04
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 229 -> 229 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_110312.log
+
+---
+## Learning Loop -- 2026-03-25 11:05
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 229 -> 229 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_110434.log
+
+---
+## Learning Loop -- 2026-03-25 11:10
+
+- Split: training, Tasks: 40
+- Correct: 16 / 40 (40.0%)
+- Rules: 229 -> 235 (+6 learned)
+- Stored rule hits: 15
+- Time: 279s
+- Log: logs/learn_20260325_110548.log
+
+---
+## Learning Loop -- 2026-03-25 11:14
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 235 -> 235 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_111349.log
+
+---
+## Learning Loop -- 2026-03-25 11:19
+
+- Split: training, Tasks: 40
+- Correct: 19 / 40 (47.5%)
+- Rules: 235 -> 244 (+9 learned)
+- Stored rule hits: 15
+- Time: 294s
+- Log: logs/learn_20260325_111454.log
+
+---
+## Learning Loop -- 2026-03-25 11:24
+
+- Split: training, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 244 -> 250 (+6 learned)
+- Stored rule hits: 18
+- Time: 287s
+- Log: logs/learn_20260325_112012.log
+
+---
+## Learning Loop -- 2026-03-25 11:26
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 250 -> 250 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_112504.log
+
+---
+## Session 26 Analysis — 2026-03-25 11:25
+
+### Strategies added (agent/active_operators.py)
+
+1. **shape_pixel_scale** — extract non-zero shape bounding box, scale each cell to NxN block
+   - `_try_shape_pixel_scale`: detects uniform integer scale factor across example pairs
+   - `_apply_shape_pixel_scale`: crops to bbox, expands each cell into factor×factor block
+
+2. **quadrant_color_template** — 4 scattered single pixels fill a central NxN template block
+   - `_try_quadrant_color_template`: finds template block + scattered pixels, verifies quadrant assignment
+   - `_apply_quadrant_color_template`: assigns pixel colors to template cells by left/right + row position
+
+3. **sort_bars_right_align** — horizontal bars sorted by length, right-aligned above full-width floor
+   - `_try_sort_bars_right_align`: identifies bars and floor row, verifies sorted right-aligned layout
+   - `_apply_sort_bars_right_align`: sorts bars ascending, stacks right-aligned above floor
+
+4. **corner_rect_fill** — 4 corner markers define rectangles, interior filled with a specific color
+   - `_try_corner_rect_fill`: groups markers into rectangle corners, verifies interior fill
+   - `_apply_corner_rect_fill`: finds corner sets, fills interior between them
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| f25fbde4 | INCORRECT (identity) | CORRECT | shape_pixel_scale |
+| d89b689b | INCORRECT (identity) | CORRECT | quadrant_color_template |
+| beb8660c | INCORRECT (identity) | CORRECT | sort_bars_right_align |
+| af902bf9 | INCORRECT (color_mapping) | CORRECT | corner_rect_fill |
+
+**Standard 20-task score: 20/20 (100.0%) — no regressions**
+**Extended 40-task score (seed 99): 16/40 → 20/40 (+4 tasks)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
