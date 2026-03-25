@@ -845,6 +845,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_column_projection_tile(task)
 
+        # Strategy 66: select asymmetric block (3 stacked NxN blocks, pick non-diagonal-symmetric one)
+        if rule is None:
+            rule = self._try_select_asymmetric_block(task)
+
+        # Strategy 67: shape complement merge (two shapes on bg interlock to fill a rectangle)
+        if rule is None:
+            rule = self._try_shape_complement_merge(task)
+
+        # Strategy 68: hub assembly (shapes with color-5 anchors assembled into 3x3 centered grid)
+        if rule is None:
+            rule = self._try_hub_assembly(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -7237,6 +7249,268 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy 66: select asymmetric block ----------------------------
+
+    def _try_select_asymmetric_block(self, task):
+        """
+        Detect: input is K*N x N, divided into K equal NxN blocks stacked vertically.
+        Two blocks are symmetric about the main diagonal (transpose == original),
+        one is not. Output = the asymmetric block.
+        Category: block selection by symmetry property.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Must have square blocks: width = N, height = K*N
+            if w == 0 or h % w != 0:
+                return None
+            n = w
+            k = h // n
+            if k < 3:
+                return None
+            if oh != n or ow != n:
+                return None
+
+            # Extract blocks
+            blocks = []
+            for b in range(k):
+                block = [ri[b * n + r][:] for r in range(n)]
+                blocks.append(block)
+
+            # Check diagonal symmetry for each block
+            def is_diag_symmetric(block):
+                sz = len(block)
+                for r in range(sz):
+                    for c in range(sz):
+                        if block[r][c] != block[c][r]:
+                            return False
+                return True
+
+            sym_flags = [is_diag_symmetric(b) for b in blocks]
+            asym_indices = [i for i, s in enumerate(sym_flags) if not s]
+            sym_indices = [i for i, s in enumerate(sym_flags) if s]
+
+            # Exactly one asymmetric block
+            if len(asym_indices) != 1:
+                return None
+
+            # Verify output matches
+            if blocks[asym_indices[0]] != ro:
+                return None
+
+        return {"type": "select_asymmetric_block", "confidence": 1.0}
+
+    # ---- strategy 67: shape complement merge -----------------------------
+
+    def _try_shape_complement_merge(self, task):
+        """
+        Detect: input is a grid (usually 10x10) with background 0 and exactly
+        two colored objects. The objects are complementary halves of a rectangle.
+        Output = the rectangle with both shapes interlocked.
+        Category: shape complement / jigsaw merge.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Find non-zero cells grouped by color
+            color_cells = {}
+            for r in range(h):
+                for c in range(w):
+                    v = ri[r][c]
+                    if v != 0:
+                        color_cells.setdefault(v, []).append((r, c))
+
+            if len(color_cells) != 2:
+                return None
+
+            colors = list(color_cells.keys())
+            cells_a = color_cells[colors[0]]
+            cells_b = color_cells[colors[1]]
+
+            # Normalize each shape to relative coordinates
+            def normalize(cells):
+                min_r = min(r for r, c in cells)
+                min_c = min(c for r, c in cells)
+                return frozenset((r - min_r, c - min_c) for r, c in cells)
+
+            norm_a = normalize(cells_a)
+            norm_b = normalize(cells_b)
+
+            # Try all offsets to interlock them into a rectangle
+            merged = self._try_merge_shapes(norm_a, norm_b, colors[0], colors[1], oh, ow)
+            if merged is None:
+                return None
+
+            if merged != ro:
+                return None
+
+        return {"type": "shape_complement_merge", "confidence": 1.0}
+
+    def _try_merge_shapes(self, norm_a, norm_b, color_a, color_b, target_h, target_w):
+        """Try all offsets to merge two shapes into a target_h x target_w rectangle."""
+        total_cells = target_h * target_w
+        if len(norm_a) + len(norm_b) != total_cells:
+            return None
+
+        # For each possible offset of shape_b relative to shape_a,
+        # check if they tile the rectangle
+        a_set = set(norm_a)
+        b_set = set(norm_b)
+
+        # Get bounding extents
+        max_ra = max(r for r, c in a_set)
+        max_ca = max(c for r, c in a_set)
+        max_rb = max(r for r, c in b_set)
+        max_cb = max(c for r, c in b_set)
+
+        for dr in range(-max_rb, target_h):
+            for dc in range(-max_cb, target_w):
+                shifted_b = frozenset((r + dr, c + dc) for r, c in b_set)
+                union = a_set | shifted_b
+                # Check no overlap
+                if len(union) != len(a_set) + len(shifted_b):
+                    continue
+                # Check it fills the rectangle exactly
+                expected = frozenset((r, c) for r in range(target_h) for c in range(target_w))
+                if union == expected:
+                    grid = [[0] * target_w for _ in range(target_h)]
+                    for r, c in a_set:
+                        grid[r][c] = color_a
+                    for r, c in shifted_b:
+                        grid[r][c] = color_b
+                    return grid
+
+        # Also try with shapes swapped (a shifted, b at origin)
+        for dr in range(-max_ra, target_h):
+            for dc in range(-max_ca, target_w):
+                shifted_a = frozenset((r + dr, c + dc) for r, c in a_set)
+                union = shifted_a | b_set
+                if len(union) != len(shifted_a) + len(b_set):
+                    continue
+                expected = frozenset((r, c) for r in range(target_h) for c in range(target_w))
+                if union == expected:
+                    grid = [[0] * target_w for _ in range(target_h)]
+                    for r, c in shifted_a:
+                        grid[r][c] = color_a
+                    for r, c in b_set:
+                        grid[r][c] = color_b
+                    return grid
+        return None
+
+    # ---- strategy 68: hub assembly ---------------------------------------
+
+    def _try_hub_assembly(self, task):
+        """
+        Detect: input grid has several small colored shapes, each adjacent to
+        a color-5 anchor cell. Output is a small grid (usually 3x3) with 5 at
+        the center, and each shape placed at its relative offset from its anchor.
+        Category: anchor-based shape assembly.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        hub_color = 5  # the anchor/connector color
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+
+            # Collect hub cells and non-hub non-zero cells
+            hub_cells = []
+            shape_cells = {}  # color -> list of (r, c)
+            for r in range(h):
+                for c in range(w):
+                    v = ri[r][c]
+                    if v == 0:
+                        continue
+                    if v == hub_color:
+                        hub_cells.append((r, c))
+                    else:
+                        shape_cells.setdefault(v, []).append((r, c))
+
+            if not hub_cells or not shape_cells:
+                return None
+
+            # For each non-hub shape, find its nearest adjacent hub cell
+            # A hub is "adjacent" if any cell in the shape is 4-connected to it
+            def find_adjacent_hub(cells, hubs):
+                for hr, hc in hubs:
+                    for sr, sc in cells:
+                        if abs(hr - sr) + abs(hc - sc) == 1:
+                            return (hr, hc)
+                # Also allow diagonal adjacency
+                for hr, hc in hubs:
+                    for sr, sc in cells:
+                        if abs(hr - sr) <= 1 and abs(hc - sc) <= 1 and (hr, hc) != (sr, sc):
+                            return (hr, hc)
+                return None
+
+            # Determine output center (where hub_color goes)
+            # Find hub_color in output
+            hub_out_pos = None
+            for r in range(oh):
+                for c in range(ow):
+                    if ro[r][c] == hub_color:
+                        hub_out_pos = (r, c)
+                        break
+                if hub_out_pos is not None:
+                    break
+
+            if hub_out_pos is None:
+                # Hub might not appear in output — check if shapes tile without it
+                return None
+
+            cr, cc = hub_out_pos
+
+            # Build expected output
+            expected = [[0] * ow for _ in range(oh)]
+            expected[cr][cc] = hub_color
+
+            used_hubs = set()
+            for color, cells in shape_cells.items():
+                hub_pos = find_adjacent_hub(cells, [h for h in hub_cells if h not in used_hubs])
+                if hub_pos is None:
+                    # try any hub
+                    hub_pos = find_adjacent_hub(cells, hub_cells)
+                if hub_pos is None:
+                    return None
+                used_hubs.add(hub_pos)
+                hr, hc = hub_pos
+                for sr, sc in cells:
+                    dr, dc = sr - hr, sc - hc
+                    out_r, out_c = cr + dr, cc + dc
+                    if out_r < 0 or out_r >= oh or out_c < 0 or out_c >= ow:
+                        return None
+                    expected[out_r][out_c] = color
+
+            if expected != ro:
+                return None
+
+        return {"type": "hub_assembly", "hub_color": hub_color, "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -7442,6 +7716,12 @@ class PredictOperator(Operator):
             return self._apply_ring_color_cycle(rule, input_grid)
         if rule_type == "column_projection_tile":
             return self._apply_column_projection_tile(rule, input_grid)
+        if rule_type == "select_asymmetric_block":
+            return self._apply_select_asymmetric_block(rule, input_grid)
+        if rule_type == "shape_complement_merge":
+            return self._apply_shape_complement_merge(rule, input_grid)
+        if rule_type == "hub_assembly":
+            return self._apply_hub_assembly(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -9615,6 +9895,180 @@ class PredictOperator(Operator):
         for r in range(oh):
             out.append([transformed[r % ih][c % iw] for c in range(ow)])
         return out
+
+    # ---- apply: select asymmetric block ----------------------------------
+
+    def _apply_select_asymmetric_block(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if w == 0 or h % w != 0:
+            return None
+        n = w
+        k = h // n
+        if k < 3:
+            return None
+
+        for b in range(k):
+            block = [raw[b * n + r][:] for r in range(n)]
+            # Check if NOT symmetric about main diagonal
+            is_sym = True
+            for r in range(n):
+                for c in range(n):
+                    if block[r][c] != block[c][r]:
+                        is_sym = False
+                        break
+                if not is_sym:
+                    break
+            if not is_sym:
+                return block
+        # Shouldn't reach here, but fallback
+        return [raw[r][:] for r in range(n)]
+
+    # ---- apply: shape complement merge -----------------------------------
+
+    def _apply_shape_complement_merge(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find non-zero cells grouped by color
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0:
+                    color_cells.setdefault(v, []).append((r, c))
+
+        if len(color_cells) != 2:
+            return None
+
+        colors = list(color_cells.keys())
+        cells_a = color_cells[colors[0]]
+        cells_b = color_cells[colors[1]]
+
+        def normalize(cells):
+            min_r = min(r for r, c in cells)
+            min_c = min(c for r, c in cells)
+            return frozenset((r - min_r, c - min_c) for r, c in cells)
+
+        norm_a = normalize(cells_a)
+        norm_b = normalize(cells_b)
+        total = len(norm_a) + len(norm_b)
+
+        # Try all possible rectangle dimensions
+        for rect_h in range(1, total + 1):
+            if total % rect_h != 0:
+                continue
+            rect_w = total // rect_h
+            result = self._merge_into_rect(norm_a, norm_b, colors[0], colors[1], rect_h, rect_w)
+            if result is not None:
+                return result
+        return None
+
+    def _merge_into_rect(self, norm_a, norm_b, color_a, color_b, target_h, target_w):
+        """Try all offsets to merge two shapes into a target_h x target_w rectangle."""
+        a_set = set(norm_a)
+        b_set = set(norm_b)
+        max_ra = max(r for r, c in a_set) if a_set else 0
+        max_ca = max(c for r, c in a_set) if a_set else 0
+        max_rb = max(r for r, c in b_set) if b_set else 0
+        max_cb = max(c for r, c in b_set) if b_set else 0
+        expected = frozenset((r, c) for r in range(target_h) for c in range(target_w))
+
+        for dr in range(-max_rb, target_h):
+            for dc in range(-max_cb, target_w):
+                shifted_b = frozenset((r + dr, c + dc) for r, c in b_set)
+                union = a_set | shifted_b
+                if len(union) != len(a_set) + len(shifted_b):
+                    continue
+                if union == expected:
+                    grid = [[0] * target_w for _ in range(target_h)]
+                    for r, c in a_set:
+                        grid[r][c] = color_a
+                    for r, c in shifted_b:
+                        grid[r][c] = color_b
+                    return grid
+
+        for dr in range(-max_ra, target_h):
+            for dc in range(-max_ca, target_w):
+                shifted_a = frozenset((r + dr, c + dc) for r, c in a_set)
+                union = shifted_a | b_set
+                if len(union) != len(shifted_a) + len(b_set):
+                    continue
+                if union == expected:
+                    grid = [[0] * target_w for _ in range(target_h)]
+                    for r, c in shifted_a:
+                        grid[r][c] = color_a
+                    for r, c in b_set:
+                        grid[r][c] = color_b
+                    return grid
+        return None
+
+    # ---- apply: hub assembly ---------------------------------------------
+
+    def _apply_hub_assembly(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        hub_color = rule.get("hub_color", 5)
+
+        # Collect hub cells and shape cells
+        hub_cells = []
+        shape_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v == 0:
+                    continue
+                if v == hub_color:
+                    hub_cells.append((r, c))
+                else:
+                    shape_cells.setdefault(v, []).append((r, c))
+
+        if not hub_cells or not shape_cells:
+            return None
+
+        def find_adjacent_hub(cells, hubs):
+            for hr, hc in hubs:
+                for sr, sc in cells:
+                    if abs(hr - sr) + abs(hc - sc) == 1:
+                        return (hr, hc)
+            for hr, hc in hubs:
+                for sr, sc in cells:
+                    if abs(hr - sr) <= 1 and abs(hc - sc) <= 1 and (hr, hc) != (sr, sc):
+                        return (hr, hc)
+            return None
+
+        # Build all relative placements to determine output size
+        placements = {}  # (dr, dc) -> color
+        used_hubs = set()
+        for color, cells in shape_cells.items():
+            hub_pos = find_adjacent_hub(cells, [hp for hp in hub_cells if hp not in used_hubs])
+            if hub_pos is None:
+                hub_pos = find_adjacent_hub(cells, hub_cells)
+            if hub_pos is None:
+                return None
+            used_hubs.add(hub_pos)
+            hr, hc = hub_pos
+            for sr, sc in cells:
+                placements[(sr - hr, sc - hc)] = color
+
+        # Determine output bounds
+        all_offsets = list(placements.keys()) + [(0, 0)]
+        min_dr = min(dr for dr, dc in all_offsets)
+        max_dr = max(dr for dr, dc in all_offsets)
+        min_dc = min(dc for dr, dc in all_offsets)
+        max_dc = max(dc for dr, dc in all_offsets)
+
+        oh = max_dr - min_dr + 1
+        ow = max_dc - min_dc + 1
+
+        grid = [[0] * ow for _ in range(oh)]
+        grid[0 - min_dr][0 - min_dc] = hub_color
+        for (dr, dc), color in placements.items():
+            grid[dr - min_dr][dc - min_dc] = color
+        return grid
 
 
 # ======================================================================

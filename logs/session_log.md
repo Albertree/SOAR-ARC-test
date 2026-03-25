@@ -2022,3 +2022,97 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 
 ### Bug fix
 - Fixed `task.training_pairs` → `task.example_pairs` (correct attribute name for Task object)
+
+---
+## Learning Loop -- 2026-03-25 10:38
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 214 -> 214 (+0 learned)
+- Stored rule hits: 19
+- Time: 59s
+- Log: logs/learn_20260325_103726.log
+
+---
+## Learning Loop -- 2026-03-25 10:39
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 214 -> 214 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_103841.log
+
+---
+## Learning Loop -- 2026-03-25 10:40
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 214 -> 214 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_103950.log
+
+---
+## Learning Loop -- 2026-03-25 10:46
+
+- Split: training, Tasks: 40
+- Correct: 13 / 40 (32.5%)
+- Rules: 214 -> 220 (+6 learned)
+- Stored rule hits: 12
+- Time: 310s
+- Log: logs/learn_20260325_104109.log
+
+---
+## Learning Loop -- 2026-03-25 11:00
+
+- Split: training, Tasks: 40
+- Correct: 16 / 40 (40.0%)
+- Rules: 220 -> 229 (+9 learned)
+- Stored rule hits: 12
+- Time: 284s
+- Log: logs/learn_20260325_105551.log
+
+---
+## Learning Loop -- 2026-03-25 11:02
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 229 -> 229 (+0 learned)
+- Stored rule hits: 6
+- Time: 84s
+- Log: logs/learn_20260325_110042.log
+
+---
+## Session 25 Analysis — 2026-03-25 11:00
+
+### Strategies added (agent/active_operators.py)
+
+1. **select_asymmetric_block** — input is K stacked NxN blocks; two are symmetric about the main diagonal, one is not; output = the asymmetric block
+   - `_try_select_asymmetric_block`: checks transpose equality for each block, selects the one that differs
+   - `_apply_select_asymmetric_block`: finds and returns the asymmetric block at test time
+   - Category: block selection by symmetry property
+
+2. **shape_complement_merge** — two colored shapes on a black background that interlock to fill a rectangle
+   - `_try_shape_complement_merge`: finds two non-zero objects, normalizes their shapes, tries all offsets to tile a rectangle
+   - `_apply_shape_complement_merge`: finds shapes, determines rectangle dimensions, merges them
+   - Category: shape complement / jigsaw merge
+
+3. **hub_assembly** — multiple shapes each adjacent to a color-5 anchor cell; output is a small grid with 5 at center
+   - `_try_hub_assembly`: identifies hub (color 5) cells, maps each shape to its adjacent hub, computes relative offsets
+   - `_apply_hub_assembly`: assembles shapes at their hub-relative offsets into output grid
+   - Category: anchor-based shape assembly
+
+### Tasks fixed
+
+| Task     | Rule                    | Status |
+|----------|-------------------------|--------|
+| 662c240a | select_asymmetric_block | CORRECT (was INCORRECT/identity) |
+| 681b3aeb | shape_complement_merge  | CORRECT (was INCORRECT/identity) |
+| 137eaa0f | hub_assembly            | CORRECT (was INCORRECT/identity) |
+
+### Verification
+
+- Regression gate (08ed6ac7): CORRECT
+- 40-task test (seed 99): 16/40 (40.0%) — up from 13/40 (32.5%), +3 correct
+- Stored rules: 214 → 229
