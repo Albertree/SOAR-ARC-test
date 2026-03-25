@@ -833,6 +833,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_diamond_symmetry_fill(task)
 
+        # Strategy 63: complement tile (invert binary grid, tile 2x2)
+        if rule is None:
+            rule = self._try_complement_tile(task)
+
+        # Strategy 64: ring color cycle (concentric frame color rotation)
+        if rule is None:
+            rule = self._try_ring_color_cycle(task)
+
+        # Strategy 65: column projection tile (fill active columns, tile 2x2)
+        if rule is None:
+            rule = self._try_column_projection_tile(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -7048,6 +7060,183 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: complement tile ----------------------------------------
+
+    def _try_complement_tile(self, task):
+        """
+        Detect: output = inverted input (swap 0 and non-zero color) tiled 2x2.
+        Category: complement tiling — binary grids where 0↔color swap + tile.
+        """
+        for pair in task.example_pairs:
+            ri = pair.input.contents
+            ro = pair.output.contents
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if oh != ih * 2 or ow != iw * 2:
+                return None
+            # Find the single non-zero color
+            colors = set()
+            for row in ri:
+                for c in row:
+                    if c != 0:
+                        colors.add(c)
+            if len(colors) != 1:
+                return None
+            color = list(colors)[0]
+            # Build inverted grid
+            inv = []
+            for row in ri:
+                inv.append([0 if c == color else color for c in row])
+            # Check tiling
+            for r in range(oh):
+                for c in range(ow):
+                    if ro[r][c] != inv[r % ih][c % iw]:
+                        return None
+        return {
+            "type": "complement_tile",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: ring color cycle ----------------------------------------
+
+    def _try_ring_color_cycle(self, task):
+        """
+        Detect: concentric rectangular frames where colors cycle inward.
+        Each unique ring color maps to the previous ring's color (cyclically).
+        Category: nested frame color rotation.
+        """
+        for pair in task.example_pairs:
+            ri = pair.input.contents
+            ro = pair.output.contents
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if ih != oh or iw != ow:
+                return None
+            # Extract ring colors (concentric rectangles)
+            ring_colors = []
+            max_rings = min(ih, iw) // 2 + (1 if min(ih, iw) % 2 else 0)
+            for d in range(max_rings):
+                # Sample from border of ring d
+                if d < ih - d and d < iw - d:
+                    color = ri[d][d]
+                    # Verify this ring is uniform
+                    uniform = True
+                    # top edge
+                    for c in range(d, iw - d):
+                        if ri[d][c] != color:
+                            uniform = False
+                            break
+                    # bottom edge
+                    if uniform and ih - 1 - d > d:
+                        for c in range(d, iw - d):
+                            if ri[ih - 1 - d][c] != color:
+                                uniform = False
+                                break
+                    # left edge
+                    if uniform:
+                        for r in range(d, ih - d):
+                            if ri[r][d] != color:
+                                uniform = False
+                                break
+                    # right edge
+                    if uniform and iw - 1 - d > d:
+                        for r in range(d, ih - d):
+                            if ri[r][iw - 1 - d] != color:
+                                uniform = False
+                                break
+                    if not uniform:
+                        return None
+                    ring_colors.append(color)
+            if len(ring_colors) < 2:
+                return None
+            # Build unique color list (order of first appearance from outside)
+            unique = []
+            seen = set()
+            for c in ring_colors:
+                if c not in seen:
+                    unique.append(c)
+                    seen.add(c)
+            if len(unique) < 2:
+                return None
+            # Build cyclic mapping: each color maps to the previous unique color
+            mapping = {}
+            for i, c in enumerate(unique):
+                mapping[c] = unique[(i - 1) % len(unique)]
+            # Verify against output
+            for r in range(ih):
+                for c in range(iw):
+                    expected = mapping.get(ri[r][c], ri[r][c])
+                    if ro[r][c] != expected:
+                        return None
+        return {
+            "type": "ring_color_cycle",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: column projection tile ----------------------------------
+
+    def _try_column_projection_tile(self, task):
+        """
+        Detect: columns containing non-zero cells get 0→fill_color replacement,
+        then result is tiled 2x2. Category: column projection tiling.
+        """
+        for pair in task.example_pairs:
+            ri = pair.input.contents
+            ro = pair.output.contents
+            ih, iw = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if oh != ih * 2 or ow != iw * 2:
+                return None
+            # Find non-zero color
+            nz_colors = set()
+            for row in ri:
+                for c in row:
+                    if c != 0:
+                        nz_colors.add(c)
+            if len(nz_colors) != 1:
+                return None
+            nz_color = list(nz_colors)[0]
+            # Identify active columns (columns with non-zero)
+            active_cols = set()
+            for c in range(iw):
+                for r in range(ih):
+                    if ri[r][c] != 0:
+                        active_cols.add(c)
+                        break
+            # Determine fill color from output
+            fill_color = None
+            for c in active_cols:
+                for r in range(ih):
+                    if ri[r][c] == 0:
+                        fill_color = ro[r][c]
+                        break
+                if fill_color is not None:
+                    break
+            if fill_color is None:
+                return None
+            # Build expected transformed grid
+            transformed = []
+            for r in range(ih):
+                row = []
+                for c in range(iw):
+                    if ri[r][c] != 0:
+                        row.append(ri[r][c])
+                    elif c in active_cols:
+                        row.append(fill_color)
+                    else:
+                        row.append(0)
+                transformed.append(row)
+            # Check 2x2 tiling
+            for r in range(oh):
+                for c in range(ow):
+                    if ro[r][c] != transformed[r % ih][c % iw]:
+                        return None
+        return {
+            "type": "column_projection_tile",
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -7247,6 +7436,12 @@ class PredictOperator(Operator):
             return self._apply_stripe_tile(rule, input_grid)
         if rule_type == "diamond_symmetry_fill":
             return self._apply_diamond_symmetry_fill(rule, input_grid)
+        if rule_type == "complement_tile":
+            return self._apply_complement_tile(rule, input_grid)
+        if rule_type == "ring_color_cycle":
+            return self._apply_ring_color_cycle(rule, input_grid)
+        if rule_type == "column_projection_tile":
+            return self._apply_column_projection_tile(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -9332,6 +9527,94 @@ class PredictOperator(Operator):
                     pred[nri][nci] = color
 
         return pred
+
+    # ---- apply: complement_tile --------------------------------------------
+
+    def _apply_complement_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        ih = len(raw)
+        iw = len(raw[0]) if raw else 0
+        # Find the non-zero color
+        color = 0
+        for row in raw:
+            for c in row:
+                if c != 0:
+                    color = c
+                    break
+            if color != 0:
+                break
+        # Build inverted grid
+        inv = []
+        for row in raw:
+            inv.append([0 if c == color else color for c in row])
+        # Tile 2x2
+        oh, ow = ih * 2, iw * 2
+        out = []
+        for r in range(oh):
+            out.append([inv[r % ih][c % iw] for c in range(ow)])
+        return out
+
+    # ---- apply: ring_color_cycle -------------------------------------------
+
+    def _apply_ring_color_cycle(self, rule, input_grid):
+        raw = input_grid.raw
+        ih = len(raw)
+        iw = len(raw[0]) if raw else 0
+        # Extract ring colors from outside in
+        ring_colors = []
+        max_rings = min(ih, iw) // 2 + (1 if min(ih, iw) % 2 else 0)
+        for d in range(max_rings):
+            if d < ih - d and d < iw - d:
+                ring_colors.append(raw[d][d])
+        # Build unique color list
+        unique = []
+        seen = set()
+        for c in ring_colors:
+            if c not in seen:
+                unique.append(c)
+                seen.add(c)
+        # Build cyclic mapping
+        mapping = {}
+        for i, c in enumerate(unique):
+            mapping[c] = unique[(i - 1) % len(unique)]
+        # Apply mapping
+        out = []
+        for r in range(ih):
+            out.append([mapping.get(raw[r][c], raw[r][c]) for c in range(iw)])
+        return out
+
+    # ---- apply: column_projection_tile -------------------------------------
+
+    def _apply_column_projection_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        ih = len(raw)
+        iw = len(raw[0]) if raw else 0
+        fill_color = rule.get("fill_color", 8)
+        # Identify active columns
+        active_cols = set()
+        for c in range(iw):
+            for r in range(ih):
+                if raw[r][c] != 0:
+                    active_cols.add(c)
+                    break
+        # Build transformed grid
+        transformed = []
+        for r in range(ih):
+            row = []
+            for c in range(iw):
+                if raw[r][c] != 0:
+                    row.append(raw[r][c])
+                elif c in active_cols:
+                    row.append(fill_color)
+                else:
+                    row.append(0)
+            transformed.append(row)
+        # Tile 2x2
+        oh, ow = ih * 2, iw * 2
+        out = []
+        for r in range(oh):
+            out.append([transformed[r % ih][c % iw] for c in range(ow)])
+        return out
 
 
 # ======================================================================
