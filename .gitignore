@@ -218,10 +218,6 @@ episodic_memory/*
 # Result code
 result_code/
 
-# Logs
-logs/*
-!logs/.gitkeep
-
 # Generated / output files (not under memory/)
 outputs/
 generated_codes/
