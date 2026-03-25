@@ -148,3 +148,32 @@
 - Stored rule hits: 11
 - Time: 60s
 - Log: logs/learn_20260325_161727.log
+
+---
+## Learning Loop -- 2026-03-25 16:20
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 11
+- Time: 51s
+- Log: logs/learn_20260325_161935.log
+
+---
+## Session 6 -- 2026-03-25 16:42
+
+**Strategies added:**
+1. `gravity_drop` -- objects (colored shapes) fall toward a staircase border under gravity; each connected component shifts as a rigid body until its bottom is 1 empty row above the nearest border/edge; components stack directly when settling on other settled components
+2. `grid_oscillation` -- rectangular grid of one color on background 0 has each row shifted left/right in a period-4 zigzag cycle [0, -1, 0, +1][(bottom_border_row - row) % 4]; covers grids of any cell dimensions
+
+**Tasks solved:** 825aa9e9 (gravity_drop), 1c56ad9f (grid_oscillation)
+
+**Results:** 15/20 (75.0%) -> 17/20 (85.0%)
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 11
+- Discovered: 6 new rules from pipeline
+- Time: 60s
+- Log: logs/learn_20260325_164152.log

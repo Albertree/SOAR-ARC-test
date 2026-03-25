@@ -359,6 +359,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_object_pass_through(patterns, task)
 
+        # Strategy 17: gravity drop (objects fall toward staircase border)
+        if rule is None:
+            rule = self._try_gravity_drop(patterns, task)
+
+        # Strategy 18: grid oscillation (grid lines zigzag left/right)
+        if rule is None:
+            rule = self._try_grid_oscillation(patterns, task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2297,6 +2305,278 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy: gravity drop (objects fall toward staircase border) ----
+
+    def _try_gravity_drop(self, patterns, task):
+        """
+        Detect pattern: grid has 3 colors -- background (7), border (staircase/
+        walls), and objects. Objects fall downward toward the border under gravity.
+        Each connected component of object pixels shifts as a rigid body.
+        The shift leaves exactly 1 empty row between the component's bottom
+        and the nearest border/grid-edge below.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        bg = 7  # background color for this task category
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            h, w = g0.height, g0.width
+
+            # Identify the 3 colors
+            colors = set()
+            for row in raw_in:
+                for v in row:
+                    colors.add(v)
+            if bg not in colors:
+                return None
+            non_bg = colors - {bg}
+            if len(non_bg) != 2:
+                return None
+
+            # Border color is the non-bg color on the grid edges (corners/bottom row)
+            border_color, obj_color = self._detect_border_obj(raw_in, bg, h, w, non_bg)
+            if border_color is None:
+                return None
+
+            # Verify the transformation matches gravity drop
+            result = self._compute_gravity_drop(raw_in, bg, border_color, obj_color)
+            if result is None:
+                return None
+            raw_out = g1.raw
+            if result != raw_out:
+                return None
+
+        return {
+            "type": "gravity_drop",
+            "background": bg,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _detect_border_obj(raw_in, bg, h, w, non_bg):
+        """Detect border vs object color. Border touches grid corners/bottom row."""
+        last_row_colors = set()
+        for c in range(w):
+            v = raw_in[h - 1][c]
+            if v != bg:
+                last_row_colors.add(v)
+        # Also check corners
+        corners = [(0, 0), (0, w - 1), (h - 1, 0), (h - 1, w - 1)]
+        corner_colors = set()
+        for r, c in corners:
+            v = raw_in[r][c]
+            if v != bg:
+                corner_colors.add(v)
+        # Border = non-bg color on the bottom row or corners
+        edge_colors = last_row_colors | corner_colors
+        candidates = edge_colors & non_bg
+        if len(candidates) == 1:
+            border_color = candidates.pop()
+            obj_color = (non_bg - {border_color}).pop()
+            return border_color, obj_color
+        # Fallback: color with more pixels on edges
+        if len(candidates) == 2:
+            counts = {c: 0 for c in candidates}
+            for c_idx in range(w):
+                v = raw_in[h - 1][c_idx]
+                if v in counts:
+                    counts[v] += 1
+            border_color = max(counts, key=counts.get)
+            obj_color = (non_bg - {border_color}).pop()
+            return border_color, obj_color
+        return None, None
+
+    def _compute_gravity_drop(self, raw_in, bg, border_color, obj_color):
+        """Compute the gravity drop transformation."""
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+
+        # Find all object pixels
+        obj_positions = set()
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] == obj_color:
+                    obj_positions.add((r, c))
+
+        if not obj_positions:
+            return [row[:] for row in raw_in]
+
+        # Find connected components of object pixels
+        components = self._cc_from_positions(obj_positions)
+
+        # Find per-column floor: for each column, the topmost border pixel
+        # (scanning from bottom up). If none, floor = h (grid edge).
+        col_border_floor = {}
+        for c in range(w):
+            col_border_floor[c] = h  # default: grid edge
+            for r in range(h - 1, -1, -1):
+                if raw_in[r][c] == border_color:
+                    col_border_floor[c] = r
+                    break
+
+        # Sort components by their bottom row (deepest first) so
+        # we process bottom-most components first
+        def comp_bottom(comp):
+            return max(r for r, c in comp)
+
+        sorted_comps = sorted(components, key=comp_bottom, reverse=True)
+
+        # Track settled positions (border + already settled components)
+        settled = set()
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] == border_color:
+                    settled.add((r, c))
+
+        output = [row[:] for row in raw_in]
+        # Clear all object pixels first
+        for r, c in obj_positions:
+            output[r][c] = bg
+
+        for comp in sorted_comps:
+            # For each column in this component, find the bottom row of the component
+            col_bottoms = {}
+            for r, c in comp:
+                if c not in col_bottoms or r > col_bottoms[c]:
+                    col_bottoms[c] = r
+
+            # Compute max shift for each column
+            min_shift = None
+            for c, bot in col_bottoms.items():
+                # Find nearest obstacle below bot in this column
+                floor_row = h  # grid edge
+                for r in range(bot + 1, h):
+                    if (r, c) in settled:
+                        floor_row = r
+                        break
+                # Check if this obstacle is border or settled component
+                if floor_row < h and raw_in[floor_row][c] == border_color:
+                    # Border: leave 1 empty row gap
+                    max_drop = floor_row - bot - 2
+                elif floor_row < h:
+                    # Settled component: stack directly (0 gap)
+                    max_drop = floor_row - bot - 1
+                else:
+                    # Grid edge: leave 1 empty row gap
+                    max_drop = floor_row - bot - 2
+
+                if max_drop < 0:
+                    max_drop = 0
+                if min_shift is None or max_drop < min_shift:
+                    min_shift = max_drop
+
+            if min_shift is None:
+                min_shift = 0
+
+            # Apply shift: move all pixels of this component down by min_shift
+            for r, c in comp:
+                new_r = r + min_shift
+                if 0 <= new_r < h:
+                    output[new_r][c] = obj_color
+                    settled.add((new_r, c))
+
+        return output
+
+    # ---- strategy: grid oscillation (grid lines zigzag left/right) -------
+
+    def _try_grid_oscillation(self, patterns, task):
+        """
+        Detect pattern: a rectangular grid (drawn with one color on background 0)
+        has its rows shifted left/right in a period-4 zigzag. The shift at each
+        row r is [0, -1, 0, +1][(bottom_border_row - r) % 4], where
+        bottom_border_row is the last row of the grid structure.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            # Find the grid color (non-zero color forming a rectangular grid)
+            grid_color = None
+            for row in raw_in:
+                for v in row:
+                    if v != 0:
+                        if grid_color is None:
+                            grid_color = v
+                        elif v != grid_color:
+                            return None  # multiple non-bg colors
+
+            if grid_color is None:
+                return None
+
+            # Find grid bounding box
+            grid_rows = set()
+            grid_cols = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] == grid_color:
+                        grid_rows.add(r)
+                        grid_cols.add(c)
+
+            if not grid_rows:
+                return None
+
+            top_row = min(grid_rows)
+            bot_row = max(grid_rows)
+
+            # Verify the oscillation pattern matches
+            shift_cycle = [0, -1, 0, 1]
+            result = self._compute_grid_oscillation(raw_in, grid_color, bot_row)
+            if result != raw_out:
+                return None
+
+        return {
+            "type": "grid_oscillation",
+            "confidence": 1.0,
+        }
+
+    def _compute_grid_oscillation(self, raw_in, grid_color, bot_row):
+        """Compute the grid oscillation transformation."""
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+        shift_cycle = [0, -1, 0, 1]
+
+        # Find which rows are part of the grid
+        grid_rows = set()
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] == grid_color:
+                    grid_rows.add(r)
+                    break
+
+        output = [[0] * w for _ in range(h)]
+
+        for r in range(h):
+            if r not in grid_rows:
+                output[r] = [0] * w
+                continue
+
+            shift = shift_cycle[(bot_row - r) % 4]
+            for c in range(w):
+                src_c = c - shift
+                if 0 <= src_c < w:
+                    output[r][c] = raw_in[r][src_c]
+                else:
+                    output[r][c] = 0
+
+        return output
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -2394,6 +2674,10 @@ class PredictOperator(Operator):
             return self._apply_arrow_edge_projection(rule, input_grid)
         if rule_type == "object_pass_through":
             return self._apply_object_pass_through(rule, input_grid)
+        if rule_type == "gravity_drop":
+            return self._apply_gravity_drop(rule, input_grid)
+        if rule_type == "grid_oscillation":
+            return self._apply_grid_oscillation(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2910,6 +3194,62 @@ class PredictOperator(Operator):
                 output[er][ec] = 0
 
         return output
+
+    # ---- apply: gravity drop ---------------------------------------------
+
+    def _apply_gravity_drop(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule.get("background", 7)
+
+        # Identify colors
+        colors = set()
+        for row in raw:
+            for v in row:
+                colors.add(v)
+        non_bg = colors - {bg}
+        if len(non_bg) != 2:
+            return [row[:] for row in raw]
+
+        border_color, obj_color = GeneralizeOperator._detect_border_obj(
+            raw, bg, h, w, non_bg)
+        if border_color is None:
+            return [row[:] for row in raw]
+
+        gen = GeneralizeOperator()
+        result = gen._compute_gravity_drop(raw, bg, border_color, obj_color)
+        return result if result is not None else [row[:] for row in raw]
+
+    # ---- apply: grid oscillation -----------------------------------------
+
+    def _apply_grid_oscillation(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find grid color
+        grid_color = None
+        for row in raw:
+            for v in row:
+                if v != 0:
+                    if grid_color is None:
+                        grid_color = v
+                    elif v != grid_color:
+                        return [row[:] for row in raw]
+
+        if grid_color is None:
+            return [row[:] for row in raw]
+
+        # Find bottom row of grid
+        bot_row = 0
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == grid_color:
+                    bot_row = max(bot_row, r)
+
+        gen = GeneralizeOperator()
+        return gen._compute_grid_oscillation(raw, grid_color, bot_row)
 
     # ---- helpers ---------------------------------------------------------
 
