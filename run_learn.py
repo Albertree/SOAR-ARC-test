@@ -30,6 +30,7 @@ def parse_args():
     p.add_argument("--shuffle", action="store_true", help="randomize task order")
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
     p.add_argument("--log-wm", action="store_true", help="print WM logs per task")
+    p.add_argument("--viz", action="store_true", help="show input/predicted/answer grids")
     return p.parse_args()
 
 
@@ -58,6 +59,30 @@ def check_correct(predicted, task):
     if len(pred) != len(answers):
         return False
     return all(p == a for p, a in zip(pred, answers))
+
+
+def _show_viz(task, predicted, is_correct):
+    """Show input, predicted, and ground truth grids side by side."""
+    from basics.viz import _print_side_by_side
+
+    for i, pair in enumerate(task.test_pairs):
+        grids = [pair.input_grid.raw]
+        labels = ["input"]
+
+        if predicted is not None:
+            pred = predicted if isinstance(predicted[0], list) else [predicted]
+            if i < len(pred):
+                grids.append(pred[i])
+                labels.append("predicted")
+
+        if hasattr(pair, "output") and pair.output is not None:
+            grids.append(pair.output.contents)
+            labels.append("answer")
+
+        tag = "MATCH" if is_correct else "MISMATCH"
+        print(f"  {'  |  '.join(labels)}  << {tag}")
+        _print_side_by_side(grids, gap=6)
+    print()
 
 
 def main():
@@ -128,6 +153,9 @@ def main():
             method_str = f"stored({info.get('rule_source', '?')})" if method == "stored_rule" else f"pipeline(steps={steps})"
 
             log(f"[{idx+1}/{total}] {task_hex}: {status}  rule={rule_type}  via={method_str}  ({elapsed:.1f}s)")
+
+            if args.viz:
+                _show_viz(task, predicted, is_correct)
 
         except Exception as e:
             error_count += 1
