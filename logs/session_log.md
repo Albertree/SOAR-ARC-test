@@ -2410,3 +2410,104 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 - Extended 40-task (seed 99): 19/40 (47.5%) — up from 16/40 (40.0%) baseline
 - Net improvement: +3 tasks (03560426, 05269061, 0962bcdd)
 - Regression gate: CORRECT (08ed6ac7)
+
+---
+## Learning Loop -- 2026-03-25 12:38
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_123754.log
+
+---
+## Learning Loop -- 2026-03-25 12:41
+
+- Split: training, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 38
+- Time: 158s
+- Log: logs/learn_20260325_123915.log
+
+---
+## Learning Loop -- 2026-03-25 12:45
+
+- Split: training, Tasks: 60
+- Correct: 44 / 60 (73.3%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 42
+- Time: 225s
+- Log: logs/learn_20260325_124158.log
+
+---
+## Learning Loop -- 2026-03-25 12:52
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260325_125146.log
+
+---
+## Learning Loop -- 2026-03-25 12:56
+
+- Split: training, Tasks: 60
+- Correct: 44 / 60 (73.3%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 42
+- Time: 227s
+- Log: logs/learn_20260325_125256.log
+
+---
+## Learning Loop -- 2026-03-25 13:01
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260325_130006.log
+
+---
+## Learning Loop -- 2026-03-25 13:05
+
+- Split: training, Tasks: 60
+- Correct: 47 / 60 (78.3%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 42
+- Time: 225s
+- Log: logs/learn_20260325_130115.log
+
+---
+## Session 29 Analysis — 2026-03-25 13:05
+
+### Strategies added (agent/active_operators.py)
+
+1. **bbox_fill** — fill 0s inside bounding box of single-color shape with a fill color
+   - `_try_bbox_fill`: verifies single non-zero color, consistent bbox-interior fill across examples
+   - `_apply_bbox_fill`: finds bounding box of shape, replaces interior 0s with fill color
+
+2. **checkerboard_grid** — all-zero grid produces grid-line checkerboard pattern
+   - `_try_checkerboard_grid`: detects uniform-value input, verifies output matches (r%2==0 or c%2==0) pattern
+   - `_apply_checkerboard_grid`: fills cells where row or column index is even with fill color
+
+3. **signal_bounce** — non-zero seed colors repeat cyclically at triangular-number-spaced positions
+   - `_try_signal_bounce`: verifies single active row, validates triangular spacing of cyclic colors
+   - `_apply_signal_bounce`: extracts seeds, places them cyclically with increasing gaps (1,2,3,...)
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 6d75e8bb | INCORRECT (color_mapping) | CORRECT | bbox_fill |
+| 332efdb3 | INCORRECT (recolor_sequential) | CORRECT | checkerboard_grid |
+| 72207abc | INCORRECT (identity) | CORRECT | signal_bounce |
+
+**Score (20-task): 20/20 (100.0%) — maintained**
+**Score (60-task): 44/60 (73.3%) → 47/60 (78.3%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

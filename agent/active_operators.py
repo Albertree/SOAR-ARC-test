@@ -567,6 +567,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_quadrant_shape_swap(task)
 
+        # Strategy 79: bbox fill (fill 0s inside bounding box of shape with fill color)
+        if rule is None:
+            rule = self._try_bbox_fill(task)
+
+        # Strategy 80: checkerboard grid (all-zero grid -> grid-line pattern)
+        if rule is None:
+            rule = self._try_checkerboard_grid(task)
+
+        # Strategy 81: signal bounce (cyclic colors at triangular-number positions)
+        if rule is None:
+            rule = self._try_signal_bounce(task)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -6269,7 +6281,7 @@ class GeneralizeOperator(Operator):
         one non-zero cell.  Output is the compressed grid of those values.
         Category: block-based spatial compression / sparse-to-dense.
         """
-        pairs = task.train_pairs if hasattr(task, 'train_pairs') else task.example_pairs
+        pairs = task.example_pairs if hasattr(task, 'train_pairs') else task.example_pairs
         if not pairs:
             return None
 
@@ -6313,7 +6325,7 @@ class GeneralizeOperator(Operator):
         that shape (only shape-color cells kept, rest 0).
         Category: noise filtering / dense object extraction.
         """
-        pairs = task.train_pairs if hasattr(task, 'train_pairs') else task.example_pairs
+        pairs = task.example_pairs if hasattr(task, 'train_pairs') else task.example_pairs
         if not pairs:
             return None
 
@@ -6409,7 +6421,7 @@ class GeneralizeOperator(Operator):
         are unchanged.
         Category: shape matching / template recoloring.
         """
-        pairs = task.train_pairs if hasattr(task, 'train_pairs') else task.example_pairs
+        pairs = task.example_pairs if hasattr(task, 'train_pairs') else task.example_pairs
         if not pairs:
             return None
 
@@ -8427,6 +8439,224 @@ class GeneralizeOperator(Operator):
         return output
 
 
+    # ---- strategy 79: bbox fill ------------------------------------------
+
+    def _try_bbox_fill(self, task):
+        """Detect: single-color shape on bg=0; output fills 0s inside the
+        shape's bounding box with a fixed fill color (typically 2).
+        Generalizes to any single-color shape with interior gap filling."""
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        shape_color = None
+        fill_color = None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            h, w = len(inp), len(inp[0]) if inp else 0
+            if len(out) != h or (out and len(out[0]) != w):
+                return None
+
+            # Find non-zero cells (the shape)
+            nz_cells = set()
+            colors_seen = set()
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != 0:
+                        nz_cells.add((r, c))
+                        colors_seen.add(inp[r][c])
+            if len(colors_seen) != 1 or not nz_cells:
+                return None
+            sc = colors_seen.pop()
+            if shape_color is None:
+                shape_color = sc
+            elif shape_color != sc:
+                return None
+
+            # Get bounding box
+            rows = [r for r, c in nz_cells]
+            cols = [c for r, c in nz_cells]
+            r_min, r_max = min(rows), max(rows)
+            c_min, c_max = min(cols), max(cols)
+
+            # Check: output == input except 0s inside bbox become fill_color
+            fc = None
+            for r in range(h):
+                for c in range(w):
+                    if r_min <= r <= r_max and c_min <= c <= c_max:
+                        if inp[r][c] != 0:
+                            if out[r][c] != inp[r][c]:
+                                return None
+                        else:
+                            # This should be fill color
+                            if out[r][c] == 0 or out[r][c] == shape_color:
+                                return None
+                            if fc is None:
+                                fc = out[r][c]
+                            elif out[r][c] != fc:
+                                return None
+                    else:
+                        if out[r][c] != inp[r][c]:
+                            return None
+            if fc is None:
+                return None
+            if fill_color is None:
+                fill_color = fc
+            elif fill_color != fc:
+                return None
+
+        return {
+            "type": "bbox_fill",
+            "shape_color": shape_color,
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 80: checkerboard grid -----------------------------------
+
+    def _try_checkerboard_grid(self, task):
+        """Detect: all-zero NxN input -> grid-line pattern output.
+        Cells at (r,c) where r%2==0 OR c%2==0 become fill_color; rest stay 0.
+        Generalizes to any uniform-input grid -> checkerboard output."""
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        fill_color = None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            h, w = len(inp), len(inp[0]) if inp else 0
+            if len(out) != h or (out and len(out[0]) != w):
+                return None
+            # Input must be all same value (typically 0)
+            bg = inp[0][0]
+            if not all(inp[r][c] == bg for r in range(h) for c in range(w)):
+                return None
+            # Output must match checkerboard pattern
+            fc = None
+            for r in range(h):
+                for c in range(w):
+                    if r % 2 == 0 or c % 2 == 0:
+                        if out[r][c] == bg:
+                            return None
+                        if fc is None:
+                            fc = out[r][c]
+                        elif out[r][c] != fc:
+                            return None
+                    else:
+                        if out[r][c] != bg:
+                            return None
+            if fc is None:
+                return None
+            if fill_color is None:
+                fill_color = fc
+            elif fill_color != fc:
+                return None
+
+        return {
+            "type": "checkerboard_grid",
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 81: signal bounce ---------------------------------------
+
+    def _try_signal_bounce(self, task):
+        """Detect: a single active row with initial colored pixels that
+        repeat cyclically at triangular-number-spaced positions.
+        The gap between successive color placements increases by 1 each time.
+        Generalizes to any row length and any number of seed colors."""
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        active_row_idx = None  # which row has the signal
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            h, w = len(inp), len(inp[0]) if inp else 0
+            if len(out) != h or (out and len(out[0]) != w):
+                return None
+
+            # Find the single active row (row with non-zero values)
+            active_rows = []
+            for r in range(h):
+                if any(inp[r][c] != 0 for c in range(w)):
+                    active_rows.append(r)
+            if len(active_rows) != 1:
+                return None
+            ar = active_rows[0]
+            if active_row_idx is None:
+                active_row_idx = ar
+            elif active_row_idx != ar:
+                return None
+
+            # All other rows must be unchanged (all zeros)
+            for r in range(h):
+                if r != ar:
+                    for c in range(w):
+                        if out[r][c] != inp[r][c]:
+                            return None
+
+            # Extract seed colors from the input row
+            seed_colors = []
+            for c in range(w):
+                if inp[ar][c] != 0:
+                    seed_colors.append(inp[ar][c])
+                else:
+                    break  # first gap ends the contiguous seed block...
+            # Actually, seeds may have gaps. Collect all non-zero in input row.
+            seed_positions = []
+            for c in range(w):
+                if inp[ar][c] != 0:
+                    seed_positions.append((c, inp[ar][c]))
+
+            if not seed_positions:
+                return None
+
+            # Build expected output: place colors cyclically with increasing gaps
+            # Positions follow: p[0], p[0]+gap1, p[0]+gap1+gap2, ...
+            # where gaps increase: gap between seed positions defines initial gaps,
+            # then continue increasing.
+            colors_cycle = [col for _, col in seed_positions]
+            num_seeds = len(colors_cycle)
+
+            # Compute expected positions using triangular spacing from position 0
+            # First positions are the seed positions themselves,
+            # then continuing with increasing gaps
+            expected = [0] * w
+            pos = 0
+            gap = 1
+            ci = 0  # color index in cycle
+            placed = 0
+            while pos < w:
+                expected[pos] = colors_cycle[ci % num_seeds]
+                ci += 1
+                placed += 1
+                pos += gap
+                gap += 1
+
+            # Verify against actual output
+            match = True
+            for c in range(w):
+                if expected[c] != out[ar][c]:
+                    match = False
+                    break
+            if not match:
+                return None
+
+        return {
+            "type": "signal_bounce",
+            "active_row": active_row_idx,
+            "confidence": 1.0,
+        }
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -8657,6 +8887,12 @@ class PredictOperator(Operator):
             return self._apply_cross_diamond_expand(rule, input_grid)
         if rule_type == "diagonal_block_chain":
             return self._apply_diagonal_block_chain(rule, input_grid)
+        if rule_type == "bbox_fill":
+            return self._apply_bbox_fill(rule, input_grid)
+        if rule_type == "checkerboard_grid":
+            return self._apply_checkerboard_grid(rule, input_grid)
+        if rule_type == "signal_bounce":
+            return self._apply_signal_bounce(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -11436,6 +11672,84 @@ class PredictOperator(Operator):
                         output[nr][nc] = color
             cur_r += bh - 1
             cur_c += bw - 1
+        return output
+
+
+    # ---- apply: bbox fill ------------------------------------------------
+
+    def _apply_bbox_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        shape_color = rule["shape_color"]
+        fill_color = rule["fill_color"]
+
+        # Find bounding box of shape_color cells
+        nz = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == shape_color]
+        if not nz:
+            return [row[:] for row in raw]
+        r_min = min(r for r, c in nz)
+        r_max = max(r for r, c in nz)
+        c_min = min(c for r, c in nz)
+        c_max = max(c for r, c in nz)
+
+        output = [row[:] for row in raw]
+        for r in range(r_min, r_max + 1):
+            for c in range(c_min, c_max + 1):
+                if output[r][c] == 0:
+                    output[r][c] = fill_color
+        return output
+
+    # ---- apply: checkerboard grid ----------------------------------------
+
+    def _apply_checkerboard_grid(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        fill_color = rule["fill_color"]
+        bg = raw[0][0] if raw else 0
+
+        output = [[bg] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if r % 2 == 0 or c % 2 == 0:
+                    output[r][c] = fill_color
+                else:
+                    output[r][c] = bg
+        return output
+
+    # ---- apply: signal bounce --------------------------------------------
+
+    def _apply_signal_bounce(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        ar = rule["active_row"]
+
+        output = [row[:] for row in raw]
+
+        # Extract seed colors from active row
+        seed_colors = []
+        for c in range(w):
+            if raw[ar][c] != 0:
+                seed_colors.append(raw[ar][c])
+
+        if not seed_colors:
+            return output
+
+        # Place colors cyclically with increasing gaps
+        row = [0] * w
+        pos = 0
+        gap = 1
+        ci = 0
+        num_seeds = len(seed_colors)
+        while pos < w:
+            row[pos] = seed_colors[ci % num_seeds]
+            ci += 1
+            pos += gap
+            gap += 1
+
+        output[ar] = row
         return output
 
 
