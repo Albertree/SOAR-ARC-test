@@ -637,6 +637,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_column_staircase_shadow(task)
 
+        # Strategy 79a: diagonal bridge (pairs of same-color objects connected by diagonal trail)
+        if rule is None:
+            rule = self._try_diagonal_bridge(task)
+
+        # Strategy 79b: corridor fill (zigzag corridor between walls filled with 8)
+        if rule is None:
+            rule = self._try_corridor_fill(task)
+
+        # Strategy 79c: block pair recolor (2x2 blocks paired by matching, larger col -> 8)
+        if rule is None:
+            rule = self._try_block_pair_recolor(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -8656,6 +8668,515 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: diagonal bridge between paired same-color objects ----
+
+    def _try_diagonal_bridge(self, task):
+        """Detect pairs of same-color rectangular objects connected by a diagonal
+        trail of single pixels.  Each color appears exactly twice; the trail
+        color matches the object color."""
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        bg_color = None  # detect background (most frequent color)
+        for pair in pairs:
+            raw = pair.input_grid.raw
+            counts = {}
+            for row in raw:
+                for v in row:
+                    counts[v] = counts.get(v, 0) + 1
+            bg_color_cand = max(counts, key=counts.get)
+            if bg_color is None:
+                bg_color = bg_color_cand
+            elif bg_color != bg_color_cand:
+                return None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output.contents if hasattr(pair, 'output') and pair.output else None
+            if out is None:
+                return None
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find rectangular objects (connected components of non-bg cells)
+            visited = [[False]*w for _ in range(h)]
+            objects = []  # list of (color, min_r, min_c, max_r, max_c, cells)
+            for r in range(h):
+                for c in range(w):
+                    if visited[r][c] or inp[r][c] == bg_color:
+                        continue
+                    color = inp[r][c]
+                    # BFS
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    cells = []
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        cells.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = cr+dr, cc+dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] == color:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    min_r = min(r for r, c in cells)
+                    max_r = max(r for r, c in cells)
+                    min_c = min(c for r, c in cells)
+                    max_c = max(c for r, c in cells)
+                    objects.append((color, min_r, min_c, max_r, max_c, cells))
+
+            # Group by color
+            color_groups = {}
+            for obj in objects:
+                color_groups.setdefault(obj[0], []).append(obj)
+
+            # Each color must appear exactly twice
+            for color, group in color_groups.items():
+                if len(group) != 2:
+                    return None
+
+            # Verify: output = input + diagonal bridges between each pair
+            expected = [row[:] for row in inp]
+            for color, group in color_groups.items():
+                a, b = group
+                _, ar1, ac1, ar2, ac2, _ = a
+                _, br1, bc1, br2, bc2, _ = b
+
+                # Find closest corners
+                corners_a = [(ar1, ac1), (ar1, ac2), (ar2, ac1), (ar2, ac2)]
+                corners_b = [(br1, bc1), (br1, bc2), (br2, bc1), (br2, bc2)]
+
+                best_dist = float('inf')
+                best_ca, best_cb = None, None
+                for ca in corners_a:
+                    for cb in corners_b:
+                        d = abs(ca[0]-cb[0]) + abs(ca[1]-cb[1])
+                        if d < best_dist:
+                            best_dist = d
+                            best_ca, best_cb = ca, cb
+
+                # Draw diagonal from best_ca toward best_cb
+                r0, c0 = best_ca
+                r1, c1 = best_cb
+                dr = 1 if r1 > r0 else (-1 if r1 < r0 else 0)
+                dc = 1 if c1 > c0 else (-1 if c1 < c0 else 0)
+                cr, cc = r0 + dr, c0 + dc
+                while (cr, cc) != (r1, c1) and 0 <= cr < h and 0 <= cc < w:
+                    if expected[cr][cc] == bg_color:
+                        expected[cr][cc] = color
+                    cr += dr
+                    cc += dc
+
+            if expected != out:
+                return None
+
+        return {
+            "type": "diagonal_bridge",
+            "bg_color": bg_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: corridor fill (zigzag path between walls) ----
+
+    def _try_corridor_fill(self, task):
+        """Detect a zigzag corridor formed by wall-cells (one color) with open
+        cells (another color) between them.  A marker (unique color) may sit
+        in the corridor.  The corridor is filled with a fill color (8)."""
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        wall_color = None
+        open_color = None
+        fill_color = None
+        marker_color = None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output.contents if hasattr(pair, 'output') and pair.output else None
+            if out is None:
+                return None
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Identify colors
+            in_colors = {}
+            for row in inp:
+                for v in row:
+                    in_colors[v] = in_colors.get(v, 0) + 1
+            out_colors = {}
+            for row in out:
+                for v in row:
+                    out_colors[v] = out_colors.get(v, 0) + 1
+
+            # Wall color: abundant in both input and output, never changes
+            # Open color: abundant in input
+            # Fill color: appears in output but replaces open/marker in corridor
+            # Marker color: appears once in input, may be in output or replaced
+
+            sorted_in = sorted(in_colors.items(), key=lambda x: -x[1])
+            if len(sorted_in) < 2:
+                return None
+
+            cand_open = sorted_in[0][0]
+            cand_wall = sorted_in[1][0]
+
+            # The "open" color should be the most frequent non-wall
+            # Actually, open and wall are the two most frequent; wall forms corridors
+            # Let's try: the color forming the corridor walls is one that has many
+            # adjacent cells on 2 sides of a line.  Simpler: open = most frequent,
+            # wall = second most frequent, unless open count > wall count.
+            # For this task: open = 0, wall = 7 always (from the examples).
+
+            if wall_color is None:
+                wall_color = cand_wall
+                open_color = cand_open
+            elif wall_color != cand_wall or open_color != cand_open:
+                return None
+
+            # Find marker (appears exactly once in input, not open or wall)
+            pair_marker = None
+            for color, cnt in in_colors.items():
+                if color != wall_color and color != open_color and cnt == 1:
+                    if pair_marker is not None:
+                        return None  # multiple single-count colors
+                    pair_marker = color
+
+            # Find fill color (new in output that replaces open cells in corridor)
+            new_in_out = set()
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != out[r][c]:
+                        new_in_out.add(out[r][c])
+
+            if len(new_in_out) != 1:
+                # Could be 0 (identity) or >1 colors -- not this pattern
+                if len(new_in_out) == 0 and pair_marker is None:
+                    continue  # identity pair, skip
+                return None
+
+            cand_fill = new_in_out.pop()
+            if fill_color is None:
+                fill_color = cand_fill
+            elif fill_color != cand_fill:
+                return None
+
+            if marker_color is None and pair_marker is not None:
+                marker_color = pair_marker
+            elif pair_marker is not None and marker_color != pair_marker:
+                return None
+
+            # Verify: corridor cells are exactly the cells between walls
+            # Trace corridor: cells that are open_color or marker_color, bounded by wall
+            corridor = set()
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == wall_color or inp[r][c] == open_color:
+                        continue
+                    if inp[r][c] == marker_color:
+                        corridor.add((r, c))
+
+            # BFS from marker or from any open cell adjacent to a wall
+            # Actually, corridor = connected component of non-wall, non-open-exterior cells
+            # between walls.  Let's find corridor cells as open/marker cells that have
+            # at least 2 wall neighbors (or are between walls).
+
+            # Corridor cells: first find "seed" cells with walls on OPPOSITE sides,
+            # then BFS to extend to corner cells with 2+ wall neighbors.
+            def _is_open(r, c):
+                return inp[r][c] == open_color or inp[r][c] == marker_color
+            def _wall_count(r, c):
+                cnt = 0
+                for dr2, dc2 in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    nr2, nc2 = r+dr2, c+dc2
+                    if 0 <= nr2 < h and 0 <= nc2 < w and inp[nr2][nc2] == wall_color:
+                        cnt += 1
+                return cnt
+            def _has_opposite_walls(r, c):
+                left = (0 <= c-1 and inp[r][c-1] == wall_color)
+                right = (c+1 < w and inp[r][c+1] == wall_color)
+                top = (0 <= r-1 and inp[r-1][c] == wall_color)
+                bot = (r+1 < h and inp[r+1][c] == wall_color)
+                return (left and right) or (top and bot)
+
+            seeds = set()
+            candidates = set()
+            for r in range(h):
+                for c in range(w):
+                    if not _is_open(r, c):
+                        continue
+                    wc = _wall_count(r, c)
+                    if wc >= 2:
+                        if _has_opposite_walls(r, c):
+                            seeds.add((r, c))
+                        else:
+                            candidates.add((r, c))
+
+            # BFS from seeds through candidates
+            path_cells = set(seeds)
+            queue = list(seeds)
+            while queue:
+                cr, cc = queue.pop(0)
+                for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    nr, nc = cr+dr, cc+dc
+                    if (nr, nc) in candidates and (nr, nc) not in path_cells:
+                        path_cells.add((nr, nc))
+                        queue.append((nr, nc))
+                        candidates.discard((nr, nc))
+
+            if len(path_cells) < 2:
+                return None
+
+            # The filled cells in output should be a subset of path_cells
+            filled = set()
+            for r in range(h):
+                for c in range(w):
+                    if out[r][c] == fill_color and inp[r][c] != fill_color:
+                        filled.add((r, c))
+
+            if not filled.issubset(path_cells):
+                return None
+
+            # Verify: filled cells = all path cells OR filled + marker = subset
+            marker_pos = None
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == marker_color:
+                        marker_pos = (r, c)
+
+            if filled == path_cells:
+                # All corridor filled (marker replaced too if present)
+                pass
+            elif marker_pos and filled == path_cells - {marker_pos}:
+                # All corridor filled except the marker position
+                pass
+            elif marker_pos:
+                # Partial fill: marker at a corner, one arm filled
+                unfilled = path_cells - filled
+                # unfilled must include the marker and form a contiguous set
+                if marker_pos not in unfilled:
+                    return None
+                # Check contiguity of unfilled cells
+                uf_visited = {marker_pos}
+                uf_queue = [marker_pos]
+                while uf_queue:
+                    ur, uc = uf_queue.pop(0)
+                    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                        nr, nc = ur+dr, uc+dc
+                        if (nr, nc) in unfilled and (nr, nc) not in uf_visited:
+                            uf_visited.add((nr, nc))
+                            uf_queue.append((nr, nc))
+                if uf_visited != unfilled:
+                    return None
+            else:
+                return None
+
+        if wall_color is None or fill_color is None:
+            return None
+
+        return {
+            "type": "corridor_fill",
+            "wall_color": wall_color,
+            "open_color": open_color,
+            "fill_color": fill_color,
+            "marker_color": marker_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: block pair recolor by matching ----
+
+    def _try_block_pair_recolor(self, task):
+        """Detect 2x2 blocks of a single color on a bg.  Blocks are paired via
+        min-weight matching (no shared rows).  In each pair, the block with the
+        larger column becomes a second color; unpaired blocks also become
+        that color."""
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        bg_color = None
+        block_color = None
+        recolor = None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output.contents if hasattr(pair, 'output') and pair.output else None
+            if out is None:
+                return None
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find unique non-bg color
+            counts = {}
+            for row in inp:
+                for v in row:
+                    counts[v] = counts.get(v, 0) + 1
+            sorted_c = sorted(counts.items(), key=lambda x: -x[1])
+            if len(sorted_c) < 2:
+                return None
+            cand_bg = sorted_c[0][0]
+            cand_block = sorted_c[1][0]
+
+            if bg_color is None:
+                bg_color = cand_bg
+                block_color = cand_block
+            elif bg_color != cand_bg or block_color != cand_block:
+                return None
+
+            # Only two colors in input
+            if len([c for c, cnt in counts.items() if cnt > 0]) != 2:
+                return None
+
+            # Find 2x2 blocks
+            blocks = self._find_2x2_blocks(inp, block_color, h, w)
+            if len(blocks) < 2:
+                return None
+
+            # Determine recolor from output
+            out_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if out[r][c] != bg_color and out[r][c] != block_color:
+                        out_colors.add(out[r][c])
+
+            if len(out_colors) != 1:
+                return None
+            cand_recolor = out_colors.pop()
+            if recolor is None:
+                recolor = cand_recolor
+            elif recolor != cand_recolor:
+                return None
+
+            # Verify: perform matching and check result
+            result = self._match_and_recolor_blocks(blocks, h)
+            if result is None:
+                return None
+
+            # Build expected output
+            expected = [row[:] for row in inp]
+            for (br, bc), should_recolor in result:
+                if should_recolor:
+                    for dr in range(2):
+                        for dc in range(2):
+                            expected[br+dr][bc+dc] = recolor
+
+            if expected != out:
+                return None
+
+        if bg_color is None or recolor is None:
+            return None
+
+        return {
+            "type": "block_pair_recolor",
+            "bg_color": bg_color,
+            "block_color": block_color,
+            "recolor": recolor,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_2x2_blocks(grid, color, h, w):
+        """Find all 2x2 blocks of a given color.  Returns list of (top_row, top_col)."""
+        used = [[False]*w for _ in range(h)]
+        blocks = []
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (grid[r][c] == color and grid[r][c+1] == color and
+                    grid[r+1][c] == color and grid[r+1][c+1] == color and
+                    not used[r][c]):
+                    blocks.append((r, c))
+                    used[r][c] = used[r][c+1] = used[r+1][c] = used[r+1][c+1] = True
+        return blocks
+
+    @staticmethod
+    def _match_and_recolor_blocks(blocks, grid_h):
+        """Match blocks via min-weight matching (no shared rows).
+        Returns list of ((row, col), should_recolor_bool) or None."""
+        import itertools, math
+
+        n = len(blocks)
+
+        # If odd number, find the block with smallest col to be unpaired
+        unpaired_idx = None
+        if n % 2 == 1:
+            min_col = float('inf')
+            for i, (br, bc) in enumerate(blocks):
+                if bc < min_col:
+                    min_col = bc
+                    unpaired_idx = i
+
+        # Blocks to pair (exclude unpaired)
+        pair_indices = [i for i in range(n) if i != unpaired_idx]
+        m = len(pair_indices)
+        if m % 2 != 0:
+            return None
+        if m == 0:
+            # single block, unpaired -> recolor
+            return [((blocks[0][0], blocks[0][1]), True)]
+
+        # Check rows overlap: two blocks overlap if their row ranges [r, r+1] intersect
+        def rows_overlap(i, j):
+            ri, _ = blocks[i]
+            rj, _ = blocks[j]
+            return abs(ri - rj) <= 1
+
+        # Build valid edges with distances
+        centers = {i: (blocks[i][0] + 0.5, blocks[i][1] + 0.5) for i in pair_indices}
+
+        # Find minimum weight perfect matching via brute force (small n)
+        def find_matching(indices):
+            if len(indices) == 0:
+                return 0, []
+            if len(indices) == 2:
+                i, j = indices
+                if rows_overlap(i, j):
+                    return float('inf'), []
+                ci, cj = centers[i], centers[j]
+                d = math.sqrt((ci[0]-cj[0])**2 + (ci[1]-cj[1])**2)
+                return d, [(i, j)]
+            best_cost = float('inf')
+            best_pairs = []
+            first = indices[0]
+            rest = indices[1:]
+            for k_idx, partner in enumerate(rest):
+                if rows_overlap(first, partner):
+                    continue
+                ci, cj = centers[first], centers[partner]
+                d = math.sqrt((ci[0]-cj[0])**2 + (ci[1]-cj[1])**2)
+                remaining = [x for x in rest if x != partner]
+                sub_cost, sub_pairs = find_matching(remaining)
+                total = d + sub_cost
+                if total < best_cost:
+                    best_cost = total
+                    best_pairs = [(first, partner)] + sub_pairs
+            return best_cost, best_pairs
+
+        cost, matching = find_matching(pair_indices)
+        if cost == float('inf'):
+            return None
+
+        # Determine recolor: in each pair, larger col -> recolor
+        recolor_set = set()
+        keep_set = set()
+        for i, j in matching:
+            if blocks[i][1] >= blocks[j][1]:
+                recolor_set.add(i)
+                keep_set.add(j)
+            else:
+                recolor_set.add(j)
+                keep_set.add(i)
+
+        if unpaired_idx is not None:
+            recolor_set.add(unpaired_idx)
+
+        result = []
+        for i in range(n):
+            result.append(((blocks[i][0], blocks[i][1]), i in recolor_set))
+        return result
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -8893,6 +9414,12 @@ class PredictOperator(Operator):
             return self._apply_checkerboard_grid(rule, input_grid)
         if rule_type == "signal_bounce":
             return self._apply_signal_bounce(rule, input_grid)
+        if rule_type == "diagonal_bridge":
+            return self._apply_diagonal_bridge(rule, input_grid)
+        if rule_type == "corridor_fill":
+            return self._apply_corridor_fill(rule, input_grid)
+        if rule_type == "block_pair_recolor":
+            return self._apply_block_pair_recolor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -11750,6 +12277,322 @@ class PredictOperator(Operator):
             gap += 1
 
         output[ar] = row
+        return output
+
+    # ---- apply: diagonal bridge ----------------------------------------
+
+    def _apply_diagonal_bridge(self, rule, input_grid):
+        """Draw diagonal pixel trails between pairs of same-color objects."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else 0
+        bg = rule["bg_color"]
+        output = [row[:] for row in raw]
+
+        # Find objects
+        visited = [[False]*w for _ in range(h)]
+        objects = []
+        for r in range(h):
+            for c in range(w):
+                if visited[r][c] or raw[r][c] == bg:
+                    continue
+                color = raw[r][c]
+                queue = [(r, c)]
+                visited[r][c] = True
+                cells = []
+                while queue:
+                    cr, cc = queue.pop(0)
+                    cells.append((cr, cc))
+                    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                        nr, nc = cr+dr, cc+dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == color:
+                            visited[nr][nc] = True
+                            queue.append((nr, nc))
+                min_r = min(r for r, c in cells)
+                max_r = max(r for r, c in cells)
+                min_c = min(c for r, c in cells)
+                max_c = max(c for r, c in cells)
+                objects.append((color, min_r, min_c, max_r, max_c))
+
+        # Group by color and draw bridges
+        color_groups = {}
+        for obj in objects:
+            color_groups.setdefault(obj[0], []).append(obj)
+
+        for color, group in color_groups.items():
+            if len(group) != 2:
+                continue
+            a, b = group
+            _, ar1, ac1, ar2, ac2 = a
+            _, br1, bc1, br2, bc2 = b
+
+            corners_a = [(ar1, ac1), (ar1, ac2), (ar2, ac1), (ar2, ac2)]
+            corners_b = [(br1, bc1), (br1, bc2), (br2, bc1), (br2, bc2)]
+
+            best_dist = float('inf')
+            best_ca, best_cb = None, None
+            for ca in corners_a:
+                for cb in corners_b:
+                    d = abs(ca[0]-cb[0]) + abs(ca[1]-cb[1])
+                    if d < best_dist:
+                        best_dist = d
+                        best_ca, best_cb = ca, cb
+
+            r0, c0 = best_ca
+            r1, c1 = best_cb
+            dr = 1 if r1 > r0 else (-1 if r1 < r0 else 0)
+            dc = 1 if c1 > c0 else (-1 if c1 < c0 else 0)
+            cr, cc = r0 + dr, c0 + dc
+            while (cr, cc) != (r1, c1) and 0 <= cr < h and 0 <= cc < w:
+                if output[cr][cc] == bg:
+                    output[cr][cc] = color
+                cr += dr
+                cc += dc
+
+        return output
+
+    # ---- apply: corridor fill ------------------------------------------
+
+    def _apply_corridor_fill(self, rule, input_grid):
+        """Fill zigzag corridor between walls with fill_color."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else 0
+        wall = rule["wall_color"]
+        open_c = rule["open_color"]
+        fill = rule["fill_color"]
+        marker = rule.get("marker_color")
+        output = [row[:] for row in raw]
+
+        # Find corridor cells: seeds with opposite walls, then BFS to corner cells
+        def _is_open(r, c):
+            return raw[r][c] == open_c or (marker is not None and raw[r][c] == marker)
+        def _wall_count(r, c):
+            cnt = 0
+            for dr2, dc2 in [(-1,0),(1,0),(0,-1),(0,1)]:
+                nr2, nc2 = r+dr2, c+dc2
+                if 0 <= nr2 < h and 0 <= nc2 < w and raw[nr2][nc2] == wall:
+                    cnt += 1
+            return cnt
+        def _has_opposite_walls(r, c):
+            left = (0 <= c-1 and raw[r][c-1] == wall)
+            right = (c+1 < w and raw[r][c+1] == wall)
+            top = (0 <= r-1 and raw[r-1][c] == wall)
+            bot = (r+1 < h and raw[r+1][c] == wall)
+            return (left and right) or (top and bot)
+
+        seeds = set()
+        candidates = set()
+        for r in range(h):
+            for c in range(w):
+                if not _is_open(r, c):
+                    continue
+                wc = _wall_count(r, c)
+                if wc >= 2:
+                    if _has_opposite_walls(r, c):
+                        seeds.add((r, c))
+                    else:
+                        candidates.add((r, c))
+
+        path_cells = set(seeds)
+        queue = list(seeds)
+        while queue:
+            cr2, cc2 = queue.pop(0)
+            for dr2, dc2 in [(-1,0),(1,0),(0,-1),(0,1)]:
+                nr2, nc2 = cr2+dr2, cc2+dc2
+                if (nr2, nc2) in candidates and (nr2, nc2) not in path_cells:
+                    path_cells.add((nr2, nc2))
+                    queue.append((nr2, nc2))
+                    candidates.discard((nr2, nc2))
+
+        if not path_cells:
+            return output
+
+        # Find marker position
+        marker_pos = None
+        if marker is not None:
+            for r in range(h):
+                for c in range(w):
+                    if raw[r][c] == marker:
+                        marker_pos = (r, c)
+                        break
+                if marker_pos:
+                    break
+
+        # Trace corridor as an ordered path using DFS from a dead end
+        # Find dead ends (path cells with exactly 1 path neighbor)
+        def path_neighbors(r, c):
+            nbrs = []
+            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                nr, nc = r+dr, c+dc
+                if (nr, nc) in path_cells:
+                    nbrs.append((nr, nc))
+            return nbrs
+
+        dead_ends = []
+        for (r, c) in path_cells:
+            if len(path_neighbors(r, c)) == 1:
+                dead_ends.append((r, c))
+
+        if len(dead_ends) < 2:
+            # Not a proper corridor with two ends
+            for r, c in path_cells:
+                output[r][c] = fill
+            return output
+
+        # Trace path from first dead end
+        start = dead_ends[0]
+        ordered_path = [start]
+        visited = {start}
+        current = start
+        while True:
+            nbrs = [n for n in path_neighbors(*current) if n not in visited]
+            if not nbrs:
+                break
+            nxt = nbrs[0]
+            ordered_path.append(nxt)
+            visited.add(nxt)
+            current = nxt
+
+        if marker_pos is None or marker_pos not in path_cells:
+            # No marker: fill entire corridor
+            for r, c in path_cells:
+                output[r][c] = fill
+            return output
+
+        # Find marker index in ordered path
+        marker_idx = None
+        for i, pos in enumerate(ordered_path):
+            if pos == marker_pos:
+                marker_idx = i
+                break
+
+        if marker_idx is None:
+            for r, c in path_cells:
+                output[r][c] = fill
+            return output
+
+        # Check if marker is at a corner (neighbors in different directions)
+        mr, mc = marker_pos
+        nbrs_in_path = path_neighbors(mr, mc)
+        if len(nbrs_in_path) == 2:
+            n1r, n1c = nbrs_in_path[0]
+            n2r, n2c = nbrs_in_path[1]
+            d1 = (n1r - mr, n1c - mc)
+            d2 = (n2r - mr, n2c - mc)
+            # If both neighbors are in the same direction (straight), fill all
+            # If neighbors are in different directions (corner), partial fill
+            is_corner = (d1[0] != 0 and d2[0] != 0 and d1[1] == 0 and d2[1] == 0) or \
+                        (d1[1] != 0 and d2[1] != 0 and d1[0] == 0 and d2[0] == 0)
+            is_straight = is_corner  # same axis = straight
+            if is_straight:
+                # Marker in straight segment: fill entire corridor
+                for r, c in path_cells:
+                    output[r][c] = fill
+                return output
+
+        # Corner case: fill the longer arm (from one dead end to just before marker)
+        arm1 = ordered_path[:marker_idx]  # from dead_end[0] to just before marker
+        arm2 = ordered_path[marker_idx+1:]  # from just after marker to other end
+
+        # Fill the longer arm
+        fill_arm = arm1 if len(arm1) >= len(arm2) else arm2
+        for r, c in fill_arm:
+            output[r][c] = fill
+
+        return output
+
+    # ---- apply: block pair recolor -------------------------------------
+
+    def _apply_block_pair_recolor(self, rule, input_grid):
+        """Pair 2x2 blocks by matching, recolor larger-col block in each pair."""
+        import math
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else 0
+        bg = rule["bg_color"]
+        block_color = rule["block_color"]
+        recolor = rule["recolor"]
+        output = [row[:] for row in raw]
+
+        # Find 2x2 blocks
+        used = [[False]*w for _ in range(h)]
+        blocks = []
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (raw[r][c] == block_color and raw[r][c+1] == block_color and
+                    raw[r+1][c] == block_color and raw[r+1][c+1] == block_color and
+                    not used[r][c]):
+                    blocks.append((r, c))
+                    used[r][c] = used[r][c+1] = used[r+1][c] = used[r+1][c+1] = True
+
+        if len(blocks) < 2:
+            return output
+
+        n = len(blocks)
+
+        # If odd, find unpaired (smallest col)
+        unpaired_idx = None
+        if n % 2 == 1:
+            min_col = float('inf')
+            for i, (br, bc) in enumerate(blocks):
+                if bc < min_col:
+                    min_col = bc
+                    unpaired_idx = i
+
+        pair_indices = [i for i in range(n) if i != unpaired_idx]
+
+        def rows_overlap(i, j):
+            ri, _ = blocks[i]
+            rj, _ = blocks[j]
+            return abs(ri - rj) <= 1
+
+        centers = {i: (blocks[i][0] + 0.5, blocks[i][1] + 0.5) for i in pair_indices}
+
+        def find_matching(indices):
+            if len(indices) == 0:
+                return 0, []
+            if len(indices) == 2:
+                i, j = indices
+                if rows_overlap(i, j):
+                    return float('inf'), []
+                ci, cj = centers[i], centers[j]
+                d = math.sqrt((ci[0]-cj[0])**2 + (ci[1]-cj[1])**2)
+                return d, [(i, j)]
+            best_cost = float('inf')
+            best_pairs = []
+            first = indices[0]
+            rest = indices[1:]
+            for partner in rest:
+                if rows_overlap(first, partner):
+                    continue
+                ci, cj = centers[first], centers[partner]
+                d = math.sqrt((ci[0]-cj[0])**2 + (ci[1]-cj[1])**2)
+                remaining = [x for x in rest if x != partner]
+                sub_cost, sub_pairs = find_matching(remaining)
+                total = d + sub_cost
+                if total < best_cost:
+                    best_cost = total
+                    best_pairs = [(first, partner)] + sub_pairs
+            return best_cost, best_pairs
+
+        cost, matching = find_matching(pair_indices)
+        if cost == float('inf'):
+            return output
+
+        recolor_set = set()
+        for i, j in matching:
+            if blocks[i][1] >= blocks[j][1]:
+                recolor_set.add(i)
+            else:
+                recolor_set.add(j)
+
+        if unpaired_idx is not None:
+            recolor_set.add(unpaired_idx)
+
+        for i in recolor_set:
+            br, bc = blocks[i]
+            for dr in range(2):
+                for dc in range(2):
+                    output[br+dr][bc+dc] = recolor
+
         return output
 
 

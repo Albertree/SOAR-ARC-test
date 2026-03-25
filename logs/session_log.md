@@ -2511,3 +2511,104 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 13:07
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260325_130559.log
+
+---
+## Learning Loop -- 2026-03-25 13:08
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260325_130724.log
+
+---
+## Learning Loop -- 2026-03-25 13:09
+
+- Split: training, Tasks: 20
+- Correct: 14 / 20 (70.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 13
+- Time: 48s
+- Log: logs/learn_20260325_130841.log
+
+---
+## Learning Loop -- 2026-03-25 13:31
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 13
+- Time: 48s
+- Log: logs/learn_20260325_133105.log
+
+---
+## Learning Loop -- 2026-03-25 13:33
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 13
+- Time: 47s
+- Log: logs/learn_20260325_133235.log
+
+---
+## Learning Loop -- 2026-03-25 13:38
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 13
+- Time: 47s
+- Log: logs/learn_20260325_133758.log
+
+---
+## Learning Loop -- 2026-03-25 13:39
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 65s
+- Log: logs/learn_20260325_133853.log
+
+---
+## Session 30 Analysis — 2026-03-25 13:38
+
+### Strategies added (agent/active_operators.py)
+
+1. **diagonal_bridge** — pairs of same-color rectangular objects connected by diagonal pixel trail
+   - `_try_diagonal_bridge`: finds non-bg objects, groups by color (each appears 2x), verifies diagonal trail between closest corners
+   - `_apply_diagonal_bridge`: detects objects, finds closest corner pairs, draws diagonal pixel trails
+
+2. **corridor_fill** — zigzag corridor between wall-cells filled with a color
+   - `_try_corridor_fill`: detects corridor via opposite-wall seed cells + BFS extension, finds marker (9), validates fill pattern (full or partial at corner)
+   - `_apply_corridor_fill`: traces corridor path from dead end, fills appropriate arm (full if no marker or straight-segment marker, partial if corner marker)
+
+3. **block_pair_recolor** — 2x2 blocks of one color paired via min-weight matching, larger-col block recolored
+   - `_try_block_pair_recolor`: finds 2x2 blocks, pairs by min-weight matching (no shared rows), verifies larger-col → recolor
+   - `_apply_block_pair_recolor`: brute-force perfect matching, recolors matched blocks
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 342ae2ed | INCORRECT (identity) | CORRECT | diagonal_bridge |
+| f1bcbc2c | INCORRECT (color_mapping) | CORRECT | corridor_fill |
+| 817e6c09 | INCORRECT (color_mapping) | CORRECT | block_pair_recolor |
+
+**Score (seed 99): 14/20 (70.0%) → 17/20 (85.0%)**
+**Score (seed 42): 20/20 (100.0%) — no regressions**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
