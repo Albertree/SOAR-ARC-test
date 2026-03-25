@@ -1651,3 +1651,87 @@ All 20 tasks in the standard batch were already CORRECT (100%). Ran with --limit
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 09:01
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 172 -> 172 (+0 learned)
+- Stored rule hits: 19
+- Time: 63s
+- Log: logs/learn_20260325_090001.log
+
+---
+## Learning Loop -- 2026-03-25 09:02
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 172 -> 172 (+0 learned)
+- Stored rule hits: 19
+- Time: 63s
+- Log: logs/learn_20260325_090125.log
+
+---
+## Learning Loop -- 2026-03-25 09:04
+
+- Split: training, Tasks: 20
+- Correct: 1 / 20 (5.0%)
+- Rules: 172 -> 175 (+3 learned)
+- Stored rule hits: 1
+- Time: 133s
+- Log: logs/learn_20260325_090239.log
+
+---
+## Learning Loop -- 2026-03-25 09:12
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 175 -> 181 (+6 learned)
+- Stored rule hits: 1
+- Time: 109s
+- Log: logs/learn_20260325_091025.log
+
+---
+## Learning Loop -- 2026-03-25 09:13
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 181 -> 181 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_091223.log
+
+---
+## Session 21 Analysis — 2026-03-25 09:10
+
+### Context
+All 20 default tasks (seed 42) passed at 100%. Ran with --seed 100 to find new failures (1/20 = 5%).
+
+### Strategies added (agent/active_operators.py)
+
+1. **sparse_grid_compress** — input grid divided into equal blocks, each with exactly one non-zero cell; output is the compressed grid of those values
+   - `_try_sparse_grid_compress`: validates block divisibility, one-nonzero-per-block invariant across all training pairs
+   - `_apply_sparse_grid_compress`: tries all valid block size divisors, extracts the single non-zero value from each block
+
+2. **extract_unique_shape** — large grid with scattered noise pixels of multiple colors plus one small dense shape of a unique color; output is the bounding box of that shape
+   - `_try_extract_unique_shape`: verifies single-color output, bounding box dimensions match, extracted content matches
+   - `_apply_extract_unique_shape`: finds the color with smallest bounding box area (≥2 cells), extracts bbox keeping only that color
+
+3. **shape_match_recolor** — one "template color" has shapes matching the forms of non-template colored shapes; each template gets recolored to its form-match's color
+   - `_try_shape_match_recolor`: identifies the template color (only color that changes), validates shape-to-color matching via normalized connected components
+   - `_apply_shape_match_recolor`: finds template components, builds shape→color map from references, recolors each template to its match
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 5783df64 | INCORRECT (identity) | CORRECT | sparse_grid_compress |
+| 1f85a75f | INCORRECT (identity) | CORRECT | extract_unique_shape |
+| 2a5f8217 | INCORRECT (identity) | CORRECT | shape_match_recolor |
+
+**Score (seed 100): 1/20 (5.0%) → 4/20 (20.0%)**
+**Score (seed 42): 20/20 (100.0%) — no regressions**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT

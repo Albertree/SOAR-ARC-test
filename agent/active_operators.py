@@ -797,6 +797,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_grid_intersection_vote(task)
 
+        # Strategy 54: sparse grid compress (NxN blocks each with 1 non-zero -> compressed grid)
+        if rule is None:
+            rule = self._try_sparse_grid_compress(task)
+
+        # Strategy 55: extract unique shape (dense shape amid noise -> crop bbox)
+        if rule is None:
+            rule = self._try_extract_unique_shape(task)
+
+        # Strategy 56: shape match recolor (template color shapes matched to reference shapes)
+        if rule is None:
+            rule = self._try_shape_match_recolor(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -6157,6 +6169,222 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy: sparse grid compress -----------------------------------
+
+    def _try_sparse_grid_compress(self, task):
+        """
+        Detect: input grid divides evenly into blocks, each block has exactly
+        one non-zero cell.  Output is the compressed grid of those values.
+        Category: block-based spatial compression / sparse-to-dense.
+        """
+        pairs = task.train_pairs if hasattr(task, 'train_pairs') else task.example_pairs
+        if not pairs:
+            return None
+
+        block_h = block_w = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            ih, iw = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh == 0 or ow == 0:
+                return None
+            if ih % oh != 0 or iw % ow != 0:
+                return None
+            bh = ih // oh
+            bw = iw // ow
+            if bh < 2 or bw < 2:
+                return None
+            if block_h is None:
+                block_h, block_w = bh, bw
+            # Each block must have exactly one non-zero cell matching output
+            for br in range(oh):
+                for bc in range(ow):
+                    nz_val = None
+                    nz_count = 0
+                    for r in range(br * bh, (br + 1) * bh):
+                        for c in range(bc * bw, (bc + 1) * bw):
+                            if ig[r][c] != 0:
+                                nz_count += 1
+                                nz_val = ig[r][c]
+                    if nz_count != 1 or nz_val != og[br][bc]:
+                        return None
+
+        return {"type": "sparse_grid_compress", "confidence": 1.0}
+
+    # ---- strategy: extract unique shape -----------------------------------
+
+    def _try_extract_unique_shape(self, task):
+        """
+        Detect: large grid with scattered noise pixels of several colors plus
+        one small dense shape of a unique color.  Output = bounding box of
+        that shape (only shape-color cells kept, rest 0).
+        Category: noise filtering / dense object extraction.
+        """
+        pairs = task.train_pairs if hasattr(task, 'train_pairs') else task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            ih, iw = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            # Output must be strictly smaller
+            if oh >= ih or ow >= iw:
+                return None
+            # Output colors (besides 0) must be a single color
+            out_colors = set()
+            for row in og:
+                for v in row:
+                    if v != 0:
+                        out_colors.add(v)
+            if len(out_colors) != 1:
+                return None
+            sc = out_colors.pop()
+            # Find bounding box of sc in input
+            min_r, max_r = ih, -1
+            min_c, max_c = iw, -1
+            for r in range(ih):
+                for c in range(iw):
+                    if ig[r][c] == sc:
+                        if r < min_r:
+                            min_r = r
+                        if r > max_r:
+                            max_r = r
+                        if c < min_c:
+                            min_c = c
+                        if c > max_c:
+                            max_c = c
+            if max_r < 0:
+                return None
+            bbox_h = max_r - min_r + 1
+            bbox_w = max_c - min_c + 1
+            if bbox_h != oh or bbox_w != ow:
+                return None
+            # Extract bbox keeping only shape color
+            for dr in range(oh):
+                for dc in range(ow):
+                    v = ig[min_r + dr][min_c + dc]
+                    expected = sc if v == sc else 0
+                    if og[dr][dc] != expected:
+                        return None
+
+        return {"type": "extract_unique_shape", "confidence": 1.0}
+
+    # ---- strategy: shape match recolor ------------------------------------
+
+    @staticmethod
+    def _normalize_component(cells):
+        """Normalize a list of (r,c) positions to origin-relative frozenset."""
+        if not cells:
+            return frozenset()
+        min_r = min(r for r, c in cells)
+        min_c = min(c for r, c in cells)
+        return frozenset((r - min_r, c - min_c) for r, c in cells)
+
+    @staticmethod
+    def _color_components(raw, color):
+        """Find 4-connected components of a specific color. Returns list of [(r,c),...]."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        visited = set()
+        comps = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != color or (r, c) in visited:
+                    continue
+                comp = []
+                queue = [(r, c)]
+                while queue:
+                    cr, cc = queue.pop(0)
+                    if (cr, cc) in visited:
+                        continue
+                    visited.add((cr, cc))
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and raw[nr][nc] == color:
+                            queue.append((nr, nc))
+                comps.append(comp)
+        return comps
+
+    def _try_shape_match_recolor(self, task):
+        """
+        Detect: one 'template color' has shapes that match the forms of
+        non-template colored shapes.  Each template shape gets recolored to
+        the color of its form-matching reference shape.  Reference shapes
+        are unchanged.
+        Category: shape matching / template recoloring.
+        """
+        pairs = task.train_pairs if hasattr(task, 'train_pairs') else task.example_pairs
+        if not pairs:
+            return None
+
+        template_color = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            ih, iw = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if ih != oh or iw != ow:
+                return None
+            # Find changed cells
+            in_colors_changed = set()
+            for r in range(ih):
+                for c in range(iw):
+                    if ig[r][c] != og[r][c]:
+                        in_colors_changed.add(ig[r][c])
+            if not in_colors_changed:
+                return None
+            if len(in_colors_changed) != 1:
+                return None
+            tc = in_colors_changed.pop()
+            if tc == 0:
+                return None
+            if template_color is None:
+                template_color = tc
+            elif template_color != tc:
+                return None
+
+        # Validate shape matching for all pairs
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            # Template components
+            t_comps = self._color_components(ig, template_color)
+            if not t_comps:
+                return None
+            # Reference colors
+            ref_colors = set()
+            for row in ig:
+                for v in row:
+                    if v != 0 and v != template_color:
+                        ref_colors.add(v)
+            # Build shape -> color map from references
+            shape_to_color = {}
+            for rc in ref_colors:
+                for comp in self._color_components(ig, rc):
+                    shape = self._normalize_component(comp)
+                    shape_to_color[shape] = rc
+            # Each template must match a reference and output must be that color
+            for comp in t_comps:
+                shape = self._normalize_component(comp)
+                if shape not in shape_to_color:
+                    return None
+                expected = shape_to_color[shape]
+                for r, c in comp:
+                    if og[r][c] != expected:
+                        return None
+            # Reference shapes must be unchanged
+            for r in range(len(ig)):
+                for c in range(len(ig[0])):
+                    if ig[r][c] != template_color and ig[r][c] != 0:
+                        if og[r][c] != ig[r][c]:
+                            return None
+
+        return {"type": "shape_match_recolor", "template_color": template_color, "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -6338,6 +6566,12 @@ class PredictOperator(Operator):
             return self._apply_zero_region_classify(rule, input_grid)
         if rule_type == "grid_intersection_vote":
             return self._apply_grid_intersection_vote(rule, input_grid)
+        if rule_type == "sparse_grid_compress":
+            return self._apply_sparse_grid_compress(rule, input_grid)
+        if rule_type == "extract_unique_shape":
+            return self._apply_extract_unique_shape(rule, input_grid)
+        if rule_type == "shape_match_recolor":
+            return self._apply_shape_match_recolor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7882,6 +8116,114 @@ class PredictOperator(Operator):
 
     def _apply_grid_intersection_vote(self, rule, input_grid):
         return GeneralizeOperator._compute_grid_intersection_vote(None, input_grid.raw)
+
+    def _apply_sparse_grid_compress(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        # Count non-zero cells to infer output dimensions
+        nz_positions = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    nz_positions.append((r, c))
+        if not nz_positions:
+            return None
+        # Try all divisor pairs for block size
+        for bh in range(2, h + 1):
+            if h % bh != 0:
+                continue
+            for bw in range(2, w + 1):
+                if w % bw != 0:
+                    continue
+                oh = h // bh
+                ow = w // bw
+                ok = True
+                result = [[0] * ow for _ in range(oh)]
+                for br in range(oh):
+                    for bc in range(ow):
+                        nz_val = None
+                        nz_count = 0
+                        for r in range(br * bh, (br + 1) * bh):
+                            for c in range(bc * bw, (bc + 1) * bw):
+                                if raw[r][c] != 0:
+                                    nz_count += 1
+                                    nz_val = raw[r][c]
+                        if nz_count != 1:
+                            ok = False
+                            break
+                        result[br][bc] = nz_val
+                    if not ok:
+                        break
+                if ok:
+                    return result
+        return None
+
+    def _apply_extract_unique_shape(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        # Gather cells per color
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0:
+                    color_cells.setdefault(v, []).append((r, c))
+        # Find color with smallest bounding box area (>= 2 cells)
+        best_color = None
+        best_area = float('inf')
+        best_bbox = None
+        for color, cells in color_cells.items():
+            if len(cells) < 2:
+                continue
+            min_r = min(r for r, _ in cells)
+            max_r = max(r for r, _ in cells)
+            min_c = min(c for _, c in cells)
+            max_c = max(c for _, c in cells)
+            area = (max_r - min_r + 1) * (max_c - min_c + 1)
+            if area < best_area:
+                best_area = area
+                best_color = color
+                best_bbox = (min_r, max_r, min_c, max_c)
+        if best_color is None or best_bbox is None:
+            return None
+        min_r, max_r, min_c, max_c = best_bbox
+        result = []
+        for r in range(min_r, max_r + 1):
+            row = []
+            for c in range(min_c, max_c + 1):
+                row.append(best_color if raw[r][c] == best_color else 0)
+            result.append(row)
+        return result
+
+    def _apply_shape_match_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        tc = rule["template_color"]
+        output = [row[:] for row in raw]
+        # Find template components
+        t_comps = GeneralizeOperator._color_components(raw, tc)
+        # Find reference colors and their shapes
+        ref_colors = set()
+        for row in raw:
+            for v in row:
+                if v != 0 and v != tc:
+                    ref_colors.add(v)
+        shape_to_color = {}
+        for rc in ref_colors:
+            for comp in GeneralizeOperator._color_components(raw, rc):
+                shape = GeneralizeOperator._normalize_component(comp)
+                shape_to_color[shape] = rc
+        # Recolor each template to its matching reference
+        for comp in t_comps:
+            shape = GeneralizeOperator._normalize_component(comp)
+            new_color = shape_to_color.get(shape)
+            if new_color is not None:
+                for r, c in comp:
+                    output[r][c] = new_color
+        return output
 
     def _find_colored_rects_raw(self, grid, bg=0):
         """Find all solid or framed rectangular blocks of one color on bg."""
