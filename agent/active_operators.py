@@ -605,6 +605,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_cross_center_mark(task)
 
+        # Strategy 59: pair diagonal reflect (must run before color_mapping to avoid false match)
+        if rule is None:
+            rule = self._try_pair_diagonal_reflect(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -808,6 +812,14 @@ class GeneralizeOperator(Operator):
         # Strategy 56: shape match recolor (template color shapes matched to reference shapes)
         if rule is None:
             rule = self._try_shape_match_recolor(task)
+
+        # Strategy 57: L-triomino diagonal extension (L-shapes extend diagonal from open corner)
+        if rule is None:
+            rule = self._try_l_triomino_extend(task)
+
+        # Strategy 58: rectangle patch overlay (combine rectangular sub-regions)
+        if rule is None:
+            rule = self._try_rect_patch_overlay(task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -6385,6 +6397,302 @@ class GeneralizeOperator(Operator):
 
         return {"type": "shape_match_recolor", "template_color": template_color, "confidence": 1.0}
 
+    # ---- strategy: L-triomino diagonal extension ---------------------------
+
+    def _try_l_triomino_extend(self, task):
+        """
+        Detect: L-shaped triominoes (3 cells in a 2x2 bbox) on zero background.
+        The missing corner of each triomino's 2x2 bbox is identified, and a
+        diagonal line extends from that corner outward until the grid edge.
+        Category: directional diagonal extension from L-shaped objects.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Collect non-zero cells; must be single color
+            cells = []
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        cells.append((r, c))
+                        colors.add(ri[r][c])
+            if len(colors) != 1 or len(cells) < 3:
+                return None
+            color = next(iter(colors))
+            cell_set = set(cells)
+
+            # Group by 8-connectivity
+            used = set()
+            triominoes = []
+            for sr, sc in cells:
+                if (sr, sc) in used:
+                    continue
+                group = []
+                queue = [(sr, sc)]
+                while queue:
+                    cr, cc = queue.pop(0)
+                    if (cr, cc) in used:
+                        continue
+                    used.add((cr, cc))
+                    group.append((cr, cc))
+                    for dr in [-1, 0, 1]:
+                        for dc in [-1, 0, 1]:
+                            if dr == 0 and dc == 0:
+                                continue
+                            nr, nc = cr + dr, cc + dc
+                            if (nr, nc) not in used and (nr, nc) in cell_set:
+                                queue.append((nr, nc))
+                triominoes.append(group)
+
+            # Each group must be exactly 3 cells in a 2x2 bbox
+            for tri in triominoes:
+                if len(tri) != 3:
+                    return None
+                rows = [r for r, c in tri]
+                cols = [c for r, c in tri]
+                if max(rows) - min(rows) != 1 or max(cols) - min(cols) != 1:
+                    return None
+
+            if not triominoes:
+                return None
+
+            # Build predicted output
+            predicted = [row[:] for row in ri]
+            for tri in triominoes:
+                rows = [r for r, c in tri]
+                cols = [c for r, c in tri]
+                min_r, max_r = min(rows), max(rows)
+                min_c, max_c = min(cols), max(cols)
+                tri_set = set(tri)
+                missing = None
+                for r in [min_r, max_r]:
+                    for c in [min_c, max_c]:
+                        if (r, c) not in tri_set:
+                            missing = (r, c)
+                            break
+                    if missing:
+                        break
+                if missing is None:
+                    return None
+
+                center_r = (min_r + max_r) / 2.0
+                center_c = (min_c + max_c) / 2.0
+                dr = 1 if missing[0] > center_r else -1
+                dc = 1 if missing[1] > center_c else -1
+                nr, nc = missing[0] + dr, missing[1] + dc
+                while 0 <= nr < h and 0 <= nc < w:
+                    predicted[nr][nc] = color
+                    nr += dr
+                    nc += dc
+
+            if predicted != ro:
+                return None
+
+        return {"type": "l_triomino_extend", "confidence": 1.0}
+
+    # ---- strategy: rectangle patch overlay --------------------------------
+
+    def _try_rect_patch_overlay(self, task):
+        """
+        Detect: grid with uniform background containing rectangular 0-filled
+        regions.  Each region may have some colored (non-0, non-bg) cells.
+        Output = overlay/union of all region patches into one combined grid.
+        Category: composite pattern assembly from rectangular patches.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            oh, ow = len(ro), len(ro[0])
+            if oh >= h or ow >= w:
+                return None
+
+            # Background = most frequent color on the border
+            from collections import Counter
+            border = ri[0] + ri[-1] + [ri[r][0] for r in range(h)] + [ri[r][-1] for r in range(h)]
+            bg = Counter(border).most_common(1)[0][0]
+
+            # Find connected regions of non-bg cells (4-connected BFS)
+            visited = [[False] * w for _ in range(h)]
+            regions = []
+            for sr in range(h):
+                for sc in range(w):
+                    if ri[sr][sc] != bg and not visited[sr][sc]:
+                        queue = [(sr, sc)]
+                        reg_cells = []
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            if not (0 <= cr < h and 0 <= cc < w):
+                                continue
+                            if visited[cr][cc] or ri[cr][cc] == bg:
+                                continue
+                            visited[cr][cc] = True
+                            reg_cells.append((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                queue.append((cr + dr, cc + dc))
+                        if reg_cells:
+                            rmin = min(r for r, c in reg_cells)
+                            rmax = max(r for r, c in reg_cells)
+                            cmin = min(c for r, c in reg_cells)
+                            cmax = max(c for r, c in reg_cells)
+                            regions.append((rmin, cmin, rmax - rmin + 1, cmax - cmin + 1))
+
+            if len(regions) < 2:
+                return None
+
+            # All regions must share the same dimensions
+            rh, rw = regions[0][2], regions[0][3]
+            if rh != oh or rw != ow:
+                return None
+            for reg in regions:
+                if reg[2] != rh or reg[3] != rw:
+                    return None
+
+            # Overlay: take non-0 cells from each region
+            overlay = [[0] * rw for _ in range(rh)]
+            for rmin, cmin, _, _ in regions:
+                for lr in range(rh):
+                    for lc in range(rw):
+                        val = ri[rmin + lr][cmin + lc]
+                        if val != 0 and val != bg:
+                            overlay[lr][lc] = val
+
+            if overlay != ro:
+                return None
+
+        return {"type": "rect_patch_overlay", "confidence": 1.0}
+
+    # ---- strategy: pair diagonal reflect ----------------------------------
+
+    def _try_pair_diagonal_reflect(self, task):
+        """
+        Detect: pairs of same-color blocks arranged diagonally on a zero bg.
+        Anti-diagonal reflections are placed with color 8, extended one
+        block-step outward from the bounding box of each pair.
+        Category: diagonal symmetry extension / anti-diagonal reflection.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            ri, ro = g0.raw, g1.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Collect non-zero cells (the colored blocks)
+            cells = []
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] != 0:
+                        cells.append((r, c))
+                        colors.add(ri[r][c])
+            if len(colors) != 1 or len(cells) < 2:
+                return None
+            color = next(iter(colors))
+            cell_set = set(cells)
+
+            # Group by 8-connectivity
+            used = set()
+            groups = []
+            for sr, sc in cells:
+                if (sr, sc) in used:
+                    continue
+                group = []
+                queue = [(sr, sc)]
+                while queue:
+                    cr, cc = queue.pop(0)
+                    if (cr, cc) in used:
+                        continue
+                    used.add((cr, cc))
+                    group.append((cr, cc))
+                    for dr in [-1, 0, 1]:
+                        for dc in [-1, 0, 1]:
+                            if dr == 0 and dc == 0:
+                                continue
+                            nr, nc = cr + dr, cc + dc
+                            if (nr, nc) not in used and (nr, nc) in cell_set:
+                                queue.append((nr, nc))
+                groups.append(group)
+
+            # Process each 8-connected group
+            predicted = [row[:] for row in ri]
+            for group in groups:
+                rows = [r for r, c in group]
+                cols = [c for r, c in group]
+                min_r, max_r = min(rows), max(rows)
+                min_c, max_c = min(cols), max(cols)
+                H = max_r - min_r + 1
+                W = max_c - min_c + 1
+                if H != W or H % 2 != 0 or H < 2:
+                    return None
+                S = H // 2
+
+                # Count cells in each quadrant
+                full = S * S
+                tl = sum(1 for r, c in group if r < min_r + S and c < min_c + S)
+                tr = sum(1 for r, c in group if r < min_r + S and c >= min_c + S)
+                bl = sum(1 for r, c in group if r >= min_r + S and c < min_c + S)
+                br = sum(1 for r, c in group if r >= min_r + S and c >= min_c + S)
+
+                if tl == full and br == full and tr == 0 and bl == 0:
+                    # "\" occupied, extend anti-diagonal "/"
+                    extensions = [
+                        (min_r, min_c + S, -S, S),       # top-right -> up-right
+                        (min_r + S, min_c, S, -S),       # bottom-left -> down-left
+                    ]
+                elif tr == full and bl == full and tl == 0 and br == 0:
+                    # "/" occupied, extend anti-diagonal "\"
+                    extensions = [
+                        (min_r, min_c, -S, -S),           # top-left -> up-left
+                        (min_r + S, min_c + S, S, S),     # bottom-right -> down-right
+                    ]
+                else:
+                    return None
+
+                for quad_r, quad_c, dr, dc in extensions:
+                    ext_r = quad_r + dr
+                    ext_c = quad_c + dc
+                    for r_off in range(S):
+                        for c_off in range(S):
+                            nr = ext_r + r_off
+                            nc = ext_c + c_off
+                            if 0 <= nr < h and 0 <= nc < w:
+                                predicted[nr][nc] = 8
+
+            if predicted != ro:
+                return None
+
+        return {"type": "pair_diagonal_reflect", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -6572,6 +6880,12 @@ class PredictOperator(Operator):
             return self._apply_extract_unique_shape(rule, input_grid)
         if rule_type == "shape_match_recolor":
             return self._apply_shape_match_recolor(rule, input_grid)
+        if rule_type == "l_triomino_extend":
+            return self._apply_l_triomino_extend(rule, input_grid)
+        if rule_type == "rect_patch_overlay":
+            return self._apply_rect_patch_overlay(rule, input_grid)
+        if rule_type == "pair_diagonal_reflect":
+            return self._apply_pair_diagonal_reflect(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -8223,6 +8537,206 @@ class PredictOperator(Operator):
             if new_color is not None:
                 for r, c in comp:
                     output[r][c] = new_color
+        return output
+
+    def _apply_l_triomino_extend(self, rule, input_grid):
+        try:
+            return self._apply_l_triomino_extend_impl(rule, input_grid)
+        except Exception:
+            return [row[:] for row in input_grid.raw]
+
+    def _apply_l_triomino_extend_impl(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        cells = []
+        color = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    cells.append((r, c))
+                    color = raw[r][c]
+        if not cells or color is None:
+            return [row[:] for row in raw]
+        cell_set = set(cells)
+        used = set()
+        triominoes = []
+        for sr, sc in cells:
+            if (sr, sc) in used:
+                continue
+            group = []
+            queue = [(sr, sc)]
+            while queue:
+                cr, cc = queue.pop(0)
+                if (cr, cc) in used:
+                    continue
+                used.add((cr, cc))
+                group.append((cr, cc))
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = cr + dr, cc + dc
+                        if (nr, nc) not in used and (nr, nc) in cell_set:
+                            queue.append((nr, nc))
+            triominoes.append(group)
+        output = [row[:] for row in raw]
+        for tri in triominoes:
+            if len(tri) != 3:
+                continue
+            rows = [r for r, c in tri]
+            cols = [c for r, c in tri]
+            min_r, max_r = min(rows), max(rows)
+            min_c, max_c = min(cols), max(cols)
+            if max_r - min_r != 1 or max_c - min_c != 1:
+                continue
+            tri_set = set(tri)
+            missing = None
+            for r in [min_r, max_r]:
+                for c in [min_c, max_c]:
+                    if (r, c) not in tri_set:
+                        missing = (r, c)
+                        break
+                if missing:
+                    break
+            if missing is None:
+                continue
+            center_r = (min_r + max_r) / 2.0
+            center_c = (min_c + max_c) / 2.0
+            dr = 1 if missing[0] > center_r else -1
+            dc = 1 if missing[1] > center_c else -1
+            nr, nc = missing[0] + dr, missing[1] + dc
+            while 0 <= nr < h and 0 <= nc < w:
+                output[nr][nc] = color
+                nr += dr
+                nc += dc
+        return output
+
+    def _apply_rect_patch_overlay(self, rule, input_grid):
+        try:
+            raw = input_grid.raw
+            h = len(raw)
+            w = len(raw[0]) if raw else 0
+            from collections import Counter
+            border = raw[0] + raw[-1] + [raw[r][0] for r in range(h)] + [raw[r][-1] for r in range(h)]
+            bg = Counter(border).most_common(1)[0][0]
+            visited = [[False] * w for _ in range(h)]
+            regions = []
+            for sr in range(h):
+                for sc in range(w):
+                    if raw[sr][sc] != bg and not visited[sr][sc]:
+                        queue = [(sr, sc)]
+                        reg_cells = []
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            if not (0 <= cr < h and 0 <= cc < w):
+                                continue
+                            if visited[cr][cc] or raw[cr][cc] == bg:
+                                continue
+                            visited[cr][cc] = True
+                            reg_cells.append((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                queue.append((cr + dr, cc + dc))
+                        if reg_cells:
+                            rmin = min(r for r, c in reg_cells)
+                            cmin = min(c for r, c in reg_cells)
+                            rmax = max(r for r, c in reg_cells)
+                            cmax = max(c for r, c in reg_cells)
+                            regions.append((rmin, cmin, rmax - rmin + 1, cmax - cmin + 1))
+            if not regions:
+                return [row[:] for row in raw]
+            rh, rw = regions[0][2], regions[0][3]
+            overlay = [[0] * rw for _ in range(rh)]
+            for rmin, cmin, _, _ in regions:
+                for lr in range(rh):
+                    for lc in range(rw):
+                        r_idx, c_idx = rmin + lr, cmin + lc
+                        if 0 <= r_idx < h and 0 <= c_idx < w:
+                            val = raw[r_idx][c_idx]
+                            if val != 0 and val != bg:
+                                overlay[lr][lc] = val
+            return overlay
+        except Exception:
+            return [row[:] for row in input_grid.raw]
+
+    def _apply_pair_diagonal_reflect(self, rule, input_grid):
+        try:
+            return self._apply_pair_diagonal_reflect_impl(rule, input_grid)
+        except Exception:
+            return [row[:] for row in input_grid.raw]
+
+    def _apply_pair_diagonal_reflect_impl(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        cells = []
+        color = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    cells.append((r, c))
+                    color = raw[r][c]
+        if not cells or color is None:
+            return [row[:] for row in raw]
+        cell_set = set(cells)
+        used = set()
+        groups = []
+        for sr, sc in cells:
+            if (sr, sc) in used:
+                continue
+            group = []
+            queue = [(sr, sc)]
+            while queue:
+                cr, cc = queue.pop(0)
+                if (cr, cc) in used:
+                    continue
+                used.add((cr, cc))
+                group.append((cr, cc))
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = cr + dr, cc + dc
+                        if (nr, nc) not in used and (nr, nc) in cell_set:
+                            queue.append((nr, nc))
+            groups.append(group)
+        output = [row[:] for row in raw]
+        for group in groups:
+            rows = [r for r, c in group]
+            cols = [c for r, c in group]
+            min_r, max_r = min(rows), max(rows)
+            min_c, max_c = min(cols), max(cols)
+            H = max_r - min_r + 1
+            W = max_c - min_c + 1
+            if H != W or H % 2 != 0 or H < 2:
+                continue
+            S = H // 2
+            full = S * S
+            tl = sum(1 for r, c in group if r < min_r + S and c < min_c + S)
+            tr = sum(1 for r, c in group if r < min_r + S and c >= min_c + S)
+            bl = sum(1 for r, c in group if r >= min_r + S and c < min_c + S)
+            br = sum(1 for r, c in group if r >= min_r + S and c >= min_c + S)
+            if tl == full and br == full and tr == 0 and bl == 0:
+                extensions = [
+                    (min_r, min_c + S, -S, S),
+                    (min_r + S, min_c, S, -S),
+                ]
+            elif tr == full and bl == full and tl == 0 and br == 0:
+                extensions = [
+                    (min_r, min_c, -S, -S),
+                    (min_r + S, min_c + S, S, S),
+                ]
+            else:
+                continue
+            for quad_r, quad_c, dr, dc in extensions:
+                ext_r = quad_r + dr
+                ext_c = quad_c + dc
+                for r_off in range(S):
+                    for c_off in range(S):
+                        nr = ext_r + r_off
+                        nc = ext_c + c_off
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = 8
         return output
 
     def _find_colored_rects_raw(self, grid, bg=0):

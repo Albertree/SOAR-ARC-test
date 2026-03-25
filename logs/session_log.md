@@ -1735,3 +1735,114 @@ All 20 default tasks (seed 42) passed at 100%. Ran with --seed 100 to find new f
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 09:15
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 181 -> 181 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_091427.log
+
+---
+## Learning Loop -- 2026-03-25 09:16
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 181 -> 181 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_091549.log
+
+---
+## Learning Loop -- 2026-03-25 09:17
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 181 -> 184 (+3 learned)
+- Stored rule hits: 8
+- Time: 46s
+- Log: logs/learn_20260325_091707.log
+
+---
+## Learning Loop -- 2026-03-25 09:39
+
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%)
+- Rules: 184 -> 189 (+5 learned)
+- Stored rule hits: 8
+- Time: 43s
+- Log: logs/learn_20260325_093817.log
+
+---
+## Learning Loop -- 2026-03-25 09:43
+
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%)
+- Rules: 189 -> 192 (+3 learned)
+- Stored rule hits: 10
+- Time: 43s
+- Log: logs/learn_20260325_094235.log
+
+---
+## Learning Loop -- 2026-03-25 09:46
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 192 -> 194 (+2 learned)
+- Stored rule hits: 11
+- Time: 43s
+- Log: logs/learn_20260325_094519.log
+
+---
+## Learning Loop -- 2026-03-25 09:47
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 194 -> 194 (+0 learned)
+- Stored rule hits: 6
+- Time: 83s
+- Log: logs/learn_20260325_094609.log
+
+---
+## Learning Loop -- 2026-03-25 09:48
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 194 -> 194 (+0 learned)
+- Stored rule hits: 19
+- Time: 60s
+- Log: logs/learn_20260325_094738.log
+
+---
+## Session 22 Analysis — 2026-03-25 09:15
+
+### Strategies added (agent/active_operators.py)
+
+1. **l_triomino_extend** — L-shaped triominoes (3 cells in 2x2 bbox) extend a diagonal line from the missing corner outward to the grid edge
+   - `_try_l_triomino_extend`: groups cells by 8-connectivity, verifies each group is 3 cells in 2x2 bbox, extends from missing corner
+   - `_apply_l_triomino_extend`: same logic applied to test input
+
+2. **rect_patch_overlay** — rectangular non-bg regions each contain a colored pattern; output is the overlay/union of all patches
+   - `_try_rect_patch_overlay`: finds bg from border, BFS for non-bg regions, verifies same dimensions, overlays non-zero cells
+   - `_apply_rect_patch_overlay`: same extraction and overlay applied to test input
+
+3. **pair_diagonal_reflect** — same-color blocks arranged diagonally get anti-diagonal reflections placed with color 8, extended one block-step outward
+   - `_try_pair_diagonal_reflect`: groups by 8-connectivity, detects diagonal quadrant arrangement, extends anti-diagonal
+   - `_apply_pair_diagonal_reflect`: same diagonal extension applied to test input
+
+### Results
+
+| Task | Before | After | Rule |
+|------|--------|-------|------|
+| 6e19193c | INCORRECT (identity) | CORRECT | l_triomino_extend |
+| 7c9b52a0 | INCORRECT (identity) | CORRECT | rect_patch_overlay |
+| 22233c11 | INCORRECT (color_mapping) | CORRECT | pair_diagonal_reflect |
+
+**Score (seed 99): 9/20 (45.0%) → 12/20 (60.0%)**
+
+### Regression gate
+- `python run_task.py` (08ed6ac7): CORRECT
+- Original task set (default shuffle): 20/20 (100.0%)
