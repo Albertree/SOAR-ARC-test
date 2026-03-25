@@ -1,7 +1,12 @@
 #!/bin/bash
 
-# Windows PATH fix
-export PATH="/c/Program Files/nodejs:/c/Users/Sir_K/anaconda3:/c/Users/Sir_K/AppData/Roaming/npm:$PATH"
+# Windows PATH fix — detect WSL vs Git Bash
+if [ -d "/mnt/c" ]; then
+    PRE="/mnt/c"
+else
+    PRE="/c"
+fi
+export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/Sir_K/AppData/Roaming/npm:${PRE}/Users/Sir_K/AppData/Local/Microsoft/WindowsApps:$PATH"
 
 # ============================================================
 # SOAR-ARC Infinite Loop
@@ -15,15 +20,16 @@ export PATH="/c/Program Files/nodejs:/c/Users/Sir_K/anaconda3:/c/Users/Sir_K/App
 #   4. Git commit & push
 #   5. Repeat
 #
-# Usage:
-#   ./run_loop.sh
-#   ./run_loop.sh --max-sessions 10
-#   ./run_loop.sh --tasks-per-session 30
+# Usage (from PowerShell — must use Git Bash, NOT WSL):
+#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh
+#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --max-sessions 10
+#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --tasks-per-session 30
 # ============================================================
 
 MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
 TASKS_PER_SESSION=20
+MAX_TASKS=1000
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -100,6 +106,17 @@ while true; do
     log "Result: $SCORE_LINE"
     log "Memory: $RULES_LINE"
 
+    # ── Auto-grow task pool on 100% score ──────────────────
+    CORRECT_N=$(echo "$SCORE_LINE" | grep -oP '\d+(?= /)' || echo "0")
+    TOTAL_N=$(echo "$SCORE_LINE" | grep -oP '(?<= / )\d+' || echo "0")
+    if [ "$CORRECT_N" -eq "$TOTAL_N" ] && [ "$TOTAL_N" -gt 0 ] && [ "$TASKS_PER_SESSION" -lt "$MAX_TASKS" ]; then
+        TASKS_PER_SESSION=$((TASKS_PER_SESSION * 2))
+        if [ "$TASKS_PER_SESSION" -gt "$MAX_TASKS" ]; then
+            TASKS_PER_SESSION=$MAX_TASKS
+        fi
+        log "*** 100% score! Growing task pool to $TASKS_PER_SESSION ***"
+    fi
+
     # ── 2. Claude Code improves the agent ────────────────────
     log "Claude Code improving agent..."
 
@@ -144,8 +161,7 @@ PROMPT
     git add -A
     if ! git diff --cached --quiet; then
         git commit -m "Session $SESSION: $SCORE_LINE ($TIMESTAMP)" 2>&1 | tee -a "$PIPELINE_LOG"
-        git push origin "$BRANCH" 2>&1 | tee -a "$PIPELINE_LOG"
-        log "Pushed."
+        GIT_TERMINAL_PROMPT=0 git push origin "$BRANCH" 2>&1 | tee -a "$PIPELINE_LOG" && log "Pushed." || log "Push skipped (no credentials cached)."
     else
         log "No changes."
     fi
