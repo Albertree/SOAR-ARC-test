@@ -925,6 +925,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_diagonal_block_chain(task)
 
+        # Strategy 82: rect count staircase (count mono-color rects -> staircase output)
+        if rule is None:
+            rule = self._try_rect_count_staircase(task)
+
+        # Strategy 83: cross fill (horizontal bars with gaps + vertical bars -> extend & fill)
+        if rule is None:
+            rule = self._try_cross_fill(task)
+
+        # Strategy 84: bar chart diff (vertical bars of 2 colors, new bar = |sum diff|)
+        if rule is None:
+            rule = self._try_bar_chart_diff(task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -9177,6 +9189,410 @@ class GeneralizeOperator(Operator):
             result.append(((blocks[i][0], blocks[i][1]), i in recolor_set))
         return result
 
+    # ---- strategy: rect count staircase -----------------------------------
+
+    def _try_rect_count_staircase(self, task):
+        """
+        Detect: grid has monochromatic rectangles of various colors on bg=0.
+        Output is a staircase/triangle where each row represents a color,
+        the number of cells equals the number of rectangles of that color,
+        sorted most-to-fewest, right-aligned.
+        """
+        pairs = task.train_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            iH, iW = len(ig), len(ig[0])
+            oH, oW = len(og), len(og[0])
+            # Output must be smaller than input
+            if oH >= iH or oW >= iW:
+                return None
+            # Input must be on bg=0
+            color_counts = {}
+            for r in range(iH):
+                for c in range(iW):
+                    v = ig[r][c]
+                    if v != 0:
+                        color_counts[v] = color_counts.get(v, 0) + 1
+            if not color_counts:
+                return None
+
+            # Find rectangles per color
+            rects_per_color = self._find_monochrome_rects(ig)
+            if not rects_per_color:
+                return None
+
+            # Sort by count descending
+            sorted_colors = sorted(rects_per_color.keys(),
+                                   key=lambda c: -len(rects_per_color[c]))
+
+            # Check output matches staircase
+            expected = self._build_staircase(sorted_colors, rects_per_color)
+            if expected != og:
+                return None
+
+        return {"type": "rect_count_staircase", "confidence": 1.0}
+
+    @staticmethod
+    def _find_monochrome_rects(grid):
+        """Find all maximal monochromatic rectangles (connected components that are rectangular)."""
+        H, W = len(grid), len(grid[0])
+        visited = [[False]*W for _ in range(H)]
+        rects_per_color = {}
+
+        for r in range(H):
+            for c in range(W):
+                if visited[r][c] or grid[r][c] == 0:
+                    continue
+                color = grid[r][c]
+                # BFS to find connected component
+                comp = []
+                stack = [(r, c)]
+                visited[r][c] = True
+                while stack:
+                    cr, cc = stack.pop()
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                        nr, nc = cr+dr, cc+dc
+                        if 0 <= nr < H and 0 <= nc < W and not visited[nr][nc] and grid[nr][nc] == color:
+                            visited[nr][nc] = True
+                            stack.append((nr, nc))
+                # Check if component forms a rectangle
+                min_r = min(p[0] for p in comp)
+                max_r = max(p[0] for p in comp)
+                min_c = min(p[1] for p in comp)
+                max_c = max(p[1] for p in comp)
+                expected_size = (max_r - min_r + 1) * (max_c - min_c + 1)
+                if len(comp) == expected_size:
+                    rects_per_color.setdefault(color, []).append(
+                        (min_r, min_c, max_r, max_c))
+
+        return rects_per_color
+
+    @staticmethod
+    def _build_staircase(sorted_colors, rects_per_color):
+        """Build staircase output: each row has count cells right-aligned."""
+        max_count = len(rects_per_color[sorted_colors[0]])
+        n_rows = len(sorted_colors)
+        out = []
+        for i, color in enumerate(sorted_colors):
+            cnt = len(rects_per_color[color])
+            row = [0] * (max_count - cnt) + [color] * cnt
+            out.append(row)
+        return out
+
+    # ---- strategy: cross fill (bar extension) -----------------------------
+
+    def _try_cross_fill(self, task):
+        """
+        Detect: horizontal bars (rows) with gaps at certain columns,
+        vertical bar segments below. Output extends vertical bars through
+        the full grid height with color inheritance at horizontal bar crossings,
+        and fills the gaps in horizontal bars.
+        """
+        pairs = task.train_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            H, W = len(ig), len(ig[0])
+            if len(og) != H or len(og[0]) != W:
+                return None
+
+            # Find horizontal bars: rows where most cells are non-zero
+            # A bar row has two segments (left and right) separated by a 0-gap
+            h_bars = self._find_horizontal_bars(ig, H, W)
+            if not h_bars:
+                return None
+
+            # Find gap columns from horizontal bars
+            gap_cols = set()
+            for bar in h_bars:
+                for gc in bar['gaps']:
+                    gap_cols.add(gc)
+            if not gap_cols:
+                return None
+
+            # For each gap column, find vertical bar segment below lowest bar
+            v_bars = {}
+            bar_rows_set = set(bar['row'] for bar in h_bars)
+            for gc in gap_cols:
+                # Find lowest bar row that has this gap column
+                relevant_bars = [b for b in h_bars if gc in b['gaps']]
+                if not relevant_bars:
+                    continue
+                lowest_bar_row = max(b['row'] for b in relevant_bars)
+                # Look below for vertical bar
+                vert_color = None
+                for r in range(lowest_bar_row + 1, H):
+                    if ig[r][gc] != 0:
+                        vert_color = ig[r][gc]
+                        break
+                if vert_color is not None:
+                    v_bars[gc] = vert_color
+
+            if not v_bars:
+                return None
+
+            # Verify output matches expected
+            expected = self._build_cross_fill(ig, h_bars, v_bars, gap_cols, H, W)
+            if expected != og:
+                return None
+
+        return {"type": "cross_fill", "confidence": 1.0}
+
+    @staticmethod
+    def _find_horizontal_bars(grid, H, W):
+        """Find horizontal bar rows with gaps."""
+        bars = []
+        for r in range(H):
+            row = grid[r]
+            non_zero = [(c, row[c]) for c in range(W) if row[c] != 0]
+            if len(non_zero) < 3:
+                continue
+            # Check for gaps: 0-cells surrounded by non-zero on same row
+            gaps = []
+            colors_left = {}
+            colors_right = {}
+            for c in range(W):
+                if row[c] == 0:
+                    # Check if this is a gap (non-zero on both sides somewhere)
+                    has_left = any(row[cc] != 0 for cc in range(c))
+                    has_right = any(row[cc] != 0 for cc in range(c+1, W))
+                    if has_left and has_right:
+                        gaps.append(c)
+            if not gaps:
+                continue
+            # Identify segments (contiguous runs of same color separated by gaps)
+            segments = []
+            seg_start = None
+            seg_color = None
+            for c in range(W):
+                if row[c] != 0:
+                    if seg_color is None or (row[c] == seg_color and c not in gaps):
+                        if seg_start is None:
+                            seg_start = c
+                        seg_color = row[c]
+                    elif row[c] != seg_color:
+                        if seg_start is not None:
+                            segments.append({'start': seg_start, 'end': c-1, 'color': seg_color})
+                        seg_start = c
+                        seg_color = row[c]
+                else:
+                    if seg_start is not None:
+                        segments.append({'start': seg_start, 'end': c-1, 'color': seg_color})
+                        seg_start = None
+                        seg_color = None
+            if seg_start is not None:
+                segments.append({'start': seg_start, 'end': W-1, 'color': seg_color})
+
+            if len(segments) >= 2:
+                bars.append({'row': r, 'gaps': gaps, 'segments': segments})
+        return bars
+
+    @staticmethod
+    def _build_cross_fill(ig, h_bars, v_bars, gap_cols, H, W):
+        """Build expected output for cross_fill."""
+        out = [row[:] for row in ig]
+
+        # Sort bars by row
+        sorted_bars = sorted(h_bars, key=lambda b: b['row'])
+
+        for gc in gap_cols:
+            # Get all bars that cross this gap column, sorted by row
+            crossing_bars = sorted(
+                [b for b in sorted_bars if gc in b['gaps']],
+                key=lambda b: b['row'])
+
+            if not crossing_bars:
+                continue
+
+            # Determine color for each vertical segment from bottom to top
+            # Bottom-most segment: v_bars color
+            base_color = v_bars.get(gc)
+            if base_color is None:
+                continue
+
+            # Build segments bottom-to-top
+            segments = []
+            # Below the lowest bar
+            lowest_row = crossing_bars[-1]['row']
+            segments.append((lowest_row + 1, H - 1, base_color))
+
+            # Between bars (and above top bar)
+            for i in range(len(crossing_bars) - 1, -1, -1):
+                bar = crossing_bars[i]
+                bar_row = bar['row']
+                # Find which segment of this bar contains the gap column
+                bar_color = None
+                for seg in bar['segments']:
+                    if seg['start'] <= gc <= seg['end']:
+                        bar_color = seg['color']
+                        break
+                    # Gap might be between segments; find nearest segment
+                if bar_color is None:
+                    # Find segment that the gap belongs to by checking neighbors
+                    left_seg = None
+                    right_seg = None
+                    for seg in bar['segments']:
+                        if seg['end'] < gc:
+                            left_seg = seg
+                        elif seg['start'] > gc:
+                            if right_seg is None:
+                                right_seg = seg
+                    # Gap belongs to whichever segment is adjacent
+                    # Check which segment the gap would join if filled
+                    if left_seg and (right_seg is None or gc - left_seg['end'] <= right_seg['start'] - gc):
+                        bar_color = left_seg['color']
+                    elif right_seg:
+                        bar_color = right_seg['color']
+
+                if bar_color is None:
+                    continue
+
+                # Fill the gap in the horizontal bar
+                out[bar_row][gc] = bar_color
+
+                # Segment above this bar up to the next bar (or top)
+                if i > 0:
+                    upper_row = crossing_bars[i-1]['row'] + 1
+                else:
+                    upper_row = 0
+                segments.append((upper_row, bar_row - 1, bar_color))
+
+            # Fill vertical segments
+            for start_r, end_r, color in segments:
+                for r in range(start_r, end_r + 1):
+                    if 0 <= r < H:
+                        out[r][gc] = color
+
+        # Also fill the horizontal bar gaps (done above in the loop)
+        # And fill the original horizontal bar gap cells to complete the bar
+        for bar in sorted_bars:
+            row = bar['row']
+            for gc in bar['gaps']:
+                if gc not in v_bars:
+                    continue
+                # Already filled above
+                # But also need to make the bar continuous
+                # The gap cell should get the color of the segment it belongs to
+                # This was handled in the main loop
+
+        return out
+
+    # ---- strategy: bar chart diff -----------------------------------------
+
+    def _try_bar_chart_diff(self, task):
+        """
+        Detect: grid of uniform background with vertical bars of two colors
+        growing from bottom at evenly-spaced columns. A new bar of a third
+        color is added whose height = |sum_heights_color_A - sum_heights_color_B|.
+        """
+        pairs = task.train_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            H, W = len(ig), len(ig[0])
+            if len(og) != H or len(og[0]) != W:
+                return None
+
+            # Find background color (most frequent)
+            freq = {}
+            for r in range(H):
+                for c in range(W):
+                    freq[ig[r][c]] = freq.get(ig[r][c], 0) + 1
+            bg = max(freq, key=freq.get)
+
+            # Find vertical bars: columns with contiguous non-bg cells from bottom
+            bars = []  # (col, color, height)
+            for c in range(W):
+                bar_h = 0
+                bar_color = None
+                for r in range(H - 1, -1, -1):
+                    if ig[r][c] != bg:
+                        if bar_color is None:
+                            bar_color = ig[r][c]
+                        if ig[r][c] == bar_color:
+                            bar_h += 1
+                        else:
+                            break
+                    else:
+                        break
+                if bar_h > 0 and bar_color is not None:
+                    bars.append((c, bar_color, bar_h))
+
+            if len(bars) < 2:
+                return None
+
+            # Check evenly spaced columns
+            cols = [b[0] for b in bars]
+            if len(cols) >= 2:
+                spacing = cols[1] - cols[0]
+                if spacing <= 0:
+                    return None
+                for i in range(1, len(cols)):
+                    if cols[i] - cols[i-1] != spacing:
+                        return None
+            else:
+                return None
+
+            # Find which bars are in output but not input (new bar)
+            out_bars = []
+            for c in range(W):
+                bar_h = 0
+                bar_color = None
+                for r in range(H - 1, -1, -1):
+                    if og[r][c] != bg:
+                        if bar_color is None:
+                            bar_color = og[r][c]
+                        if og[r][c] == bar_color:
+                            bar_h += 1
+                        else:
+                            break
+                    else:
+                        break
+                if bar_h > 0 and bar_color is not None:
+                    out_bars.append((c, bar_color, bar_h))
+
+            # New bar = bar in output not in input
+            input_cols = set(b[0] for b in bars)
+            new_bars = [b for b in out_bars if b[0] not in input_cols]
+            if len(new_bars) != 1:
+                return None
+
+            new_bar = new_bars[0]
+            new_col, new_color, new_height = new_bar
+
+            # Check new bar is at next evenly-spaced column
+            expected_col = cols[-1] + spacing
+            if new_col != expected_col:
+                return None
+
+            # Get the two bar colors (excluding new bar color)
+            existing_colors = set(b[1] for b in bars)
+            if len(existing_colors) != 2:
+                return None
+
+            c_a, c_b = sorted(existing_colors)
+            sum_a = sum(b[2] for b in bars if b[1] == c_a)
+            sum_b = sum(b[2] for b in bars if b[1] == c_b)
+
+            if new_height != abs(sum_a - sum_b):
+                return None
+
+        return {
+            "type": "bar_chart_diff",
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -9420,6 +9836,12 @@ class PredictOperator(Operator):
             return self._apply_corridor_fill(rule, input_grid)
         if rule_type == "block_pair_recolor":
             return self._apply_block_pair_recolor(rule, input_grid)
+        if rule_type == "rect_count_staircase":
+            return self._apply_rect_count_staircase(rule, input_grid)
+        if rule_type == "cross_fill":
+            return self._apply_cross_fill(rule, input_grid)
+        if rule_type == "bar_chart_diff":
+            return self._apply_bar_chart_diff(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -12592,6 +13014,116 @@ class PredictOperator(Operator):
             for dr in range(2):
                 for dc in range(2):
                     output[br+dr][bc+dc] = recolor
+
+        return output
+
+    # ---- apply: rect count staircase --------------------------------------
+
+    def _apply_rect_count_staircase(self, rule, input_grid):
+        raw = input_grid.raw
+        rects_per_color = GeneralizeOperator._find_monochrome_rects(raw)
+        if not rects_per_color:
+            return [row[:] for row in raw]
+
+        sorted_colors = sorted(rects_per_color.keys(),
+                               key=lambda c: -len(rects_per_color[c]))
+        return GeneralizeOperator._build_staircase(sorted_colors, rects_per_color)
+
+    # ---- apply: cross fill -------------------------------------------------
+
+    def _apply_cross_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        h_bars = GeneralizeOperator._find_horizontal_bars(raw, H, W)
+        if not h_bars:
+            return [row[:] for row in raw]
+
+        gap_cols = set()
+        for bar in h_bars:
+            for gc in bar['gaps']:
+                gap_cols.add(gc)
+
+        # Find vertical bar colors below lowest bar for each gap column
+        v_bars = {}
+        for gc in gap_cols:
+            relevant_bars = [b for b in h_bars if gc in b['gaps']]
+            if not relevant_bars:
+                continue
+            lowest_bar_row = max(b['row'] for b in relevant_bars)
+            vert_color = None
+            for r in range(lowest_bar_row + 1, H):
+                if raw[r][gc] != 0:
+                    vert_color = raw[r][gc]
+                    break
+            if vert_color is not None:
+                v_bars[gc] = vert_color
+
+        return GeneralizeOperator._build_cross_fill(raw, h_bars, v_bars, gap_cols, H, W)
+
+    # ---- apply: bar chart diff ---------------------------------------------
+
+    def _apply_bar_chart_diff(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Find background
+        freq = {}
+        for r in range(H):
+            for c in range(W):
+                freq[raw[r][c]] = freq.get(raw[r][c], 0) + 1
+        bg = max(freq, key=freq.get)
+
+        # Find vertical bars
+        bars = []
+        for c in range(W):
+            bar_h = 0
+            bar_color = None
+            for r in range(H - 1, -1, -1):
+                if raw[r][c] != bg:
+                    if bar_color is None:
+                        bar_color = raw[r][c]
+                    if raw[r][c] == bar_color:
+                        bar_h += 1
+                    else:
+                        break
+                else:
+                    break
+            if bar_h > 0 and bar_color is not None:
+                bars.append((c, bar_color, bar_h))
+
+        if len(bars) < 2:
+            return [row[:] for row in raw]
+
+        # Find spacing and next column
+        cols = [b[0] for b in bars]
+        spacing = cols[1] - cols[0] if len(cols) >= 2 else 2
+        new_col = cols[-1] + spacing
+
+        # Find two existing colors
+        existing_colors = set(b[1] for b in bars)
+        if len(existing_colors) != 2:
+            return [row[:] for row in raw]
+
+        c_a, c_b = sorted(existing_colors)
+        sum_a = sum(b[2] for b in bars if b[1] == c_a)
+        sum_b = sum(b[2] for b in bars if b[1] == c_b)
+        new_height = abs(sum_a - sum_b)
+
+        # Find the "new" color (5 in training, but detect from non-bg non-existing)
+        all_colors = set(freq.keys()) - {bg}
+        new_color_candidates = all_colors - existing_colors
+        if not new_color_candidates:
+            new_color = 5  # default
+        else:
+            new_color = min(new_color_candidates) if new_color_candidates else 5
+
+        # Build output
+        output = [row[:] for row in raw]
+        if 0 <= new_col < W and new_height > 0:
+            for r in range(H - new_height, H):
+                if 0 <= r < H:
+                    output[r][new_col] = new_color
 
         return output
 

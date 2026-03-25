@@ -29,6 +29,7 @@ export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:$
 MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
 TASKS_PER_SESSION=20
+MAX_TASKS=1000
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 

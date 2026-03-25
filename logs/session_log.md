@@ -2612,3 +2612,33 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 13:42
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260325_134058.log
+
+---
+## Learning Loop -- 2026-03-25 13:43
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 65s
+- Log: logs/learn_20260325_134228.log
+
+---
+## Learning Loop -- 2026-03-25 13:45
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 3
+- Time: 77s
+- Log: logs/learn_20260325_134349.log
