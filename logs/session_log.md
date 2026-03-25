@@ -1,1 +1,0 @@
-# SOAR-ARC Session Log
