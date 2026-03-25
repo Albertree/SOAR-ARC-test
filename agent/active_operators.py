@@ -347,6 +347,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_mirror_separator(patterns, task)
 
+        # Strategy 14: quadrant pattern swap (0-divided grid, horiz pairs swap shapes)
+        if rule is None:
+            rule = self._try_quadrant_pattern_swap(patterns, task)
+
+        # Strategy 15: arrow edge projection (cross shapes project center color to edge)
+        if rule is None:
+            rule = self._try_arrow_edge_projection(patterns, task)
+
+        # Strategy 16: object pass-through (3 objects, middle slides to edge through target)
+        if rule is None:
+            rule = self._try_object_pass_through(patterns, task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1731,6 +1743,505 @@ class GeneralizeOperator(Operator):
             return output
         return None
 
+    # ---- strategy: quadrant pattern swap ------------------------------------
+
+    def _try_quadrant_pattern_swap(self, patterns, task):
+        """
+        Detect pattern: grid divided into quadrants by rows/cols of 0.
+        Horizontally adjacent quadrant pairs swap their pattern shapes.
+        The new pattern color in each quadrant is the partner's bg color.
+        If both bgs are the same, both patterns vanish (drawn in bg = invisible).
+        """
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            # Find separator rows and cols (all cells == 0)
+            sep_rows = [r for r in range(h)
+                        if all(raw_in[r][c] == 0 for c in range(w))]
+            sep_cols = [c for c in range(w)
+                        if all(raw_in[r][c] == 0 for r in range(h))]
+            if not sep_cols:
+                return None
+
+            # Build row and col ranges for quadrants
+            row_ranges = self._ranges_from_seps(sep_rows, h)
+            col_ranges = self._ranges_from_seps(sep_cols, w)
+            if len(col_ranges) % 2 != 0:
+                return None
+
+            # For every row-band, pair left-right quadrants
+            for rr_start, rr_end in row_ranges:
+                for pi in range(0, len(col_ranges), 2):
+                    lc_s, lc_e = col_ranges[pi]
+                    rc_s, rc_e = col_ranges[pi + 1]
+
+                    l_bg, l_pat, l_cells = self._quadrant_info(
+                        raw_in, rr_start, rr_end, lc_s, lc_e)
+                    r_bg, r_pat, r_cells = self._quadrant_info(
+                        raw_in, rr_start, rr_end, rc_s, rc_e)
+                    if l_bg is None or r_bg is None:
+                        return None
+
+                    # Compute expected output for each quadrant
+                    # Left gets right's shape in right's bg color
+                    # Right gets left's shape in left's bg color
+                    new_l_color = r_bg  # color to draw right's pattern in left
+                    new_r_color = l_bg
+
+                    # Verify left quadrant output
+                    for r in range(rr_start, rr_end + 1):
+                        for c in range(lc_s, lc_e + 1):
+                            lr, lc = r - rr_start, c - lc_s
+                            if (lr, lc) in r_cells:
+                                expected = new_l_color
+                            else:
+                                expected = l_bg
+                            if raw_out[r][c] != expected:
+                                return None
+
+                    # Verify right quadrant output
+                    for r in range(rr_start, rr_end + 1):
+                        for c in range(rc_s, rc_e + 1):
+                            lr, lc = r - rr_start, c - rc_s
+                            if (lr, lc) in l_cells:
+                                expected = new_r_color
+                            else:
+                                expected = r_bg
+                            if raw_out[r][c] != expected:
+                                return None
+
+        return {'type': 'quadrant_pattern_swap', 'confidence': 1.0}
+
+    @staticmethod
+    def _ranges_from_seps(seps, size):
+        """Convert separator indices into inclusive (start, end) ranges."""
+        ranges = []
+        prev = 0
+        for s in sorted(seps):
+            if s > prev:
+                ranges.append((prev, s - 1))
+            prev = s + 1
+        if prev < size:
+            ranges.append((prev, size - 1))
+        return ranges
+
+    @staticmethod
+    def _quadrant_info(grid, r_start, r_end, c_start, c_end):
+        """Return (bg_color, pattern_color, pattern_local_cells) for a quadrant."""
+        counts = {}
+        for r in range(r_start, r_end + 1):
+            for c in range(c_start, c_end + 1):
+                v = grid[r][c]
+                counts[v] = counts.get(v, 0) + 1
+        if not counts:
+            return None, None, set()
+        bg = max(counts, key=counts.get)
+        non_bg = {v for v in counts if v != bg and v != 0}
+        if len(non_bg) > 1:
+            return None, None, set()
+        pat = list(non_bg)[0] if non_bg else None
+        cells = set()
+        if pat is not None:
+            for r in range(r_start, r_end + 1):
+                for c in range(c_start, c_end + 1):
+                    if grid[r][c] == pat:
+                        cells.add((r - r_start, c - c_start))
+        return bg, pat, cells
+
+    # ---- strategy: arrow edge projection ------------------------------------
+
+    def _try_arrow_edge_projection(self, patterns, task):
+        """
+        Detect pattern: cross/arrow shapes on a uniform background. Each shape
+        has arm cells of one color and a unique center cell of another color.
+        The center color projects to the nearest grid edge (the direction with
+        no arm cells adjacent to center). The entire edge row/col is filled with
+        center color, marks are placed along the projection line at intervals
+        equal to the shape extent in the projection direction, and intersections
+        of two border edges become 0.
+        """
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = g0.height, g0.width
+
+            # Find background (most common color)
+            color_counts = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    color_counts[v] = color_counts.get(v, 0) + 1
+            bg = max(color_counts, key=color_counts.get)
+
+            # Find connected components of non-bg cells
+            non_bg = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != bg:
+                        non_bg.add((r, c))
+            if not non_bg:
+                return None
+
+            comps = self._cc_from_positions(non_bg)
+            shapes = []
+            for comp in comps:
+                info = self._arrow_shape_info(raw_in, comp, bg, h, w)
+                if info is None:
+                    return None
+                shapes.append(info)
+
+            # Compute expected output
+            expected = [row[:] for row in raw_in]
+            border_edges = {}  # (edge_type, index) -> color
+
+            for shape in shapes:
+                cr, cc = shape['center_pos']
+                center_color = shape['center_color']
+                direction = shape['direction']
+                spacing = shape['spacing']
+
+                if direction == 'up':
+                    border_edges[('row', 0)] = center_color
+                    for row_idx in range(cr, -1, -spacing):
+                        expected[row_idx][cc] = center_color
+                elif direction == 'down':
+                    border_edges[('row', h - 1)] = center_color
+                    for row_idx in range(cr, h, spacing):
+                        expected[row_idx][cc] = center_color
+                elif direction == 'left':
+                    border_edges[('col', 0)] = center_color
+                    for col_idx in range(cc, -1, -spacing):
+                        expected[cr][col_idx] = center_color
+                elif direction == 'right':
+                    border_edges[('col', w - 1)] = center_color
+                    for col_idx in range(cc, w, spacing):
+                        expected[cr][col_idx] = center_color
+
+            # Fill border edges
+            for (edge_type, idx), color in border_edges.items():
+                if edge_type == 'row':
+                    for c in range(w):
+                        expected[idx][c] = color
+                else:
+                    for r in range(h):
+                        expected[r][idx] = color
+
+            # Set corner intersections to 0
+            edge_rows = {idx for (t, idx) in border_edges if t == 'row'}
+            edge_cols = {idx for (t, idx) in border_edges if t == 'col'}
+            for er in edge_rows:
+                for ec in edge_cols:
+                    expected[er][ec] = 0
+
+            if expected != raw_out:
+                return None
+
+        return {'type': 'arrow_edge_projection', 'confidence': 1.0}
+
+    @staticmethod
+    def _cc_from_positions(positions):
+        """Group set of (r,c) positions into 4-connected components."""
+        pos_set = set(positions)
+        visited = set()
+        comps = []
+        for p in positions:
+            if p in visited:
+                continue
+            comp = []
+            queue = [p]
+            while queue:
+                cur = queue.pop(0)
+                if cur in visited or cur not in pos_set:
+                    continue
+                visited.add(cur)
+                comp.append(cur)
+                r, c = cur
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in pos_set and nb not in visited:
+                        queue.append(nb)
+            comps.append(comp)
+        return comps
+
+    @staticmethod
+    def _arrow_shape_info(grid, comp, bg, h, w):
+        """
+        Analyze a cross/arrow shape component. Returns dict with center_pos,
+        center_color, direction, spacing, or None if not a valid arrow shape.
+        """
+        # Find colors in the component
+        color_counts = {}
+        for r, c in comp:
+            v = grid[r][c]
+            color_counts[v] = color_counts.get(v, 0) + 1
+
+        if len(color_counts) < 2:
+            return None
+
+        # Center color: appears exactly once
+        center_color = None
+        arm_color = None
+        for v, cnt in color_counts.items():
+            if cnt == 1:
+                if center_color is not None:
+                    return None  # Multiple single-cell colors
+                center_color = v
+            else:
+                if arm_color is not None and arm_color != v:
+                    return None
+                arm_color = v
+
+        if center_color is None or arm_color is None:
+            return None
+
+        # Find center position
+        center_pos = None
+        for r, c in comp:
+            if grid[r][c] == center_color:
+                center_pos = (r, c)
+                break
+
+        cr, cc = center_pos
+
+        # Determine open direction (adjacent cell is bg, not arm)
+        dirs = {'up': (-1, 0), 'down': (1, 0), 'left': (0, -1), 'right': (0, 1)}
+        open_dirs = []
+        for name, (dr, dc) in dirs.items():
+            nr, nc = cr + dr, cc + dc
+            if nr < 0 or nr >= h or nc < 0 or nc >= w:
+                open_dirs.append(name)
+            elif grid[nr][nc] == bg:
+                open_dirs.append(name)
+
+        if len(open_dirs) != 1:
+            return None
+
+        direction = open_dirs[0]
+
+        # Compute shape extent in the projection direction
+        comp_set = set(comp)
+        rows = [r for r, c in comp]
+        cols = [c for r, c in comp]
+
+        if direction in ('up', 'down'):
+            spacing = max(rows) - min(rows) + 1
+        else:
+            spacing = max(cols) - min(cols) + 1
+
+        return {
+            'center_pos': center_pos,
+            'center_color': center_color,
+            'arm_color': arm_color,
+            'direction': direction,
+            'spacing': spacing,
+        }
+
+    # ---- strategy: object pass-through --------------------------------------
+
+    def _try_object_pass_through(self, patterns, task):
+        """
+        Detect pattern: 3 rectangular colored objects on uniform background.
+        The smallest (middle) slides to the grid edge, passing through an adjacent
+        object which splits in half. Each half shifts outward by half the middle's
+        perpendicular size.
+        """
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+
+            result = self._compute_pass_through(g0.raw)
+            if result is None:
+                return None
+            if result != g1.raw:
+                return None
+
+        return {'type': 'object_pass_through', 'confidence': 1.0}
+
+    def _compute_pass_through(self, raw):
+        """Compute the pass-through output for a given input grid, or None."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find background
+        color_counts = {}
+        for r in range(h):
+            for c in range(w):
+                color_counts[raw[r][c]] = color_counts.get(raw[r][c], 0) + 1
+        bg = max(color_counts, key=color_counts.get)
+
+        # Find components per color (objects may be adjacent)
+        non_bg_colors = {v for v in color_counts if v != bg}
+        comps = []
+        for color in non_bg_colors:
+            positions = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw[r][c] == color:
+                        positions.add((r, c))
+            color_comps = self._cc_from_positions(positions)
+            comps.extend(color_comps)
+        if len(comps) != 3:
+            return None
+
+        # Get bounding boxes and colors
+        objs = []
+        for comp in comps:
+            color = raw[comp[0][0]][comp[0][1]]
+            if not all(raw[r][c] == color for r, c in comp):
+                pass  # Allow non-uniform (static obj can be any shape)
+            min_r = min(r for r, c in comp)
+            max_r = max(r for r, c in comp)
+            min_c = min(c for r, c in comp)
+            max_c = max(c for r, c in comp)
+            objs.append({
+                'cells': set(comp), 'color': color,
+                'min_r': min_r, 'max_r': max_r,
+                'min_c': min_c, 'max_c': max_c,
+                'height': max_r - min_r + 1, 'width': max_c - min_c + 1,
+                'count': len(comp),
+            })
+
+        # Try each object as the middle, smallest first
+        order = sorted(range(3), key=lambda i: objs[i]['count'])
+        for mid_idx in order:
+            others = [i for i in range(3) if i != mid_idx]
+            mid = objs[mid_idx]
+
+            # Middle must be a solid rectangle
+            if mid['count'] != mid['height'] * mid['width']:
+                continue
+
+            for tgt_idx in others:
+                tgt = objs[tgt_idx]
+                stat_idx = [i for i in others if i != tgt_idx][0]
+
+                # Target must be a solid rectangle
+                if tgt['count'] != tgt['height'] * tgt['width']:
+                    continue
+
+                # Determine direction
+                direction = None
+                if tgt['max_r'] < mid['min_r']:
+                    direction = 'up'
+                elif tgt['min_r'] > mid['max_r']:
+                    direction = 'down'
+                elif tgt['max_c'] < mid['min_c']:
+                    direction = 'left'
+                elif tgt['min_c'] > mid['max_c']:
+                    direction = 'right'
+                else:
+                    continue
+
+                # Perpendicular overlap check
+                if direction in ('up', 'down'):
+                    # Target must be wider than middle (to split horizontally)
+                    if tgt['width'] <= mid['width']:
+                        continue
+                    # Middle cols must be centered in target cols
+                    mid_center_c = (mid['min_c'] + mid['max_c']) / 2
+                    tgt_center_c = (tgt['min_c'] + tgt['max_c']) / 2
+                    if abs(mid_center_c - tgt_center_c) > 0.5:
+                        continue
+                else:
+                    if tgt['height'] <= mid['height']:
+                        continue
+                    mid_center_r = (mid['min_r'] + mid['max_r']) / 2
+                    tgt_center_r = (tgt['min_r'] + tgt['max_r']) / 2
+                    if abs(mid_center_r - tgt_center_r) > 0.5:
+                        continue
+
+                # Compute output
+                output = [[bg] * w for _ in range(h)]
+
+                # Place static object
+                stat = objs[stat_idx]
+                for r, c in stat['cells']:
+                    output[r][c] = stat['color']
+
+                # Place middle at grid edge
+                if direction == 'up':
+                    new_mr = 0
+                    new_mc = mid['min_c']
+                elif direction == 'down':
+                    new_mr = h - mid['height']
+                    new_mc = mid['min_c']
+                elif direction == 'left':
+                    new_mr = mid['min_r']
+                    new_mc = 0
+                else:  # right
+                    new_mr = mid['min_r']
+                    new_mc = w - mid['width']
+
+                for dr in range(mid['height']):
+                    for dc in range(mid['width']):
+                        output[new_mr + dr][new_mc + dc] = mid['color']
+
+                # Split target
+                shift = mid['width'] // 2 if direction in ('up', 'down') else mid['height'] // 2
+                if shift == 0:
+                    shift = 1
+
+                if direction in ('up', 'down'):
+                    half_w = tgt['width'] // 2
+                    # Left half: shift left
+                    for r in range(tgt['min_r'], tgt['max_r'] + 1):
+                        for c in range(tgt['min_c'], tgt['min_c'] + half_w):
+                            nr, nc = r, c - shift
+                            if 0 <= nr < h and 0 <= nc < w:
+                                output[nr][nc] = tgt['color']
+                    # Right half: shift right
+                    for r in range(tgt['min_r'], tgt['max_r'] + 1):
+                        for c in range(tgt['min_c'] + half_w, tgt['max_c'] + 1):
+                            nr, nc = r, c + shift
+                            if 0 <= nr < h and 0 <= nc < w:
+                                output[nr][nc] = tgt['color']
+                else:
+                    half_h = tgt['height'] // 2
+                    # Top half: shift up
+                    for r in range(tgt['min_r'], tgt['min_r'] + half_h):
+                        for c in range(tgt['min_c'], tgt['max_c'] + 1):
+                            nr, nc = r - shift, c
+                            if 0 <= nr < h and 0 <= nc < w:
+                                output[nr][nc] = tgt['color']
+                    # Bottom half: shift down
+                    for r in range(tgt['min_r'] + half_h, tgt['max_r'] + 1):
+                        for c in range(tgt['min_c'], tgt['max_c'] + 1):
+                            nr, nc = r + shift, c
+                            if 0 <= nr < h and 0 <= nc < w:
+                                output[nr][nc] = tgt['color']
+
+                return output
+
+        return None
+
     @staticmethod
     def _compute_band_fill(h, w, axis_col, axis_color, intersect_color,
                            sep_rows, sep_colors):
@@ -1877,6 +2388,12 @@ class PredictOperator(Operator):
             return self._apply_diamond_bridge(rule, input_grid)
         if rule_type == "mirror_separator":
             return self._apply_mirror_separator(rule, input_grid)
+        if rule_type == "quadrant_pattern_swap":
+            return self._apply_quadrant_pattern_swap(rule, input_grid)
+        if rule_type == "arrow_edge_projection":
+            return self._apply_arrow_edge_projection(rule, input_grid)
+        if rule_type == "object_pass_through":
+            return self._apply_object_pass_through(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2259,6 +2776,138 @@ class PredictOperator(Operator):
             new_c = oc_ + move_dc
             if 0 <= new_r < h and 0 <= new_c < w:
                 output[new_r][new_c] = mirror_color
+
+        return output
+
+    # ---- apply: quadrant pattern swap ------------------------------------
+
+    def _apply_quadrant_pattern_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        sep_rows = [r for r in range(h)
+                    if all(raw[r][c] == 0 for c in range(w))]
+        sep_cols = [c for c in range(w)
+                    if all(raw[r][c] == 0 for r in range(h))]
+        if not sep_cols:
+            return [row[:] for row in raw]
+
+        row_ranges = GeneralizeOperator._ranges_from_seps(sep_rows, h)
+        col_ranges = GeneralizeOperator._ranges_from_seps(sep_cols, w)
+
+        output = [row[:] for row in raw]
+
+        for rr_start, rr_end in row_ranges:
+            for pi in range(0, len(col_ranges) - 1, 2):
+                lc_s, lc_e = col_ranges[pi]
+                rc_s, rc_e = col_ranges[pi + 1]
+
+                l_bg, l_pat, l_cells = GeneralizeOperator._quadrant_info(
+                    raw, rr_start, rr_end, lc_s, lc_e)
+                r_bg, r_pat, r_cells = GeneralizeOperator._quadrant_info(
+                    raw, rr_start, rr_end, rc_s, rc_e)
+
+                if l_bg is None or r_bg is None:
+                    continue
+
+                # Left quadrant: draw right's shape in right's bg color
+                new_l_color = r_bg
+                for r in range(rr_start, rr_end + 1):
+                    for c in range(lc_s, lc_e + 1):
+                        lr, lc = r - rr_start, c - lc_s
+                        if (lr, lc) in r_cells:
+                            output[r][c] = new_l_color
+                        else:
+                            output[r][c] = l_bg
+
+                # Right quadrant: draw left's shape in left's bg color
+                new_r_color = l_bg
+                for r in range(rr_start, rr_end + 1):
+                    for c in range(rc_s, rc_e + 1):
+                        lr, lc = r - rr_start, c - rc_s
+                        if (lr, lc) in l_cells:
+                            output[r][c] = new_r_color
+                        else:
+                            output[r][c] = r_bg
+
+        return output
+
+    # ---- apply: object pass-through --------------------------------------
+
+    def _apply_object_pass_through(self, rule, input_grid):
+        gen = GeneralizeOperator()
+        return gen._compute_pass_through(input_grid.raw)
+
+    # ---- apply: arrow edge projection ------------------------------------
+
+    def _apply_arrow_edge_projection(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find background
+        color_counts = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                color_counts[v] = color_counts.get(v, 0) + 1
+        bg = max(color_counts, key=color_counts.get)
+
+        # Find non-bg connected components
+        non_bg = set()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    non_bg.add((r, c))
+
+        comps = GeneralizeOperator._cc_from_positions(non_bg)
+
+        output = [row[:] for row in raw]
+        border_edges = {}
+
+        for comp in comps:
+            info = GeneralizeOperator._arrow_shape_info(raw, comp, bg, h, w)
+            if info is None:
+                continue
+
+            cr, cc = info['center_pos']
+            center_color = info['center_color']
+            direction = info['direction']
+            spacing = info['spacing']
+
+            if direction == 'up':
+                border_edges[('row', 0)] = center_color
+                for row_idx in range(cr, -1, -spacing):
+                    output[row_idx][cc] = center_color
+            elif direction == 'down':
+                border_edges[('row', h - 1)] = center_color
+                for row_idx in range(cr, h, spacing):
+                    output[row_idx][cc] = center_color
+            elif direction == 'left':
+                border_edges[('col', 0)] = center_color
+                for col_idx in range(cc, -1, -spacing):
+                    output[cr][col_idx] = center_color
+            elif direction == 'right':
+                border_edges[('col', w - 1)] = center_color
+                for col_idx in range(cc, w, spacing):
+                    output[cr][col_idx] = center_color
+
+        # Fill border edges
+        for (edge_type, idx), color in border_edges.items():
+            if edge_type == 'row':
+                for c in range(w):
+                    output[idx][c] = color
+            else:
+                for r in range(h):
+                    output[r][idx] = color
+
+        # Corner intersections become 0
+        edge_rows = {idx for (t, idx) in border_edges if t == 'row'}
+        edge_cols = {idx for (t, idx) in border_edges if t == 'col'}
+        for er in edge_rows:
+            for ec in edge_cols:
+                output[er][ec] = 0
 
         return output
 

@@ -119,3 +119,32 @@
 - Stored rule hits: 10
 - Time: 57s
 - Log: logs/learn_20260325_154652.log
+
+---
+## Learning Loop -- 2026-03-25 15:50
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 12
+- Time: 57s
+- Log: logs/learn_20260325_154924.log
+
+---
+## Session 5 -- 2026-03-25 16:18
+
+**Strategies added:**
+1. `quadrant_pattern_swap` -- grid divided by 0-separator rows/columns into quadrants; horizontally adjacent pairs swap their pattern shapes, drawn in the partner's background color; if both backgrounds match, patterns vanish
+2. `arrow_edge_projection` -- cross/arrow shapes with a unique center cell project center color to the nearest grid edge; fills entire edge row/column, adds periodic marks at intervals equal to shape extent in the projection direction; edge intersections become 0
+3. `object_pass_through` -- 3 colored rectangular objects on uniform background; smallest (middle) slides to grid edge passing through an adjacent target; target splits in half perpendicular to movement, halves shift outward
+
+**Tasks solved:** 5a719d11 (quadrant_pattern_swap), 13f06aa5 (arrow_edge_projection), 9f669b64 (object_pass_through)
+
+**Results:** 12/20 (60.0%) -> 15/20 (75.0%)
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 11
+- Time: 60s
+- Log: logs/learn_20260325_161727.log
