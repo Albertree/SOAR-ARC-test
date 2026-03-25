@@ -177,3 +177,13 @@
 - Discovered: 6 new rules from pipeline
 - Time: 60s
 - Log: logs/learn_20260325_164152.log
+
+---
+## Learning Loop -- 2026-03-25 16:44
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 11
+- Time: 59s
+- Log: logs/learn_20260325_164356.log
