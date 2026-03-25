@@ -613,6 +613,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_corner_rect_fill(task)
 
+        # Strategy 73: dot expand band (single 0-dot in uniform color band -> full column stripe)
+        if rule is None:
+            rule = self._try_dot_expand_band(task)
+
+        # Strategy 74: fill square holes (rectangular 5-frames, fill interior with 2 only if square)
+        if rule is None:
+            rule = self._try_fill_square_holes(task)
+
+        # Strategy 75: column staircase shadow (vertical 5-column casts 8-left / 6-right triangles)
+        if rule is None:
+            rule = self._try_column_staircase_shadow(task)
+
         # Strategy 5: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -7892,6 +7904,315 @@ class GeneralizeOperator(Operator):
                 "fill_color": fill_color, "confidence": 1.0}
 
 
+    # ---- strategy 73: dot expand band ------------------------------------
+
+    @staticmethod
+    def _detect_bands_horizontal(raw, h, w):
+        """Try to detect horizontal color bands. Returns list of (r_start, r_end, color) or None."""
+        bands = []
+        r = 0
+        while r < h:
+            row_colors = set(raw[r][c] for c in range(w) if raw[r][c] != 0)
+            if len(row_colors) != 1:
+                return None
+            band_color = row_colors.pop()
+            r_end = r
+            while r_end < h:
+                rc = set(raw[r_end][c] for c in range(w) if raw[r_end][c] != 0)
+                if len(rc) != 1 or rc.pop() != band_color:
+                    break
+                r_end += 1
+            bands.append((r, r_end, band_color))
+            r = r_end
+        return bands if len(bands) >= 2 else None
+
+    @staticmethod
+    def _detect_bands_vertical(raw, h, w):
+        """Try to detect vertical color bands. Returns list of (c_start, c_end, color) or None."""
+        bands = []
+        c = 0
+        while c < w:
+            col_colors = set(raw[r][c] for r in range(h) if raw[r][c] != 0)
+            if len(col_colors) != 1:
+                return None
+            band_color = col_colors.pop()
+            c_end = c
+            while c_end < w:
+                cc = set(raw[r][c_end] for r in range(h) if raw[r][c_end] != 0)
+                if len(cc) != 1 or cc.pop() != band_color:
+                    break
+                c_end += 1
+            bands.append((c, c_end, band_color))
+            c = c_end
+        return bands if len(bands) >= 2 else None
+
+    @staticmethod
+    def _check_dot_expand(ri, ro, h, w, h_bands, v_bands):
+        """Check if dot-expand matches for either orientation. Returns True if matched."""
+        if h_bands is not None:
+            expected = [row[:] for row in ri]
+            has_dots = False
+            for r_start, r_end, band_color in h_bands:
+                zero_cols = set()
+                for rr in range(r_start, r_end):
+                    for cc in range(w):
+                        if ri[rr][cc] == 0:
+                            zero_cols.add(cc)
+                            has_dots = True
+                for zc in zero_cols:
+                    for rr in range(r_start, r_end):
+                        expected[rr][zc] = 0
+            if has_dots and expected == ro:
+                return True
+
+        if v_bands is not None:
+            expected = [row[:] for row in ri]
+            has_dots = False
+            for c_start, c_end, band_color in v_bands:
+                zero_rows = set()
+                for cc in range(c_start, c_end):
+                    for rr in range(h):
+                        if ri[rr][cc] == 0:
+                            zero_rows.add(rr)
+                            has_dots = True
+                for zr in zero_rows:
+                    for cc in range(c_start, c_end):
+                        expected[zr][cc] = 0
+            if has_dots and expected == ro:
+                return True
+
+        return False
+
+    def _try_dot_expand_band(self, task):
+        """
+        Detect: grid divided into horizontal or vertical bands of uniform color.
+        Each band has zero or more 0-dots. In the output, each dot expands
+        to a full column (horizontal bands) or full row (vertical bands)
+        spanning the entire band. Orientation detected per pair.
+        Category: dot-to-line expansion within color zones.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            h_bands = self._detect_bands_horizontal(ri, h, w)
+            v_bands = self._detect_bands_vertical(ri, h, w)
+
+            if not self._check_dot_expand(ri, ro, h, w, h_bands, v_bands):
+                return None
+
+        return {"type": "dot_expand_band", "confidence": 1.0}
+
+    # ---- strategy 74: fill square holes ----------------------------------
+
+    def _try_fill_square_holes(self, task):
+        """
+        Detect: grid has rectangular frames of color 5 with interior holes.
+        Only holes whose interior forms a perfect square get filled with
+        color 2. Non-square or irregular holes are left unchanged.
+        Category: geometric property classification + fill.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Find connected components of color 5
+            visited = [[False] * w for _ in range(h)]
+            frames = []
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] == 5 and not visited[r][c]:
+                        # BFS to find component
+                        comp = []
+                        queue = [(r, c)]
+                        visited[r][c] = True
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                                nr, nc = cr + dr, cc + dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and ri[nr][nc] == 5:
+                                    visited[nr][nc] = True
+                                    queue.append((nr, nc))
+                        frames.append(comp)
+
+            if not frames:
+                return None
+
+            # For each frame, find enclosed 0-cells (flood fill from outside to find non-enclosed)
+            expected = [row[:] for row in ri]
+            found_any_frame = False
+
+            for comp in frames:
+                comp_set = set(comp)
+                # Bounding box
+                min_r = min(r for r, c in comp)
+                max_r = max(r for r, c in comp)
+                min_c = min(c for r, c in comp)
+                max_c = max(c for r, c in comp)
+
+                # Find interior 0-cells: cells within bbox that are 0 and NOT reachable
+                # from outside the component without crossing a 5
+                interior_zeros = []
+                for rr in range(min_r, max_r + 1):
+                    for cc in range(min_c, max_c + 1):
+                        if ri[rr][cc] == 0 and (rr, cc) not in comp_set:
+                            interior_zeros.append((rr, cc))
+
+                if not interior_zeros:
+                    continue
+
+                # Verify these are truly enclosed: flood fill from the 0-cells and check
+                # they don't escape the bounding box of the frame
+                iz_set = set(interior_zeros)
+                # Check they form a contiguous group and don't touch outside
+                enclosed = True
+                for rr, cc in interior_zeros:
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = rr + dr, cc + dc
+                        if not (0 <= nr < h and 0 <= nc < w):
+                            enclosed = False
+                            break
+                        if (nr, nc) not in comp_set and (nr, nc) not in iz_set:
+                            enclosed = False
+                            break
+                    if not enclosed:
+                        break
+
+                if not enclosed:
+                    continue
+
+                found_any_frame = True
+
+                # Check if interior forms a perfect square
+                iz_rows = set(r for r, c in interior_zeros)
+                iz_cols = set(c for r, c in interior_zeros)
+                iz_h = max(iz_rows) - min(iz_rows) + 1
+                iz_w = max(iz_cols) - min(iz_cols) + 1
+
+                is_rect = (len(interior_zeros) == iz_h * iz_w)
+                is_square = is_rect and (iz_h == iz_w)
+
+                if is_square:
+                    for rr, cc in interior_zeros:
+                        expected[rr][cc] = 2
+
+            if not found_any_frame:
+                return None
+
+            if expected != ro:
+                return None
+
+        return {"type": "fill_square_holes", "confidence": 1.0}
+
+    # ---- strategy 75: column staircase shadow ----------------------------
+
+    def _try_column_staircase_shadow(self, task):
+        """
+        Detect: grid has a vertical column of color 5 starting near the top.
+        Left side fills with 8 in a staircase triangle, right side fills
+        with 6 in a smaller staircase. The 8-triangle extends below the
+        column; the 6-triangle stays within the column rows.
+        Category: geometric shadow / staircase generation from line.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+
+            # Find the vertical column of 5: a single column where consecutive rows are 5
+            col_pos = None
+            col_start = None
+            col_height = None
+            for c in range(w):
+                runs = []
+                r = 0
+                while r < h:
+                    if ri[r][c] == 5:
+                        start = r
+                        while r < h and ri[r][c] == 5:
+                            r += 1
+                        runs.append((start, r - start))
+                    else:
+                        r += 1
+                if len(runs) == 1 and runs[0][1] >= 2:
+                    if col_pos is not None:
+                        return None  # Multiple columns of 5
+                    col_pos = c
+                    col_start, col_height = runs[0]
+
+            if col_pos is None or col_start != 0:
+                return None
+
+            # Verify rest of input is 0
+            for r in range(h):
+                for c in range(w):
+                    if c == col_pos and r < col_height:
+                        continue
+                    if ri[r][c] != 0:
+                        return None
+
+            # Build expected output
+            expected = [[0] * w for _ in range(h)]
+            # Place the 5 column
+            for r in range(col_height):
+                expected[r][col_pos] = 5
+
+            # Left side: 8 triangle
+            # left_width(r) = col_pos - max(0, floor((r - col_height) / 2))
+            for r in range(h):
+                lw = col_pos - max(0, (r - col_height) // 2) if (r - col_height) >= 0 else col_pos
+                # More precisely: lw = col_pos when r < col_height,
+                # else col_pos - floor((r - col_height) / 2)
+                if r < col_height:
+                    lw = col_pos
+                else:
+                    lw = col_pos - (r - col_height) // 2
+                lw = max(0, lw)
+                for c in range(lw):
+                    expected[r][c] = 8
+
+            # Right side: 6 triangle (only within column rows)
+            # right_width(r) = floor((col_height - r - 1) / 2) for r < col_height
+            for r in range(col_height):
+                rw = (col_height - r - 1) // 2
+                rw = min(rw, w - col_pos - 1)
+                for c in range(1, rw + 1):
+                    if col_pos + c < w:
+                        expected[r][col_pos + c] = 6
+
+            if expected != ro:
+                return None
+
+        return {"type": "column_staircase_shadow", "confidence": 1.0}
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -8110,6 +8431,12 @@ class PredictOperator(Operator):
             return self._apply_sort_bars_right_align(rule, input_grid)
         if rule_type == "corner_rect_fill":
             return self._apply_corner_rect_fill(rule, input_grid)
+        if rule_type == "dot_expand_band":
+            return self._apply_dot_expand_band(rule, input_grid)
+        if rule_type == "fill_square_holes":
+            return self._apply_fill_square_holes(rule, input_grid)
+        if rule_type == "column_staircase_shadow":
+            return self._apply_column_staircase_shadow(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -10605,6 +10932,170 @@ class PredictOperator(Operator):
             for r in range(r1 + 1, r2):
                 for c in range(c1 + 1, c2):
                     grid[r][c] = fill_color
+        return grid
+
+    # ---- apply: dot expand band ------------------------------------------
+
+    def _apply_dot_expand_band(self, rule, input_grid):
+        """Expand 0-dots in each color band to full column/row stripes.
+        Auto-detects orientation (horizontal or vertical) from the input grid."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        grid = [row[:] for row in raw]
+
+        # Try horizontal bands
+        h_bands = GeneralizeOperator._detect_bands_horizontal(raw, h, w)
+        if h_bands is not None:
+            for r_start, r_end, band_color in h_bands:
+                zero_cols = set()
+                for rr in range(r_start, r_end):
+                    for cc in range(w):
+                        if raw[rr][cc] == 0:
+                            zero_cols.add(cc)
+                for zc in zero_cols:
+                    for rr in range(r_start, r_end):
+                        grid[rr][zc] = 0
+            return grid
+
+        # Try vertical bands
+        v_bands = GeneralizeOperator._detect_bands_vertical(raw, h, w)
+        if v_bands is not None:
+            for c_start, c_end, band_color in v_bands:
+                zero_rows = set()
+                for cc in range(c_start, c_end):
+                    for rr in range(h):
+                        if raw[rr][cc] == 0:
+                            zero_rows.add(rr)
+                for zr in zero_rows:
+                    for cc in range(c_start, c_end):
+                        grid[zr][cc] = 0
+            return grid
+
+        return grid
+
+    # ---- apply: fill square holes ----------------------------------------
+
+    def _apply_fill_square_holes(self, rule, input_grid):
+        """Fill interior of rectangular 5-frames with 2, but only if the hole is a perfect square."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        grid = [row[:] for row in raw]
+
+        visited = [[False] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 5 and not visited[r][c]:
+                    comp = []
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == 5:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+
+                    comp_set = set(comp)
+                    min_r = min(rr for rr, cc in comp)
+                    max_r = max(rr for rr, cc in comp)
+                    min_c = min(cc for rr, cc in comp)
+                    max_c = max(cc for rr, cc in comp)
+
+                    # Find interior 0-cells
+                    interior_zeros = []
+                    for rr in range(min_r, max_r + 1):
+                        for cc in range(min_c, max_c + 1):
+                            if raw[rr][cc] == 0 and (rr, cc) not in comp_set:
+                                interior_zeros.append((rr, cc))
+
+                    if not interior_zeros:
+                        continue
+
+                    # Verify enclosed
+                    iz_set = set(interior_zeros)
+                    enclosed = True
+                    for rr, cc in interior_zeros:
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = rr + dr, cc + dc
+                            if not (0 <= nr < h and 0 <= nc < w):
+                                enclosed = False
+                                break
+                            if (nr, nc) not in comp_set and (nr, nc) not in iz_set:
+                                enclosed = False
+                                break
+                        if not enclosed:
+                            break
+
+                    if not enclosed:
+                        continue
+
+                    # Check if square
+                    iz_rows = set(rr for rr, cc in interior_zeros)
+                    iz_cols = set(cc for rr, cc in interior_zeros)
+                    iz_h = max(iz_rows) - min(iz_rows) + 1
+                    iz_w = max(iz_cols) - min(iz_cols) + 1
+                    is_rect = (len(interior_zeros) == iz_h * iz_w)
+                    is_square = is_rect and (iz_h == iz_w)
+
+                    if is_square:
+                        for rr, cc in interior_zeros:
+                            grid[rr][cc] = 2
+
+        return grid
+
+    # ---- apply: column staircase shadow ----------------------------------
+
+    def _apply_column_staircase_shadow(self, rule, input_grid):
+        """Generate 8-left / 6-right staircase shadow from vertical 5-column."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find column of 5
+        col_pos = None
+        col_height = 0
+        for c in range(w):
+            cnt = 0
+            for r in range(h):
+                if raw[r][c] == 5:
+                    cnt += 1
+                else:
+                    break
+            if cnt >= 2:
+                col_pos = c
+                col_height = cnt
+                break
+
+        if col_pos is None:
+            return [row[:] for row in raw]
+
+        grid = [[0] * w for _ in range(h)]
+        # Place column
+        for r in range(col_height):
+            grid[r][col_pos] = 5
+
+        # Left 8-triangle
+        for r in range(h):
+            if r < col_height:
+                lw = col_pos
+            else:
+                lw = col_pos - (r - col_height) // 2
+            lw = max(0, lw)
+            for c in range(lw):
+                grid[r][c] = 8
+
+        # Right 6-triangle
+        for r in range(col_height):
+            rw = (col_height - r - 1) // 2
+            rw = min(rw, w - col_pos - 1)
+            for c in range(1, rw + 1):
+                if col_pos + c < w:
+                    grid[r][col_pos + c] = 6
+
         return grid
 
 

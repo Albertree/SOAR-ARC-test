@@ -2222,3 +2222,122 @@ All 20 standard tasks at 100%. Expanded to tasks 20-40 to find new failures.
 
 ### Regression gate
 - `python run_task.py` (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-25 11:27
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 250 -> 250 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_112645.log
+
+---
+## Learning Loop -- 2026-03-25 11:29
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 250 -> 250 (+0 learned)
+- Stored rule hits: 19
+- Time: 62s
+- Log: logs/learn_20260325_112801.log
+
+---
+## Learning Loop -- 2026-03-25 11:33
+
+- Split: training, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 250 -> 255 (+5 learned)
+- Stored rule hits: 19
+- Time: 286s
+- Log: logs/learn_20260325_112911.log
+
+---
+## Learning Loop -- 2026-03-25 11:46
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 255 -> 255 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_114516.log
+
+---
+## Learning Loop -- 2026-03-25 11:51
+
+- Split: training, Tasks: 40
+- Correct: 21 / 40 (52.5%)
+- Rules: 255 -> 261 (+6 learned)
+- Stored rule hits: 19
+- Time: 285s
+- Log: logs/learn_20260325_114623.log
+
+---
+## Learning Loop -- 2026-03-25 11:57
+
+- Split: training, Tasks: 40
+- Correct: 22 / 40 (55.0%)
+- Rules: 261 -> 266 (+5 learned)
+- Stored rule hits: 20
+- Time: 285s
+- Log: logs/learn_20260325_115300.log
+
+---
+## Learning Loop -- 2026-03-25 12:07
+
+- Split: training, Tasks: 40
+- Correct: 22 / 40 (55.0%)
+- Rules: 266 -> 270 (+4 learned)
+- Stored rule hits: 21
+- Time: 281s
+- Log: logs/learn_20260325_120242.log
+
+---
+## Learning Loop -- 2026-03-25 12:10
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 19
+- Time: 61s
+- Log: logs/learn_20260325_120951.log
+
+---
+## Learning Loop -- 2026-03-25 12:15
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 261 -> 261 (+0 learned)
+- Stored rule hits: 21
+- Time: 287s
+- Log: logs/learn_20260325_121058.log
+
+---
+## Session 27 Analysis — 2026-03-25 12:15
+
+### New strategies added (agent/active_operators.py)
+
+1. **dot_expand_band** — grid divided into horizontal or vertical uniform-color bands; each 0-dot expands to a full column (horizontal) or row (vertical) spanning its band
+   - `_try_dot_expand_band`: detects band structure (H or V), verifies dot expansion matches output
+   - `_apply_dot_expand_band`: auto-detects orientation, expands all 0-dots to stripes
+   - Category: dot-to-line expansion within color zones
+   - Solves: 855e0971
+
+2. **fill_square_holes** — rectangular frames of color 5 with interior holes; fills only holes that form a perfect square with color 2
+   - `_try_fill_square_holes`: finds 5-frames via BFS, checks enclosed 0-cells, verifies square geometry
+   - `_apply_fill_square_holes`: same detection + fill at apply time
+   - Category: geometric property classification + conditional fill
+   - Solves: 44d8ac46
+
+3. **column_staircase_shadow** — vertical column of color 5 starting at row 0 casts triangular shadows: 8 (left, extends below column) and 6 (right, within column rows)
+   - `_try_column_staircase_shadow`: finds single 5-column, verifies staircase shadow pattern
+   - `_apply_column_staircase_shadow`: generates shadow from column geometry
+   - Category: geometric shadow / staircase generation from line
+   - Solves: 5207a7b5
+
+### Results
+- Standard 20-task: 20/20 (100%) — no regression
+- Extended 40-task (seed 99): 23/40 (57.5%) — up from 20/40 (50.0%) baseline
+- Net improvement: +3 tasks (44d8ac46, 5207a7b5, 855e0971)
+- Regression gate: CORRECT (08ed6ac7)
