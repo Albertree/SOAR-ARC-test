@@ -1,0 +1,25 @@
+{
+  "concept_id": "recolor_mapped",
+  "version": 1,
+  "description": "Replace colors according to a consistent mapping derived from ARCKG DIFF",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true,
+    "color_preserved": false
+  },
+  "parameters": {
+    "mapping": {
+      "type": "color_map",
+      "infer": "color_map_from_arckg"
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "recolor",
+      "args": {"grid": "$input", "mapping": "$mapping"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
