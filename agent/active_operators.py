@@ -385,6 +385,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_keep_center_column(patterns, task)
 
+        # Strategy: staircase growth (1-row input → growing triangle)
+        if rule is None:
+            rule = self._try_staircase_growth(patterns, task)
+
+        # Strategy: corner-fill quadrants (rectangle + 4 corner markers)
+        if rule is None:
+            rule = self._try_corner_fill_quadrants(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -801,6 +809,204 @@ class GeneralizeOperator(Operator):
                     components.append(comp)
         return components
 
+    # ---- strategy: staircase growth ----------------------------------------
+
+    def _try_staircase_growth(self, patterns, task):
+        """
+        Detect: input is a single row with N cells of color C on the left,
+        rest 0. Output has W/2 rows; row i has N+i cells of color C.
+        Category: 1D-to-2D staircase / triangle expansion.
+        """
+        if task is None:
+            return None
+        # Must be size-changing (1 row → multiple rows)
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        color = None
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+
+            # Input must be exactly 1 row
+            if len(raw_in) != 1:
+                return None
+            w = len(raw_in[0])
+            if w < 2 or w % 2 != 0:
+                return None
+
+            # Count leading non-zero cells of a single color
+            row = raw_in[0]
+            c = row[0]
+            if c == 0:
+                return None
+            n = 0
+            for v in row:
+                if v == c:
+                    n += 1
+                else:
+                    break
+            # Rest must be 0
+            if any(v != 0 for v in row[n:]):
+                return None
+
+            # Color can differ across pairs (each pair uses its own color)
+
+            # Verify output: W/2 rows, row i has N+i cells of color C
+            expected_rows = w // 2
+            if len(raw_out) != expected_rows:
+                return None
+            if len(raw_out[0]) != w:
+                return None
+
+            for i in range(expected_rows):
+                count = n + i
+                for j in range(w):
+                    expected = c if j < count else 0
+                    if raw_out[i][j] != expected:
+                        return None
+
+        return {"type": "staircase_growth", "confidence": 1.0}
+
+    # ---- strategy: corner-fill quadrants -----------------------------------
+
+    def _try_corner_fill_quadrants(self, patterns, task):
+        """
+        Detect: one or more rectangular blocks of a filler color (e.g. 5) on
+        bg (0), each with 4 colored pixels at diagonal corners just outside.
+        Output replaces each filler block with 4 quadrants colored by corners.
+        Category: rectangle + corner markers → quadrant coloring.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        filler_color = None
+        bg_color = 0
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find candidate filler color (most frequent non-bg)
+            freq = Counter(v for row in raw_in for v in row if v != bg_color)
+            if not freq:
+                return None
+
+            # Try each candidate filler color
+            found = False
+            for fc, _ in freq.most_common():
+                rects = self._find_filler_rectangles(raw_in, fc, h, w)
+                if not rects:
+                    continue
+
+                # Verify all rects have valid corners and correct output
+                all_ok = True
+                for (r1, c1, r2, c2) in rects:
+                    rect_h = r2 - r1 + 1
+                    rect_w = c2 - c1 + 1
+                    if rect_h % 2 != 0 or rect_w % 2 != 0:
+                        all_ok = False
+                        break
+
+                    corners = self._get_rect_corners(raw_in, r1, c1, r2, c2, h, w, bg_color, fc)
+                    if corners is None:
+                        all_ok = False
+                        break
+
+                    half_h = rect_h // 2
+                    half_w = rect_w // 2
+                    for r in range(r1, r2 + 1):
+                        for c in range(c1, c2 + 1):
+                            qr = "t" if r < r1 + half_h else "b"
+                            qc = "l" if c < c1 + half_w else "r"
+                            if raw_out[r][c] != corners[qr + qc]:
+                                all_ok = False
+                                break
+                        if not all_ok:
+                            break
+                    if not all_ok:
+                        break
+
+                    # Verify corners removed
+                    for cr, cc in [(r1-1,c1-1),(r1-1,c2+1),(r2+1,c1-1),(r2+1,c2+1)]:
+                        if 0 <= cr < h and 0 <= cc < w and raw_out[cr][cc] != bg_color:
+                            all_ok = False
+                            break
+                    if not all_ok:
+                        break
+
+                if all_ok and rects:
+                    if filler_color is None:
+                        filler_color = fc
+                    elif filler_color != fc:
+                        return None
+                    found = True
+                    break
+
+            if not found:
+                return None
+
+        return {
+            "type": "corner_fill_quadrants",
+            "filler_color": filler_color,
+            "bg_color": bg_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_filler_rectangles(grid, filler, h, w):
+        """Find all connected rectangular blocks of filler color."""
+        visited = set()
+        rects = []
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] == filler and (r, c) not in visited:
+                    # BFS to find connected component
+                    comp = []
+                    queue = [(r, c)]
+                    visited.add((r, c))
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = cr+dr, cc+dc
+                            if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == filler:
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                    # Check if component is a perfect rectangle
+                    rows = [p[0] for p in comp]
+                    cols = [p[1] for p in comp]
+                    min_r, max_r = min(rows), max(rows)
+                    min_c, max_c = min(cols), max(cols)
+                    expected = (max_r - min_r + 1) * (max_c - min_c + 1)
+                    if len(comp) == expected:
+                        rects.append((min_r, min_c, max_r, max_c))
+        return rects
+
+    @staticmethod
+    def _get_rect_corners(grid, r1, c1, r2, c2, h, w, bg_color, filler):
+        """Get 4 diagonal corner colors of a rectangle, or None if invalid."""
+        corners = {}
+        for key, (cr, cc) in [("tl",(r1-1,c1-1)),("tr",(r1-1,c2+1)),
+                               ("bl",(r2+1,c1-1)),("br",(r2+1,c2+1))]:
+            if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                return None
+            v = grid[cr][cc]
+            if v == bg_color or v == filler:
+                return None
+            corners[key] = v
+        return corners
+
     # ---- strategy: keep center column ------------------------------------
 
     def _try_keep_center_column(self, patterns, task):
@@ -933,6 +1139,10 @@ class PredictOperator(Operator):
             return self._apply_pixel_scale(rule, input_grid)
         if rule_type == "recolor_by_size":
             return self._apply_recolor_by_size(rule, input_grid)
+        if rule_type == "staircase_growth":
+            return self._apply_staircase_growth(rule, input_grid)
+        if rule_type == "corner_fill_quadrants":
+            return self._apply_corner_fill_quadrants(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1080,6 +1290,67 @@ class PredictOperator(Operator):
             new_color = size_to_color[len(comp)]
             for (r, c) in comp:
                 output[r][c] = new_color
+        return output
+
+    def _apply_staircase_growth(self, rule, input_grid):
+        """1-row input → W/2 rows, each row adds one more colored cell."""
+        raw = input_grid.raw
+        if len(raw) != 1:
+            return [row[:] for row in raw]
+        row = raw[0]
+        w = len(row)
+
+        # Find color and count
+        color = row[0]
+        n = 0
+        for v in row:
+            if v == color:
+                n += 1
+            else:
+                break
+
+        num_rows = w // 2
+        output = []
+        for i in range(num_rows):
+            count = n + i
+            output.append([color if j < count else 0 for j in range(w)])
+        return output
+
+    def _apply_corner_fill_quadrants(self, rule, input_grid):
+        """Rectangle(s) with corner markers → fill quadrants with corner colors."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        filler_color = rule["filler_color"]
+        bg_color = rule["bg_color"]
+
+        rects = GeneralizeOperator._find_filler_rectangles(raw, filler_color, h, w)
+        if not rects:
+            return [row[:] for row in raw]
+
+        output = [row[:] for row in raw]
+
+        for (r1, c1, r2, c2) in rects:
+            corners = GeneralizeOperator._get_rect_corners(raw, r1, c1, r2, c2, h, w, bg_color, filler_color)
+            if corners is None:
+                continue
+
+            rect_h = r2 - r1 + 1
+            rect_w = c2 - c1 + 1
+            half_h = rect_h // 2
+            half_w = rect_w // 2
+
+            for r in range(r1, r2 + 1):
+                for c in range(c1, c2 + 1):
+                    qr = "t" if r < r1 + half_h else "b"
+                    qc = "l" if c < c1 + half_w else "r"
+                    output[r][c] = corners[qr + qc]
+
+            # Remove corner pixels
+            for cr, cc in [(r1-1,c1-1),(r1-1,c2+1),(r2+1,c1-1),(r2+1,c2+1)]:
+                if 0 <= cr < h and 0 <= cc < w:
+                    output[cr][cc] = bg_color
+
         return output
 
     # ---- helpers ---------------------------------------------------------

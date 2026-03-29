@@ -95,3 +95,39 @@
 - Stored rule hits: 6
 - Time: 36s
 - Log: logs/learn_20260329_144332.log
+
+---
+## Learning Loop -- 2026-03-29 14:45
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 13 -> 14 (+1 learned)
+- Stored rule hits: 6
+- Time: 36s
+- Log: logs/learn_20260329_144456.log
+
+---
+## Session 3 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **staircase_growth** -- input is a single row with N colored cells; output has W/2 rows where each successive row adds one more colored cell, forming a right-triangle staircase. Handles 1D-to-2D staircase/triangle expansion tasks.
+2. **corner_fill_quadrants** -- one or more rectangular blocks of a filler color, each with 4 colored pixels at the diagonal corners. Output replaces each filler block with 4 equal quadrants colored by the corresponding corner. Handles rectangle + corner marker → quadrant coloring tasks.
+
+### Tasks Solved
+- `bbc9ae5d`: staircase_growth
+- `e9ac8c9e`: corner_fill_quadrants
+
+### Results
+- Before: 6/20 (30%)
+- After: 8/20 (40%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 14:54
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 16 -> 17 (+1 learned)
+- Stored rule hits: 8
+- Time: 36s
+- Log: logs/learn_20260329_145332.log
