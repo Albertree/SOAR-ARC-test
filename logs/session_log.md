@@ -1059,3 +1059,37 @@ to find new failures (41/80 = 51.2% before improvements).
 - Stored rule hits: 50
 - Time: 169s
 - Log: logs/learn_20260329_200144.log
+
+---
+## Learning Loop -- 2026-03-29 20:08
+
+- Split: training, Tasks: 80
+- Correct: 55 / 80 (68.8%)
+- Rules: 162 -> 167 (+5 learned)
+- Stored rule hits: 52
+- Time: 164s
+- Log: logs/learn_20260329_200534.log
+
+---
+## Session 23 -- 2026-03-29 20:17
+
+**Baseline**: 55/80 (68.8%)
+
+**New strategies added**:
+1. `self_tile` — NxN input used as both pattern and layout; each non-zero cell becomes a copy of the entire grid, zero cells become all-zero NxN blocks, producing N²×N² output. Category: self-referential / fractal tiling. Solves 007bbfb7.
+2. `mirror_tile_repeat` — each row is reversed then concatenated with the original, and the unit is repeated k/2 times to fill the output width. Category: horizontal mirror + tiling expansion. Solves 59341089.
+3. `half_grid_and_zeros` — input split into two equal-width halves (each using a distinct non-zero color); output marks cells where BOTH halves are 0 with a marker color. Category: Boolean AND-of-zeros / NOR overlay. Solves e345f17b.
+
+**Result**: 58/80 (72.5%) — +3 tasks
+
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 20:19
+
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%)
+- Rules: 167 -> 175 (+8 learned)
+- Stored rule hits: 52
+- Time: 143s
+- Log: logs/learn_20260329_201718.log

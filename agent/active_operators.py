@@ -578,6 +578,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
+        # Strategy: self-referential tiling (NxN → kN×kN, each cell stamps grid or zeros)
+        if rule is None:
+            rule = self._try_self_tile(patterns, task)
+
+        # Strategy: mirror tile repeat (row → rev+orig repeated to fill output width)
+        if rule is None:
+            rule = self._try_mirror_tile_repeat(patterns, task)
+
+        # Strategy: half grid AND-zeros (two equal halves, output 4 where both are 0)
+        if rule is None:
+            rule = self._try_half_grid_and_zeros(patterns, task)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -5335,6 +5347,124 @@ class GeneralizeOperator(Operator):
 
         return {"type": "pattern_tile_fill", "confidence": 1.0}
 
+    # ---- strategy: self-referential tiling (fractal zoom) ----------------
+
+    def _try_self_tile(self, patterns, task):
+        """
+        Detect: NxN input → kN×kN output where k = N.  Each cell (r,c) of the
+        input controls a NxN block in the output: if cell is non-zero, that
+        block is a copy of the entire input grid; if cell is zero, that block
+        is all zeros.
+        Category: self-referential / fractal tiling tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if h != w:
+                return None
+            n = h
+            if oh != n * n or ow != n * n:
+                return None
+            # Verify self-tiling rule
+            for r in range(n):
+                for c in range(n):
+                    block_r = r * n
+                    block_c = c * n
+                    for dr in range(n):
+                        for dc in range(n):
+                            expected = ig[dr][dc] if ig[r][c] != 0 else 0
+                            if og[block_r + dr][block_c + dc] != expected:
+                                return None
+        return {"type": "self_tile", "confidence": 1.0}
+
+    # ---- strategy: mirror tile repeat ------------------------------------
+
+    def _try_mirror_tile_repeat(self, patterns, task):
+        """
+        Detect: output width is k * input width, same height.  Each output row
+        is built by repeating [reversed(input_row) + input_row] k/2 times.
+        Category: horizontal mirror + tiling expansion tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        k = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh != h:
+                return None
+            if w == 0 or ow % w != 0:
+                return None
+            pair_k = ow // w
+            if pair_k < 2 or pair_k % 2 != 0:
+                return None
+            if k is None:
+                k = pair_k
+            elif pair_k != k:
+                return None
+            # Build expected output: unit = reversed(row) + row, repeated k//2
+            half = pair_k // 2
+            for r in range(h):
+                unit = list(reversed(ig[r])) + list(ig[r])
+                expected_row = unit * half
+                if og[r] != expected_row:
+                    return None
+        return {"type": "mirror_tile_repeat", "k": k, "confidence": 1.0}
+
+    # ---- strategy: half-grid AND-zeros -----------------------------------
+
+    def _try_half_grid_and_zeros(self, patterns, task):
+        """
+        Detect: input width = 2 * output width.  Input is two equal-width halves
+        side by side, each using a distinct non-zero color on a 0 background.
+        Output marks cells where BOTH halves are 0 with a marker color; else 0.
+        Category: Boolean AND-of-zeros / NOR overlay tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        learned_marker = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh != h or w != 2 * ow:
+                return None
+            half_w = ow
+            left = [row[:half_w] for row in ig]
+            right = [row[half_w:] for row in ig]
+            # Detect marker color in output
+            out_colors = set()
+            for row in og:
+                for c in row:
+                    if c != 0:
+                        out_colors.add(c)
+            if len(out_colors) != 1:
+                return None
+            marker = next(iter(out_colors))
+            if learned_marker is None:
+                learned_marker = marker
+            elif marker != learned_marker:
+                return None
+            # Verify: output is marker where both halves are 0, else 0
+            for r in range(h):
+                for c in range(half_w):
+                    both_zero = (left[r][c] == 0 and right[r][c] == 0)
+                    expected = marker if both_zero else 0
+                    if og[r][c] != expected:
+                        return None
+        return {"type": "half_grid_and_zeros", "marker_color": learned_marker,
+                "confidence": 1.0}
+
 
 def _marker_arm_extend_transform(raw):
     """
@@ -6122,6 +6252,12 @@ class PredictOperator(Operator):
             return self._apply_boustrophedon_sort(rule, input_grid)
         if rule_type == "concentric_color_rotate":
             return self._apply_concentric_color_rotate(rule, input_grid)
+        if rule_type == "self_tile":
+            return self._apply_self_tile(rule, input_grid)
+        if rule_type == "mirror_tile_repeat":
+            return self._apply_mirror_tile_repeat(rule, input_grid)
+        if rule_type == "half_grid_and_zeros":
+            return self._apply_half_grid_and_zeros(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7914,6 +8050,46 @@ class PredictOperator(Operator):
         for row in raw:
             output.append([cmap.get(v, v) for v in row])
         return output
+
+    def _apply_self_tile(self, rule, input_grid):
+        """Each non-zero cell → copy of the entire grid; zero cell → all-zero block."""
+        raw = input_grid.raw
+        n = len(raw)
+        out = [[0] * (n * n) for _ in range(n * n)]
+        for r in range(n):
+            for c in range(n):
+                if raw[r][c] != 0:
+                    for dr in range(n):
+                        for dc in range(n):
+                            out[r * n + dr][c * n + dc] = raw[dr][dc]
+        return out
+
+    def _apply_mirror_tile_repeat(self, rule, input_grid):
+        """Each row → [reversed + original] repeated k/2 times."""
+        raw = input_grid.raw
+        k = rule["k"]
+        half = k // 2
+        out = []
+        for row in raw:
+            unit = list(reversed(row)) + list(row)
+            out.append(unit * half)
+        return out
+
+    def _apply_half_grid_and_zeros(self, rule, input_grid):
+        """Split input in half; output marker where both halves are 0."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0])
+        half_w = w // 2
+        marker = rule["marker_color"]
+        out = []
+        for r in range(h):
+            row = []
+            for c in range(half_w):
+                both_zero = (raw[r][c] == 0 and raw[r][half_w + c] == 0)
+                row.append(marker if both_zero else 0)
+            out.append(row)
+        return out
 
 
 # ======================================================================
