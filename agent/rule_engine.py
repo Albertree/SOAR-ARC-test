@@ -37,6 +37,8 @@ WATERFALL_ORDER = [
     "extract_center_column",
     "recolor_sequential",
     "color_mapping",
+    "grid_shear",
+    "gravity_settle",
 ]
 
 

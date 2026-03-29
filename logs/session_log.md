@@ -144,3 +144,32 @@
 
 **Improvement:** 10/20 → 12/20 (50% → 60%)
 **Memory reuse:** 10 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size, reverse_frames, scale_up, staircase_fill, quadrant_fill, fill_by_interior_size, path_with_turns, zone_expand)
+
+---
+## Learning Loop -- 2026-03-30 00:07
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 12
+- Time: 43s
+- Log: logs/learn_20260330_000622.log
+
+---
+## Learning Loop -- 2026-03-30 00:27
+
+- Split: training, Tasks: 20
+- Correct: 14 / 20 (70.0%)
+- Rules: 20 -> 22 (+2 learned)
+- Stored rule hits: 12
+- Time: 37s
+- Log: logs/learn_20260330_002720.log
+
+### Session 6 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `grid_shear` (geometry) — single-color grid/rectangle structure on bg=0; each row is cyclically shifted left/right following the pattern [-1, 0, +1, 0] with phase=(2-N)%4 where N=row count; bottom bar stays fixed → solved 1c56ad9f
+2. `gravity_settle` (geometry) — colored objects (rigid bodies) in separator-bounded cells settle downward with a 1-row gap from the separator floor; separator color varies per task, detected via unchanged positions (train) or bottom-row heuristic (test) → solved 825aa9e9
+
+**Improvement:** 12/20 → 14/20 (60% → 70%)
+**Memory reuse:** 12 stored rules successfully reused
