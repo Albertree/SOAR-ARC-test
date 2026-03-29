@@ -23,11 +23,9 @@ _loaded = False
 # Rules listed here are tried in this order; any newly added rules
 # not in this list are appended at the end automatically.
 WATERFALL_ORDER = [
-    "fill_rect_by_size",
-    "corner_quadrant_fill",
-    "scale_up",
     "mirror_vertical_append",
-    "component_size_recolor",
+    "recolor_by_size",
+    "extract_center_column",
     "recolor_sequential",
     "color_mapping",
 ]

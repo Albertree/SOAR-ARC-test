@@ -1,40 +1,36 @@
-"""mirror_vertical_append — output is input stacked on its vertical mirror."""
+"""mirror_vertical_append -- output is input stacked with its vertical flip."""
 
 RULE_TYPE = "mirror_vertical_append"
 CATEGORY = "geometry"
 
 
 def try_rule(patterns, task):
-    """Detect: output height = 2 * input height, bottom half is vertically flipped top half."""
-    if not task or not task.example_pairs:
+    """Detect: output height = 2 * input height, top = input, bottom = rows reversed."""
+    pairs = task.example_pairs
+    if not pairs:
         return None
 
-    for pair in task.example_pairs:
-        g0 = pair.input_grid
-        g1 = pair.output_grid
-        if g0 is None or g1 is None:
+    for pair in pairs:
+        inp = pair.input_grid.raw
+        out = pair.output_grid.raw
+        h_in = len(inp)
+        w_in = len(inp[0]) if inp else 0
+        h_out = len(out)
+        w_out = len(out[0]) if out else 0
+
+        # Output must be exactly double height, same width
+        if h_out != 2 * h_in or w_out != w_in:
             return None
-
-        h0, w0 = g0.height, g0.width
-        h1, w1 = g1.height, g1.width
-
-        if h1 != 2 * h0 or w1 != w0:
-            return None
-
-        raw_in = g0.raw
-        raw_out = g1.raw
 
         # Top half must equal input
-        for r in range(h0):
-            for c in range(w0):
-                if raw_out[r][c] != raw_in[r][c]:
-                    return None
+        for r in range(h_in):
+            if out[r] != inp[r]:
+                return None
 
-        # Bottom half must be vertically flipped input
-        for r in range(h0):
-            for c in range(w0):
-                if raw_out[h0 + r][c] != raw_in[h0 - 1 - r][c]:
-                    return None
+        # Bottom half must equal input rows reversed
+        for r in range(h_in):
+            if out[h_in + r] != inp[h_in - 1 - r]:
+                return None
 
     return {
         "type": RULE_TYPE,
@@ -43,7 +39,7 @@ def try_rule(patterns, task):
 
 
 def apply_rule(rule, input_grid):
-    """Apply: stack input on its vertically flipped copy."""
+    """Stack input with its vertically flipped copy."""
     raw = input_grid.raw
     top = [row[:] for row in raw]
     bottom = [row[:] for row in reversed(raw)]
