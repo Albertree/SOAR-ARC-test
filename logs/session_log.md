@@ -173,3 +173,32 @@
 
 **Improvement:** 12/20 → 14/20 (60% → 70%)
 **Memory reuse:** 12 stored rules successfully reused
+
+---
+## Learning Loop -- 2026-03-30 00:29
+
+- Split: training, Tasks: 20
+- Correct: 14 / 20 (70.0%)
+- Rules: 22 -> 22 (+0 learned)
+- Stored rule hits: 14
+- Time: 45s
+- Log: logs/learn_20260330_002839.log
+
+---
+## Learning Loop -- 2026-03-30 00:43
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 22 -> 24 (+2 learned)
+- Stored rule hits: 14
+- Time: 37s
+- Log: logs/learn_20260330_004238.log
+
+### Session 7 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `quadrant_shape_swap` (structure) — grid divided by 0-separators into cell pairs; horizontal pairs swap shapes with recoloring (shape takes source cell's bg color); same-bg pairs erase both shapes → solved 5a719d11
+2. `arrow_ray_edge` (detect) — arrow shapes (body + 1 tip cell) fire dotted rays (every 2 cells) away from body toward grid edge; hit edge row/col fills with tip color; corners where two edges meet become 0 → solved 13f06aa5
+
+**Improvement:** 14/20 → 16/20 (70% → 80%)
+**Memory reuse:** 14 stored rules successfully reused
