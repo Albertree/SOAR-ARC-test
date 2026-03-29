@@ -250,3 +250,39 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 12
 - Time: 36s
 - Log: logs/learn_20260329_153957.log
+
+---
+## Learning Loop -- 2026-03-29 15:42
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 12
+- Time: 37s
+- Log: logs/learn_20260329_154137.log
+
+---
+## Session 7 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **lpath_chain** -- L-shaped path routing from a source pixel (color 3) through directional waypoints. Two waypoint colors determine turn direction (one=down, one=up). Path fills source color in L-shaped zigzag segments, turning at each waypoint. Handles path-drawing / zigzag connector tasks.
+2. **arrow_chain_mirror** -- grid split by a separator row. Bottom half has "dot" pixels and "arrow" pixels. Each dot follows its adjacent chain of arrows to the end position. Top half mirrors the final dot positions across the separator. Handles separator + directional chain + mirror tasks.
+
+### Tasks Solved
+- `e5790162`: lpath_chain
+- `c9680e90`: arrow_chain_mirror
+
+### Results
+- Before: 13/20 (65%)
+- After: 15/20 (75%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 15:53
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 14
+- Time: 36s
+- Log: logs/learn_20260329_155302.log

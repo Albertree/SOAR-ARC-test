@@ -378,6 +378,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_recolor_by_size(patterns, task)
 
+        # Strategy: L-path chain (source + directional waypoints)
+        if rule is None:
+            rule = self._try_lpath_chain(patterns, task)
+
+        # Strategy: arrow chain mirror (separator row + arrow chains)
+        if rule is None:
+            rule = self._try_arrow_chain_mirror(patterns, task)
+
         # Strategy: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -1797,6 +1805,312 @@ class GeneralizeOperator(Operator):
         }
 
 
+    # ---- strategy: L-path chain ------------------------------------------
+
+    def _try_lpath_chain(self, patterns, task):
+        """
+        Detect: a grid with a source pixel (color S), directional waypoints
+        (two distinct colors D and U), and background. The output draws an
+        L-shaped chain of S-colored pixels connecting waypoints.
+        D-waypoints cause downward turns, U-waypoints cause upward turns.
+        Category: L-path routing / zigzag connector tasks.
+        """
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            if len(g0.raw) != len(g1.raw) or len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+
+        # Find the path color and waypoint colors across ALL pairs
+        first_in = task.example_pairs[0].input_grid.raw
+        bg = Counter(c for row in first_in for c in row).most_common(1)[0][0]
+
+        # Gather all non-bg colors across all pairs
+        in_colors = set()
+        new_in_output = set()
+        for pair in task.example_pairs:
+            raw_in, raw_out = pair.input_grid.raw, pair.output_grid.raw
+            h, w = len(raw_in), len(raw_in[0])
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != bg:
+                        in_colors.add(raw_in[r][c])
+                    if raw_in[r][c] == bg and raw_out[r][c] != bg:
+                        new_in_output.add(raw_out[r][c])
+
+        # The path color appears in output where input was bg
+        if len(new_in_output) != 1:
+            return None
+        path_color = new_in_output.pop()
+        if path_color not in in_colors:
+            return None
+
+        # The waypoint colors are the other non-bg, non-path colors
+        waypoint_colors = in_colors - {path_color}
+        if len(waypoint_colors) != 2:
+            return None
+
+        # Determine which is DOWN and which is UP by simulating
+        wc_list = list(waypoint_colors)
+        for down_color, up_color in [(wc_list[0], wc_list[1]), (wc_list[1], wc_list[0])]:
+            if self._validate_lpath(task, bg, path_color, down_color, up_color):
+                return {
+                    "type": "lpath_chain",
+                    "bg": bg,
+                    "path_color": path_color,
+                    "down_color": down_color,
+                    "up_color": up_color,
+                    "confidence": 0.95,
+                }
+        return None
+
+    def _validate_lpath(self, task, bg, path_color, down_color, up_color):
+        """Validate L-path chain rule on all example pairs."""
+        for pair in task.example_pairs:
+            predicted = self._run_lpath(pair.input_grid.raw, bg, path_color, down_color, up_color)
+            if predicted != pair.output_grid.raw:
+                return False
+        return True
+
+    @staticmethod
+    def _run_lpath(raw, bg, path_color, down_color, up_color):
+        """Execute L-path chain algorithm on a grid."""
+        h, w = len(raw), len(raw[0])
+        output = [row[:] for row in raw]
+
+        # Find the source cell (path_color in input)
+        sources = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == path_color]
+        if len(sources) != 1:
+            return output
+        sr, sc = sources[0]
+
+        # Build waypoint sets
+        waypoints = set()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] in (down_color, up_color):
+                    waypoints.add((r, c))
+
+        # Trace path
+        cr, cc = sr, sc
+        direction = "right"
+        max_steps = h * w  # safety limit
+
+        for _ in range(max_steps):
+            if direction == "right":
+                # Find nearest waypoint on this row to the right
+                target_col = None
+                for wc_pos in sorted(waypoints, key=lambda p: p[1]):
+                    if wc_pos[0] == cr and wc_pos[1] > cc:
+                        target_col = wc_pos[1]
+                        break
+                if target_col is not None:
+                    # Fill from cc+1 to target_col-1
+                    for c in range(cc + 1, target_col):
+                        output[cr][c] = path_color
+                    cc = target_col - 1
+                    wp_color = raw[cr][target_col]
+                    direction = "down" if wp_color == down_color else "up"
+                else:
+                    # Fill to right edge
+                    for c in range(cc + 1, w):
+                        output[cr][c] = path_color
+                    break
+
+            elif direction == "up":
+                # Find nearest waypoint in this column above
+                target_row = None
+                for wr, wc_c in sorted(waypoints, key=lambda p: -p[0]):
+                    if wc_c == cc and wr < cr:
+                        target_row = wr
+                        break
+                if target_row is not None:
+                    for r in range(cr - 1, target_row, -1):
+                        output[r][cc] = path_color
+                    cr = target_row + 1
+                    direction = "right"
+                else:
+                    for r in range(cr - 1, -1, -1):
+                        output[r][cc] = path_color
+                    break
+
+            elif direction == "down":
+                # Find nearest waypoint in this column below
+                target_row = None
+                for wr, wc_c in sorted(waypoints, key=lambda p: p[0]):
+                    if wc_c == cc and wr > cr:
+                        target_row = wr
+                        break
+                if target_row is not None:
+                    for r in range(cr + 1, target_row):
+                        output[r][cc] = path_color
+                    cr = target_row - 1
+                    direction = "right"
+                else:
+                    for r in range(cr + 1, h):
+                        output[r][cc] = path_color
+                    break
+
+        return output
+
+    # ---- strategy: arrow chain mirror -------------------------------------
+
+    def _try_arrow_chain_mirror(self, patterns, task):
+        """
+        Detect: grid split by a separator row (all one color). Bottom half
+        has 'dot' pixels and 'arrow' pixels. Each dot follows its adjacent
+        chain of arrows to the end position. Top half mirrors the final
+        dot positions across the separator.
+        Category: separator + directional chain + mirror tasks.
+        """
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            if len(g0.raw) != len(g1.raw) or len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+
+        first_in = task.example_pairs[0].input_grid.raw
+        h, w = len(first_in), len(first_in[0])
+        bg = Counter(c for row in first_in for c in row).most_common(1)[0][0]
+
+        # Find separator row (all same non-bg color)
+        sep_row = None
+        sep_color = None
+        for r in range(h):
+            row_vals = set(first_in[r])
+            if len(row_vals) == 1 and first_in[r][0] != bg:
+                sep_row = r
+                sep_color = first_in[r][0]
+                break
+        if sep_row is None:
+            return None
+
+        # Identify colors in top and bottom halves
+        top_colors = set()
+        bot_colors = set()
+        for r in range(h):
+            for c in range(w):
+                v = first_in[r][c]
+                if v == bg or v == sep_color:
+                    continue
+                if r < sep_row:
+                    top_colors.add(v)
+                elif r > sep_row:
+                    bot_colors.add(v)
+
+        if len(top_colors) != 1 or len(bot_colors) != 2:
+            return None
+
+        top_color = top_colors.pop()
+        bot_list = list(bot_colors)
+
+        # Determine which is dot_color and which is arrow_color
+        for dot_color, arrow_color in [(bot_list[0], bot_list[1]), (bot_list[1], bot_list[0])]:
+            if self._validate_arrow_mirror(task, bg, sep_color, sep_row, top_color, dot_color, arrow_color):
+                return {
+                    "type": "arrow_chain_mirror",
+                    "bg": bg,
+                    "sep_color": sep_color,
+                    "top_color": top_color,
+                    "dot_color": dot_color,
+                    "arrow_color": arrow_color,
+                    "confidence": 0.95,
+                }
+        return None
+
+    def _validate_arrow_mirror(self, task, bg, sep_color, sep_row_ref, top_color, dot_color, arrow_color):
+        """Validate arrow chain mirror rule on all example pairs."""
+        for pair in task.example_pairs:
+            raw = pair.input_grid.raw
+            h, w = len(raw), len(raw[0])
+
+            # Find separator row in this pair
+            sep_row = None
+            for r in range(h):
+                if all(raw[r][c] == sep_color for c in range(w)):
+                    sep_row = r
+                    break
+            if sep_row is None:
+                return False
+
+            predicted = self._run_arrow_mirror(raw, bg, sep_color, sep_row, top_color, dot_color, arrow_color)
+            if predicted != pair.output_grid.raw:
+                return False
+        return True
+
+    @staticmethod
+    def _run_arrow_mirror(raw, bg, sep_color, sep_row, top_color, dot_color, arrow_color):
+        """Execute arrow chain mirror algorithm."""
+        h, w = len(raw), len(raw[0])
+        output = [row[:] for row in raw]
+
+        # Clear top half (except separator)
+        for r in range(sep_row):
+            for c in range(w):
+                if output[r][c] != sep_color:
+                    output[r][c] = bg
+
+        # Find dots and arrows in bottom half
+        dots = []
+        arrows = set()
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if raw[r][c] == dot_color:
+                    dots.append((r, c))
+                elif raw[r][c] == arrow_color:
+                    arrows.add((r, c))
+
+        # Clear bottom half
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if output[r][c] != sep_color:
+                    output[r][c] = bg
+
+        # For each dot, follow the arrow chain
+        new_dot_positions = []
+        for dr, dc in dots:
+            # Find adjacent arrow
+            best_pos = (dr, dc)  # fallback: stay
+            for ddr, ddc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = dr + ddr, dc + ddc
+                if (nr, nc) in arrows:
+                    # Follow chain in this direction
+                    cur_r, cur_c = nr, nc
+                    while (cur_r, cur_c) in arrows:
+                        next_r, next_c = cur_r + ddr, cur_c + ddc
+                        if (next_r, next_c) in arrows:
+                            cur_r, cur_c = next_r, next_c
+                        else:
+                            break
+                    best_pos = (cur_r, cur_c)
+                    break
+            new_dot_positions.append(best_pos)
+
+        # Place dots at new positions
+        for r, c in new_dot_positions:
+            output[r][c] = dot_color
+
+        # Mirror dot positions to top half
+        for r, c in new_dot_positions:
+            mirror_r = 2 * sep_row - r
+            if 0 <= mirror_r < sep_row:
+                output[mirror_r][c] = top_color
+
+        # Keep separator
+        for c in range(w):
+            output[sep_row][c] = sep_color
+
+        return output
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -1889,6 +2203,10 @@ class PredictOperator(Operator):
             return self._apply_cross_projection(rule, input_grid)
         if rule_type == "quadrant_shape_swap":
             return self._apply_quadrant_shape_swap(rule, input_grid)
+        if rule_type == "lpath_chain":
+            return self._apply_lpath_chain(rule, input_grid)
+        if rule_type == "arrow_chain_mirror":
+            return self._apply_arrow_chain_mirror(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2359,6 +2677,34 @@ class PredictOperator(Operator):
                             output[rs + sr][cs_r + sc] = bg_l
 
         return output
+
+    def _apply_lpath_chain(self, rule, input_grid):
+        """Apply L-path chain rule."""
+        raw = input_grid.raw
+        return GeneralizeOperator._run_lpath(
+            raw, rule["bg"], rule["path_color"],
+            rule["down_color"], rule["up_color"]
+        )
+
+    def _apply_arrow_chain_mirror(self, rule, input_grid):
+        """Apply arrow chain mirror rule."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        sep_color = rule["sep_color"]
+
+        # Find separator row
+        sep_row = None
+        for r in range(h):
+            if all(raw[r][c] == sep_color for c in range(w)):
+                sep_row = r
+                break
+        if sep_row is None:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._run_arrow_mirror(
+            raw, rule["bg"], sep_color, sep_row,
+            rule["top_color"], rule["dot_color"], rule["arrow_color"]
+        )
 
     # ---- helpers ---------------------------------------------------------
 
