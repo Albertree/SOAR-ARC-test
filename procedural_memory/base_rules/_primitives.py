@@ -3072,3 +3072,33 @@ def separator_gravity_bars(grid):
             out[r + 1][c + 1] = inner[r][c]
 
     return out
+
+
+# ============================================================
+# PATTERN GENERATION primitives
+# ============================================================
+
+def checkerboard(grid):
+    """Generate grid-line pattern: cell (r,c) = 0 only when both r and c are odd, else 1.
+    Output same dimensions as input."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    return [[(0 if (r % 2 == 1 and c % 2 == 1) else 1) for c in range(w)] for r in range(h)]
+
+
+def kronecker_self(grid):
+    """Kronecker product of grid with itself.
+    Each non-zero cell is replaced by a copy of the entire grid;
+    each zero cell is replaced by an NxM block of zeros."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    out_h = h * h
+    out_w = w * w
+    out = [[0] * out_w for _ in range(out_h)]
+    for br in range(h):
+        for bc in range(w):
+            if grid[br][bc] != 0:
+                for r in range(h):
+                    for c in range(w):
+                        out[br * h + r][bc * w + c] = grid[r][c]
+    return out

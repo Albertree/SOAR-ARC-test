@@ -1,0 +1,19 @@
+{
+  "concept_id": "checkerboard_fill",
+  "version": 1,
+  "description": "Fill all-zero grid with checkerboard pattern (1 where r+c is even)",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "checkerboard",
+      "args": {"grid": "$input"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

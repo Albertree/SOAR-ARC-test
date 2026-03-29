@@ -499,3 +499,50 @@
 - Time: 77s
 - Log: logs/learn_20260330_072140.log
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-30 07:24
+
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 40 -> 40 (+0 learned)
+- Stored rule hits: 40
+- Time: 75s
+- Log: logs/learn_20260330_072325.log
+
+---
+## Learning Loop -- 2026-03-30 07:27
+
+- Split: training, Tasks: 80
+- Correct: 41 / 80 (51.2%)
+- Rules: 40 -> 41 (+1 learned)
+- Stored rule hits: 40
+- Time: 155s
+- Log: logs/learn_20260330_072505.log
+
+---
+## Session 17 (Claude) -- 2026-03-30 07:34
+
+### Changes
+- Added `checkerboard` primitive to `_primitives.py` — generates grid-line pattern (0 only where both r and c are odd, else 1)
+- Added `kronecker_self` primitive to `_primitives.py` — Kronecker product of grid with itself (non-zero cells → copy of grid, zero cells → zero block)
+- Created `procedural_memory/concepts/mirror_four_way.json` (solves 62c24649, 67e8384a) — tiles input in 2x2 with horizontal and vertical mirror symmetry using existing flip/concat primitives
+- Created `procedural_memory/concepts/checkerboard_fill.json` (solves 332efdb3) — fills all-zero grid with grid-line pattern
+- Created `procedural_memory/concepts/kronecker_self_tile.json` (solves 007bbfb7) — Kronecker self-tiling where each non-zero cell becomes a copy of the entire grid
+
+### Results
+- Before: 41 / 80 (51.2%)
+- After:  45 / 80 (56.2%)  +4 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 3 (mirror_four_way, checkerboard_fill, kronecker_self_tile)
+- Note: Expanded from 40-task set (100%) to 80-task set for new challenges
+
+---
+## Learning Loop -- 2026-03-30 07:34
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)
+- Rules: 41 -> 44 (+3 learned)
+- Stored rule hits: 42
+- Time: 137s
+- Log: logs/learn_20260330_073158.log
