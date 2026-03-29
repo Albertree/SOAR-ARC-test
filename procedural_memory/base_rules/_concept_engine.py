@@ -408,6 +408,62 @@ def _infer_start_color(task, arckg_features, patterns):
     return min_out
 
 
+@_register_infer("path_start_color")
+def _infer_path_start_color(task, arckg_features, patterns):
+    """Find the path start color: the non-bg color at the leftmost column across all pairs."""
+    color = None
+    for pair in task.example_pairs:
+        bg = P.find_bg_color(pair.input_grid.raw)
+        best_col = None
+        best_color = None
+        for r, row in enumerate(pair.input_grid.raw):
+            for c, v in enumerate(row):
+                if v != bg:
+                    if best_col is None or c < best_col:
+                        best_col = c
+                        best_color = v
+        if best_color is None:
+            return None
+        if color is None:
+            color = best_color
+        elif color != best_color:
+            return None
+    return color
+
+
+@_register_infer("content_color_that_moves")
+def _infer_content_color_that_moves(task, arckg_features, patterns):
+    """Find the non-bg color whose cell positions change between input and output.
+    The 'wall' color stays fixed; the 'content' color moves."""
+    moved = None
+    for pair in task.example_pairs:
+        g_in = pair.input_grid.raw
+        g_out = pair.output_grid.raw
+        bg = P.find_bg_color(g_in)
+        colors = set()
+        for row in g_in:
+            for v in row:
+                if v != bg:
+                    colors.add(v)
+        for c in colors:
+            pos_in = set()
+            pos_out = set()
+            h = len(g_in)
+            w = len(g_in[0]) if g_in else 0
+            for r in range(h):
+                for col in range(w):
+                    if g_in[r][col] == c:
+                        pos_in.add((r, col))
+                    if r < len(g_out) and col < len(g_out[0]) and g_out[r][col] == c:
+                        pos_out.add((r, col))
+            if pos_in != pos_out:
+                if moved is None:
+                    moved = c
+                elif moved != c:
+                    return None  # multiple colors moved — ambiguous
+    return moved
+
+
 @_register_infer("from_examples")
 def _infer_from_examples(task, arckg_features, patterns):
     """Placeholder — actual brute-force handled by the engine."""

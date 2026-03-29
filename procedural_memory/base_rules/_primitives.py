@@ -490,6 +490,146 @@ def staircase_grow(grid):
     return output
 
 
+def draw_turn_path(grid, path_color, cw_color, ccw_color, bg=0):
+    """Draw an L-shaped path from the path_color pixel, turning at waypoints.
+    Start at the path_color pixel, go RIGHT.
+    When next cell is cw_color: turn clockwise (don't enter the waypoint cell).
+    When next cell is ccw_color: turn counterclockwise.
+    When next cell is out of bounds: stop.
+    Draws the path in path_color, leaving waypoint cells unchanged."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find start position (path_color pixel)
+    start = None
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == path_color:
+                start = (r, c)
+                break
+        if start:
+            break
+    if not start:
+        return output
+
+    # Direction vectors: RIGHT=0, DOWN=1, LEFT=2, UP=3
+    dirs = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+    dir_idx = 0  # Start going RIGHT
+
+    r, c = start
+    output[r][c] = path_color
+
+    while True:
+        dr, dc = dirs[dir_idx]
+        nr, nc = r + dr, c + dc
+
+        if nr < 0 or nr >= h or nc < 0 or nc >= w:
+            break
+
+        cell = grid[nr][nc]
+
+        if cell == bg or cell == path_color:
+            output[nr][nc] = path_color
+            r, c = nr, nc
+        elif cell == cw_color:
+            dir_idx = (dir_idx + 1) % 4  # clockwise
+        elif cell == ccw_color:
+            dir_idx = (dir_idx - 1) % 4  # counterclockwise
+        else:
+            break
+
+    return output
+
+
+def gravity_rigid_body(grid, bg=0):
+    """Drop content objects downward as rigid bodies with 1-row gap above walls.
+    Auto-detects wall (non-bg color in bottom row) and content (all other non-bg).
+    Each connected component of content drops as a rigid body.
+    Components stack on each other without a gap."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0:
+        return [row[:] for row in grid]
+
+    # Auto-detect wall color from bottom row
+    bottom_colors = set(grid[h - 1][c] for c in range(w)) - {bg}
+    if len(bottom_colors) != 1:
+        return [row[:] for row in grid]
+    wall_color = bottom_colors.pop()
+
+    # Content = all non-bg, non-wall cells
+    content_cells = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg and grid[r][c] != wall_color:
+                content_cells.add((r, c))
+    if not content_cells:
+        return [row[:] for row in grid]
+
+    # Find connected components (4-connectivity) among content cells
+    visited = set()
+    components = []
+    for r, c in sorted(content_cells):
+        if (r, c) in visited:
+            continue
+        comp = []
+        queue = [(r, c)]
+        visited.add((r, c))
+        while queue:
+            cr, cc = queue.pop(0)
+            comp.append((cr, cc))
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) in content_cells and (nr, nc) not in visited:
+                    visited.add((nr, nc))
+                    queue.append((nr, nc))
+        components.append(comp)
+
+    # Sort by max row descending (process bottom components first)
+    components.sort(key=lambda comp: -max(r for r, c in comp))
+
+    # Clear content from output
+    output = [row[:] for row in grid]
+    for r, c in content_cells:
+        output[r][c] = bg
+
+    # Drop each component
+    for comp in components:
+        cols = set(c for _, c in comp)
+        min_drop = float('inf')
+
+        for col in cols:
+            bottom = max(r for r, c in comp if c == col)
+
+            # Find floor: first non-bg row below bottom in current output
+            floor_row = h
+            for r in range(bottom + 1, h):
+                if output[r][col] != bg:
+                    floor_row = r
+                    break
+
+            # Wall or grid-bottom: 1-row gap. Placed content: no gap.
+            if floor_row >= h or grid[floor_row][col] == wall_color:
+                effective = floor_row - 2
+            else:
+                effective = floor_row - 1
+
+            col_drop = effective - bottom
+            if col_drop < min_drop:
+                min_drop = col_drop
+
+        if min_drop < 0 or min_drop == float('inf'):
+            min_drop = 0
+
+        for r, c in comp:
+            new_r = r + min_drop
+            if 0 <= new_r < h:
+                output[new_r][c] = grid[r][c]  # preserve original color
+
+    return output
+
+
 def fill_rects_by_size(grid, border_color, bg=0, start_color=6):
     """Find rectangles bordered by border_color, fill interiors by size.
     Fill color = start_color + (interior_width - 1), giving a fixed mapping."""

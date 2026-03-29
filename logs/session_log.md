@@ -52,3 +52,32 @@
 - Stored rule hits: 6
 - Time: 35s
 - Log: logs/learn_20260330_030944.log
+
+---
+## Learning Loop -- 2026-03-30 03:11
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 8
+- Time: 35s
+- Log: logs/learn_20260330_031042.log
+
+---
+## Session 3 (Claude) -- 2026-03-30 03:36
+
+### Changes
+- Added `draw_turn_path` primitive to `_primitives.py` — draws L-shaped path from start pixel, turning CW at one waypoint color and CCW at another, continuing to grid boundary
+- Added `gravity_rigid_body` primitive to `_primitives.py` — auto-detects wall (bottom row color) and content, drops connected components as rigid bodies with 1-row gap above walls
+- Added `path_start_color` inference method to `_concept_engine.py` — finds the non-bg color at the leftmost column across all pairs
+- Added `content_color_that_moves` inference method to `_concept_engine.py` — finds the non-bg color whose positions change between input and output
+- Created `procedural_memory/concepts/waypoint_turn_path.json` (solves e5790162)
+- Created `procedural_memory/concepts/gravity_to_wall.json` (solves 825aa9e9)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 10 / 20 (50.0%) — up from 8/20 (40.0%)
+- Rules: 8 -> 10 (+2 learned)
+- Stored rule hits: 8
+- Time: 39s
+- Log: logs/learn_20260330_033540.log
