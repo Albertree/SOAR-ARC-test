@@ -322,3 +322,35 @@
 
 **Improvement:** 2/20 → 5/20 (10% → 25%)
 **Memory reuse:** 2 stored rules successfully reused (mirror_and_concat, scale_uniform)
+
+---
+## Learning Loop -- 2026-03-30 02:33
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 10 -> 12 (+2 learned)
+- Stored rule hits: 5
+- Time: 36s
+- Log: logs/learn_20260330_023239.log
+
+---
+## Learning Loop -- 2026-03-30 02:41
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 12 -> 16 (+4 learned)
+- Stored rule hits: 5
+- Time: 35s
+- Log: logs/learn_20260330_024115.log
+
+### Session 11 Analysis (Claude Code)
+
+**New rules added (3):**
+1. `fill_by_interior_size` (fill) — hollow rectangles bordered by a single color; interiors filled with a color determined by interior area (1x1→6, 2x2→7, 3x3→8); mapping learned from examples → solved c0f76784
+2. `quadrant_fill` (fill) — solid rectangle of filler color with 4 diagonal corner markers; each quadrant of the rectangle is filled with its nearest corner's color; corner markers removed → solved e9ac8c9e
+3. `extract_center_column` (structure) — keep only the center column (index = width // 2) of the input grid, fill all other cells with background color → solved d23f8c26
+
+**Also fixed:** concept engine `_infer_column_index` to handle center-column pattern (variable index across grid widths); added -1 sentinel resolved at execution time.
+
+**Improvement:** 5/20 → 8/20 (25% → 40%)
+**Memory reuse:** 5 stored rules successfully reused (mirror_and_concat, recolor_by_size, reverse_frames, scale_uniform, staircase_fill)

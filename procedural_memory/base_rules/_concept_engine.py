@@ -320,7 +320,31 @@ def _infer_column_index(task, arckg_features, patterns):
         if col is None:
             col = preserved_cols[0]
         elif col != preserved_cols[0]:
-            return None
+            # Check if all preserved columns are center columns (width // 2)
+            # Reset and check center-column hypothesis
+            col = None
+            for pair2 in task.example_pairs:
+                g0 = pair2.input_grid
+                g1 = pair2.output_grid
+                comp2 = arckg_compare(g0, g1)
+                cat2 = comp2.get("result", {}).get("category", {})
+                cnt2 = cat2.get("contents", {})
+                gi2 = cnt2.get("comp1", [])
+                go2 = cnt2.get("comp2", [])
+                if not gi2 or not go2:
+                    return None
+                w2 = len(gi2[0])
+                center = w2 // 2
+                h2 = len(gi2)
+                bg2 = P.find_bg_color(go2)
+                if not all(go2[r][center] == gi2[r][center] for r in range(h2)):
+                    return None
+                if not any(gi2[r][center] != bg2 for r in range(h2)):
+                    return None
+            # All pairs use center column — return center of test grid
+            # We need to return a value that works for test input too
+            # Use -1 as sentinel for "center column"
+            return -1
     return col
 
 
@@ -394,7 +418,12 @@ def _execute_concept(concept, params, input_grid_raw):
     env = {"input": input_grid_raw}
     env["input_height"] = len(input_grid_raw)
     env["input_width"] = len(input_grid_raw[0]) if input_grid_raw else 0
-    env.update(params)
+    # Resolve sentinel values before merging params
+    resolved_params = dict(params)
+    for k, v in resolved_params.items():
+        if v == -1 and k == "col_index":
+            resolved_params[k] = env["input_width"] // 2
+    env.update(resolved_params)
 
     for step in concept["steps"]:
         primitive_name = step["primitive"]

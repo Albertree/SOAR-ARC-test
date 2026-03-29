@@ -25,9 +25,12 @@ _loaded = False
 WATERFALL_ORDER = [
     "recolor_sequential",
     "recolor_by_size",
+    "extract_center_column",
     "color_mapping",
     "staircase_fill",
     "reverse_frames",
+    "quadrant_fill",
+    "fill_by_interior_size",
 ]
 
 
