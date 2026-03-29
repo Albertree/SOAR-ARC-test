@@ -2208,3 +2208,294 @@ def rotation_quad_tile_2x2(grid):
     top_half = concat_horizontal(tl, tr)
     bottom_half = concat_horizontal(bl, br)
     return concat_vertical(top_half, bottom_half)
+
+
+def compress_separator_intersections(grid):
+    """Extract colored pattern from grid separator intersections and compress.
+
+    For grids with regular separator lines forming a mega-grid, extracts the
+    colors at separator-line intersections that differ from the separator color,
+    then compresses by collapsing identical adjacent rows/cols with gap insertion.
+
+    Algorithm:
+    1. Find separator color (most common), detect regular row/col positions
+    2. Extract intersection values (non-separator → color, separator → 0)
+    3. Crop to bounding box of non-zero values
+    4. Group adjacent identical rows and columns
+    5. Each group of N identical rows/cols → N-1 output rows/cols
+    6. Insert 1 gap row/col between adjacent groups
+    7. Gap cells: use neighbor value if all adjacent corners agree, else 0
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h < 5 or w < 5:
+        return None
+
+    # Find separator color by detecting rows dominated by one color (>= 70%)
+    # Group candidate separator rows by their dominant color
+    threshold_frac = 0.7
+    row_candidates = {}  # color -> list of row indices
+    for r in range(h):
+        counts = {}
+        for c in range(w):
+            v = grid[r][c]
+            counts[v] = counts.get(v, 0) + 1
+        dominant = max(counts, key=counts.get)
+        if counts[dominant] >= w * threshold_frac:
+            row_candidates.setdefault(dominant, []).append(r)
+
+    # For each candidate color, check if its rows form a regular stride
+    sep_color = None
+    sep_rows = None
+    best_regularity = 0
+    for color, rows in row_candidates.items():
+        if len(rows) < 3:
+            continue
+        # Find most common stride
+        diffs = [rows[i + 1] - rows[i] for i in range(len(rows) - 1)]
+        stride_counts = {}
+        for d in diffs:
+            stride_counts[d] = stride_counts.get(d, 0) + 1
+        if not stride_counts:
+            continue
+        best_stride = max(stride_counts, key=stride_counts.get)
+        regularity = stride_counts[best_stride]
+        if regularity > best_regularity and best_stride >= 2:
+            best_regularity = regularity
+            sep_color = color
+            row_stride = best_stride
+    if sep_color is None:
+        return None
+
+    # Generate all separator row positions using detected stride
+    candidate_rows = row_candidates[sep_color]
+    first_r = candidate_rows[0] % row_stride
+    sep_rows = list(range(first_r, h, row_stride))
+
+    # Detect separator columns similarly
+    col_candidates = {}
+    for c in range(w):
+        counts = {}
+        for r in range(h):
+            v = grid[r][c]
+            counts[v] = counts.get(v, 0) + 1
+        dominant = max(counts, key=counts.get)
+        if counts[dominant] >= h * threshold_frac:
+            col_candidates.setdefault(dominant, []).append(c)
+
+    candidate_cols = col_candidates.get(sep_color, [])
+    if len(candidate_cols) < 3:
+        return None
+    col_diffs = [candidate_cols[i + 1] - candidate_cols[i] for i in range(len(candidate_cols) - 1)]
+    col_stride_counts = {}
+    for d in col_diffs:
+        col_stride_counts[d] = col_stride_counts.get(d, 0) + 1
+    col_stride = max(col_stride_counts, key=col_stride_counts.get)
+    if col_stride < 2:
+        return None
+
+    first_c = candidate_cols[0] % col_stride
+    sep_cols = list(range(first_c, w, col_stride))
+
+    # Extract intersection grid
+    inter = []
+    for ri in sep_rows:
+        row = []
+        for ci in sep_cols:
+            v = grid[ri][ci]
+            row.append(0 if v == sep_color else v)
+        inter.append(row)
+
+    # Find bounding box of non-zero values
+    min_r = min_c = float('inf')
+    max_r = max_c = -1
+    for ri in range(len(inter)):
+        for ci in range(len(inter[0])):
+            if inter[ri][ci] != 0:
+                min_r = min(min_r, ri)
+                max_r = max(max_r, ri)
+                min_c = min(min_c, ci)
+                max_c = max(max_c, ci)
+    if max_r < 0:
+        return None
+
+    # Crop to bounding box
+    cropped = [inter[ri][min_c:max_c + 1] for ri in range(min_r, max_r + 1)]
+    nr = len(cropped)
+    nc = len(cropped[0]) if cropped else 0
+
+    # Group adjacent identical rows
+    row_groups = []  # list of (representative_row, count)
+    i = 0
+    while i < nr:
+        j = i + 1
+        while j < nr and cropped[j] == cropped[i]:
+            j += 1
+        row_groups.append((cropped[i], j - i))
+        i = j
+
+    # Group adjacent identical columns
+    col_sigs = [tuple(cropped[ri][ci] for ri in range(nr)) for ci in range(nc)]
+    col_groups = []  # list of (start_col_index, count)
+    i = 0
+    while i < nc:
+        j = i + 1
+        while j < nc and col_sigs[j] == col_sigs[i]:
+            j += 1
+        col_groups.append((i, j - i))
+        i = j
+
+    # Build column mapping: list of ('block', col_start) or ('gap', left_gj, right_gj)
+    col_map = []
+    for gj, (cs, cnt) in enumerate(col_groups):
+        for _ in range(cnt - 1):
+            col_map.append(('block', cs))
+        if gj < len(col_groups) - 1:
+            col_map.append(('gap', gj, gj + 1))
+
+    # Build row mapping
+    row_map = []
+    for gi, (rep, cnt) in enumerate(row_groups):
+        for _ in range(cnt - 1):
+            row_map.append(('block', gi))
+        if gi < len(row_groups) - 1:
+            row_map.append(('gap', gi, gi + 1))
+
+    if not row_map or not col_map:
+        return None
+
+    # Build output grid
+    output = []
+    for rm in row_map:
+        out_row = []
+        for cm in col_map:
+            if rm[0] == 'block' and cm[0] == 'block':
+                out_row.append(row_groups[rm[1]][0][cm[1]])
+            elif rm[0] == 'block' and cm[0] == 'gap':
+                rep = row_groups[rm[1]][0]
+                left_val = rep[col_groups[cm[1]][0]]
+                right_val = rep[col_groups[cm[2]][0]]
+                out_row.append(left_val if left_val == right_val else 0)
+            elif rm[0] == 'gap' and cm[0] == 'block':
+                above_val = row_groups[rm[1]][0][cm[1]]
+                below_val = row_groups[rm[2]][0][cm[1]]
+                out_row.append(above_val if above_val == below_val else 0)
+            else:  # gap x gap
+                tl = row_groups[rm[1]][0][col_groups[cm[1]][0]]
+                tr = row_groups[rm[1]][0][col_groups[cm[2]][0]]
+                bl = row_groups[rm[2]][0][col_groups[cm[1]][0]]
+                br = row_groups[rm[2]][0][col_groups[cm[2]][0]]
+                out_row.append(tl if tl == tr == bl == br else 0)
+        output.append(out_row)
+
+    return output
+
+
+def recolor_framed_pattern_by_keys(grid, bg=0):
+    """Find a bordered pattern block, find 2-cell color key pairs outside it,
+    and apply color substitution to non-frame colors in the block.
+
+    Algorithm:
+    1. Find bg color, extract all non-bg connected components
+    2. Largest component = the pattern block
+    3. Determine frame color (most common on perimeter of bounding box)
+    4. Find horizontal 2-cell key pairs among remaining non-bg cells
+    5. Build color map: key (A,B) maps whichever color is in the block interior
+    6. Extract bounding box, apply substitution, return
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h < 3 or w < 3:
+        return None
+
+    # Find all non-bg connected components
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            components.append(comp)
+
+    if not components:
+        return None
+
+    # Largest component = pattern block
+    components.sort(key=len, reverse=True)
+    block = components[0]
+    block_set = set(block)
+
+    # Bounding box
+    min_r = min(r for r, c in block)
+    max_r = max(r for r, c in block)
+    min_c = min(c for r, c in block)
+    max_c = max(c for r, c in block)
+
+    # Frame color = most common on perimeter of bounding box
+    perim_counts = {}
+    for r, c in block:
+        if r == min_r or r == max_r or c == min_c or c == max_c:
+            v = grid[r][c]
+            perim_counts[v] = perim_counts.get(v, 0) + 1
+    if not perim_counts:
+        return None
+    frame_color = max(perim_counts, key=perim_counts.get)
+
+    # Interior colors in the block (non-frame)
+    interior_colors = set()
+    for r, c in block:
+        v = grid[r][c]
+        if v != frame_color:
+            interior_colors.add(v)
+
+    # Find 2-cell horizontal key pairs outside the block
+    remaining_cells = set()
+    for comp in components[1:]:
+        for r, c in comp:
+            remaining_cells.add((r, c))
+
+    key_pairs = []
+    used = set()
+    for r, c in sorted(remaining_cells):
+        if (r, c) in used:
+            continue
+        if (r, c + 1) in remaining_cells and (r, c + 1) not in used:
+            a = grid[r][c]
+            b = grid[r][c + 1]
+            if a != bg and b != bg:
+                key_pairs.append((a, b))
+                used.add((r, c))
+                used.add((r, c + 1))
+
+    # Build color map
+    color_map = {}
+    for a, b in key_pairs:
+        if b in interior_colors and b not in color_map:
+            color_map[b] = a
+        elif a in interior_colors and a not in color_map:
+            color_map[a] = b
+
+    # Extract bounding box and apply substitution
+    output = []
+    for r in range(min_r, max_r + 1):
+        row = []
+        for c in range(min_c, max_c + 1):
+            v = grid[r][c]
+            if v in color_map and v != frame_color:
+                row.append(color_map[v])
+            else:
+                row.append(v)
+        output.append(row)
+
+    return output

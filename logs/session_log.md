@@ -373,3 +373,38 @@
 - Stored rule hits: 29
 - Time: 76s
 - Log: logs/learn_20260330_061249.log
+
+---
+## Learning Loop -- 2026-03-30 06:16
+
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%)
+- Rules: 32 -> 32 (+0 learned)
+- Stored rule hits: 32
+- Time: 74s
+- Log: logs/learn_20260330_061507.log
+
+---
+## Session 13 (Claude) -- 2026-03-30 06:33
+
+### Changes
+- Added `compress_separator_intersections` primitive to `_primitives.py` — extracts colored pattern from grid separator-line intersections and compresses by collapsing identical adjacent rows/cols with gap insertion
+- Added `recolor_framed_pattern_by_keys` primitive to `_primitives.py` — finds a bordered pattern block, discovers 2-cell color key pairs outside it, and applies color substitution to interior colors
+- Created `procedural_memory/concepts/compress_separator_intersections.json` (solves 7837ac64)
+- Created `procedural_memory/concepts/recolor_framed_by_keys.json` (solves e9b4f6fc)
+
+### Results
+- Before: 32 / 40 (80.0%)
+- After:  34 / 40 (85.0%)  +2 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 2
+
+---
+## Learning Loop -- 2026-03-30 06:34
+
+- Split: training, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 32 -> 34 (+2 learned)
+- Stored rule hits: 32
+- Time: 74s
+- Log: logs/learn_20260330_063331.log
