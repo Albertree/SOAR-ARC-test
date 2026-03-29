@@ -510,3 +510,51 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 21
 - Time: 74s
 - Log: logs/learn_20260329_170629.log
+
+---
+## Learning Loop -- 2026-03-29 17:10
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 34 -> 39 (+5 learned)
+- Stored rule hits: 21
+- Time: 76s
+- Log: logs/learn_20260329_170902.log
+
+---
+## Session 12 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **nearest_corner_lines** -- each non-background pixel projects an L-shaped line toward its nearest corner (nearest vertical edge + nearest horizontal edge). Handles point-to-edge projection / L-line drawing tasks.
+2. **frame_inversion** -- input has a single nested rectangle on black background with outer border color A and interior color B. Output extracts the rectangle and swaps A↔B (inside-out). Handles nested rectangle color-swap tasks.
+3. **horizontal_mirror_mark** -- grid has one foreground color on black background. Pixels whose horizontally mirrored position (across the vertical center axis) also has the same foreground color are recolored to a new color; unpaired pixels stay. Handles horizontal symmetry detection/marking tasks.
+
+### Tasks Solved
+- `705a3229`: nearest_corner_lines
+- `b94a9452`: frame_inversion
+- `ce039d91`: horizontal_mirror_mark
+
+### Results
+- Before: 23/40 (57.5%)
+- After: 26/40 (65.0%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 17:17
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 42 -> 46 (+4 learned)
+- Stored rule hits: 24
+- Time: 74s
+- Log: logs/learn_20260329_171729.log
+
+---
+## Learning Loop -- 2026-03-29 17:18
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 42 -> 46 (+4 learned)
+- Stored rule hits: 24
+- Time: 74s
+- Log: logs/learn_20260329_171729.log

@@ -454,6 +454,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_pattern_tile_fill(patterns, task)
 
+        # Strategy: nearest corner lines (pixel → L-line to nearest corner)
+        if rule is None:
+            rule = self._try_nearest_corner_lines(patterns, task)
+
+        # Strategy: frame inversion (nested rectangle border↔interior swap)
+        if rule is None:
+            rule = self._try_frame_inversion(patterns, task)
+
+        # Strategy: horizontal mirror mark (symmetric 5-pixels → recolor)
+        if rule is None:
+            rule = self._try_horizontal_mirror_mark(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -1226,6 +1238,202 @@ class GeneralizeOperator(Operator):
                     output[nr][nc] = conn_color
 
         return output
+
+    # ---- strategy: nearest corner lines -----------------------------------
+
+    def _try_nearest_corner_lines(self, patterns, task):
+        """
+        Each non-background pixel projects an L-shaped line toward its nearest
+        corner (nearest vertical edge + nearest horizontal edge).
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw if hasattr(pair.input_grid, 'raw') else pair.input_grid
+            og = pair.output_grid.raw if hasattr(pair.output_grid, 'raw') else pair.output_grid
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if h != oh or w != ow:
+                return None
+
+            # Find non-zero pixels in input
+            pixels = []
+            for r in range(h):
+                for c in range(w):
+                    if ig[r][c] != 0:
+                        pixels.append((r, c, ig[r][c]))
+            if not pixels:
+                return None
+
+            # Simulate: draw L-lines for each pixel toward nearest corner
+            sim = [[0] * w for _ in range(h)]
+            for r, c, color in pixels:
+                # Nearest vertical edge
+                if r <= h - 1 - r:
+                    # closer to top
+                    for rr in range(0, r + 1):
+                        sim[rr][c] = color
+                else:
+                    # closer to bottom
+                    for rr in range(r, h):
+                        sim[rr][c] = color
+                # Nearest horizontal edge
+                if c <= w - 1 - c:
+                    # closer to left
+                    for cc in range(0, c + 1):
+                        sim[r][cc] = color
+                else:
+                    # closer to right
+                    for cc in range(c, w):
+                        sim[r][cc] = color
+
+            if sim != [list(row) for row in og]:
+                return None
+
+        return {"type": "nearest_corner_lines", "confidence": 0.95}
+
+    # ---- strategy: frame inversion -----------------------------------------
+
+    def _try_frame_inversion(self, patterns, task):
+        """
+        Input has a single nested rectangle on a black bg: outer border color A,
+        interior color B. Output extracts the rectangle and swaps A↔B.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw if hasattr(pair.input_grid, 'raw') else pair.input_grid
+            og = pair.output_grid.raw if hasattr(pair.output_grid, 'raw') else pair.output_grid
+            h, w = len(ig), len(ig[0])
+
+            # Find bounding box of non-zero pixels
+            non_zero = [(r, c) for r in range(h) for c in range(w) if ig[r][c] != 0]
+            if not non_zero:
+                return None
+            min_r = min(r for r, c in non_zero)
+            max_r = max(r for r, c in non_zero)
+            min_c = min(c for r, c in non_zero)
+            max_c = max(c for r, c in non_zero)
+
+            obj_h = max_r - min_r + 1
+            obj_w = max_c - min_c + 1
+            oh, ow = len(og), len(og[0])
+
+            if obj_h != oh or obj_w != ow:
+                return None
+            if obj_h < 3 or obj_w < 3:
+                return None
+
+            # Extract the rectangle object
+            obj = [ig[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+
+            # Border color = color of corners
+            border_color = obj[0][0]
+            if border_color == 0:
+                return None
+            # All border pixels must be the same
+            for c2 in range(obj_w):
+                if obj[0][c2] != border_color or obj[obj_h - 1][c2] != border_color:
+                    return None
+            for r2 in range(obj_h):
+                if obj[r2][0] != border_color or obj[r2][obj_w - 1] != border_color:
+                    return None
+
+            # Find interior color(s) -- should be exactly one non-border color
+            interior_colors = set()
+            for r2 in range(1, obj_h - 1):
+                for c2 in range(1, obj_w - 1):
+                    if obj[r2][c2] != border_color:
+                        interior_colors.add(obj[r2][c2])
+            if len(interior_colors) != 1:
+                return None
+            interior_color = interior_colors.pop()
+
+            # Verify swap: output border = interior_color, output interior = border_color
+            for r2 in range(oh):
+                for c2 in range(ow):
+                    is_border = (r2 == 0 or r2 == oh - 1 or c2 == 0 or c2 == ow - 1)
+                    # Check if this cell was border in original
+                    orig = obj[r2][c2]
+                    expected = interior_color if orig == border_color else border_color
+                    if og[r2][c2] != expected:
+                        return None
+
+        return {"type": "frame_inversion", "confidence": 0.95}
+
+    # ---- strategy: horizontal mirror mark ----------------------------------
+
+    def _try_horizontal_mirror_mark(self, patterns, task):
+        """
+        Grid has pixels of one foreground color on black bg. Pixels whose
+        horizontally mirrored position (across the vertical center axis) also
+        has the same color are recolored to a new color; others stay.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        fg_color = None
+        new_color = None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw if hasattr(pair.input_grid, 'raw') else pair.input_grid
+            og = pair.output_grid.raw if hasattr(pair.output_grid, 'raw') else pair.output_grid
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if h != oh or w != ow:
+                return None
+
+            # Find the single foreground color in input
+            in_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ig[r][c] != 0:
+                        in_colors.add(ig[r][c])
+            if len(in_colors) != 1:
+                return None
+            pair_fg = in_colors.pop()
+
+            # Find colors in output that aren't in input and aren't 0
+            out_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if og[r][c] != 0:
+                        out_colors.add(og[r][c])
+            pair_new = out_colors - {pair_fg}
+            if len(pair_new) != 1:
+                return None
+            pair_nc = pair_new.pop()
+
+            if fg_color is None:
+                fg_color = pair_fg
+                new_color = pair_nc
+            elif fg_color != pair_fg or new_color != pair_nc:
+                return None
+
+            # Verify the rule
+            for r in range(h):
+                for c in range(w):
+                    mirror_c = w - 1 - c
+                    if ig[r][c] == fg_color:
+                        if ig[r][mirror_c] == fg_color:
+                            expected = new_color
+                        else:
+                            expected = fg_color
+                        if og[r][c] != expected:
+                            return None
+                    else:
+                        if og[r][c] != ig[r][c]:
+                            return None
+
+        if fg_color is None:
+            return None
+        return {"type": "horizontal_mirror_mark", "fg_color": fg_color,
+                "new_color": new_color, "confidence": 0.95}
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -3190,6 +3398,12 @@ class PredictOperator(Operator):
             return self._apply_rectangle_interior_count(rule, input_grid)
         if rule_type == "pattern_tile_fill":
             return self._apply_pattern_tile_fill(rule, input_grid)
+        if rule_type == "nearest_corner_lines":
+            return self._apply_nearest_corner_lines(rule, input_grid)
+        if rule_type == "frame_inversion":
+            return self._apply_frame_inversion(rule, input_grid)
+        if rule_type == "horizontal_mirror_mark":
+            return self._apply_horizontal_mirror_mark(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3983,6 +4197,95 @@ class PredictOperator(Operator):
             dist_from_bottom = h - 1 - r
             cycle_row = pat[pat_len - 1 - (dist_from_bottom % pat_len)]
             out.append(list(cycle_row))
+        return out
+
+    def _apply_nearest_corner_lines(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        out = [[0] * w for _ in range(h)]
+
+        pixels = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    pixels.append((r, c, raw[r][c]))
+
+        for r, c, color in pixels:
+            # Vertical line toward nearest top/bottom edge
+            if r <= h - 1 - r:
+                for rr in range(0, r + 1):
+                    out[rr][c] = color
+            else:
+                for rr in range(r, h):
+                    out[rr][c] = color
+            # Horizontal line toward nearest left/right edge
+            if c <= w - 1 - c:
+                for cc in range(0, c + 1):
+                    out[r][cc] = color
+            else:
+                for cc in range(c, w):
+                    out[r][cc] = color
+
+        return out
+
+    def _apply_frame_inversion(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Find bounding box of non-zero pixels
+        non_zero = [(r, c) for r in range(h) for c in range(w) if raw[r][c] != 0]
+        if not non_zero:
+            return [row[:] for row in raw]
+        min_r = min(r for r, c in non_zero)
+        max_r = max(r for r, c in non_zero)
+        min_c = min(c for r, c in non_zero)
+        max_c = max(c for r, c in non_zero)
+
+        obj_h = max_r - min_r + 1
+        obj_w = max_c - min_c + 1
+
+        # Extract object
+        obj = [raw[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+
+        # Border color = corners
+        border_color = obj[0][0]
+        # Find interior color
+        interior_color = None
+        for r2 in range(1, obj_h - 1):
+            for c2 in range(1, obj_w - 1):
+                if obj[r2][c2] != border_color:
+                    interior_color = obj[r2][c2]
+                    break
+            if interior_color is not None:
+                break
+        if interior_color is None:
+            interior_color = border_color
+
+        # Swap colors
+        out = [[0] * obj_w for _ in range(obj_h)]
+        for r2 in range(obj_h):
+            for c2 in range(obj_w):
+                if obj[r2][c2] == border_color:
+                    out[r2][c2] = interior_color
+                elif obj[r2][c2] == interior_color:
+                    out[r2][c2] = border_color
+                else:
+                    out[r2][c2] = obj[r2][c2]
+        return out
+
+    def _apply_horizontal_mirror_mark(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        fg = rule["fg_color"]
+        nc = rule["new_color"]
+
+        out = [list(row) for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fg:
+                    mirror_c = w - 1 - c
+                    if raw[r][mirror_c] == fg:
+                        out[r][c] = nc
         return out
 
 
