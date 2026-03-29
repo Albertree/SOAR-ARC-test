@@ -24,6 +24,9 @@ _loaded = False
 # not in this list are appended at the end automatically.
 WATERFALL_ORDER = [
     "mirror_vertical_append",
+    "reverse_frames",
+    "scale_up",
+    "staircase_fill",
     "recolor_by_size",
     "extract_center_column",
     "recolor_sequential",

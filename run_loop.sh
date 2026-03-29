@@ -98,7 +98,7 @@ while true; do
 
     # ── 1. Agent solves tasks, accumulates memory ────────────
     log "Agent solving $TASKS_PER_SESSION tasks..."
-    LEARN_OUTPUT=$(python run_learn.py --limit "$TASKS_PER_SESSION" --shuffle 2>&1 | sed 's/\x1b\[[0-9;]*m//g')
+    LEARN_OUTPUT=$(python run_learn.py --limit "$TASKS_PER_SESSION" --shuffle 2>&1)
     echo "$LEARN_OUTPUT" | tee -a "$PIPELINE_LOG"
 
     SCORE_LINE=$(echo "$LEARN_OUTPUT" | grep "Correct:" | tail -1)
@@ -120,7 +120,7 @@ while true; do
     # ── 2. Claude Code improves the agent ────────────────────
     log "Claude Code improving agent..."
 
-    timeout 900 claude -p "$(cat <<PROMPT
+    claude -p "$(cat <<PROMPT
 You are session ${SESSION} of the SOAR-ARC loop.
 
 Read PROMPT.md for the mission. Read CLAUDE.md for architecture details.
@@ -148,7 +148,7 @@ PROMPT
 )" \
         --permission-mode bypassPermissions \
         --output-format text \
-        2>&1 | tee "$SESSION_LOG" >> "$PIPELINE_LOG"
+        2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
 
     log "Claude Code finished."
 
