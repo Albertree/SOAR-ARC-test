@@ -422,6 +422,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_quadrant_shape_swap(patterns, task)
 
+        # Strategy: grid zigzag shear (rectangle/grid rows shift ±1 in period-4 wave)
+        if rule is None:
+            rule = self._try_grid_zigzag_shear(patterns, task)
+
+        # Strategy: three-shape rearrange (connector moves into split block)
+        if rule is None:
+            rule = self._try_three_shape_rearrange(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -892,6 +900,306 @@ class GeneralizeOperator(Operator):
                 # All 1s
                 for c in range(w):
                     output[r][c] = 1
+
+        return output
+
+    # ---- strategy: grid zigzag shear ----------------------------------------
+
+    def _try_grid_zigzag_shear(self, patterns, task):
+        """
+        Detect: a single-color rectangular grid (with optional internal grid lines)
+        on a background of 0. Output shifts each row of the bounding box
+        horizontally in a period-4 sinusoidal pattern: [0, 1, 0, -1] with
+        phase = (1 - bbox_height) % 4.
+        Category: grid/rectangle zigzag shear tasks.
+        """
+        if task is None or not patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find non-background colors (exactly 2 colors: bg + shape)
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    colors.add(inp[r][c])
+
+            if len(colors) != 2:
+                return None
+
+            # Background = most frequent color
+            counts = Counter()
+            for r in range(h):
+                for c in range(w):
+                    counts[inp[r][c]] += 1
+            bg_c = counts.most_common(1)[0][0]
+            sc = [c for c in colors if c != bg_c][0]
+
+            # Find bounding box of shape_color in input
+            rows_with_sc = [r for r in range(h) for c in range(w) if inp[r][c] == sc]
+            cols_with_sc = [c for r in range(h) for c in range(w) if inp[r][c] == sc]
+            if not rows_with_sc:
+                return None
+            r0, r1 = min(rows_with_sc), max(rows_with_sc)
+            c0, c1 = min(cols_with_sc), max(cols_with_sc)
+            box_h = r1 - r0 + 1
+
+            # Compute expected shifts
+            sin_table = [0, 1, 0, -1]
+            phase = (1 - box_h) % 4
+
+            # Build expected output and compare
+            expected_out = set()
+            for ri in range(box_h):
+                shift = sin_table[(ri + phase) % 4]
+                for ci in range(c1 - c0 + 1):
+                    in_r, in_c = r0 + ri, c0 + ci
+                    if inp[in_r][in_c] == sc:
+                        out_c = in_c + shift
+                        if not (0 <= out_c < w):
+                            return None
+                        expected_out.add((in_r, out_c))
+
+            actual_out = set()
+            for r in range(h):
+                for c in range(w):
+                    if out[r][c] == sc:
+                        actual_out.add((r, c))
+
+            if expected_out != actual_out:
+                return None
+
+        return {
+            "type": "grid_zigzag_shear",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: three-shape rearrange ------------------------------------
+
+    def _try_three_shape_rearrange(self, patterns, task):
+        """
+        Detect: 3 non-background colored objects on a uniform background.
+        The smallest (connector) is between two larger objects along one axis.
+        In the output, the connector moves into the region of one outer object,
+        which splits in half (perpendicular to the axis) to make room.
+        The split block must have perpendicular extent >= 2 * connector's
+        perpendicular extent. The other outer block stays unchanged.
+        Category: three-shape connector/split rearrangement tasks.
+        """
+        if task is None or not patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            result = self._analyze_three_shape(inp, out, h, w)
+            if result is None:
+                return None
+
+        return {
+            "type": "three_shape_rearrange",
+            "confidence": 1.0,
+        }
+
+    def _analyze_three_shape(self, inp, out, h, w):
+        """Analyze a single pair for three-shape rearrange pattern. Returns info or None."""
+        counts = Counter()
+        for r in range(h):
+            for c in range(w):
+                counts[inp[r][c]] += 1
+        bg = counts.most_common(1)[0][0]
+
+        obj_colors = set()
+        for r in range(h):
+            for c in range(w):
+                if inp[r][c] != bg:
+                    obj_colors.add(inp[r][c])
+
+        if len(obj_colors) != 3:
+            return None
+
+        objs = {}
+        for color in obj_colors:
+            pixels = [(r, c) for r in range(h) for c in range(w) if inp[r][c] == color]
+            rmin = min(r for r, c in pixels)
+            rmax = max(r for r, c in pixels)
+            cmin = min(c for r, c in pixels)
+            cmax = max(c for r, c in pixels)
+            objs[color] = {
+                "pixels": pixels, "count": len(pixels),
+                "rmin": rmin, "rmax": rmax, "cmin": cmin, "cmax": cmax,
+                "height": rmax - rmin + 1, "width": cmax - cmin + 1,
+            }
+
+        sorted_colors = sorted(obj_colors, key=lambda c: objs[c]["count"])
+        conn_color = sorted_colors[0]
+        outer_colors = sorted_colors[1:]
+
+        connector = objs[conn_color]
+        conn_cr = (connector["rmin"] + connector["rmax"]) / 2
+        conn_cc = (connector["cmin"] + connector["cmax"]) / 2
+
+        a_cr = (objs[outer_colors[0]]["rmin"] + objs[outer_colors[0]]["rmax"]) / 2
+        a_cc = (objs[outer_colors[0]]["cmin"] + objs[outer_colors[0]]["cmax"]) / 2
+        b_cr = (objs[outer_colors[1]]["rmin"] + objs[outer_colors[1]]["rmax"]) / 2
+        b_cc = (objs[outer_colors[1]]["cmin"] + objs[outer_colors[1]]["cmax"]) / 2
+
+        v_between = (min(a_cr, b_cr) <= conn_cr <= max(a_cr, b_cr))
+        h_between = (min(a_cc, b_cc) <= conn_cc <= max(a_cc, b_cc))
+
+        if not v_between and not h_between:
+            return None
+
+        if v_between and not h_between:
+            axis = "vertical"
+        elif h_between and not v_between:
+            axis = "horizontal"
+        else:
+            v_spread = max(a_cr, b_cr) - min(a_cr, b_cr)
+            h_spread = max(a_cc, b_cc) - min(a_cc, b_cc)
+            axis = "vertical" if v_spread > h_spread else "horizontal"
+
+        # Determine which block splits by checking perpendicular extent
+        if axis == "vertical":
+            conn_perp = connector["width"]
+            a_perp = objs[outer_colors[0]]["width"]
+            b_perp = objs[outer_colors[1]]["width"]
+        else:
+            conn_perp = connector["height"]
+            a_perp = objs[outer_colors[0]]["height"]
+            b_perp = objs[outer_colors[1]]["height"]
+
+        a_can = (a_perp >= 2 * conn_perp)
+        b_can = (b_perp >= 2 * conn_perp)
+
+        if not a_can and not b_can:
+            return None
+
+        if a_can and not b_can:
+            split_color = outer_colors[0]
+            stay_color = outer_colors[1]
+        elif b_can and not a_can:
+            split_color = outer_colors[1]
+            stay_color = outer_colors[0]
+        else:
+            # Both can split — check which one is unchanged in the output
+            a_in = set(objs[outer_colors[0]]["pixels"])
+            a_out = set((r, c) for r in range(h) for c in range(w) if out[r][c] == outer_colors[0])
+            b_in = set(objs[outer_colors[1]]["pixels"])
+            b_out = set((r, c) for r in range(h) for c in range(w) if out[r][c] == outer_colors[1])
+            if a_in == a_out:
+                split_color = outer_colors[1]
+                stay_color = outer_colors[0]
+            elif b_in == b_out:
+                split_color = outer_colors[0]
+                stay_color = outer_colors[1]
+            else:
+                return None
+
+        # Verify by computing predicted output
+        predicted = self._compute_three_shape_output(
+            inp, bg, conn_color, split_color, stay_color, objs, axis, h, w)
+        if predicted is None:
+            return None
+        for r in range(h):
+            for c in range(w):
+                if predicted[r][c] != out[r][c]:
+                    return None
+
+        return {"axis": axis, "split_color": split_color, "stay_color": stay_color}
+
+    @staticmethod
+    def _compute_three_shape_output(inp, bg, conn_color, split_color, stay_color,
+                                     objs, axis, h, w):
+        """Compute the predicted output for three-shape rearrange."""
+        connector = objs[conn_color]
+        split_obj = objs[split_color]
+
+        output = [[bg] * w for _ in range(h)]
+
+        # Keep stay object unchanged
+        for r in range(h):
+            for c in range(w):
+                if inp[r][c] == stay_color:
+                    output[r][c] = stay_color
+
+        if axis == "vertical":
+            # Determine direction: connector came from above or below split
+            conn_cr = (connector["rmin"] + connector["rmax"]) / 2
+            split_cr = (split_obj["rmin"] + split_obj["rmax"]) / 2
+
+            # Split the split_obj left/right (perpendicular to vertical axis)
+            split_mid_c = (split_obj["cmin"] + split_obj["cmax"] + 1) / 2.0
+            for r, c in split_obj["pixels"]:
+                nc = c - 1 if c < split_mid_c else c + 1
+                if 0 <= nc < w:
+                    output[r][nc] = split_color
+
+            # Place connector at far side of split block along axis
+            # Centered on split block perpendicular (columns)
+            conn_new_cmin = int(
+                (split_obj["cmin"] + split_obj["cmax"] + 1) / 2.0
+                - connector["width"] / 2.0
+            )
+            if conn_cr > split_cr:
+                # Connector came from below → place above split block
+                conn_new_rmin = split_obj["rmin"] - connector["height"]
+            else:
+                # Connector came from above → place at bottom of split block
+                conn_new_rmin = split_obj["rmax"] - connector["height"] + 1
+
+            for r, c in connector["pixels"]:
+                nr = r - connector["rmin"] + conn_new_rmin
+                nc = c - connector["cmin"] + conn_new_cmin
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = conn_color
+
+        else:  # horizontal
+            conn_cc = (connector["cmin"] + connector["cmax"]) / 2
+            split_cc = (split_obj["cmin"] + split_obj["cmax"]) / 2
+
+            # Split the split_obj top/bottom (perpendicular to horizontal axis)
+            split_mid_r = (split_obj["rmin"] + split_obj["rmax"] + 1) / 2.0
+            for r, c in split_obj["pixels"]:
+                nr = r - 1 if r < split_mid_r else r + 1
+                if 0 <= nr < h:
+                    output[nr][c] = split_color
+
+            # Place connector at far side of split block along axis
+            # Centered on split block perpendicular (rows)
+            conn_new_rmin = int(
+                (split_obj["rmin"] + split_obj["rmax"] + 1) / 2.0
+                - connector["height"] / 2.0
+            )
+            if conn_cc > split_cc:
+                # Connector came from right → place at left of split block
+                conn_new_cmin = split_obj["cmin"] - connector["width"] + 1
+            else:
+                # Connector came from left → place at right of split block
+                conn_new_cmin = split_obj["cmax"] - connector["width"] + 1
+
+            for r, c in connector["pixels"]:
+                nr = r - connector["rmin"] + conn_new_rmin
+                nc = c - connector["cmin"] + conn_new_cmin
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = conn_color
 
         return output
 
@@ -2207,6 +2515,10 @@ class PredictOperator(Operator):
             return self._apply_lpath_chain(rule, input_grid)
         if rule_type == "arrow_chain_mirror":
             return self._apply_arrow_chain_mirror(rule, input_grid)
+        if rule_type == "grid_zigzag_shear":
+            return self._apply_grid_zigzag_shear(rule, input_grid)
+        if rule_type == "three_shape_rearrange":
+            return self._apply_three_shape_rearrange(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2705,6 +3017,141 @@ class PredictOperator(Operator):
             raw, rule["bg"], sep_color, sep_row,
             rule["top_color"], rule["dot_color"], rule["arrow_color"]
         )
+
+    # ---- apply: grid zigzag shear ------------------------------------------
+
+    def _apply_grid_zigzag_shear(self, rule, input_grid):
+        """Apply grid zigzag shear rule."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Detect bg (most frequent) and shape color dynamically
+        counts = Counter()
+        for r in range(h):
+            for c in range(w):
+                counts[raw[r][c]] += 1
+        bg = counts.most_common(1)[0][0]
+        non_bg = [c for c in counts if c != bg]
+        if not non_bg:
+            return [row[:] for row in raw]
+        sc = non_bg[0]
+
+        # Find bounding box
+        rows_with_sc = [r for r in range(h) for c in range(w) if raw[r][c] == sc]
+        cols_with_sc = [c for r in range(h) for c in range(w) if raw[r][c] == sc]
+        if not rows_with_sc:
+            return [row[:] for row in raw]
+        r0, r1 = min(rows_with_sc), max(rows_with_sc)
+        c0, c1 = min(cols_with_sc), max(cols_with_sc)
+        box_h = r1 - r0 + 1
+
+        sin_table = [0, 1, 0, -1]
+        phase = (1 - box_h) % 4
+
+        output = [[bg] * w for _ in range(h)]
+        for ri in range(box_h):
+            shift = sin_table[(ri + phase) % 4]
+            for ci in range(c1 - c0 + 1):
+                in_r, in_c = r0 + ri, c0 + ci
+                out_c = in_c + shift
+                if 0 <= out_c < w and raw[in_r][in_c] == sc:
+                    output[in_r][out_c] = sc
+        return output
+
+    # ---- apply: three-shape rearrange --------------------------------------
+
+    def _apply_three_shape_rearrange(self, rule, input_grid):
+        """Apply three-shape rearrange rule."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        counts = Counter()
+        for r in range(h):
+            for c in range(w):
+                counts[raw[r][c]] += 1
+        bg = counts.most_common(1)[0][0]
+
+        obj_colors = set()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    obj_colors.add(raw[r][c])
+
+        if len(obj_colors) != 3:
+            return [row[:] for row in raw]
+
+        objs = {}
+        for color in obj_colors:
+            pixels = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == color]
+            rmin = min(r for r, c in pixels)
+            rmax = max(r for r, c in pixels)
+            cmin = min(c for r, c in pixels)
+            cmax = max(c for r, c in pixels)
+            objs[color] = {
+                "pixels": pixels, "count": len(pixels),
+                "rmin": rmin, "rmax": rmax, "cmin": cmin, "cmax": cmax,
+                "height": rmax - rmin + 1, "width": cmax - cmin + 1,
+            }
+
+        sorted_colors = sorted(obj_colors, key=lambda c: objs[c]["count"])
+        conn_color = sorted_colors[0]
+        outer_colors = sorted_colors[1:]
+
+        connector = objs[conn_color]
+        conn_cr = (connector["rmin"] + connector["rmax"]) / 2
+        conn_cc = (connector["cmin"] + connector["cmax"]) / 2
+
+        a_cr = (objs[outer_colors[0]]["rmin"] + objs[outer_colors[0]]["rmax"]) / 2
+        a_cc = (objs[outer_colors[0]]["cmin"] + objs[outer_colors[0]]["cmax"]) / 2
+        b_cr = (objs[outer_colors[1]]["rmin"] + objs[outer_colors[1]]["rmax"]) / 2
+        b_cc = (objs[outer_colors[1]]["cmin"] + objs[outer_colors[1]]["cmax"]) / 2
+
+        v_between = (min(a_cr, b_cr) <= conn_cr <= max(a_cr, b_cr))
+        h_between = (min(a_cc, b_cc) <= conn_cc <= max(a_cc, b_cc))
+
+        if v_between and not h_between:
+            axis = "vertical"
+        elif h_between and not v_between:
+            axis = "horizontal"
+        elif v_between and h_between:
+            v_spread = max(a_cr, b_cr) - min(a_cr, b_cr)
+            h_spread = max(a_cc, b_cc) - min(a_cc, b_cc)
+            axis = "vertical" if v_spread > h_spread else "horizontal"
+        else:
+            return [row[:] for row in raw]
+
+        if axis == "vertical":
+            conn_perp = connector["width"]
+            a_perp = objs[outer_colors[0]]["width"]
+            b_perp = objs[outer_colors[1]]["width"]
+        else:
+            conn_perp = connector["height"]
+            a_perp = objs[outer_colors[0]]["height"]
+            b_perp = objs[outer_colors[1]]["height"]
+
+        a_can = (a_perp >= 2 * conn_perp)
+        b_can = (b_perp >= 2 * conn_perp)
+
+        if a_can and not b_can:
+            split_color = outer_colors[0]
+            stay_color = outer_colors[1]
+        elif b_can and not a_can:
+            split_color = outer_colors[1]
+            stay_color = outer_colors[0]
+        elif a_can and b_can:
+            # Pick the one with smaller perpendicular extent (cleaner split)
+            if a_perp <= b_perp:
+                split_color = outer_colors[0]
+                stay_color = outer_colors[1]
+            else:
+                split_color = outer_colors[1]
+                stay_color = outer_colors[0]
+        else:
+            return [row[:] for row in raw]
+
+        result = GeneralizeOperator._compute_three_shape_output(
+            raw, bg, conn_color, split_color, stay_color, objs, axis, h, w)
+        return result if result else [row[:] for row in raw]
 
     # ---- helpers ---------------------------------------------------------
 

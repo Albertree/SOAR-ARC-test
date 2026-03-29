@@ -286,3 +286,69 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 14
 - Time: 36s
 - Log: logs/learn_20260329_155302.log
+
+---
+## Learning Loop -- 2026-03-29 15:54
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 14
+- Time: 36s
+- Log: logs/learn_20260329_155411.log
+
+---
+## Learning Loop -- 2026-03-29 16:06
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 14
+- Time: 35s
+- Log: logs/learn_20260329_160533.log
+
+---
+## Learning Loop -- 2026-03-29 16:08
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 17 -> 17 (+0 learned)
+- Stored rule hits: 15
+- Time: 36s
+- Log: logs/learn_20260329_160806.log
+
+---
+## Learning Loop -- 2026-03-29 16:11
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 15
+- Time: 35s
+- Log: logs/learn_20260329_161119.log
+
+---
+## Session 8 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **grid_zigzag_shear** -- single-color rectangular grid/lattice on a background. Each row of the bounding box shifts horizontally in a period-4 sinusoidal wave: [0, 1, 0, -1] with phase = (1 - bbox_height) % 4. Shape color varies per task. Handles grid/rectangle zigzag shear tasks.
+2. **three_shape_rearrange** -- 3 non-background colored objects aligned on one axis. The smallest (connector) moves to the far side of one outer object, which splits in half perpendicular to the axis to accommodate it. The split block must have perpendicular extent >= 2x the connector's. When both qualify, the smaller one splits. Handles three-shape connector/split rearrangement tasks.
+
+### Tasks Solved
+- `1c56ad9f`: grid_zigzag_shear
+- `9f669b64`: three_shape_rearrange
+
+### Results
+- Before: 15/20 (75%)
+- After: 17/20 (85%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 16:13
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 15
+- Time: 36s
+- Log: logs/learn_20260329_161234.log
