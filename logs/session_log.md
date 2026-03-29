@@ -57,3 +57,41 @@
 - Before: 0/20 (0%)
 - After: 3/20 (15%)
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 14:38
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 8 -> 9 (+1 learned)
+- Stored rule hits: 3
+- Time: 36s
+- Log: logs/learn_20260329_143821.log
+
+---
+## Session 2 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **pixel_scale** -- each input pixel maps to an NxN block in output (integer upscaling). Detects that output dimensions are an exact integer multiple of input and verifies uniform block mapping. Handles zoom/upscale tasks.
+2. **recolor_by_size** -- connected components of a single source color are recolored by size group (largest size=1, next=2, etc.). Components of equal size get the same color. Handles size-based classification tasks. Also subsumes the regression gate task (08ed6ac7).
+3. **reverse_rings** -- concentric rectangular rings of distinct colors have their order reversed (outermost<->innermost). Detects perfect ring structure and verifies reversal. Handles ring inversion tasks.
+
+### Tasks Solved
+- `c59eb873`: pixel_scale (2x upscale)
+- `6e82a1ae`: recolor_by_size (memory hit from 08ed6ac7 rule)
+- `85c4e7cd`: reverse_rings
+
+### Results
+- Before: 3/20 (15%)
+- After: 6/20 (30%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 14:44
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 12 -> 13 (+1 learned)
+- Stored rule hits: 6
+- Time: 36s
+- Log: logs/learn_20260329_144332.log

@@ -365,6 +365,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_fill_rectangles_by_size(patterns, task)
 
+        # Strategy: reverse concentric rings
+        if rule is None:
+            rule = self._try_reverse_rings(patterns, task)
+
+        # Strategy: pixel scale-up (each pixel becomes NxN block)
+        if rule is None:
+            rule = self._try_pixel_scale(patterns, task)
+
+        # Strategy: recolor components by size (largest=1, next=2, ...)
+        if rule is None:
+            rule = self._try_recolor_by_size(patterns, task)
+
         # Strategy: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -581,6 +593,214 @@ class GeneralizeOperator(Operator):
             "confidence": 0.9,
         }
 
+    # ---- strategy: reverse concentric rings --------------------------------
+
+    def _try_reverse_rings(self, patterns, task):
+        """
+        Detect: grid is concentric rectangular rings of distinct colors.
+        Output reverses the ring order (outermost ↔ innermost).
+        Category: concentric ring reversal tasks.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h, w = len(raw_in), len(raw_in[0]) if raw_in else 0
+
+            # Extract ring colors from input (layer 0 = outermost)
+            ring_colors_in = self._extract_ring_colors(raw_in)
+            if ring_colors_in is None:
+                return None
+
+            ring_colors_out = self._extract_ring_colors(raw_out)
+            if ring_colors_out is None:
+                return None
+
+            # Check that output rings are the reverse of input rings
+            if ring_colors_out != list(reversed(ring_colors_in)):
+                return None
+
+        return {"type": "reverse_rings", "confidence": 1.0}
+
+    @staticmethod
+    def _extract_ring_colors(grid):
+        """Extract colors of concentric rectangular rings from outside in."""
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        colors = []
+        max_layers = min(h, w) // 2 + (1 if min(h, w) % 2 else 0)
+
+        for layer in range(max_layers):
+            # Get the color of the top-left cell of this ring
+            color = grid[layer][layer]
+
+            # Verify entire ring has this color
+            # Top and bottom rows of the ring
+            for c in range(layer, w - layer):
+                if grid[layer][c] != color or grid[h - 1 - layer][c] != color:
+                    return None
+            # Left and right columns of the ring
+            for r in range(layer, h - layer):
+                if grid[r][layer] != color or grid[r][w - 1 - layer] != color:
+                    return None
+
+            colors.append(color)
+
+        return colors
+
+    # ---- strategy: pixel scale-up ----------------------------------------
+
+    def _try_pixel_scale(self, patterns, task):
+        """
+        Detect: output dimensions are an integer multiple of input dimensions,
+        and each input pixel maps to a uniform NxN block in output.
+        Category: pixel upscaling / zoom tasks.
+        """
+        if task is None:
+            return None
+        # This is for size-changing tasks
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        scale = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            if h_in == 0 or w_in == 0:
+                return None
+            if h_out % h_in != 0 or w_out % w_in != 0:
+                return None
+
+            sh = h_out // h_in
+            sw = w_out // w_in
+            if sh != sw or sh < 2:
+                return None
+
+            if scale is None:
+                scale = sh
+            elif scale != sh:
+                return None
+
+            # Verify each input pixel maps to a uniform block
+            for r in range(h_in):
+                for c in range(w_in):
+                    expected = raw_in[r][c]
+                    for dr in range(scale):
+                        for dc in range(scale):
+                            if raw_out[r * scale + dr][c * scale + dc] != expected:
+                                return None
+
+        return {"type": "pixel_scale", "scale": scale, "confidence": 1.0}
+
+    # ---- strategy: recolor components by size ----------------------------
+
+    def _try_recolor_by_size(self, patterns, task):
+        """
+        Detect: all connected components of a single 'source' color are
+        recolored based on their size group (largest group=1, next size=2, etc.).
+        Components of the same size get the same color.
+        Category: size-based component classification tasks.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        source_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find non-zero colors in input
+            in_colors = set()
+            for row in raw_in:
+                for c in row:
+                    if c != 0:
+                        in_colors.add(c)
+
+            # Input should have exactly one non-bg color
+            if len(in_colors) != 1:
+                return None
+            src = list(in_colors)[0]
+            if source_color is None:
+                source_color = src
+            elif source_color != src:
+                return None
+
+            # Find connected components of source color
+            components = self._find_components(raw_in, source_color)
+            if not components:
+                return None
+
+            # Build size-to-color mapping: distinct sizes sorted descending
+            sizes = sorted(set(len(c) for c in components), reverse=True)
+            size_to_color = {s: rank + 1 for rank, s in enumerate(sizes)}
+
+            # Check that each component is recolored by its size group
+            for comp in components:
+                expected_color = size_to_color[len(comp)]
+                for (r, c) in comp:
+                    if raw_out[r][c] != expected_color:
+                        return None
+
+            # Check that non-source cells are unchanged
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != source_color and raw_out[r][c] != raw_in[r][c]:
+                        return None
+
+        return {
+            "type": "recolor_by_size",
+            "source_color": source_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_components(grid, color):
+        """Find all connected components of a given color in grid."""
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        visited = set()
+        components = []
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] == color and (r, c) not in visited:
+                    comp = []
+                    queue = [(r, c)]
+                    visited.add((r, c))
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == color:
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                    components.append(comp)
+        return components
+
     # ---- strategy: keep center column ------------------------------------
 
     def _try_keep_center_column(self, patterns, task):
@@ -707,6 +927,12 @@ class PredictOperator(Operator):
             return self._apply_fill_rectangles_by_size(rule, input_grid)
         if rule_type == "keep_center_column":
             return self._apply_keep_center_column(rule, input_grid)
+        if rule_type == "reverse_rings":
+            return self._apply_reverse_rings(rule, input_grid)
+        if rule_type == "pixel_scale":
+            return self._apply_pixel_scale(rule, input_grid)
+        if rule_type == "recolor_by_size":
+            return self._apply_recolor_by_size(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -804,6 +1030,56 @@ class PredictOperator(Operator):
         output = [[bg_color] * w for _ in range(h)]
         for r in range(h):
             output[r][center_col] = raw[r][center_col]
+        return output
+
+    def _apply_reverse_rings(self, rule, input_grid):
+        """Reverse the order of concentric rectangular ring colors."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        ring_colors = GeneralizeOperator._extract_ring_colors(raw)
+        if ring_colors is None:
+            return [row[:] for row in raw]
+        reversed_colors = list(reversed(ring_colors))
+        output = [row[:] for row in raw]
+        max_layers = len(ring_colors)
+        for layer in range(max_layers):
+            color = reversed_colors[layer]
+            for c in range(layer, w - layer):
+                output[layer][c] = color
+                output[h - 1 - layer][c] = color
+            for r in range(layer, h - layer):
+                output[r][layer] = color
+                output[r][w - 1 - layer] = color
+        return output
+
+    def _apply_pixel_scale(self, rule, input_grid):
+        """Scale each pixel to an NxN block."""
+        raw = input_grid.raw
+        scale = rule["scale"]
+        h_in = len(raw)
+        w_in = len(raw[0]) if raw else 0
+        output = [[0] * (w_in * scale) for _ in range(h_in * scale)]
+        for r in range(h_in):
+            for c in range(w_in):
+                color = raw[r][c]
+                for dr in range(scale):
+                    for dc in range(scale):
+                        output[r * scale + dr][c * scale + dc] = color
+        return output
+
+    def _apply_recolor_by_size(self, rule, input_grid):
+        """Recolor connected components by size group (largest size=1, etc.)."""
+        raw = input_grid.raw
+        source_color = rule["source_color"]
+        components = GeneralizeOperator._find_components(raw, source_color)
+        sizes = sorted(set(len(c) for c in components), reverse=True)
+        size_to_color = {s: rank + 1 for rank, s in enumerate(sizes)}
+        output = [row[:] for row in raw]
+        for comp in components:
+            new_color = size_to_color[len(comp)]
+            for (r, c) in comp:
+                output[r][c] = new_color
         return output
 
     # ---- helpers ---------------------------------------------------------
