@@ -81,3 +81,30 @@
 - Stored rule hits: 8
 - Time: 39s
 - Log: logs/learn_20260330_033540.log
+
+---
+## Learning Loop -- 2026-03-30 03:37
+
+- Split: training, Tasks: 20
+- Correct: 10 / 20 (50.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 10
+- Time: 35s
+- Log: logs/learn_20260330_033703.log
+
+---
+## Session 4 (Claude) -- 2026-03-30 03:49
+
+### Changes
+- Added `fill_between_separators` primitive to `_primitives.py` — finds vertical column (axis) and horizontal separator rows, fills each row with nearest separator color, equidistant rows between different-colored separators become intersection color
+- Added `mirror_displacement_across_separator` primitive to `_primitives.py` — finds horizontal separator, follows chains of arrow-color pixels from data-color pixels to compute displacement, mirrors displacement across separator for partner pixels
+- Created `procedural_memory/concepts/fill_between_separators.json` (solves 332202d5)
+- Created `procedural_memory/concepts/mirror_displacement.json` (solves c9680e90)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%) — up from 10/20 (50.0%)
+- Rules: 10 -> 12 (+2 learned)
+- Stored rule hits: 10
+- Time: 35s
+- Log: logs/learn_20260330_034927.log

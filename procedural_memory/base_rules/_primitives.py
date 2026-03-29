@@ -672,3 +672,213 @@ def fill_rects_by_size(grid, border_color, bg=0, start_color=6):
             for c in range(min_c + 1, max_c):
                 output[r][c] = fill_color
     return output
+
+
+def fill_between_separators(grid, bg=7):
+    """Fill rows with nearest horizontal separator color.
+    Finds a vertical column (constant non-bg color with intersection markers)
+    and horizontal separator rows. Each non-separator row is colored by its
+    nearest separator. Equidistant rows between different-colored separators
+    become all intersection-color. Separator rows become all intersection-color
+    with the column color at the intersection."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Find the vertical column with exactly 2 non-bg colors (most non-bg cells wins)
+    col_idx = None
+    col_color = None
+    inter_color = None
+    best_count = 0
+    for c in range(w):
+        colors = {}
+        for r in range(h):
+            v = grid[r][c]
+            if v != bg:
+                colors[v] = colors.get(v, 0) + 1
+        if len(colors) == 2:
+            total = sum(colors.values())
+            if total > best_count:
+                sorted_colors = sorted(colors.items(), key=lambda x: -x[1])
+                col_idx = c
+                col_color = sorted_colors[0][0]
+                inter_color = sorted_colors[1][0]
+                best_count = total
+
+    if col_idx is None:
+        return [row[:] for row in grid]
+
+    # Find separator rows (where column cell = inter_color)
+    separators = []
+    for r in range(h):
+        if grid[r][col_idx] == inter_color:
+            sep_color = None
+            for c in range(w):
+                if c != col_idx and grid[r][c] != bg:
+                    sep_color = grid[r][c]
+                    break
+            if sep_color is not None:
+                separators.append((r, sep_color))
+
+    if not separators:
+        return [row[:] for row in grid]
+
+    # Build output
+    output = [[0] * w for _ in range(h)]
+    for r in range(h):
+        # Check if separator row
+        is_sep = False
+        for sr, sc in separators:
+            if sr == r:
+                is_sep = True
+                for c in range(w):
+                    output[r][c] = inter_color
+                output[r][col_idx] = col_color
+                break
+
+        if not is_sep:
+            # Find nearest separator above and below
+            dist_above, color_above = h + 1, None
+            dist_below, color_below = h + 1, None
+            for sr, sc in separators:
+                d = abs(r - sr)
+                if sr < r and d < dist_above:
+                    dist_above, color_above = d, sc
+                elif sr > r and d < dist_below:
+                    dist_below, color_below = d, sc
+
+            if color_above is None:
+                fill = color_below
+            elif color_below is None:
+                fill = color_above
+            elif dist_above < dist_below:
+                fill = color_above
+            elif dist_below < dist_above:
+                fill = color_below
+            elif color_above == color_below:
+                fill = color_above
+            else:
+                fill = inter_color  # equidistant, different colors
+
+            for c in range(w):
+                output[r][c] = fill
+            output[r][col_idx] = inter_color
+
+    return output
+
+
+def mirror_displacement_across_separator(grid, bg=7):
+    """Move colored pixels by following displacement chains, mirroring across separator.
+    Finds a full-width separator row. Below it: 'data' color pixels with 'arrow'
+    color chains indicating displacement. Above: 'mirror' color pixels at symmetric
+    positions. Each data pixel follows its arrow chain; mirror pixels get the
+    reflected displacement (vertical flipped, horizontal same)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Find separator row (full-width row of single non-bg color)
+    sep_row = None
+    sep_color = None
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and vals.pop() != bg:
+            sep_row = r
+            sep_color = grid[r][0]
+            break
+    if sep_row is None:
+        return [row[:] for row in grid]
+
+    # Identify colors: above separator has mirror_color, below has data_color and arrow_color
+    above_colors = set()
+    below_colors = set()
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg and v != sep_color:
+                if r < sep_row:
+                    above_colors.add(v)
+                elif r > sep_row:
+                    below_colors.add(v)
+
+    if len(above_colors) != 1 or len(below_colors) != 2:
+        return [row[:] for row in grid]
+
+    mirror_color = above_colors.pop()
+    # Data color appears in both halves conceptually; arrow color only below
+    # Data color has symmetric mirrors above; arrow color does not
+    below_list = sorted(below_colors)
+    data_color = None
+    arrow_color = None
+
+    # Try each candidate: data_color pixels should have mirrors above
+    for cand_data in below_list:
+        cand_arrow = [c for c in below_list if c != cand_data][0]
+        # Check if data pixels have mirror positions above
+        data_positions = [(r, c) for r in range(sep_row + 1, h)
+                          for c in range(w) if grid[r][c] == cand_data]
+        mirror_positions = [(r, c) for r in range(sep_row)
+                            for c in range(w) if grid[r][c] == mirror_color]
+        # Each data pixel should have a mirror at symmetric row, same col
+        matched = 0
+        for dr, dc in data_positions:
+            sym_r = 2 * sep_row - dr
+            if 0 <= sym_r < h and (sym_r, dc) in [(mr, mc) for mr, mc in mirror_positions]:
+                matched += 1
+        if matched == len(data_positions) and matched == len(mirror_positions):
+            data_color = cand_data
+            arrow_color = cand_arrow
+            break
+
+    if data_color is None or arrow_color is None:
+        return [row[:] for row in grid]
+
+    # Build output: start with bg everywhere, keep separator
+    output = [[bg] * w for _ in range(h)]
+    for c in range(w):
+        output[sep_row][c] = sep_color
+
+    # Find data pixels and their arrow chains
+    data_pixels = [(r, c) for r in range(sep_row + 1, h)
+                   for c in range(w) if grid[r][c] == data_color]
+    arrow_set = set((r, c) for r in range(sep_row + 1, h)
+                    for c in range(w) if grid[r][c] == arrow_color)
+
+    dirs = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+
+    for dr, dc in data_pixels:
+        # Follow arrow chain from data pixel
+        total_dr, total_dc = 0, 0
+        cr, cc = dr, dc
+        visited = {(cr, cc)}
+        while True:
+            moved = False
+            for ddr, ddc in dirs:
+                nr, nc = cr + ddr, cc + ddc
+                if (nr, nc) in arrow_set and (nr, nc) not in visited:
+                    total_dr += ddr
+                    total_dc += ddc
+                    cr, cc = nr, nc
+                    visited.add((nr, nc))
+                    moved = True
+                    break
+            if not moved:
+                break
+
+        # Place data pixel at new position
+        new_r, new_c = dr + total_dr, dc + total_dc
+        if 0 <= new_r < h and 0 <= new_c < w:
+            output[new_r][new_c] = data_color
+
+        # Mirror pixel: symmetric position above separator
+        mirror_r = 2 * sep_row - dr
+        mirror_c = dc
+        # Reflected displacement: vertical flipped, horizontal same
+        new_mirror_r = mirror_r - total_dr
+        new_mirror_c = mirror_c + total_dc
+        if 0 <= new_mirror_r < h and 0 <= new_mirror_c < w:
+            output[new_mirror_r][new_mirror_c] = mirror_color
+
+    return output
