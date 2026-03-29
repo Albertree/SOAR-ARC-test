@@ -1,0 +1,30 @@
+{
+  "concept_id": "scatter_count_x_diamond",
+  "version": 1,
+  "description": "Count scattered pixels by color, draw X/hourglass diamond in bottom-left rectangle sized by counts",
+  "signature": {
+    "grid_size_preserved": null,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"},
+    "fill_color": {"type": "color", "infer": "from_examples"},
+    "diag_color": {"type": "color", "infer": "from_examples"},
+    "output_side": {"type": "int", "infer": "max_dim_even"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "scatter_count_x_diamond",
+      "args": {
+        "grid": "$input",
+        "bg": "$bg",
+        "fill_color": "$fill_color",
+        "diag_color": "$diag_color",
+        "output_side": "$output_side"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

@@ -1547,3 +1547,178 @@ def summarize_box_grid(grid, bg=0):
                     output[n_eight + k][bj] = col_color
 
         return output
+
+
+def relocate_cross_template(grid, bg=0):
+    """Find cross-shaped templates (connector + markers), find isolated marker dots,
+    match templates to anchor groups via rotation/reflection, and redraw connectors
+    at anchor positions. Erases templates and draws transformed connectors around anchors.
+
+    A template is a connected cluster containing a 'connector' color (most frequent non-bg).
+    Anchor markers are isolated non-connector pixels not part of any template."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find all non-bg cells by color
+    color_counts = {}
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                color_counts[grid[r][c]] = color_counts.get(grid[r][c], 0) + 1
+
+    if not color_counts:
+        return [row[:] for row in grid]
+
+    # Connector = most frequent non-bg color
+    connector_color = max(color_counts, key=color_counts.get)
+
+    # Find connected components (4-connectivity) of all non-bg cells
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            components.append(comp)
+
+    # Classify: templates (connected clusters with connector) vs isolated marker pixels
+    templates = []
+    # isolated_markers: {color: [(r,c), ...]}
+    isolated_markers = {}
+    for comp in components:
+        has_connector = any(grid[r][c] == connector_color for r, c in comp)
+        if has_connector:
+            marker_cells = {grid[r][c]: (r, c) for r, c in comp if grid[r][c] != connector_color}
+            connector_cells = [(r, c) for r, c in comp if grid[r][c] == connector_color]
+            templates.append({"markers": marker_cells, "connectors": connector_cells})
+        else:
+            # Each isolated pixel is a marker
+            for r, c in comp:
+                color = grid[r][c]
+                isolated_markers.setdefault(color, []).append((r, c))
+
+    if not templates or not isolated_markers:
+        return [row[:] for row in grid]
+
+    # 8 transformations: (dr, dc) -> transformed
+    # Use closures with default args to avoid late-binding issues
+    transforms = [
+        lambda dr, dc, _=None: (dr, dc),
+        lambda dr, dc, _=None: (dc, -dr),
+        lambda dr, dc, _=None: (-dr, -dc),
+        lambda dr, dc, _=None: (-dc, dr),
+        lambda dr, dc, _=None: (dr, -dc),
+        lambda dr, dc, _=None: (-dr, dc),
+        lambda dr, dc, _=None: (dc, dr),
+        lambda dr, dc, _=None: (-dc, -dr),
+    ]
+
+    # Build output: bg everywhere
+    output = [[bg] * w for _ in range(h)]
+
+    # For each template, find matching anchor group from isolated markers
+    used_anchors = {}  # color -> set of used positions
+    for tmpl in templates:
+        marker_colors = sorted(tmpl["markers"].keys())
+        # Check all marker colors have available anchor positions
+        available = {}
+        for mc in marker_colors:
+            positions = [p for p in isolated_markers.get(mc, [])
+                         if p not in used_anchors.get(mc, set())]
+            if not positions:
+                break
+            available[mc] = positions
+        if len(available) != len(marker_colors):
+            continue
+
+        ref_color = marker_colors[0]
+        t_ref = tmpl["markers"][ref_color]
+
+        # Try each candidate anchor position for the reference color
+        found = False
+        for a_ref_pos in available[ref_color]:
+            for transform in transforms:
+                # Check if this transform maps all template markers to valid anchor positions
+                anchor_assignment = {ref_color: a_ref_pos}
+                match = True
+                for mc in marker_colors:
+                    if mc == ref_color:
+                        continue
+                    t_pos = tmpl["markers"][mc]
+                    dr, dc = t_pos[0] - t_ref[0], t_pos[1] - t_ref[1]
+                    tr, tc = transform(dr, dc)
+                    expected = (a_ref_pos[0] + tr, a_ref_pos[1] + tc)
+                    if expected in available.get(mc, []):
+                        anchor_assignment[mc] = expected
+                    else:
+                        match = False
+                        break
+                if match:
+                    # Place anchor markers and transformed connectors
+                    for mc, pos in anchor_assignment.items():
+                        output[pos[0]][pos[1]] = mc
+                        used_anchors.setdefault(mc, set()).add(pos)
+                    for cr, cc in tmpl["connectors"]:
+                        dr, dc = cr - t_ref[0], cc - t_ref[1]
+                        tr, tc = transform(dr, dc)
+                        nr, nc = a_ref_pos[0] + tr, a_ref_pos[1] + tc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = connector_color
+                    found = True
+                    break
+            if found:
+                break
+
+    return output
+
+
+def scatter_count_x_diamond(grid, bg=7, fill_color=2, diag_color=4, output_side=16):
+    """Count scattered pixels of each non-bg color. Use counts as rectangle dimensions.
+    Draw an X/hourglass pattern of diag_color on fill_color background in the
+    bottom-left corner of an output_side x output_side grid.
+    W = larger count, H = smaller count.
+    At each row r (0..H-1): diag at cols min(r+W-H, H-1-r) and max(r+W-H, H-1-r)."""
+    # Count non-bg pixels by color
+    color_counts = {}
+    for row in grid:
+        for v in row:
+            if v != bg:
+                color_counts[v] = color_counts.get(v, 0) + 1
+
+    if len(color_counts) != 2:
+        return None
+
+    counts = sorted(color_counts.values())
+    rect_h = counts[0]  # smaller count
+    rect_w = counts[1]  # larger count
+
+    if rect_h > output_side or rect_w > output_side:
+        return None
+
+    # Build output: all bg, output_side x output_side
+    output = [[bg] * output_side for _ in range(output_side)]
+
+    # Fill rectangle in bottom-left
+    offset = rect_w - rect_h
+    start_row = output_side - rect_h
+    for r in range(rect_h):
+        left = min(r + offset, rect_h - 1 - r)
+        right = max(r + offset, rect_h - 1 - r)
+        for c in range(rect_w):
+            output[start_row + r][c] = fill_color
+        output[start_row + r][left] = diag_color
+        if right != left:
+            output[start_row + r][right] = diag_color
+
+    return output

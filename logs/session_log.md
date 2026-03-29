@@ -199,3 +199,31 @@
 - Stored rule hits: 16
 - Time: 35s
 - Log: logs/learn_20260330_043722.log
+
+---
+## Learning Loop -- 2026-03-30 04:39
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 18
+- Time: 35s
+- Log: logs/learn_20260330_043830.log
+
+---
+## Session 8 (Claude) -- 2026-03-30 05:02
+
+### Changes
+- Added `scatter_count_x_diamond` primitive to `_primitives.py` — counts scattered pixels by color (two non-bg colors), uses counts as W×H rectangle dimensions, draws X/hourglass diagonal pattern of diag_color on fill_color in bottom-left corner of output_side×output_side grid
+- Added `relocate_cross_template` primitive to `_primitives.py` — finds cross-shaped templates (connector color + marker dots), finds isolated marker anchor dots, matches templates to anchors via 8 rotation/reflection transforms, redraws transformed connectors at anchor positions
+- Added `max_dim_even` inference method to `_concept_engine.py` — infers output grid side from output dimensions across training pairs
+- Created `procedural_memory/concepts/scatter_count_x_diamond.json` (solves 878187ab)
+- Created `procedural_memory/concepts/relocate_cross_template.json` (solves 0e206a2e)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%) — up from 18/20 (90.0%)
+- Rules: 18 -> 20 (+2 learned)
+- Stored rule hits: 18
+- Time: 35s
+- Log: logs/learn_20260330_050215.log

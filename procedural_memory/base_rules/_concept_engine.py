@@ -464,6 +464,25 @@ def _infer_content_color_that_moves(task, arckg_features, patterns):
     return moved
 
 
+@_register_infer("max_dim_even")
+def _infer_max_dim_even(task, arckg_features, patterns):
+    """Output side = max(input_h, input_w) rounded up to the nearest even number.
+    Must be consistent across all pairs (using output dimensions)."""
+    side = None
+    for pair in task.example_pairs:
+        g_out = pair.output_grid
+        if g_out is None:
+            continue
+        oh = len(g_out.raw)
+        ow = len(g_out.raw[0]) if g_out.raw else 0
+        s = max(oh, ow)
+        if side is None:
+            side = s
+        elif side != s:
+            return None
+    return side
+
+
 @_register_infer("from_examples")
 def _infer_from_examples(task, arckg_features, patterns):
     """Placeholder — actual brute-force handled by the engine."""
