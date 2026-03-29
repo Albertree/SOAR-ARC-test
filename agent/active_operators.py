@@ -398,6 +398,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_gravity_slide(patterns, task)
 
+        # Strategy: diamond bridge (connect aligned diamond shapes with lines)
+        if rule is None:
+            rule = self._try_diamond_bridge(patterns, task)
+
+        # Strategy: stripe zone fill (spine + colored stripes → zone filling)
+        if rule is None:
+            rule = self._try_stripe_zone_fill(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -555,6 +563,321 @@ class GeneralizeOperator(Operator):
             return False
         result = self._gravity_slide_grid(raw_in, bg, wall_color, obj_color, h, w)
         return result == raw_out
+
+    # ---- strategy: diamond bridge ----------------------------------------
+
+    def _try_diamond_bridge(self, patterns, task):
+        """
+        Detect: grid has 3x3 diamond shapes (top, left, right, bottom pixels
+        of one color, center is 0). Aligned diamonds are connected by lines
+        of a bridge color. Category: connect aligned shapes tasks.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        bridge_color = None
+        diamond_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find diamond centers in input
+            centers = self._find_diamond_centers(raw_in, h, w)
+            if not centers:
+                return None
+
+            dc = raw_in[centers[0][0] - 1][centers[0][1]]
+            if diamond_color is None:
+                diamond_color = dc
+            elif diamond_color != dc:
+                return None
+
+            # Simulate bridge drawing and verify output
+            predicted = self._draw_diamond_bridges(raw_in, centers, h, w)
+            if predicted is None:
+                return None
+
+            # Find the bridge color from the diff
+            bc = None
+            for r in range(h):
+                for c in range(w):
+                    if raw_out[r][c] != raw_in[r][c]:
+                        if raw_out[r][c] == 0:
+                            return None  # shouldn't remove pixels
+                        if bc is None:
+                            bc = raw_out[r][c]
+                        elif raw_out[r][c] != bc:
+                            return None
+
+            if bc is None:
+                return None  # no changes found
+            if bridge_color is None:
+                bridge_color = bc
+            elif bridge_color != bc:
+                return None
+
+            # Verify our prediction matches output
+            predicted_bc = self._draw_diamond_bridges_with_color(
+                raw_in, centers, h, w, bc
+            )
+            if predicted_bc != raw_out:
+                return None
+
+        return {
+            "type": "diamond_bridge",
+            "diamond_color": diamond_color,
+            "bridge_color": bridge_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_diamond_centers(grid, h, w):
+        """Find centers of 3x3 diamond shapes (4 cardinal pixels same color, center=0)."""
+        centers = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if grid[r][c] != 0:
+                    continue
+                top = grid[r - 1][c]
+                bot = grid[r + 1][c]
+                left = grid[r][c - 1]
+                right = grid[r][c + 1]
+                if top != 0 and top == bot == left == right:
+                    centers.append((r, c))
+        return centers
+
+    @staticmethod
+    def _draw_diamond_bridges(raw_in, centers, h, w):
+        """Compute which cells should be bridged (returns set of positions)."""
+        bridge_cells = set()
+
+        # Group centers by row and column
+        by_row = {}
+        by_col = {}
+        for r, c in centers:
+            by_row.setdefault(r, []).append(c)
+            by_col.setdefault(c, []).append(r)
+
+        # Horizontal bridges between diamonds on the same row
+        for row, cols in by_row.items():
+            cols_sorted = sorted(cols)
+            for i in range(len(cols_sorted) - 1):
+                c1 = cols_sorted[i]
+                c2 = cols_sorted[i + 1]
+                # Bridge from right tip of left diamond to left tip of right diamond
+                for cc in range(c1 + 2, c2 - 1):
+                    bridge_cells.add((row, cc))
+
+        # Vertical bridges between diamonds on the same column
+        for col, rows in by_col.items():
+            rows_sorted = sorted(rows)
+            for i in range(len(rows_sorted) - 1):
+                r1 = rows_sorted[i]
+                r2 = rows_sorted[i + 1]
+                for rr in range(r1 + 2, r2 - 1):
+                    bridge_cells.add((rr, col))
+
+        return bridge_cells
+
+    @staticmethod
+    def _draw_diamond_bridges_with_color(raw_in, centers, h, w, bridge_color):
+        """Draw bridges on a copy of the grid."""
+        output = [row[:] for row in raw_in]
+        bridge_cells = GeneralizeOperator._draw_diamond_bridges(raw_in, centers, h, w)
+        for r, c in bridge_cells:
+            output[r][c] = bridge_color
+        return output
+
+    # ---- strategy: stripe zone fill --------------------------------------
+
+    def _try_stripe_zone_fill(self, patterns, task):
+        """
+        Detect: grid has a vertical spine of color 8, background 7, and
+        colored horizontal stripes (with 1 at the spine intersection).
+        Output fills zones around each stripe with its color.
+        Category: spine + stripe zone-filling tasks.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find spine column (column with 8s and 1s)
+            spine_col = self._find_spine_column(raw_in, h, w)
+            if spine_col is None:
+                return None
+
+            # Find stripe rows
+            stripes = self._find_stripe_rows(raw_in, h, w, spine_col)
+            if not stripes:
+                return None
+
+            # Verify output matches zone fill
+            predicted = self._compute_stripe_zone_fill(raw_in, h, w, spine_col, stripes)
+            if predicted != raw_out:
+                return None
+
+        return {"type": "stripe_zone_fill", "confidence": 1.0}
+
+    @staticmethod
+    def _find_spine_column(grid, h, w):
+        """Find the column that has 8 on non-stripe rows."""
+        for c in range(w):
+            is_spine = True
+            has_8 = False
+            for r in range(h):
+                v = grid[r][c]
+                if v == 8:
+                    has_8 = True
+                elif v != 1:
+                    is_spine = False
+                    break
+            if is_spine and has_8:
+                return c
+        return None
+
+    @staticmethod
+    def _find_stripe_rows(grid, h, w, spine_col):
+        """Find rows that are colored stripes (uniform non-7 color, 1 at spine)."""
+        stripes = []
+        for r in range(h):
+            if grid[r][spine_col] != 1:
+                continue
+            # Check all non-spine cells are the same non-7 color
+            color = None
+            valid = True
+            for c in range(w):
+                if c == spine_col:
+                    continue
+                v = grid[r][c]
+                if v == 7:
+                    valid = False
+                    break
+                if color is None:
+                    color = v
+                elif v != color:
+                    valid = False
+                    break
+            if valid and color is not None:
+                stripes.append((r, color))
+        return stripes
+
+    @staticmethod
+    def _compute_stripe_zone_fill(raw_in, h, w, spine_col, stripes):
+        """Compute the zone-filled output grid."""
+        output = [[0] * w for _ in range(h)]
+
+        stripe_rows = [s[0] for s in stripes]
+        stripe_colors = {s[0]: s[1] for s in stripes}
+
+        # Assign each row to a stripe color or make it a separator
+        row_assignment = [None] * h  # (color, is_stripe, is_separator)
+
+        # Mark stripe rows
+        for r in stripe_rows:
+            row_assignment[r] = ("stripe", stripe_colors[r])
+
+        # Process gaps between consecutive stripes (including before first and after last)
+        boundaries = [-1] + stripe_rows + [h]
+        for i in range(len(boundaries) - 1):
+            prev_b = boundaries[i]
+            next_b = boundaries[i + 1]
+
+            if prev_b == -1 and next_b == h:
+                continue  # no stripes at all
+
+            # Get rows in this gap
+            if prev_b == -1:
+                # Before first stripe
+                gap_start = 0
+                gap_end = next_b - 1
+                color = stripe_colors[next_b]
+                for r in range(gap_start, gap_end + 1):
+                    if row_assignment[r] is None:
+                        row_assignment[r] = ("zone", color)
+            elif next_b == h:
+                # After last stripe
+                gap_start = prev_b + 1
+                gap_end = h - 1
+                color = stripe_colors[prev_b]
+                for r in range(gap_start, gap_end + 1):
+                    if row_assignment[r] is None:
+                        row_assignment[r] = ("zone", color)
+            else:
+                # Between two stripes
+                gap_start = prev_b + 1
+                gap_end = next_b - 1
+                gap_size = gap_end - gap_start + 1
+                color_above = stripe_colors[prev_b]
+                color_below = stripe_colors[next_b]
+
+                if gap_size <= 0:
+                    continue
+
+                if color_above == color_below:
+                    # Same color: fill entire gap, no separator
+                    for r in range(gap_start, gap_end + 1):
+                        if row_assignment[r] is None:
+                            row_assignment[r] = ("zone", color_above)
+                elif gap_size % 2 == 1:
+                    # Odd gap: middle row is separator
+                    mid = gap_start + gap_size // 2
+                    for r in range(gap_start, mid):
+                        if row_assignment[r] is None:
+                            row_assignment[r] = ("zone", color_above)
+                    row_assignment[mid] = ("separator", None)
+                    for r in range(mid + 1, gap_end + 1):
+                        if row_assignment[r] is None:
+                            row_assignment[r] = ("zone", color_below)
+                else:
+                    # Even gap: clean split
+                    half = gap_size // 2
+                    for r in range(gap_start, gap_start + half):
+                        if row_assignment[r] is None:
+                            row_assignment[r] = ("zone", color_above)
+                    for r in range(gap_start + half, gap_end + 1):
+                        if row_assignment[r] is None:
+                            row_assignment[r] = ("zone", color_below)
+
+        # Build output grid
+        for r in range(h):
+            assign = row_assignment[r]
+            if assign is None:
+                output[r] = raw_in[r][:]
+                continue
+
+            kind, color = assign
+            if kind == "stripe":
+                # Inverted: fill with 1, spine with 8
+                for c in range(w):
+                    output[r][c] = 8 if c == spine_col else 1
+            elif kind == "zone":
+                # Fill with zone color, spine with 1
+                for c in range(w):
+                    output[r][c] = 1 if c == spine_col else color
+            elif kind == "separator":
+                # All 1s
+                for c in range(w):
+                    output[r][c] = 1
+
+        return output
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -1241,6 +1564,10 @@ class PredictOperator(Operator):
             return self._apply_corner_fill_quadrants(rule, input_grid)
         if rule_type == "gravity_slide":
             return self._apply_gravity_slide(rule, input_grid)
+        if rule_type == "diamond_bridge":
+            return self._apply_diamond_bridge(rule, input_grid)
+        if rule_type == "stripe_zone_fill":
+            return self._apply_stripe_zone_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1492,6 +1819,39 @@ class PredictOperator(Operator):
                     output[cr][cc] = bg_color
 
         return output
+
+    def _apply_diamond_bridge(self, rule, input_grid):
+        """Find diamond shapes and connect aligned ones with bridge color."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bridge_color = rule["bridge_color"]
+
+        centers = GeneralizeOperator._find_diamond_centers(raw, h, w)
+        if not centers:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._draw_diamond_bridges_with_color(
+            raw, centers, h, w, bridge_color
+        )
+
+    def _apply_stripe_zone_fill(self, rule, input_grid):
+        """Apply stripe zone fill transformation."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        spine_col = GeneralizeOperator._find_spine_column(raw, h, w)
+        if spine_col is None:
+            return [row[:] for row in raw]
+
+        stripes = GeneralizeOperator._find_stripe_rows(raw, h, w, spine_col)
+        if not stripes:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._compute_stripe_zone_fill(
+            raw, h, w, spine_col, stripes
+        )
 
     # ---- helpers ---------------------------------------------------------
 

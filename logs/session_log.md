@@ -165,3 +165,39 @@
 - Stored rule hits: 8
 - Time: 43s
 - Log: logs/learn_20260329_151124.log
+
+---
+## Learning Loop -- 2026-03-29 15:13
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 20 -> 21 (+1 learned)
+- Stored rule hits: 8
+- Time: 42s
+- Log: logs/learn_20260329_151245.log
+
+---
+## Session 5 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **diamond_bridge** -- find 3x3 diamond shapes (4 cardinal pixels of one color, center=0) and connect horizontally/vertically aligned pairs with blue (1) lines between their tips. Handles shape-connection / bridge-drawing tasks.
+2. **stripe_zone_fill** -- grid has a vertical spine of color 8, background 7, and colored horizontal stripes (with 1 at spine intersection). Output fills zones around each stripe with its color, inverts stripe rows, and adds separator rows at odd-gap midpoints between differently-colored stripes. Handles spine + stripe zone-filling tasks.
+
+### Tasks Solved
+- `60a26a3e`: diamond_bridge
+- `332202d5`: stripe_zone_fill
+
+### Results
+- Before: 9/20 (45%)
+- After: 11/20 (55%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 15:21
+
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%)
+- Rules: 23 -> 23 (+0 learned)
+- Stored rule hits: 10
+- Time: 37s
+- Log: logs/learn_20260329_152039.log
