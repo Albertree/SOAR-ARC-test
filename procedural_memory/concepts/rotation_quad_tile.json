@@ -1,0 +1,50 @@
+{
+  "concept_id": "rotation_quad_tile",
+  "version": 1,
+  "description": "Tile input in 2x2 layout with rotations: [0, 270, 180, 90] degrees CW",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": [2, 2],
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "rotate_cw",
+      "args": {"grid": "$input", "times": 3},
+      "output": "rot_ccw"
+    },
+    {
+      "id": "s2",
+      "primitive": "rotate_cw",
+      "args": {"grid": "$input", "times": 2},
+      "output": "rot_180"
+    },
+    {
+      "id": "s3",
+      "primitive": "rotate_cw",
+      "args": {"grid": "$input", "times": 1},
+      "output": "rot_cw"
+    },
+    {
+      "id": "s4",
+      "primitive": "concat_horizontal",
+      "args": {"grid_a": "$input", "grid_b": "$rot_ccw"},
+      "output": "top_row"
+    },
+    {
+      "id": "s5",
+      "primitive": "concat_horizontal",
+      "args": {"grid_a": "$rot_180", "grid_b": "$rot_cw"},
+      "output": "bottom_row"
+    },
+    {
+      "id": "s6",
+      "primitive": "concat_vertical",
+      "args": {"grid_a": "$top_row", "grid_b": "$bottom_row"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

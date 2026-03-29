@@ -1722,3 +1722,97 @@ def scatter_count_x_diamond(grid, bg=7, fill_color=2, diag_color=4, output_side=
             output[start_row + r][right] = diag_color
 
     return output
+
+
+def invert_bordered_rect(grid, bg=0):
+    """Find a bordered rectangle (frame of color A, interior of color B) on bg grid.
+    Return the rectangle cropped out with border and fill colors swapped.
+    Frame becomes B, interior becomes A."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find all non-bg cells to locate the rectangle
+    non_bg = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                non_bg.add((r, c))
+    if not non_bg:
+        return None
+
+    min_r = min(p[0] for p in non_bg)
+    max_r = max(p[0] for p in non_bg)
+    min_c = min(p[1] for p in non_bg)
+    max_c = max(p[1] for p in non_bg)
+
+    rect_h = max_r - min_r + 1
+    rect_w = max_c - min_c + 1
+
+    # Extract the rectangle region
+    rect = [grid[min_r + r][min_c:min_c + rect_w] for r in range(rect_h)]
+
+    # Identify border color (top-left corner) and fill color (center)
+    border_color = rect[0][0]
+    # Find the interior color: first non-border color in interior cells
+    fill_color = None
+    for r in range(1, rect_h - 1):
+        for c in range(1, rect_w - 1):
+            if rect[r][c] != border_color:
+                fill_color = rect[r][c]
+                break
+        if fill_color is not None:
+            break
+
+    if fill_color is None:
+        return None
+
+    # Build output with swapped colors
+    output = []
+    for r in range(rect_h):
+        row = []
+        for c in range(rect_w):
+            if rect[r][c] == border_color:
+                row.append(fill_color)
+            elif rect[r][c] == fill_color:
+                row.append(border_color)
+            else:
+                row.append(rect[r][c])
+        output.append(row)
+
+    return output
+
+
+def tile_content_upward(grid, bg=None):
+    """Find content region at bottom of grid, tile it upward to fill the entire grid.
+    Content is detected as the bottom rows containing non-bg pixels.
+    Tiling is bottom-aligned: the original content stays in place."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    if bg is None:
+        bg = find_bg_color(grid)
+
+    # Find the first row (from top) containing non-bg pixels
+    content_start = h
+    for r in range(h):
+        if any(grid[r][c] != bg for c in range(w)):
+            content_start = r
+            break
+
+    if content_start >= h:
+        return [row[:] for row in grid]
+
+    # Content rows = from content_start to end
+    content = [grid[r][:] for r in range(content_start, h)]
+    content_h = len(content)
+
+    # Tile content to fill the full grid, bottom-aligned
+    output = []
+    for r in range(h):
+        # Distance from bottom
+        dist_from_bottom = h - 1 - r
+        # Map to content row (bottom-aligned tiling)
+        content_row_idx = content_h - 1 - (dist_from_bottom % content_h)
+        output.append(content[content_row_idx][:])
+
+    return output

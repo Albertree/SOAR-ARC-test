@@ -227,3 +227,41 @@
 - Stored rule hits: 18
 - Time: 35s
 - Log: logs/learn_20260330_050215.log
+
+---
+## Learning Loop -- 2026-03-30 05:03
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 20
+- Time: 35s
+- Log: logs/learn_20260330_050320.log
+
+---
+## Learning Loop -- 2026-03-30 05:05
+
+- Split: training, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 20
+- Time: 83s
+- Log: logs/learn_20260330_050411.log
+
+---
+## Session 9 (Claude) -- 2026-03-30 05:12
+
+### Changes
+- Created `procedural_memory/concepts/rotation_quad_tile.json` (solves ed98d772) — tiles input in 2x2 layout with rotations [0°, 270°, 180°, 90°] CW using only existing primitives (rotate_cw, concat_horizontal, concat_vertical)
+- Added `invert_bordered_rect` primitive to `_primitives.py` — finds bordered rectangle on bg, crops it, swaps border and fill colors
+- Created `procedural_memory/concepts/invert_bordered_rect.json` (solves b94a9452)
+- Added `tile_content_upward` primitive to `_primitives.py` — detects content rows at bottom of grid, tiles them upward (bottom-aligned) to fill entire grid
+- Created `procedural_memory/concepts/tile_content_upward.json` (solves 9b30e358)
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%) — up from 20/40 (50.0%)
+- Rules: 20 -> 23 (+3 learned)
+- Stored rule hits: 20
+- Time: 73s
+- Log: logs/learn_20260330_051054.log

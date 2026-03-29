@@ -1,0 +1,24 @@
+{
+  "concept_id": "invert_bordered_rect",
+  "version": 1,
+  "description": "Extract bordered rectangle and swap border/fill colors",
+  "signature": {
+    "grid_size_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {
+      "type": "color",
+      "infer": "bg_color"
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "invert_bordered_rect",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
