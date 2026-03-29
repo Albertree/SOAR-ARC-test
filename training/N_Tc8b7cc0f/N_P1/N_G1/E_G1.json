@@ -1,0 +1,38 @@
+{
+  "id": "Tc8b7cc0f.P1.G1",
+  "result": {
+    "size": {
+      "height": 3,
+      "width": 3
+    },
+    "color": {
+      "0": true,
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": true,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "contents": [
+      [
+        6,
+        6,
+        6
+      ],
+      [
+        6,
+        6,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ]
+    ]
+  }
+}

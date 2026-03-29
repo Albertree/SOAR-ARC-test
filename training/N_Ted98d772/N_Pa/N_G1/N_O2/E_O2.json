@@ -1,0 +1,67 @@
+{
+  "id": "Ted98d772.Pa.G1.O2",
+  "result": {
+    "area": 2,
+    "color": {
+      "0": true,
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        5,
+        4
+      ],
+      [
+        5,
+        5
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": false,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 5,
+        "col_index": 4
+      },
+      "right_top": {
+        "row_index": 5,
+        "col_index": 5
+      },
+      "left_bottom": {
+        "row_index": 5,
+        "col_index": 4
+      },
+      "right_bottom": {
+        "row_index": 5,
+        "col_index": 5
+      }
+    },
+    "shape": [
+      [
+        1,
+        1
+      ]
+    ],
+    "size": {
+      "height": 1,
+      "width": 2
+    },
+    "symmetry": {
+      "hori_symm": true,
+      "verti_symm": true,
+      "diag_symm": false,
+      "anti_symm": false
+    }
+  }
+}

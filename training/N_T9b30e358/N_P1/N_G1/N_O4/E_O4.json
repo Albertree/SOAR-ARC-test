@@ -1,0 +1,62 @@
+{
+  "id": "T9b30e358.P1.G1.O4",
+  "result": {
+    "area": 1,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": true,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        6,
+        4
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": false,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 6,
+        "col_index": 4
+      },
+      "right_top": {
+        "row_index": 6,
+        "col_index": 4
+      },
+      "left_bottom": {
+        "row_index": 6,
+        "col_index": 4
+      },
+      "right_bottom": {
+        "row_index": 6,
+        "col_index": 4
+      }
+    },
+    "shape": [
+      [
+        1
+      ]
+    ],
+    "size": {
+      "height": 1,
+      "width": 1
+    },
+    "symmetry": {
+      "hori_symm": true,
+      "verti_symm": true,
+      "diag_symm": true,
+      "anti_symm": true
+    }
+  }
+}

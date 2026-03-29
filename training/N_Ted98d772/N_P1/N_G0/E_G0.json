@@ -1,0 +1,38 @@
+{
+  "id": "Ted98d772.P1.G0",
+  "result": {
+    "size": {
+      "height": 3,
+      "width": 3
+    },
+    "color": {
+      "0": true,
+      "1": false,
+      "2": false,
+      "3": true,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "contents": [
+      [
+        3,
+        0,
+        3
+      ],
+      [
+        0,
+        3,
+        3
+      ],
+      [
+        3,
+        3,
+        3
+      ]
+    ]
+  }
+}

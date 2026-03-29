@@ -1,0 +1,123 @@
+{
+  "id": "T9b30e358.Pa.G0.O4",
+  "result": {
+    "area": 10,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": true,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": true,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        6,
+        1
+      ],
+      [
+        6,
+        3
+      ],
+      [
+        7,
+        0
+      ],
+      [
+        7,
+        2
+      ],
+      [
+        7,
+        4
+      ],
+      [
+        8,
+        1
+      ],
+      [
+        8,
+        2
+      ],
+      [
+        8,
+        3
+      ],
+      [
+        9,
+        1
+      ],
+      [
+        9,
+        3
+      ]
+    ],
+    "method": {
+      "univalued": false,
+      "diagonal": true,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 6,
+        "col_index": 0
+      },
+      "right_top": {
+        "row_index": 6,
+        "col_index": 4
+      },
+      "left_bottom": {
+        "row_index": 9,
+        "col_index": 0
+      },
+      "right_bottom": {
+        "row_index": 9,
+        "col_index": 4
+      }
+    },
+    "shape": [
+      [
+        -1,
+        1,
+        -1,
+        1,
+        -1
+      ],
+      [
+        1,
+        -1,
+        1,
+        -1,
+        1
+      ],
+      [
+        -1,
+        1,
+        1,
+        1,
+        -1
+      ],
+      [
+        -1,
+        1,
+        -1,
+        1,
+        -1
+      ]
+    ],
+    "size": {
+      "height": 4,
+      "width": 5
+    },
+    "symmetry": {
+      "hori_symm": true,
+      "verti_symm": false,
+      "diag_symm": false,
+      "anti_symm": false
+    }
+  }
+}

@@ -442,6 +442,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_scatter_count_x(patterns, task)
 
+        # Strategy: rotation tiling (NxN → 2Nx2N with 4 rotations)
+        if rule is None:
+            rule = self._try_rotation_tiling(patterns, task)
+
+        # Strategy: rectangle interior count (count colored pixels inside 1-rectangle → filled grid)
+        if rule is None:
+            rule = self._try_rectangle_interior_count(patterns, task)
+
+        # Strategy: pattern tile fill (fill uniform-bg rows with cyclic pattern repeat)
+        if rule is None:
+            rule = self._try_pattern_tile_fill(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -2581,6 +2593,213 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: rotation tiling ----------------------------------------
+
+    def _try_rotation_tiling(self, patterns, task):
+        """
+        Detect: NxN input → 2Nx2N output composed of 4 rotations of the input.
+        Layout: top-left = original, top-right = 270° CW, bottom-left = 180°,
+        bottom-right = 90° CW.
+        Category: rotation tiling / symmetry expansion tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            ih, iw = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh != 2 * ih or ow != 2 * iw:
+                return None
+            if ih != iw:
+                return None
+            n = ih
+
+            def rot90(grid, n):
+                return [[grid[n - 1 - c][r] for c in range(n)] for r in range(n)]
+
+            def rot180(grid, n):
+                return [[grid[n - 1 - r][n - 1 - c] for c in range(n)] for r in range(n)]
+
+            def rot270(grid, n):
+                return [[grid[c][n - 1 - r] for c in range(n)] for r in range(n)]
+
+            r0 = ig
+            r90 = rot90(ig, n)
+            r180 = rot180(ig, n)
+            r270 = rot270(ig, n)
+
+            # Check layout: TL=original, TR=rot270, BL=rot180, BR=rot90
+            ok = True
+            for r in range(n):
+                for c in range(n):
+                    if og[r][c] != r0[r][c]:
+                        ok = False; break
+                    if og[r][n + c] != r270[r][c]:
+                        ok = False; break
+                    if og[n + r][c] != r180[r][c]:
+                        ok = False; break
+                    if og[n + r][n + c] != r90[r][c]:
+                        ok = False; break
+                if not ok:
+                    break
+            if not ok:
+                return None
+
+        return {"type": "rotation_tiling", "confidence": 1.0}
+
+    # ---- strategy: rectangle interior count --------------------------------
+
+    def _try_rectangle_interior_count(self, patterns, task):
+        """
+        Detect: input has a rectangle bordered by 1s. Inside, some cells have
+        a non-0/non-1 color. Outside, scattered pixels of the same color.
+        Output is a small grid (consistent size across pairs) filled
+        left-to-right, top-to-bottom with the count of colored interior pixels.
+        Category: count-inside-rectangle → summary grid tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        out_h = None
+        out_w = None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            oh, ow = len(og), len(og[0])
+
+            rect = self._find_one_rectangle(ig)
+            if rect is None:
+                return None
+            r1, c1, r2, c2 = rect
+
+            color = None
+            count = 0
+            for r in range(r1 + 1, r2):
+                for c in range(c1 + 1, c2):
+                    if ig[r][c] != 0:
+                        if color is None:
+                            color = ig[r][c]
+                        elif ig[r][c] != color:
+                            return None
+                        count += 1
+
+            if color is None:
+                return None
+
+            if out_h is None:
+                out_h, out_w = oh, ow
+            elif (oh, ow) != (out_h, out_w):
+                return None
+
+            filled = 0
+            for r in range(oh):
+                for c in range(ow):
+                    idx = r * ow + c
+                    if idx < count:
+                        if og[r][c] != color:
+                            return None
+                        filled += 1
+                    else:
+                        if og[r][c] != 0:
+                            return None
+
+            if filled != count:
+                return None
+
+        return {
+            "type": "rectangle_interior_count",
+            "out_h": out_h,
+            "out_w": out_w,
+            "confidence": 1.0,
+        }
+
+    def _find_one_rectangle(self, grid):
+        """Find a rectangle of 1s (border) in the grid. Returns (r1,c1,r2,c2) or None."""
+        h, w = len(grid), len(grid[0])
+        ones = [(r, c) for r in range(h) for c in range(w) if grid[r][c] == 1]
+        if not ones:
+            return None
+        r_min = min(r for r, c in ones)
+        r_max = max(r for r, c in ones)
+        c_min = min(c for r, c in ones)
+        c_max = max(c for r, c in ones)
+        for c in range(c_min, c_max + 1):
+            if grid[r_min][c] != 1 or grid[r_max][c] != 1:
+                return None
+        for r in range(r_min, r_max + 1):
+            if grid[r][c_min] != 1 or grid[r][c_max] != 1:
+                return None
+        return (r_min, c_min, r_max, c_max)
+
+    # ---- strategy: pattern tile fill ---------------------------------------
+
+    def _try_pattern_tile_fill(self, patterns, task):
+        """
+        Detect: grid has a region of uniform background and a pattern region.
+        The pattern tiles cyclically upward to fill the blank region.
+        Category: pattern repetition / tile-fill tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if (oh, ow) != (h, w):
+                return None
+
+            from collections import Counter
+            counts = Counter(c for row in ig for c in row)
+            bg = counts.most_common(1)[0][0]
+
+            pattern_rows = []
+            blank_rows = []
+            for r in range(h):
+                if all(ig[r][c] == bg for c in range(w)):
+                    blank_rows.append(r)
+                else:
+                    pattern_rows.append(r)
+
+            if not pattern_rows or not blank_rows:
+                return None
+
+            pr_min, pr_max = min(pattern_rows), max(pattern_rows)
+            if list(range(pr_min, pr_max + 1)) != pattern_rows:
+                return None
+
+            if pr_max != h - 1 and pr_min != 0:
+                return None
+
+            pat_len = len(pattern_rows)
+            pat = [ig[r] for r in pattern_rows]
+
+            for r in range(h):
+                if pr_max == h - 1:
+                    dist_from_bottom = h - 1 - r
+                    cycle_row = pat[pat_len - 1 - (dist_from_bottom % pat_len)]
+                else:
+                    dist_from_top = r
+                    cycle_row = pat[dist_from_top % pat_len]
+
+                if og[r] != cycle_row:
+                    return None
+
+        return {"type": "pattern_tile_fill", "confidence": 1.0}
+
 
 def _build_scatter_x_grid(grid_h, grid_w, rect_h, rect_w, bg, fill, diag):
     """Build output grid with X-diamond in bottom-left rectangle."""
@@ -2965,6 +3184,12 @@ class PredictOperator(Operator):
             return self._apply_template_reconstruct(rule, input_grid)
         if rule_type == "scatter_count_x":
             return self._apply_scatter_count_x(rule, input_grid)
+        if rule_type == "rotation_tiling":
+            return self._apply_rotation_tiling(rule, input_grid)
+        if rule_type == "rectangle_interior_count":
+            return self._apply_rectangle_interior_count(rule, input_grid)
+        if rule_type == "pattern_tile_fill":
+            return self._apply_pattern_tile_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3666,6 +3891,99 @@ class PredictOperator(Operator):
         if result is None:
             return [row[:] for row in raw]
         return result
+
+    def _apply_rotation_tiling(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h != w or h == 0:
+            return [row[:] for row in raw]
+        n = h
+
+        def rot90(g):
+            return [[g[n - 1 - c][r] for c in range(n)] for r in range(n)]
+
+        def rot180(g):
+            return [[g[n - 1 - r][n - 1 - c] for c in range(n)] for r in range(n)]
+
+        def rot270(g):
+            return [[g[c][n - 1 - r] for c in range(n)] for r in range(n)]
+
+        r0 = raw
+        r90_g = rot90(raw)
+        r180_g = rot180(raw)
+        r270_g = rot270(raw)
+
+        out = [[0] * (2 * n) for _ in range(2 * n)]
+        for r in range(n):
+            for c in range(n):
+                out[r][c] = r0[r][c]
+                out[r][n + c] = r270_g[r][c]
+                out[n + r][c] = r180_g[r][c]
+                out[n + r][n + c] = r90_g[r][c]
+        return out
+
+    def _apply_rectangle_interior_count(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        out_h = rule["out_h"]
+        out_w = rule["out_w"]
+
+        # Find 1-bordered rectangle
+        ones = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == 1]
+        if not ones:
+            return [[0] * out_w for _ in range(out_h)]
+        r_min = min(r for r, c in ones)
+        r_max = max(r for r, c in ones)
+        c_min = min(c for r, c in ones)
+        c_max = max(c for r, c in ones)
+
+        # Count interior colored pixels
+        color = 0
+        count = 0
+        for r in range(r_min + 1, r_max):
+            for c in range(c_min + 1, c_max):
+                if raw[r][c] != 0 and raw[r][c] != 1:
+                    if color == 0:
+                        color = raw[r][c]
+                    count += 1
+
+        # Fill output grid left-to-right, top-to-bottom
+        out = [[0] * out_w for _ in range(out_h)]
+        for i in range(count):
+            r, c = divmod(i, out_w)
+            if r < out_h:
+                out[r][c] = color
+        return out
+
+    def _apply_pattern_tile_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        from collections import Counter
+        counts = Counter(c for row in raw for c in row)
+        bg = counts.most_common(1)[0][0]
+
+        # Find pattern rows
+        pattern_rows = []
+        for r in range(h):
+            if not all(raw[r][c] == bg for c in range(w)):
+                pattern_rows.append(r)
+
+        if not pattern_rows:
+            return [row[:] for row in raw]
+
+        pat = [list(raw[r]) for r in pattern_rows]
+        pat_len = len(pat)
+        pr_max = max(pattern_rows)
+
+        # Fill all rows with cyclic pattern from bottom
+        out = []
+        for r in range(h):
+            dist_from_bottom = h - 1 - r
+            cycle_row = pat[pat_len - 1 - (dist_from_bottom % pat_len)]
+            out.append(list(cycle_row))
+        return out
 
 
 # ======================================================================

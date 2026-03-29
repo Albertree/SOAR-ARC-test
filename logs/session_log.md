@@ -462,3 +462,51 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Before: 19/20 (95%)
 - After: 20/20 (100%)
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 16:55
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 18
+- Time: 36s
+- Log: logs/learn_20260329_165429.log
+
+---
+## Learning Loop -- 2026-03-29 16:56
+
+- Split: training, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 21 -> 26 (+5 learned)
+- Stored rule hits: 18
+- Time: 84s
+- Log: logs/learn_20260329_165527.log
+
+---
+## Session 11 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **rotation_tiling** -- NxN input tiled into a 2Nx2N output with 4 quadrants: top-left = original, top-right = 270° CW rotation, bottom-left = 180° rotation, bottom-right = 90° CW rotation. Handles rotation-symmetry expansion tasks.
+2. **rectangle_interior_count** -- input has a rectangle bordered by 1s with scattered colored pixels inside. Output is a fixed-size grid (e.g. 3×3) filled left-to-right, top-to-bottom with the count of colored interior pixels. Handles count-inside-rectangle → summary grid tasks.
+3. **pattern_tile_fill** -- grid has a uniform-background region and a contiguous pattern region at one end. The blank region is filled by cyclically repeating the pattern. Handles pattern repetition / tile-fill tasks.
+
+### Tasks Solved
+- `ed98d772`: rotation_tiling
+- `c8b7cc0f`: rectangle_interior_count
+- `9b30e358`: pattern_tile_fill
+
+### Results
+- Before: 20/20 (100%) on core 20 tasks
+- After: 23/40 (57.5%) on expanded 40-task set (+3 new tasks solved)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 17:07
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 29 -> 34 (+5 learned)
+- Stored rule hits: 21
+- Time: 74s
+- Log: logs/learn_20260329_170629.log
