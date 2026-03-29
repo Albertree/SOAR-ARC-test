@@ -172,3 +172,30 @@
 - Stored rule hits: 14
 - Time: 35s
 - Log: logs/learn_20260330_041943.log
+
+---
+## Learning Loop -- 2026-03-30 04:21
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 16
+- Time: 35s
+- Log: logs/learn_20260330_042104.log
+
+---
+## Session 7 (Claude) -- 2026-03-30 04:37
+
+### Changes
+- Added `zigzag_shear_grid` primitive to `_primitives.py` — finds colored rectangle/grid on background, applies zigzag horizontal shear with pattern [0,-1,0,+1] indexed by distance from bottom row (mod 4)
+- Added `slide_connector_through` primitive to `_primitives.py` — finds three single-color shapes in a line, slides the smallest (connector) through one neighbor (toward farther or larger-perp-extent neighbor), splitting it ±1 perpendicular, connector exits past target clamped to grid boundary
+- Created `procedural_memory/concepts/zigzag_shear_grid.json` (solves 1c56ad9f)
+- Created `procedural_memory/concepts/slide_connector_through.json` (solves 9f669b64)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%) — up from 16/20 (80.0%)
+- Rules: 16 -> 18 (+2 learned)
+- Stored rule hits: 16
+- Time: 35s
+- Log: logs/learn_20260330_043722.log

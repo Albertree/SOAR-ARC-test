@@ -1171,6 +1171,238 @@ def swap_quadrant_shapes(grid, sep_color=0):
     return output
 
 
+def zigzag_shear_grid(grid, bg=0):
+    """Find a colored rectangle/grid pattern on background and apply zigzag shear.
+    Each row of the rectangle shifts horizontally by [0, -1, 0, +1] based on
+    distance from the bottom row of the rectangle (mod 4).
+    Works for grids with internal dividers (sub-cells) — the entire row shifts."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Find bounding box of all non-bg cells
+    non_bg = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                non_bg.append((r, c))
+    if not non_bg:
+        return [row[:] for row in grid]
+
+    min_r = min(r for r, c in non_bg)
+    max_r = max(r for r, c in non_bg)
+
+    # Shift pattern indexed by distance from bottom: [0, -1, 0, +1] repeating
+    shift_pattern = [0, -1, 0, 1]
+
+    output = [[bg] * w for _ in range(h)]
+    for r in range(h):
+        if r < min_r or r > max_r:
+            # Outside the rectangle — keep as bg
+            continue
+        dist_from_bottom = max_r - r
+        shift = shift_pattern[dist_from_bottom % 4]
+        for c in range(w):
+            if grid[r][c] != bg:
+                nc = c + shift
+                if 0 <= nc < w:
+                    output[r][nc] = grid[r][c]
+    return output
+
+
+def slide_connector_through(grid, bg=7):
+    """Three single-color shapes in a line. The smallest (connector) slides through
+    one neighbor, splitting it ±1 perpendicular. Direction: toward farther neighbor;
+    if equidistant, toward larger perpendicular extent. Connector exits past target
+    (clamped to grid boundary)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Per-color connected components
+    visited = set()
+    comps = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            color = grid[r][c]
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == color:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            min_r = min(r for r, _ in comp)
+            max_r = max(r for r, _ in comp)
+            min_c = min(c for _, c in comp)
+            max_c = max(c for _, c in comp)
+            comps.append({
+                "positions": comp, "bbox": (min_r, min_c, max_r, max_c),
+                "size": len(comp), "height": max_r - min_r + 1, "width": max_c - min_c + 1,
+            })
+
+    if len(comps) != 3:
+        return [row[:] for row in grid]
+
+    # Identify the connector as the geometrically middle shape.
+    # Compute centers, find which is between the other two.
+    shape_centers = []
+    for s in comps:
+        cr = (s["bbox"][0] + s["bbox"][2]) / 2.0
+        cc = (s["bbox"][1] + s["bbox"][3]) / 2.0
+        shape_centers.append((cr, cc))
+
+    # Try each as connector: it's the one whose center is between the other two
+    conn_idx = None
+    for i in range(3):
+        j, k = [x for x in range(3) if x != i]
+        cr_i, cc_i = shape_centers[i]
+        cr_j, cc_j = shape_centers[j]
+        cr_k, cc_k = shape_centers[k]
+        # Check if i is between j and k in rows OR cols
+        between_r = min(cr_j, cr_k) <= cr_i <= max(cr_j, cr_k)
+        between_c = min(cc_j, cc_k) <= cc_i <= max(cc_j, cc_k)
+        if between_r and between_c:
+            # Among ties, prefer the smallest shape
+            if conn_idx is None or comps[i]["size"] < comps[conn_idx]["size"]:
+                conn_idx = i
+    if conn_idx is None:
+        # Fallback: smallest shape
+        conn_idx = min(range(3), key=lambda i: comps[i]["size"])
+
+    conn = comps[conn_idx]
+    nbs = [comps[i] for i in range(3) if i != conn_idx]
+
+    conn_cr = (conn["bbox"][0] + conn["bbox"][2]) / 2.0
+    conn_cc = (conn["bbox"][1] + conn["bbox"][3]) / 2.0
+    nb_centers = [((n["bbox"][0] + n["bbox"][2]) / 2.0, (n["bbox"][1] + n["bbox"][3]) / 2.0) for n in nbs]
+
+    vert_spread = max(abs(nb_centers[0][0] - conn_cr), abs(nb_centers[1][0] - conn_cr))
+    horiz_spread = max(abs(nb_centers[0][1] - conn_cc), abs(nb_centers[1][1] - conn_cc))
+    vertical = vert_spread >= horiz_spread
+
+    c0r, c0c, c1r, c1c = conn["bbox"]
+    ch, cw = conn["height"], conn["width"]
+
+    if vertical:
+        # Order: before (above) / after (below)
+        if nb_centers[0][0] < nb_centers[1][0]:
+            nb_bef, nb_aft = nbs[0], nbs[1]
+        else:
+            nb_bef, nb_aft = nbs[1], nbs[0]
+
+        gap_bef = c0r - nb_bef["bbox"][2] - 1
+        gap_aft = nb_aft["bbox"][0] - c1r - 1
+
+        if gap_bef > gap_aft:
+            target, fixed = nb_bef, nb_aft
+        elif gap_aft > gap_bef:
+            target, fixed = nb_aft, nb_bef
+        else:
+            if nb_bef["width"] >= nb_aft["width"]:
+                target, fixed = nb_bef, nb_aft
+            else:
+                target, fixed = nb_aft, nb_bef
+
+        toward_min = (target is nb_bef)
+        t0r, t0c, t1r, t1c = target["bbox"]
+        mid_c = (c0c + c1c) / 2.0
+
+        left_half = [(r, c) for r, c in target["positions"] if c < mid_c]
+        right_half = [(r, c) for r, c in target["positions"] if c >= mid_c]
+
+        output = [[bg] * w for _ in range(h)]
+        for r, c in fixed["positions"]:
+            output[r][c] = grid[r][c]
+        for r, c in left_half:
+            nc = c - 1
+            if 0 <= nc < w:
+                output[r][nc] = grid[r][c]
+        for r, c in right_half:
+            nc = c + 1
+            if 0 <= nc < w:
+                output[r][nc] = grid[r][c]
+
+        if toward_min:
+            new_top = t0r - ch
+            if new_top < 0:
+                new_top = 0
+            shift_r = new_top - c0r
+        else:
+            new_bottom = t1r + ch
+            if new_bottom >= h:
+                new_bottom = h - 1
+            shift_r = (new_bottom - ch + 1) - c0r
+
+        for r, c in conn["positions"]:
+            nr = r + shift_r
+            if 0 <= nr < h:
+                output[nr][c] = grid[r][c]
+    else:
+        if nb_centers[0][1] < nb_centers[1][1]:
+            nb_bef, nb_aft = nbs[0], nbs[1]
+        else:
+            nb_bef, nb_aft = nbs[1], nbs[0]
+
+        gap_bef = c0c - nb_bef["bbox"][3] - 1
+        gap_aft = nb_aft["bbox"][1] - c1c - 1
+
+        if gap_bef > gap_aft:
+            target, fixed = nb_bef, nb_aft
+        elif gap_aft > gap_bef:
+            target, fixed = nb_aft, nb_bef
+        else:
+            if nb_bef["height"] >= nb_aft["height"]:
+                target, fixed = nb_bef, nb_aft
+            else:
+                target, fixed = nb_aft, nb_bef
+
+        toward_min = (target is nb_bef)
+        t0r, t0c, t1r, t1c = target["bbox"]
+        mid_r = (c0r + c1r) / 2.0
+
+        top_half = [(r, c) for r, c in target["positions"] if r < mid_r]
+        bottom_half = [(r, c) for r, c in target["positions"] if r >= mid_r]
+
+        output = [[bg] * w for _ in range(h)]
+        for r, c in fixed["positions"]:
+            output[r][c] = grid[r][c]
+        for r, c in top_half:
+            nr = r - 1
+            if 0 <= nr < h:
+                output[nr][c] = grid[r][c]
+        for r, c in bottom_half:
+            nr = r + 1
+            if 0 <= nr < h:
+                output[nr][c] = grid[r][c]
+
+        if toward_min:
+            new_left = t0c - cw
+            if new_left < 0:
+                new_left = 0
+            shift_c = new_left - c0c
+        else:
+            new_right = t1c + cw
+            if new_right >= w:
+                new_right = w - 1
+            shift_c = (new_right - cw + 1) - c0c
+
+        for r, c in conn["positions"]:
+            nc = c + shift_c
+            if 0 <= nc < w:
+                output[r][nc] = grid[r][c]
+
+    return output
+
+
 def summarize_box_grid(grid, bg=0):
     """Summarize a 30x30 grid of 3x3 bordered boxes into a compact bar-chart.
     The grid has a 1-border on one edge, a 7x7 grid of box cells (3x3 each,
