@@ -1,0 +1,83 @@
+{
+  "id": "T825aa9e9.P1.G0.O1",
+  "result": {
+    "area": 4,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": true,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        0,
+        1
+      ],
+      [
+        0,
+        2
+      ],
+      [
+        1,
+        2
+      ],
+      [
+        2,
+        2
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": true,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 0,
+        "col_index": 1
+      },
+      "right_top": {
+        "row_index": 0,
+        "col_index": 2
+      },
+      "left_bottom": {
+        "row_index": 2,
+        "col_index": 1
+      },
+      "right_bottom": {
+        "row_index": 2,
+        "col_index": 2
+      }
+    },
+    "shape": [
+      [
+        1,
+        1
+      ],
+      [
+        -1,
+        1
+      ],
+      [
+        -1,
+        1
+      ]
+    ],
+    "size": {
+      "height": 3,
+      "width": 2
+    },
+    "symmetry": {
+      "hori_symm": false,
+      "verti_symm": false,
+      "diag_symm": false,
+      "anti_symm": false
+    }
+  }
+}

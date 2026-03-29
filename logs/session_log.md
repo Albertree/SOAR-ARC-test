@@ -398,3 +398,67 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Before: 17/20 (85%)
 - After: 19/20 (95%)
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 16:42
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 17
+- Time: 36s
+- Log: logs/learn_20260329_164144.log
+
+---
+## Learning Loop -- 2026-03-29 16:46
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 17
+- Time: 36s
+- Log: logs/learn_20260329_164543.log
+
+---
+## Learning Loop -- 2026-03-29 16:49
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 17
+- Time: 35s
+- Log: logs/learn_20260329_164854.log
+
+---
+## Learning Loop -- 2026-03-29 16:52
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 20 -> 21 (+1 learned)
+- Stored rule hits: 17
+- Time: 36s
+- Log: logs/learn_20260329_165142.log
+
+---
+## Learning Loop -- 2026-03-29 16:53
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 18
+- Time: 36s
+- Log: logs/learn_20260329_165257.log
+
+---
+## Session 10 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **scatter_count_x** -- input has background + exactly 2 scattered non-bg single-pixel colors. Count each color: the more-frequent count becomes rectangle width, the less-frequent becomes height. Output is a fixed-size grid (consistent across training pairs) with a W×H rectangle anchored at the bottom-left, filled with one color and an X-pattern (two crossing diagonals) drawn in another. Handles scatter-pixel counting → geometric X-diamond shape tasks.
+
+### Tasks Solved
+- `878187ab`: scatter_count_x
+
+### Results
+- Before: 19/20 (95%)
+- After: 20/20 (100%)
+- Regression gate (08ed6ac7): CORRECT

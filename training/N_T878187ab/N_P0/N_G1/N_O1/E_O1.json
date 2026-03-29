@@ -1,0 +1,155 @@
+{
+  "id": "T878187ab.P0.G1.O1",
+  "result": {
+    "area": 10,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": true,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        11,
+        4
+      ],
+      [
+        11,
+        5
+      ],
+      [
+        12,
+        3
+      ],
+      [
+        12,
+        6
+      ],
+      [
+        13,
+        2
+      ],
+      [
+        13,
+        7
+      ],
+      [
+        14,
+        1
+      ],
+      [
+        14,
+        8
+      ],
+      [
+        15,
+        0
+      ],
+      [
+        15,
+        9
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": true,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 11,
+        "col_index": 0
+      },
+      "right_top": {
+        "row_index": 11,
+        "col_index": 9
+      },
+      "left_bottom": {
+        "row_index": 15,
+        "col_index": 0
+      },
+      "right_bottom": {
+        "row_index": 15,
+        "col_index": 9
+      }
+    },
+    "shape": [
+      [
+        -1,
+        -1,
+        -1,
+        -1,
+        1,
+        1,
+        -1,
+        -1,
+        -1,
+        -1
+      ],
+      [
+        -1,
+        -1,
+        -1,
+        1,
+        -1,
+        -1,
+        1,
+        -1,
+        -1,
+        -1
+      ],
+      [
+        -1,
+        -1,
+        1,
+        -1,
+        -1,
+        -1,
+        -1,
+        1,
+        -1,
+        -1
+      ],
+      [
+        -1,
+        1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        1,
+        -1
+      ],
+      [
+        1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        -1,
+        1
+      ]
+    ],
+    "size": {
+      "height": 5,
+      "width": 10
+    },
+    "symmetry": {
+      "hori_symm": true,
+      "verti_symm": false,
+      "diag_symm": false,
+      "anti_symm": false
+    }
+  }
+}

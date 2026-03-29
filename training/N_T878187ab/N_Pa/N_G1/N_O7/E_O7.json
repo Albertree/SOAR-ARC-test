@@ -1,0 +1,79 @@
+{
+  "id": "T878187ab.Pa.G1.O7",
+  "result": {
+    "area": 4,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": false,
+      "3": false,
+      "4": true,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        8,
+        6
+      ],
+      [
+        8,
+        7
+      ],
+      [
+        9,
+        6
+      ],
+      [
+        9,
+        7
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": false,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 8,
+        "col_index": 6
+      },
+      "right_top": {
+        "row_index": 8,
+        "col_index": 7
+      },
+      "left_bottom": {
+        "row_index": 9,
+        "col_index": 6
+      },
+      "right_bottom": {
+        "row_index": 9,
+        "col_index": 7
+      }
+    },
+    "shape": [
+      [
+        1,
+        1
+      ],
+      [
+        1,
+        1
+      ]
+    ],
+    "size": {
+      "height": 2,
+      "width": 2
+    },
+    "symmetry": {
+      "hori_symm": true,
+      "verti_symm": true,
+      "diag_symm": true,
+      "anti_symm": true
+    }
+  }
+}

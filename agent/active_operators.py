@@ -438,6 +438,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_block_grid_gravity(patterns, task)
 
+        # Strategy: scatter count X-diamond (count two scatter colors → W×H X pattern)
+        if rule is None:
+            rule = self._try_scatter_count_x(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -2480,6 +2484,121 @@ class GeneralizeOperator(Operator):
 
         return {"type": "block_grid_gravity", "confidence": 1.0}
 
+    # ---- strategy: scatter count X-diamond --------------------------------
+
+    def _try_scatter_count_x(self, patterns, task):
+        """
+        Detect: input has background + exactly 2 scattered non-bg colors (all
+        single pixels). Output is a fixed-size grid (consistent across pairs)
+        with background everywhere except a rectangle anchored at the
+        bottom-left corner filled with one color and an X (two crossing
+        diagonals) drawn in another.
+        Width = count of more-frequent scatter color,
+        Height = count of less-frequent scatter color.
+        Category: scatter-pixel counting → geometric shape output.
+        """
+        if task is None:
+            return None
+
+        fill_color = None
+        diag_color = None
+        bg_color = None
+        out_h = None
+        out_w = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+
+            # Output size must be consistent across pairs
+            if out_h is None:
+                out_h, out_w = oh, ow
+            elif oh != out_h or ow != out_w:
+                return None
+
+            # Input must have exactly 3 colors: bg + 2 scatter colors
+            in_counts = Counter(c for row in raw_in for c in row)
+            if len(in_counts) != 3:
+                return None
+
+            bg = in_counts.most_common(1)[0][0]
+            scatter_colors = [c for c in in_counts if c != bg]
+
+            # All scatter pixels must be single (not touching same color)
+            for sc in scatter_colors:
+                positions = [(r, c) for r in range(h) for c in range(w)
+                             if raw_in[r][c] == sc]
+                for r, c in positions:
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < h and 0 <= nc < w and raw_in[nr][nc] == sc:
+                            return None
+
+            cnt_a = in_counts[scatter_colors[0]]
+            cnt_b = in_counts[scatter_colors[1]]
+            rect_w = max(cnt_a, cnt_b)
+            rect_h = min(cnt_a, cnt_b)
+
+            # Output must have exactly 3 colors: bg + fill + diagonal
+            out_counts = Counter(c for row in raw_out for c in row)
+            non_bg_out = [c for c in out_counts if c != bg]
+            if len(non_bg_out) != 2:
+                return None
+
+            # Identify fill (more frequent non-bg) and diagonal (less frequent)
+            non_bg_sorted = sorted(non_bg_out, key=lambda c: out_counts[c], reverse=True)
+            pair_fill = non_bg_sorted[0]
+            pair_diag = non_bg_sorted[1]
+
+            if fill_color is None:
+                fill_color = pair_fill
+                diag_color = pair_diag
+                bg_color = bg
+            else:
+                if pair_fill != fill_color or pair_diag != diag_color or bg != bg_color:
+                    return None
+
+            # Verify the output rectangle region and X pattern
+            expected = _build_scatter_x_grid(oh, ow, rect_h, rect_w,
+                                             bg, fill_color, diag_color)
+            if expected != raw_out:
+                return None
+
+        return {
+            "type": "scatter_count_x",
+            "bg_color": bg_color,
+            "fill_color": fill_color,
+            "diag_color": diag_color,
+            "out_h": out_h,
+            "out_w": out_w,
+            "confidence": 1.0,
+        }
+
+
+def _build_scatter_x_grid(grid_h, grid_w, rect_h, rect_w, bg, fill, diag):
+    """Build output grid with X-diamond in bottom-left rectangle."""
+    if rect_h > grid_h or rect_w > grid_w or rect_h <= 0 or rect_w <= 0:
+        return None
+    out = [[bg] * grid_w for _ in range(grid_h)]
+    start_row = grid_h - rect_h
+    for r in range(rect_h):
+        for c in range(rect_w):
+            out[start_row + r][c] = fill
+    for i in range(rect_h):
+        grid_r = grid_h - 1 - i
+        col_left = i
+        col_right = rect_w - 1 - i
+        out[grid_r][col_left] = diag
+        out[grid_r][col_right] = diag
+    return out
+
 
 # D4 symmetry transforms: (r,c) -> transformed (r,c)
 _D4 = [
@@ -2844,6 +2963,8 @@ class PredictOperator(Operator):
             return self._apply_block_grid_gravity(rule, input_grid)
         if rule_type == "template_reconstruct":
             return self._apply_template_reconstruct(rule, input_grid)
+        if rule_type == "scatter_count_x":
+            return self._apply_scatter_count_x(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3518,6 +3639,30 @@ class PredictOperator(Operator):
     def _apply_template_reconstruct(self, rule, input_grid):
         raw = input_grid.raw
         result = _template_reconstruct_transform(raw)
+        if result is None:
+            return [row[:] for row in raw]
+        return result
+
+    def _apply_scatter_count_x(self, rule, input_grid):
+        raw = input_grid.raw
+        bg = rule["bg_color"]
+        fill = rule["fill_color"]
+        diag = rule["diag_color"]
+        out_h = rule["out_h"]
+        out_w = rule["out_w"]
+
+        # Count scatter colors
+        in_counts = Counter(c for row in raw for c in row)
+        scatter_colors = sorted([c for c in in_counts if c != bg],
+                                key=lambda c: in_counts[c], reverse=True)
+        if len(scatter_colors) != 2:
+            return [row[:] for row in raw]
+
+        rect_w = in_counts[scatter_colors[0]]
+        rect_h = in_counts[scatter_colors[1]]
+
+        result = _build_scatter_x_grid(
+            out_h, out_w, rect_h, rect_w, bg, fill, diag)
         if result is None:
             return [row[:] for row in raw]
         return result

@@ -1,0 +1,107 @@
+{
+  "id": "T878187ab.P1.G1.O3",
+  "result": {
+    "area": 8,
+    "color": {
+      "0": false,
+      "1": false,
+      "2": true,
+      "3": false,
+      "4": false,
+      "5": false,
+      "6": false,
+      "7": false,
+      "8": false,
+      "9": false
+    },
+    "coordinate": [
+      [
+        11,
+        5
+      ],
+      [
+        11,
+        6
+      ],
+      [
+        12,
+        4
+      ],
+      [
+        12,
+        5
+      ],
+      [
+        12,
+        6
+      ],
+      [
+        13,
+        5
+      ],
+      [
+        13,
+        6
+      ],
+      [
+        14,
+        6
+      ]
+    ],
+    "method": {
+      "univalued": true,
+      "diagonal": false,
+      "without_bg": true
+    },
+    "position": {
+      "left_top": {
+        "row_index": 11,
+        "col_index": 4
+      },
+      "right_top": {
+        "row_index": 11,
+        "col_index": 6
+      },
+      "left_bottom": {
+        "row_index": 14,
+        "col_index": 4
+      },
+      "right_bottom": {
+        "row_index": 14,
+        "col_index": 6
+      }
+    },
+    "shape": [
+      [
+        -1,
+        1,
+        1
+      ],
+      [
+        1,
+        1,
+        1
+      ],
+      [
+        -1,
+        1,
+        1
+      ],
+      [
+        -1,
+        -1,
+        1
+      ]
+    ],
+    "size": {
+      "height": 4,
+      "width": 3
+    },
+    "symmetry": {
+      "hori_symm": false,
+      "verti_symm": false,
+      "diag_symm": false,
+      "anti_symm": false
+    }
+  }
+}
