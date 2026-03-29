@@ -621,3 +621,41 @@
 - After:  51 / 80 (63.7%)  +3 tasks fixed
 - Regression gate (08ed6ac7): CORRECT
 - New rules discovered: 3 (fill_bbox_holes, xor_halves, sort_pixels_snake)
+
+---
+## Learning Loop -- 2026-03-30 08:46
+
+- Split: training, Tasks: 80
+- Correct: 51 / 80 (63.7%)
+- Rules: 50 -> 50 (+0 learned)
+- Stored rule hits: 51
+- Time: 137s
+- Log: logs/learn_20260330_084403.log
+
+---
+## Session 20 (Claude) -- 2026-03-30 08:53
+
+### Changes
+- Added `fill_max_section` primitive to `_primitives.py` — finds grid sections divided by separator lines, counts colored dots per section, fills section(s) with max count solid, clears others
+- Added `largest_blob_color` primitive to `_primitives.py` — finds largest dense single-color connected component (fill ratio >= 0.5) in noisy grid, outputs 3x3 of that color
+- Added `repeat_colors_growing_gaps` primitive to `_primitives.py` — extracts seed colors from middle row, repeats them with progressively increasing gaps (each gap +1 from previous)
+- Added `separator_color` inference method to `_concept_engine.py` — finds the color that forms full-width rows and/or full-height columns
+- Created `procedural_memory/concepts/fill_max_section.json` (solves 29623171)
+- Created `procedural_memory/concepts/largest_blob_color.json` (solves 3194b014)
+- Created `procedural_memory/concepts/repeat_colors_growing_gaps.json` (solves 72207abc)
+
+### Results
+- Before: 51 / 80 (63.7%)
+- After:  54 / 80 (67.5%)  +3 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 3 (fill_max_section, largest_blob_color, repeat_colors_growing_gaps)
+
+---
+## Learning Loop -- 2026-03-30 08:55
+
+- Split: training, Tasks: 80
+- Correct: 54 / 80 (67.5%)
+- Rules: 50 -> 53 (+3 learned)
+- Stored rule hits: 51
+- Time: 137s
+- Log: logs/learn_20260330_085340.log

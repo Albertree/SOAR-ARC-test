@@ -507,6 +507,29 @@ def _infer_color_added_in_output(task, arckg_features, patterns):
     return added
 
 
+@_register_infer("separator_color")
+def _infer_separator_color(task, arckg_features, patterns):
+    """Find the color that forms full-width rows and/or full-height columns (separator lines).
+    Must be consistent across all pairs."""
+    sep = None
+    for pair in task.example_pairs:
+        g = pair.input_grid.raw
+        seps = P.find_separator_lines(g, bg=-999)  # don't exclude any color as bg
+        colors = set()
+        for _, c in seps.get("rows", []):
+            colors.add(c)
+        for _, c in seps.get("cols", []):
+            colors.add(c)
+        if len(colors) != 1:
+            return None
+        c = colors.pop()
+        if sep is None:
+            sep = c
+        elif sep != c:
+            return None
+    return sep
+
+
 @_register_infer("from_examples")
 def _infer_from_examples(task, arckg_features, patterns):
     """Placeholder — actual brute-force handled by the engine."""
