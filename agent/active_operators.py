@@ -386,6 +386,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_arrow_chain_mirror(patterns, task)
 
+        # Strategy: lattice fill (all-zero input → grid-line pattern)
+        if rule is None:
+            rule = self._try_lattice_fill(patterns, task)
+
+        # Strategy: layer overlay (stacked equal-height layers → composite)
+        if rule is None:
+            rule = self._try_layer_overlay(patterns, task)
+
+        # Strategy: rect interior compare (two hollow rects → 2x2 of larger)
+        if rule is None:
+            rule = self._try_rect_interior_compare(patterns, task)
+
         # Strategy: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -3352,6 +3364,237 @@ class GeneralizeOperator(Operator):
         return {"type": "sector_max_fill", "sep_color": sep_color,
                 "confidence": 1.0}
 
+    # ---- strategy: lattice fill ------------------------------------------
+
+    def _try_lattice_fill(self, patterns, task):
+        """
+        Detect: all-zero input → output with grid-line lattice pattern.
+        Cell = fill_color if (row % 2 == 0) or (col % 2 == 0), else 0.
+        Category: positional formula / grid generation tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        fill_color = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if h != oh or w != ow:
+                return None
+            # Input must be all zero
+            if any(ig[r][c] != 0 for r in range(h) for c in range(w)):
+                return None
+            # Verify lattice pattern
+            fc = None
+            ok = True
+            for r in range(h):
+                for c in range(w):
+                    if r % 2 == 0 or c % 2 == 0:
+                        if og[r][c] == 0:
+                            ok = False
+                            break
+                        if fc is None:
+                            fc = og[r][c]
+                        elif og[r][c] != fc:
+                            ok = False
+                            break
+                    else:
+                        if og[r][c] != 0:
+                            ok = False
+                            break
+                if not ok:
+                    break
+            if not ok or fc is None:
+                return None
+            if fill_color is None:
+                fill_color = fc
+            elif fill_color != fc:
+                return None
+        return {"type": "lattice_fill", "fill_color": fill_color,
+                "confidence": 1.0}
+
+    # ---- strategy: layer overlay -----------------------------------------
+
+    def _try_layer_overlay(self, patterns, task):
+        """
+        Detect: input has N stacked equal-height layers, each with one primary
+        non-zero color. Output is a single layer with pixels composited from
+        all layers using a learned priority ordering.
+        Category: multi-layer overlay / compositing tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        n_layers = None
+        layer_h = None
+
+        # First pass: validate structure and accumulate pairwise wins
+        all_pair_data = []  # [(layers, layer_colors, og, w)]
+        global_wins = {}  # (winner, loser) -> count
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if w != ow or oh == 0:
+                return None
+            if h % oh != 0:
+                return None
+            nl = h // oh
+            if nl < 2:
+                return None
+            if n_layers is None:
+                n_layers = nl
+                layer_h = oh
+            elif nl != n_layers or oh != layer_h:
+                return None
+            # Extract layers and their primary colors
+            layers = []
+            layer_colors = []
+            for li in range(n_layers):
+                start = li * layer_h
+                layer = [ig[start + r][:] for r in range(layer_h)]
+                layers.append(layer)
+                colors = set()
+                for r in range(layer_h):
+                    for c in range(w):
+                        if layer[r][c] != 0:
+                            colors.add(layer[r][c])
+                if len(colors) != 1:
+                    return None
+                layer_colors.append(colors.pop())
+            if len(set(layer_colors)) != n_layers:
+                return None
+            # Accumulate pairwise wins
+            for r in range(layer_h):
+                for c in range(w):
+                    present = [layer_colors[li] for li in range(n_layers)
+                               if layers[li][r][c] != 0]
+                    out_val = og[r][c]
+                    if len(present) >= 2 and out_val != 0:
+                        for p in present:
+                            if p != out_val:
+                                global_wins[(out_val, p)] = global_wins.get(
+                                    (out_val, p), 0) + 1
+                    if out_val == 0 and present:
+                        return None
+            all_pair_data.append((layers, layer_colors, og, w))
+
+        # Build priority ordering from accumulated wins
+        all_colors = set(all_pair_data[0][1])
+        from functools import cmp_to_key
+        def cmp(a, b):
+            if (a, b) in global_wins:
+                return -1
+            if (b, a) in global_wins:
+                return 1
+            return 0
+        priority_order = sorted(all_colors, key=cmp_to_key(cmp))
+        color_priority = {c: i for i, c in enumerate(priority_order)}
+
+        # Verify against all pairs
+        for layers, layer_colors, og, w in all_pair_data:
+            for r in range(layer_h):
+                for c in range(w):
+                    best = None
+                    best_pri = len(priority_order)
+                    for li in range(n_layers):
+                        if layers[li][r][c] != 0:
+                            lc = layer_colors[li]
+                            pri = color_priority.get(lc, len(priority_order))
+                            if pri < best_pri:
+                                best_pri = pri
+                                best = lc
+                    expected = best if best is not None else 0
+                    if og[r][c] != expected:
+                        return None
+
+        return {"type": "layer_overlay", "n_layers": n_layers,
+                "layer_height": layer_h, "priority_order": priority_order,
+                "confidence": 1.0}
+
+    # ---- strategy: rect interior compare ---------------------------------
+
+    def _try_rect_interior_compare(self, patterns, task):
+        """
+        Detect: input has exactly two hollow rectangular frames of different
+        colors on black background. Output is a small constant grid filled
+        with the color of the rectangle having the larger interior area.
+        Category: geometric measurement / comparison tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        output_shape = None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            # Output should be small and uniform
+            if oh > 4 or ow > 4:
+                return None
+            out_vals = set(og[r][c] for r in range(oh) for c in range(ow))
+            if len(out_vals) != 1 or 0 in out_vals:
+                return None
+            out_color = out_vals.pop()
+            if output_shape is None:
+                output_shape = (oh, ow)
+            elif output_shape != (oh, ow):
+                return None
+            # Find all non-zero colors
+            colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if ig[r][c] != 0:
+                        colors.add(ig[r][c])
+            if len(colors) != 2:
+                return None
+            # For each color, find bounding box and check it forms a hollow rect
+            rects = {}
+            for color in colors:
+                positions = [(r, c) for r in range(h) for c in range(w)
+                             if ig[r][c] == color]
+                if not positions:
+                    return None
+                min_r = min(p[0] for p in positions)
+                max_r = max(p[0] for p in positions)
+                min_c = min(p[1] for p in positions)
+                max_c = max(p[1] for p in positions)
+                # Check it forms a hollow rectangle border
+                expected = set()
+                for r in range(min_r, max_r + 1):
+                    expected.add((r, min_c))
+                    expected.add((r, max_c))
+                for c in range(min_c, max_c + 1):
+                    expected.add((min_r, c))
+                    expected.add((max_r, c))
+                if set(positions) != expected:
+                    return None
+                # Interior area
+                int_h = max_r - min_r - 1
+                int_w = max_c - min_c - 1
+                interior = max(0, int_h) * max(0, int_w)
+                rects[color] = interior
+            # Output color should be the one with larger interior
+            c1, c2 = list(rects.keys())
+            if rects[c1] > rects[c2]:
+                expected_winner = c1
+            elif rects[c2] > rects[c1]:
+                expected_winner = c2
+            else:
+                return None  # tie - can't determine rule
+            if out_color != expected_winner:
+                return None
+
+        return {"type": "rect_interior_compare",
+                "output_shape": list(output_shape),
+                "confidence": 1.0}
+
     # ---- strategy: simple color mapping ---------------------------------
 
     def _try_color_mapping(self, patterns):
@@ -5702,6 +5945,12 @@ class PredictOperator(Operator):
             return self._apply_bbox_fill(rule, input_grid)
         if rule_type == "sector_max_fill":
             return self._apply_sector_max_fill(rule, input_grid)
+        if rule_type == "lattice_fill":
+            return self._apply_lattice_fill(rule, input_grid)
+        if rule_type == "layer_overlay":
+            return self._apply_layer_overlay(rule, input_grid)
+        if rule_type == "rect_interior_compare":
+            return self._apply_rect_interior_compare(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7342,6 +7591,91 @@ class PredictOperator(Operator):
                     if sec in max_sectors and accent_color is not None:
                         out[r][c] = accent_color
         return out
+
+
+    def _apply_lattice_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        fc = rule["fill_color"]
+        out = [[0] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if r % 2 == 0 or c % 2 == 0:
+                    out[r][c] = fc
+        return out
+
+    def _apply_layer_overlay(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        n_layers = rule["n_layers"]
+        layer_h = rule["layer_height"]
+        priority_order = rule["priority_order"]
+        # Validate grid dimensions match expected layer structure
+        if h != n_layers * layer_h:
+            return [row[:] for row in raw]
+        color_priority = {c: i for i, c in enumerate(priority_order)}
+        # Extract layers
+        layers = []
+        layer_colors = []
+        for li in range(n_layers):
+            start = li * layer_h
+            layer = [raw[start + r][:] for r in range(layer_h)]
+            layers.append(layer)
+            colors = set()
+            for r in range(layer_h):
+                for c in range(w):
+                    if layer[r][c] != 0:
+                        colors.add(layer[r][c])
+            layer_colors.append(colors.pop() if len(colors) == 1 else 0)
+        # Composite with priority
+        out = [[0] * w for _ in range(layer_h)]
+        for r in range(layer_h):
+            for c in range(w):
+                best = None
+                best_pri = len(priority_order)
+                for li in range(n_layers):
+                    if layers[li][r][c] != 0:
+                        lc = layer_colors[li]
+                        pri = color_priority.get(lc, len(priority_order))
+                        if pri < best_pri:
+                            best_pri = pri
+                            best = lc
+                out[r][c] = best if best is not None else 0
+        return out
+
+    def _apply_rect_interior_compare(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        oh, ow = rule["output_shape"]
+        # Find all non-zero colors and their bounding boxes
+        color_positions = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0:
+                    if v not in color_positions:
+                        color_positions[v] = []
+                    color_positions[v].append((r, c))
+        # Compute interior area for each color
+        best_color = None
+        best_area = -1
+        for color, positions in color_positions.items():
+            min_r = min(p[0] for p in positions)
+            max_r = max(p[0] for p in positions)
+            min_c = min(p[1] for p in positions)
+            max_c = max(p[1] for p in positions)
+            int_h = max_r - min_r - 1
+            int_w = max_c - min_c - 1
+            area = max(0, int_h) * max(0, int_w)
+            if area > best_area:
+                best_area = area
+                best_color = color
+        if best_color is None:
+            return [row[:] for row in raw]
+        return [[best_color] * ow for _ in range(oh)]
 
 
 # ======================================================================

@@ -968,3 +968,63 @@ to find new failures (41/80 = 51.2% before improvements).
 - Stored rule hits: 46
 - Time: 151s
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 19:34
+
+- Split: training, Tasks: 80
+- Correct: 50 / 80 (62.5%)
+- Rules: 134 -> 139 (+5 learned)
+- Stored rule hits: 47
+- Time: 140s
+- Log: logs/learn_20260329_193233.log
+
+---
+## Learning Loop -- 2026-03-29 19:46
+
+- Split: training, Tasks: 80
+- Correct: 52 / 80 (65.0%)
+- Rules: 139 -> 143 (+4 learned)
+- Stored rule hits: 47
+- Time: 152s
+- Log: logs/learn_20260329_194343.log
+
+---
+## Learning Loop -- 2026-03-29 19:49
+
+- Split: training, Tasks: 80
+- Correct: 49 / 80 (61.3%)
+- Rules: 143 -> 144 (+1 learned)
+- Stored rule hits: 49
+- Time: 138s
+- Log: logs/learn_20260329_194728.log
+
+---
+## Session 21 -- 2026-03-29
+
+### New strategies added (3):
+
+1. **lattice_fill** (332efdb3): All-zero input grid → output with grid-line
+   lattice pattern where cell = fill_color if (row % 2 == 0) or (col % 2 == 0),
+   else 0. Category: positional formula / grid generation tasks.
+
+2. **layer_overlay** (3d31c5b3): Input has N stacked equal-height layers, each
+   with one primary non-zero color. Output is a single layer composited from all
+   layers using a priority ordering learned from conflict positions across all
+   training pairs. Category: multi-layer overlay / compositing tasks.
+
+3. **rect_interior_compare** (445eab21): Input has exactly two hollow rectangular
+   frames of different colors on black background. Output is a small constant
+   grid (e.g. 2x2) filled with the color of the rectangle having the larger
+   interior area. Category: geometric measurement / comparison tasks.
+
+### Results
+
+- Split: training, Tasks: 80
+- Correct: 53 / 80 (66.2%)  [###################...........]
+- Previous: 50 / 80 (62.5%)  -- improvement: +3 tasks
+- Rules: 144 -> 150 (+6 learned)
+- Stored rule hits: 49
+- Time: 156s
+- Log: logs/learn_20260329_195016.log
+- Regression gate (08ed6ac7): CORRECT

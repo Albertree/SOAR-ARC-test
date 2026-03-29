@@ -1,7 +1,8 @@
 """
 Single task execution script — for inner loop success criteria evaluation.
-python run_task.py
-python run_task.py --raw    # show raw WM triplets instead of narrative
+python run_task.py                    # default regression task (08ed6ac7)
+python run_task.py --task c0f76784    # run a specific task
+python run_task.py --raw              # show raw WM triplets instead of narrative
 
 Success criteria: output contains "CORRECT"
 """
@@ -184,10 +185,13 @@ class _TracingOperator:
 
 def main():
     parser = argparse.ArgumentParser(description="Run single task regression check")
+    parser.add_argument("--task", "-t", default=None, help="Task hex ID to run (default: 08ed6ac7)")
     parser.add_argument("--raw", action="store_true", help="Show raw WM triplets instead of narrative trace")
     args = parser.parse_args()
 
-    print(f"=== run_task: {TASK_HEX} ===\n")
+    task_hex = args.task or TASK_HEX
+
+    print(f"=== run_task: {task_hex} ===\n")
 
     # 1. Load task
     print("[*] Loading task...")
@@ -195,7 +199,7 @@ def main():
         from managers.arc_manager import ARCManager
 
         manager = ARCManager(data_root="data", semantic_memory_root="semantic_memory")
-        task = manager.load_task(TASK_HEX)
+        task = manager.load_task(task_hex)
         print(f"    Task: {task}")
         _show_task_numeric(task)
 
