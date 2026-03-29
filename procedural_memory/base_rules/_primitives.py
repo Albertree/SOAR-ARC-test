@@ -931,6 +931,246 @@ def connect_aligned_diamonds(grid, diamond_color, line_color, bg=0):
     return output
 
 
+def project_cross_to_border(grid):
+    """Find asymmetric cross shapes with unique center pixel.
+    Each cross has an arm pointing in one direction; the center color
+    projects to the OPPOSITE border with a dotted trail (every 2 cells).
+    Corners where two borders meet become 0. Auto-detects bg."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+    output = [row[:] for row in grid]
+
+    # Find connected components of non-bg cells
+    visited = set()
+    crosses = []
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+
+            # Check for exactly 2 colors, one appearing once (center)
+            colors = {}
+            for cr, cc in comp:
+                v = grid[cr][cc]
+                colors[v] = colors.get(v, 0) + 1
+            if len(colors) != 2:
+                continue
+            sorted_colors = sorted(colors.items(), key=lambda x: x[1])
+            if sorted_colors[0][1] != 1:
+                continue
+
+            center_color = sorted_colors[0][0]
+            center_pos = None
+            for cr, cc in comp:
+                if grid[cr][cc] == center_color:
+                    center_pos = (cr, cc)
+                    break
+
+            # Compute asymmetry: sum of relative positions of shape cells
+            sum_dr, sum_dc = 0, 0
+            for cr, cc in comp:
+                if grid[cr][cc] != center_color:
+                    sum_dr += (cr - center_pos[0])
+                    sum_dc += (cc - center_pos[1])
+
+            # Arm direction = direction of sum; project = opposite
+            if abs(sum_dr) >= abs(sum_dc):
+                proj_dir = 'up' if sum_dr > 0 else 'down'
+            else:
+                proj_dir = 'left' if sum_dc > 0 else 'right'
+
+            crosses.append((center_pos[0], center_pos[1], center_color, proj_dir))
+
+    if not crosses:
+        return output
+
+    # Draw dotted trails and fill borders
+    borders = {}  # side -> color
+
+    for cr, cc, center_color, proj_dir in crosses:
+        if proj_dir == 'up':
+            borders['top'] = center_color
+            r = cr - 2
+            while r >= 0:
+                output[r][cc] = center_color
+                r -= 2
+        elif proj_dir == 'down':
+            borders['bottom'] = center_color
+            r = cr + 2
+            while r < h:
+                output[r][cc] = center_color
+                r += 2
+        elif proj_dir == 'left':
+            borders['left'] = center_color
+            c = cc - 2
+            while c >= 0:
+                output[cr][c] = center_color
+                c -= 2
+        elif proj_dir == 'right':
+            borders['right'] = center_color
+            c = cc + 2
+            while c < w:
+                output[cr][c] = center_color
+                c += 2
+
+    # Fill border rows/cols
+    for side, color in borders.items():
+        if side == 'top':
+            for c in range(w):
+                output[0][c] = color
+        elif side == 'bottom':
+            for c in range(w):
+                output[h - 1][c] = color
+        elif side == 'left':
+            for r in range(h):
+                output[r][0] = color
+        elif side == 'right':
+            for r in range(h):
+                output[r][w - 1] = color
+
+    # Zero corners where two borders meet
+    if 'top' in borders and 'left' in borders:
+        output[0][0] = 0
+    if 'top' in borders and 'right' in borders:
+        output[0][w - 1] = 0
+    if 'bottom' in borders and 'left' in borders:
+        output[h - 1][0] = 0
+    if 'bottom' in borders and 'right' in borders:
+        output[h - 1][w - 1] = 0
+
+    return output
+
+
+def swap_quadrant_shapes(grid, sep_color=0):
+    """Grid divided into quadrant pairs by separator rows/cols of sep_color.
+    For each horizontal pair, swap shapes: each shape is recolored with the
+    partner quadrant's background color. When both bgs match, shapes vanish."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator rows (full-width rows of sep_color)
+    sep_rows = []
+    for r in range(h):
+        if all(grid[r][c] == sep_color for c in range(w)):
+            sep_rows.append(r)
+
+    # Find separator cols (full-height cols of sep_color)
+    sep_cols = []
+    for c in range(w):
+        if all(grid[r][c] == sep_color for r in range(h)):
+            sep_cols.append(c)
+
+    if not sep_cols:
+        return [row[:] for row in grid]
+
+    # Group consecutive separator rows/cols into bands
+    def _group_consecutive(indices):
+        if not indices:
+            return []
+        bands = []
+        start = indices[0]
+        end = indices[0]
+        for i in indices[1:]:
+            if i == end + 1:
+                end = i
+            else:
+                bands.append((start, end))
+                start = end = i
+        bands.append((start, end))
+        return bands
+
+    row_bands = _group_consecutive(sep_rows)
+    col_bands = _group_consecutive(sep_cols)
+
+    # Determine row regions (between separator bands)
+    row_regions = []
+    prev = 0
+    for band_start, band_end in row_bands:
+        if band_start > prev:
+            row_regions.append((prev, band_start - 1))
+        prev = band_end + 1
+    if prev < h:
+        row_regions.append((prev, h - 1))
+
+    # Determine col regions (between separator bands)
+    col_regions = []
+    prev = 0
+    for band_start, band_end in col_bands:
+        if band_start > prev:
+            col_regions.append((prev, band_start - 1))
+        prev = band_end + 1
+    if prev < w:
+        col_regions.append((prev, w - 1))
+
+    if len(col_regions) != 2:
+        return [row[:] for row in grid]
+
+    output = [row[:] for row in grid]
+
+    # Process each row of quadrants — horizontal pairs
+    for r_start, r_end in row_regions:
+        left_c0, left_c1 = col_regions[0]
+        right_c0, right_c1 = col_regions[1]
+
+        # Detect bg for each quadrant (most frequent color in the quadrant)
+        def _quad_bg(rs, re, cs, ce):
+            counts = {}
+            for r in range(rs, re + 1):
+                for c in range(cs, ce + 1):
+                    v = grid[r][c]
+                    counts[v] = counts.get(v, 0) + 1
+            return max(counts, key=counts.get) if counts else 0
+
+        left_bg = _quad_bg(r_start, r_end, left_c0, left_c1)
+        right_bg = _quad_bg(r_start, r_end, right_c0, right_c1)
+
+        # Extract shape positions (non-bg cells) relative to quadrant
+        def _shape_rel(rs, re, cs, ce, bg):
+            positions = []
+            for r in range(rs, re + 1):
+                for c in range(cs, ce + 1):
+                    if grid[r][c] != bg:
+                        positions.append((r - rs, c - cs))
+            return positions
+
+        left_shape = _shape_rel(r_start, r_end, left_c0, left_c1, left_bg)
+        right_shape = _shape_rel(r_start, r_end, right_c0, right_c1, right_bg)
+
+        # Clear both quadrants to their bg
+        for r in range(r_start, r_end + 1):
+            for c in range(left_c0, left_c1 + 1):
+                output[r][c] = left_bg
+            for c in range(right_c0, right_c1 + 1):
+                output[r][c] = right_bg
+
+        # Place right's shape into left, colored with right's bg
+        for dr, dc in right_shape:
+            r, c = r_start + dr, left_c0 + dc
+            if r_start <= r <= r_end and left_c0 <= c <= left_c1:
+                output[r][c] = right_bg
+
+        # Place left's shape into right, colored with left's bg
+        for dr, dc in left_shape:
+            r, c = r_start + dr, right_c0 + dc
+            if r_start <= r <= r_end and right_c0 <= c <= right_c1:
+                output[r][c] = left_bg
+
+    return output
+
+
 def summarize_box_grid(grid, bg=0):
     """Summarize a 30x30 grid of 3x3 bordered boxes into a compact bar-chart.
     The grid has a 1-border on one edge, a 7x7 grid of box cells (3x3 each,

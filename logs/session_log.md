@@ -135,3 +135,40 @@
 - Stored rule hits: 12
 - Time: 36s
 - Log: logs/learn_20260330_040423.log
+
+---
+## Learning Loop -- 2026-03-30 04:06
+
+- Split: training, Tasks: 20
+- Correct: 14 / 20 (70.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 14
+- Time: 35s
+- Log: logs/learn_20260330_040539.log
+
+---
+## Session 6 (Claude) -- 2026-03-30 04:19
+
+### Changes
+- Added `swap_quadrant_shapes` primitive to `_primitives.py` — finds grid divided by separator rows/cols into quadrant pairs, swaps shapes between horizontal neighbors, recoloring each with the source quadrant's background color
+- Added `project_cross_to_border` primitive to `_primitives.py` — finds asymmetric cross shapes with unique center pixel, projects center color to the opposite border with a dotted trail (every 2 cells), zeroes corners where two borders meet
+- Created `procedural_memory/concepts/swap_quadrant_shapes.json` (solves 5a719d11)
+- Created `procedural_memory/concepts/project_cross_to_border.json` (solves 13f06aa5)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%) — up from 14/20 (70.0%)
+- Rules: 14 -> 16 (+2 learned)
+- Stored rule hits: 14
+- Time: 35s
+- Log: logs/learn_20260330_041943.log
+
+---
+## Learning Loop -- 2026-03-30 04:20
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 14 -> 16 (+2 learned)
+- Stored rule hits: 14
+- Time: 35s
+- Log: logs/learn_20260330_041943.log
