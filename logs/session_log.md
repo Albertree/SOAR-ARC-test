@@ -25,3 +25,30 @@
 - Stored rule hits: 4
 - Time: 35s
 - Log: logs/learn_20260330_030431.log
+
+---
+## Learning Loop -- 2026-03-30 03:06
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 6
+- Time: 35s
+- Log: logs/learn_20260330_030546.log
+
+---
+## Session 2 (Claude) -- 2026-03-30 03:09
+
+### Changes
+- Added `recolor_components_by_size_group` primitive to `_primitives.py` — groups connected components by size, assigns same color to all components of equal size (ranked by group)
+- Added `fill_quadrants_from_corners` primitive to `_primitives.py` — finds rectangles of marker color, locates 4 diagonal corner pixels, fills each quadrant with corresponding corner color
+- Created `procedural_memory/concepts/recolor_by_size_group.json` (solves 6e82a1ae)
+- Created `procedural_memory/concepts/fill_quadrants_from_corners.json` (solves e9ac8c9e)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%) — up from 6/20 (30.0%)
+- Rules: 6 -> 8 (+2 learned)
+- Stored rule hits: 6
+- Time: 35s
+- Log: logs/learn_20260330_030944.log

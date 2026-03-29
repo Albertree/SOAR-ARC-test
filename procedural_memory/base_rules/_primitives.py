@@ -301,6 +301,93 @@ def recolor_components_by_rank(grid, source_color, sort_key, start_color):
     return output
 
 
+def recolor_components_by_size_group(grid, source_color, sort_order, start_color):
+    """Find connected components of source_color, group by size, recolor by group rank.
+    sort_order: 'desc' (largest first) | 'asc' (smallest first)
+    All components of the same size get the same color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    target_cells = [(r, c) for r in range(h) for c in range(w) if grid[r][c] == source_color]
+    if not target_cells:
+        return [row[:] for row in grid]
+
+    groups = group_positions(target_cells)
+
+    # Get unique sizes sorted
+    sizes = sorted(set(len(g) for g in groups), reverse=(sort_order == "desc"))
+    size_to_color = {s: start_color + i for i, s in enumerate(sizes)}
+
+    output = [row[:] for row in grid]
+    for group in groups:
+        color = size_to_color[len(group)]
+        for r, c in group:
+            output[r][c] = color
+    return output
+
+
+def fill_quadrants_from_corners(grid, marker_color, bg=0):
+    """Find rectangles of marker_color, locate 4 diagonal corner pixels,
+    fill each quadrant with the corresponding corner color, remove corners."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find connected components of marker_color
+    comps = find_components(grid, marker_color)
+    if not comps:
+        return [row[:] for row in grid]
+
+    output = [row[:] for row in grid]
+
+    for comp in comps:
+        min_r = min(r for r, c in comp)
+        max_r = max(r for r, c in comp)
+        min_c = min(c for r, c in comp)
+        max_c = max(c for r, c in comp)
+
+        rect_h = max_r - min_r + 1
+        rect_w = max_c - min_c + 1
+
+        # Find the 4 corner colors (diagonally adjacent to the rectangle corners)
+        corners = [
+            (min_r - 1, min_c - 1),  # top-left
+            (min_r - 1, max_c + 1),  # top-right
+            (max_r + 1, min_c - 1),  # bottom-left
+            (max_r + 1, max_c + 1),  # bottom-right
+        ]
+
+        corner_colors = []
+        for cr, cc in corners:
+            if 0 <= cr < h and 0 <= cc < w and grid[cr][cc] != bg and grid[cr][cc] != marker_color:
+                corner_colors.append(grid[cr][cc])
+            else:
+                corner_colors = []
+                break
+
+        if len(corner_colors) != 4:
+            continue
+
+        # Remove corner pixels
+        for cr, cc in corners:
+            output[cr][cc] = bg
+
+        # Fill quadrants
+        mid_r = min_r + rect_h // 2
+        mid_c = min_c + rect_w // 2
+
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if r < mid_r and c < mid_c:
+                    output[r][c] = corner_colors[0]  # top-left
+                elif r < mid_r and c >= mid_c:
+                    output[r][c] = corner_colors[1]  # top-right
+                elif r >= mid_r and c < mid_c:
+                    output[r][c] = corner_colors[2]  # bottom-left
+                else:
+                    output[r][c] = corner_colors[3]  # bottom-right
+
+    return output
+
+
 def reverse_frame_colors(grid):
     """Detect concentric rectangular frames, reverse their color order.
     Peels frames from outside in, collects colors, then reassigns reversed."""
