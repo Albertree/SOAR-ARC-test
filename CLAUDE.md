@@ -75,19 +75,44 @@ Files:
 - `agent/active_agent.py` -- `ActiveSoarAgent.solve()` with memory integration
 - `agent/memory.py` -- save/load rules as JSON in `procedural_memory/`
 
+## Rule Engine (`agent/rule_engine.py`)
+
+Rules are **standalone Python modules** in `procedural_memory/base_rules/<category>/`.
+The rule engine auto-discovers them at runtime via `importlib`.
+
+- `WATERFALL_ORDER` in `rule_engine.py` controls evaluation priority (first match wins)
+- `try_all(patterns, task)` -- iterate rules in order, return first match
+- `apply(rule_type, rule, input_grid)` -- look up and call the right `apply_rule()`
+- New rules dropped into `base_rules/` are auto-discovered on next load
+
 ## How to Add Generalization Strategies (the main improvement target)
 
-Current strategies in `GeneralizeOperator`:
-- `_try_recolor_sequential` -- objects recolored 1,2,3,... by position
-- `_try_color_mapping` -- each input color maps to one output color
-- Fallback: `identity` (copy input)
+Create a new file in `procedural_memory/base_rules/<category>/<name>.py`:
 
-To add a new strategy:
-1. Add `_try_<name>(self, patterns)` in `GeneralizeOperator` -- returns a rule dict or None
-2. Add `_apply_<name>(self, rule, input_grid)` in `PredictOperator` -- returns predicted grid
-3. Call `_try_<name>` from `GeneralizeOperator.effect()` in priority order
+```python
+"""<name> — one-line description."""
+from procedural_memory.base_rules._helpers import <needed_helpers>
+
+RULE_TYPE = "<name>"
+CATEGORY = "<category>"
+
+def try_rule(patterns, task):
+    """Detect pattern from extracted diffs. Returns rule dict or None."""
+    ...
+
+def apply_rule(rule, input_grid):
+    """Apply the rule to produce output grid. Returns list-of-lists or None."""
+    ...
+```
+
+Then add RULE_TYPE to `WATERFALL_ORDER` in `agent/rule_engine.py`.
+
+Categories: `color/`, `geometry/`, `fill/`, `structure/`, `connect/`, `separator/`, `detect/`
+Shared helpers: `procedural_memory/base_rules/_helpers.py`
 
 The `patterns` dict contains per-pair cell-level analysis: changed cells grouped into connected components with input/output colors and positions.
+
+Do NOT modify `agent/active_operators.py` — it delegates to the rule engine.
 
 ## ARCKG 5-Level Knowledge Graph (`ARCKG/`)
 
@@ -111,7 +136,8 @@ run_learn.py             <- internal: agent solves tasks, logs results
 run_task.py              <- internal: single task test (regression check)
 
 agent/
-  active_operators.py    <- operator implementations (MAIN EDIT TARGET)
+  active_operators.py    <- operator implementations (delegates to rule engine)
+  rule_engine.py         <- dynamic rule loader (WATERFALL_ORDER here)
   active_agent.py        <- ActiveSoarAgent with memory integration
   elaboration_rules.py   <- pipeline state machine
   rules.py               <- production rules
@@ -133,6 +159,15 @@ basics/                  <- visualization
 data/ARC_AGI/            <- ARC tasks (read-only)
 semantic_memory/         <- KG attributes (regenerated per run)
 procedural_memory/       <- learned rules (accumulates)
+  base_rules/            <- rule modules (MAIN EDIT TARGET)
+    _helpers.py          <- shared helper functions
+    color/               <- color transformation rules
+    geometry/            <- geometric transformation rules
+    fill/                <- fill/flood rules
+    structure/           <- structural rearrangement rules
+    connect/             <- connection/line drawing rules
+    separator/           <- separator-based rules
+    detect/              <- detection/extraction rules
 episodic_memory/         <- solution episodes (future use)
 logs/                    <- session logs
 ```

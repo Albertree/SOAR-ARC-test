@@ -1,90 +1,33 @@
 
 ---
-## Learning Loop -- 2026-03-29 21:31
-
-- Split: training, Tasks: 10
-- Correct: 1 / 10 (10.0%)
-- Rules: 0 -> 2 (+2 learned)
-- Stored rule hits: 0
-- Time: 23s
-- Log: logs/learn_20260329_213046.log
-
----
-## Learning Loop -- 2026-03-29 21:32
+## Learning Loop -- 2026-03-29 23:03
 
 - Split: training, Tasks: 20
-- Correct: 19 / 20 (95.0%)
-- Rules: 2 -> 21 (+19 learned)
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 3 (+3 learned)
 - Stored rule hits: 0
 - Time: 49s
-- Log: logs/learn_20260329_213128.log
+- Log: logs/learn_20260329_230223.log
 
 ---
-## Learning Loop -- 2026-03-29 21:34
-
-- Split: training, Tasks: 50
-- Correct: 42 / 50 (84.0%)
-- Rules: 21 -> 44 (+23 learned)
-- Stored rule hits: 17
-- Time: 111s
-- Log: logs/learn_20260329_213259.log
-
----
-## Learning Loop -- 2026-03-29 21:38
+## Learning Loop -- 2026-03-29 23:07
 
 - Split: training, Tasks: 20
-- Correct: 20 / 20 (100.0%)
-- Rules: 0 -> 20 (+20 learned)
+- Correct: 3 / 20 (15.0%)
+- Rules: 3 -> 8 (+5 learned)
 - Stored rule hits: 0
-- Time: 49s
-- Log: logs/learn_20260329_213740.log
+- Time: 37s
+- Log: logs/learn_20260329_230715.log
 
 ---
-## Learning Loop -- 2026-03-29 21:42
+## Session 1 Analysis — 2026-03-29 23:07
 
-- Split: training, Tasks: 20
-- Correct: 20 / 20 (100.0%)
-- Rules: 0 -> 20 (+20 learned)
-- Stored rule hits: 0
-- Time: 48s
-- Log: logs/learn_20260329_214117.log
+### New Rules Added (3)
+1. **scale_up** (geometry) — each cell becomes NxN block; solves c59eb873
+2. **mirror_vertical_append** (geometry) — output = input + vertically flipped input; solves 8be77c9e
+3. **fill_rect_by_size** (fill) — fill rectangular outlines by interior area rank; solves c0f76784
 
----
-## Learning Loop -- 2026-03-29 21:44
-
-- Split: training, Tasks: 50
-- Correct: 46 / 50 (92.0%)
-- Rules: 20 -> 46 (+26 learned)
-- Stored rule hits: 18
-- Time: 106s
-- Log: logs/learn_20260329_214219.log
-
----
-## Learning Loop -- 2026-03-29 21:58
-
-- Split: training, Tasks: 20
-- Correct: 20 / 20 (100.0%)
-- Rules: 0 -> 20 (+20 learned)
-- Stored rule hits: 0
-- Time: 43s
-- Log: logs/learn_20260329_215744.log
-
----
-## Learning Loop -- 2026-03-29 22:00
-
-- Split: training, Tasks: 40
-- Correct: 40 / 40 (100.0%)
-- Rules: 20 -> 40 (+20 learned)
-- Stored rule hits: 18
-- Time: 80s
-- Log: logs/learn_20260329_215843.log
-
----
-## Learning Loop -- 2026-03-29 22:02
-
-- Split: training, Tasks: 80
-- Correct: 59 / 80 (73.8%)
-- Rules: 40 -> 63 (+23 learned)
-- Stored rule hits: 39
-- Time: 144s
-- Log: logs/learn_20260329_220009.log
+### Result
+- Before: 0/20 (0%)
+- After:  3/20 (15%)
+- Regression gate (08ed6ac7): CORRECT
