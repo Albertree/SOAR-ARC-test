@@ -635,3 +635,55 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 30
 - Time: 76s
 - Log: logs/learn_20260329_174919.log
+
+---
+## Learning Loop -- 2026-03-29 17:52
+
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%)
+- Rules: 66 -> 69 (+3 learned)
+- Stored rule hits: 30
+- Time: 74s
+- Log: logs/learn_20260329_175139.log
+
+---
+## Learning Loop -- 2026-03-29 18:03
+
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 72 -> 74 (+2 learned)
+- Stored rule hits: 33
+- Time: 75s
+- Log: logs/learn_20260329_180237.log
+
+---
+## Session 15 -- 2026-03-29 18:02
+
+### New strategies added (3):
+
+1. **grid_intersection_compress** (7837ac64): Input is a large tiled grid with
+   one color forming the grid lines. Some grid-line intersections have different
+   colors forming a 4×4 pattern. Output compresses this to 3×3 by overlapping
+   the middle rows/cols (agree→value, disagree→0). Category: grid intersection
+   summarization / compression tasks.
+
+2. **enclosed_rect_fill** (a5313dff): Input has shapes drawn with a border color
+   on background 0. Closed rectangular borders fully enclosing an interior get
+   their interior 0-cells filled with color 1. Open/incomplete shapes unchanged.
+   Uses flood-fill from grid boundary to distinguish inside vs outside.
+   Category: enclosed region detection / interior fill tasks.
+
+3. **color_key_remap** (e9b4f6fc): Input has a bordered rectangular shape plus
+   isolated 2-pixel horizontal key pairs. Each key pair (a, b) means "replace
+   color b with a" in the shape. Output is the extracted shape with all colors
+   substituted. Category: color substitution / palette remapping tasks.
+
+### Results
+
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%)  [##########################....]
+- Previous: 32 / 40 (80.0%)  — improvement: +3 tasks
+- Rules: 72 -> 74 (+2 learned)
+- Stored rule hits: 33
+- Time: 75s
+- Log: logs/learn_20260329_180237.log

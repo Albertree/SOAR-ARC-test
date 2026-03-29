@@ -490,6 +490,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_cross_arm_mode(patterns, task)
 
+        # Strategy: grid intersection compress (tiled grid → compressed 3×3)
+        if rule is None:
+            rule = self._try_grid_intersection_compress(patterns, task)
+
+        # Strategy: enclosed rectangle fill (fill closed 2-borders with 1)
+        if rule is None:
+            rule = self._try_enclosed_rect_fill(patterns, task)
+
+        # Strategy: color key remap (shape + scattered key pairs → substituted shape)
+        if rule is None:
+            rule = self._try_color_key_remap(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -1959,6 +1971,341 @@ class GeneralizeOperator(Operator):
             "center_color": center_color,
             "confidence": 1.0,
         }
+
+    # ---- strategy: grid intersection compress -----------------------------
+
+    @staticmethod
+    def _detect_grid_structure(raw):
+        """Detect a regular grid: find the grid-line color and positions."""
+        h, w = len(raw), len(raw[0]) if raw else 0
+        if h < 5 or w < 5:
+            return None
+
+        # Try each row to find a full horizontal grid line (all same non-0 color)
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and raw[r][0] != 0:
+                grid_color = raw[r][0]
+                # Find all full horizontal grid-line rows
+                h_lines = [rr for rr in range(h) if all(raw[rr][c] == grid_color or raw[rr][c] != 0 for c in range(w)) and all(raw[rr][c] != 0 for c in range(w))]
+                # Actually, grid lines may have non-grid colors at intersections
+                # A grid-line row is one where the majority of values == grid_color
+                break
+        else:
+            return None
+
+        # Find grid-line rows: rows where at least 80% of values are grid_color
+        h_lines = []
+        for r in range(h):
+            gc_count = sum(1 for c in range(w) if raw[r][c] == grid_color)
+            if gc_count >= w * 0.7:
+                h_lines.append(r)
+
+        # Find grid-line cols: cols where at least 80% of values are grid_color
+        v_lines = []
+        for c in range(w):
+            gc_count = sum(1 for r in range(h) if raw[r][c] == grid_color)
+            if gc_count >= h * 0.7:
+                v_lines.append(c)
+
+        if len(h_lines) < 2 or len(v_lines) < 2:
+            return None
+
+        # Check regular spacing
+        h_diffs = [h_lines[i+1] - h_lines[i] for i in range(len(h_lines)-1)]
+        v_diffs = [v_lines[i+1] - v_lines[i] for i in range(len(v_lines)-1)]
+        if len(set(h_diffs)) != 1 or len(set(v_diffs)) != 1:
+            return None
+
+        return grid_color, h_lines, v_lines
+
+    def _try_grid_intersection_compress(self, patterns, task):
+        """
+        Detect: input is a large tiled grid with colored intersections on the
+        grid lines. Output is a small compressed grid showing the intersection
+        pattern. The 4×4 bounding box of colored intersections compresses to
+        3×3 via overlap of middle rows/cols.
+        Category: grid intersection summarization / compression tasks.
+        """
+        if task is None:
+            return None
+        # Output must be smaller than input
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            oh, ow = len(out), len(out[0])
+
+            det = self._detect_grid_structure(inp)
+            if det is None:
+                return None
+            grid_color, h_lines, v_lines = det
+
+            # Extract intersection values
+            int_grid = {}
+            for ri, r in enumerate(h_lines):
+                for ci, c in enumerate(v_lines):
+                    val = inp[r][c]
+                    if val != grid_color:
+                        int_grid[(ri, ci)] = val
+
+            if not int_grid:
+                return None
+
+            # Find bounding box
+            min_r = min(k[0] for k in int_grid)
+            max_r = max(k[0] for k in int_grid)
+            min_c = min(k[1] for k in int_grid)
+            max_c = max(k[1] for k in int_grid)
+
+            bbox_h = max_r - min_r + 1
+            bbox_w = max_c - min_c + 1
+
+            if bbox_h != 4 or bbox_w != 4:
+                return None
+
+            # Extract 4×4 pattern (0 for grid-color positions)
+            pat = [[0]*4 for _ in range(4)]
+            for (ri, ci), val in int_grid.items():
+                pat[ri - min_r][ci - min_c] = val
+
+            # Compress 4×4 → 3×3
+            compressed = self._compress_4x4_to_3x3(pat)
+
+            # Verify against output
+            if oh != 3 or ow != 3:
+                return None
+            if compressed != out:
+                return None
+
+        return {"type": "grid_intersection_compress", "confidence": 1.0}
+
+    @staticmethod
+    def _compress_4x4_to_3x3(pat):
+        """Compress a 4×4 intersection pattern to 3×3.
+        Row 0 stays, Row 3 stays, Row 1&2 overlap (agree→val, disagree→0).
+        Same for columns."""
+        # Step 1: compress rows 4→3
+        mid = [0]*4
+        for c in range(4):
+            mid[c] = pat[1][c] if pat[1][c] == pat[2][c] else 0
+        rows3 = [pat[0][:], mid, pat[3][:]]
+
+        # Step 2: compress cols 4→3
+        result = [[0]*3 for _ in range(3)]
+        for r in range(3):
+            result[r][0] = rows3[r][0]
+            result[r][2] = rows3[r][3]
+            result[r][1] = rows3[r][1] if rows3[r][1] == rows3[r][2] else 0
+        return result
+
+    # ---- strategy: enclosed rectangle fill --------------------------------
+
+    def _try_enclosed_rect_fill(self, patterns, task):
+        """
+        Detect: input has shapes drawn with a border color on background 0.
+        Closed rectangular regions (border cells fully enclosing an interior)
+        get their interior 0-cells filled with color 1. Open/incomplete shapes
+        are unchanged.
+        Category: enclosed region detection / interior fill tasks.
+        """
+        if not patterns.get("grid_size_preserved"):
+            return None
+        pairs = task.example_pairs if task else []
+        if not pairs:
+            return None
+
+        border_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find border color: non-zero color(s) present in input
+            in_colors = set(c for row in inp for c in row) - {0}
+            out_colors = set(c for row in out for c in row) - {0}
+
+            # Output should have exactly one new color (1) not in input
+            new_colors = out_colors - in_colors
+            if new_colors != {1}:
+                return None
+
+            # All input non-zero colors should be the same (border color)
+            if len(in_colors) != 1:
+                return None
+            bc = in_colors.pop()
+            if border_color is None:
+                border_color = bc
+            elif bc != border_color:
+                return None
+
+            # All non-zero, non-1 cells should be unchanged
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != 0 and inp[r][c] != out[r][c]:
+                        return None
+                    if inp[r][c] == 0 and out[r][c] not in (0, 1):
+                        return None
+
+            # Flood-fill from border 0-cells
+            visited = [[False]*w for _ in range(h)]
+            queue = []
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == 0 and (r == 0 or r == h-1 or c == 0 or c == w-1):
+                        if not visited[r][c]:
+                            visited[r][c] = True
+                            queue.append((r, c))
+            qi = 0
+            while qi < len(queue):
+                cr, cc = queue[qi]; qi += 1
+                for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    nr, nc = cr+dr, cc+dc
+                    if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] == 0:
+                        visited[nr][nc] = True
+                        queue.append((nr, nc))
+
+            # Interior 0-cells (not reached) should become 1 in output
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == 0:
+                        if not visited[r][c]:
+                            if out[r][c] != 1:
+                                return None
+                        else:
+                            if out[r][c] != 0:
+                                return None
+
+        return {
+            "type": "enclosed_rect_fill",
+            "border_color": border_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: color key remap ----------------------------------------
+
+    def _try_color_key_remap(self, patterns, task):
+        """
+        Detect: input has a bordered rectangular shape plus isolated 2-pixel
+        key pairs. Each key pair (a, b) means 'replace color b with color a'
+        in the shape. Output is just the shape with colors substituted.
+        Category: color substitution / palette remapping tasks.
+        """
+        if task is None:
+            return None
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+
+            result = self._analyze_color_key_remap(inp)
+            if result is None:
+                return None
+
+            shape_region, color_map = result
+
+            # Apply substitution and check
+            sr, sc, er, ec = shape_region
+            oh, ow = len(out), len(out[0])
+            if oh != er - sr or ow != ec - sc:
+                return None
+
+            for r in range(oh):
+                for c in range(ow):
+                    orig = inp[sr + r][sc + c]
+                    expected = color_map.get(orig, orig)
+                    if expected != out[r][c]:
+                        return None
+
+        return {"type": "color_key_remap", "confidence": 1.0}
+
+    @staticmethod
+    def _analyze_color_key_remap(inp):
+        """Analyze input grid for color key remap: find shape and key pairs."""
+        h, w = len(inp), len(inp[0])
+
+        # Find all non-zero connected components
+        visited = [[False]*w for _ in range(h)]
+        components = []
+        for r in range(h):
+            for c in range(w):
+                if inp[r][c] != 0 and not visited[r][c]:
+                    comp = []
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = cr+dr, cc+dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] != 0:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    components.append(comp)
+
+        if len(components) < 2:
+            return None
+
+        # The largest component is the shape
+        components.sort(key=len, reverse=True)
+        shape_comp = components[0]
+        key_comps = components[1:]
+
+        # Shape bounding box
+        sr = min(p[0] for p in shape_comp)
+        sc = min(p[1] for p in shape_comp)
+        er = max(p[0] for p in shape_comp) + 1
+        ec = max(p[1] for p in shape_comp) + 1
+
+        # Verify shape fills its bounding box (all non-zero)
+        for r in range(sr, er):
+            for c in range(sc, ec):
+                if inp[r][c] == 0:
+                    return None
+
+        # Key pairs: each should be exactly 2 pixels, horizontal
+        color_map = {}
+        for comp in key_comps:
+            if len(comp) != 2:
+                return None
+            (r1, c1), (r2, c2) = comp
+            # Must be horizontal adjacent
+            if r1 != r2 or abs(c1 - c2) != 1:
+                return None
+            # Left pixel = new color, right pixel = old color
+            left_c = min(c1, c2)
+            right_c = max(c1, c2)
+            new_color = inp[r1][left_c]
+            old_color = inp[r1][right_c]
+            if old_color in color_map and color_map[old_color] != new_color:
+                return None
+            color_map[old_color] = new_color
+
+        if not color_map:
+            return None
+
+        return (sr, sc, er, ec), color_map
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -3941,6 +4288,12 @@ class PredictOperator(Operator):
             return self._apply_rotation_tile_repeat(rule, input_grid)
         if rule_type == "cross_arm_mode":
             return self._apply_cross_arm_mode(rule, input_grid)
+        if rule_type == "grid_intersection_compress":
+            return self._apply_grid_intersection_compress(rule, input_grid)
+        if rule_type == "enclosed_rect_fill":
+            return self._apply_enclosed_rect_fill(rule, input_grid)
+        if rule_type == "color_key_remap":
+            return self._apply_color_key_remap(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5067,6 +5420,85 @@ class PredictOperator(Operator):
 
         mode_color = Counter(arm_colors).most_common(1)[0][0]
         return [[mode_color]]
+
+    def _apply_grid_intersection_compress(self, rule, input_grid):
+        raw = input_grid.raw
+        det = GeneralizeOperator._detect_grid_structure(raw)
+        if det is None:
+            return [row[:] for row in raw]
+        grid_color, h_lines, v_lines = det
+
+        # Extract intersection values
+        int_grid = {}
+        for ri, r in enumerate(h_lines):
+            for ci, c in enumerate(v_lines):
+                val = raw[r][c]
+                if val != grid_color:
+                    int_grid[(ri, ci)] = val
+
+        if not int_grid:
+            return [row[:] for row in raw]
+
+        min_r = min(k[0] for k in int_grid)
+        max_r = max(k[0] for k in int_grid)
+        min_c = min(k[1] for k in int_grid)
+        max_c = max(k[1] for k in int_grid)
+
+        bbox_h = max_r - min_r + 1
+        bbox_w = max_c - min_c + 1
+
+        if bbox_h != 4 or bbox_w != 4:
+            return [row[:] for row in raw]
+
+        pat = [[0]*4 for _ in range(4)]
+        for (ri, ci), val in int_grid.items():
+            pat[ri - min_r][ci - min_c] = val
+
+        return GeneralizeOperator._compress_4x4_to_3x3(pat)
+
+    def _apply_enclosed_rect_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        out = [row[:] for row in raw]
+
+        # Flood-fill from border 0-cells
+        visited = [[False]*w for _ in range(h)]
+        queue = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 0 and (r == 0 or r == h-1 or c == 0 or c == w-1):
+                    if not visited[r][c]:
+                        visited[r][c] = True
+                        queue.append((r, c))
+        qi = 0
+        while qi < len(queue):
+            cr, cc = queue[qi]; qi += 1
+            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                nr, nc = cr+dr, cc+dc
+                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == 0:
+                    visited[nr][nc] = True
+                    queue.append((nr, nc))
+
+        # Fill interior 0-cells with 1
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 0 and not visited[r][c]:
+                    out[r][c] = 1
+        return out
+
+    def _apply_color_key_remap(self, rule, input_grid):
+        raw = input_grid.raw
+        result = GeneralizeOperator._analyze_color_key_remap(raw)
+        if result is None:
+            return [row[:] for row in raw]
+        (sr, sc, er, ec), color_map = result
+        oh, ow = er - sr, ec - sc
+        out = [[0]*ow for _ in range(oh)]
+        for r in range(oh):
+            for c in range(ow):
+                orig = raw[sr + r][sc + c]
+                out[r][c] = color_map.get(orig, orig)
+        return out
 
 
 # ======================================================================
