@@ -751,3 +751,27 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 36
 - Time: 74s
 - Log: logs/learn_20260329_183059.log
+
+---
+## Learning Loop -- 2026-03-29 18:34
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 79 -> 79 (+0 learned)
+- Stored rule hits: 36
+- Time: 77s
+- Log: logs/learn_20260329_183312.log
+
+---
+## Session 17 -- 2026-03-29 18:44
+
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%)  [##############################]
+- Rules: 79 -> 81 (+2 learned)
+- Stored rule hits: 36
+- Time: 75s
+- Log: logs/learn_20260329_184339.log
+- Strategies added:
+  - `marker_arm_extend`: rectangles with isolated single-pixel markers; arms extend from nearest rect edge toward marker with cross-shaped endpoints (solves a2d730bd)
+  - `subgrid_invert`: grid divided by 0-separator lines into sub-grids; swaps pattern↔uniform fill, removes colour-5 noise; uniform uses minority colour in input, majority in output (solves 6350f1f4)
+- Improvement: 95.0% → 100.0% (+2 tasks)

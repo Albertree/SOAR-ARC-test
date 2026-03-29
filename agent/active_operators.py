@@ -514,6 +514,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_separator_projection(patterns, task)
 
+        # Strategy: marker arm extend (rectangles + isolated markers → arms with cross ends)
+        if rule is None:
+            rule = self._try_marker_arm_extend(patterns, task)
+
+        # Strategy: subgrid invert (0-separated grid, swap pattern↔uniform, remove 5-noise)
+        if rule is None:
+            rule = self._try_subgrid_invert(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -2702,6 +2710,68 @@ class GeneralizeOperator(Operator):
 
         return {"type": "separator_projection", "confidence": 1.0}
 
+    # ---- strategy: marker arm extend ------------------------------------
+
+    def _try_marker_arm_extend(self, patterns, task):
+        """
+        Detect: background grid with solid rectangular blocks and isolated
+        single-pixel markers of the same colour.  Each marker causes an arm
+        to extend from the nearest rectangle edge toward (and past) the
+        marker, with cross-shaped endpoints.
+        Category: rectangle-marker arm-extension tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            if (len(og), len(og[0])) != (h, w):
+                return None
+
+            predicted = _marker_arm_extend_transform(ig)
+            if predicted is None:
+                return None
+            if predicted != og:
+                return None
+
+        return {"type": "marker_arm_extend", "confidence": 1.0}
+
+    # ---- strategy: subgrid invert ----------------------------------------
+
+    def _try_subgrid_invert(self, patterns, task):
+        """
+        Detect: grid divided into NxM sub-grids by full rows/cols of 0.
+        Each sub-grid is either a repeating pattern template or uniform fill.
+        Colour 5 may corrupt some cells.  The output swaps pattern↔uniform
+        and removes all 5-noise.
+        Category: sub-grid pattern/uniform inversion with denoising.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            if (len(og), len(og[0])) != (h, w):
+                return None
+
+            predicted = _subgrid_invert_transform(ig)
+            if predicted is None:
+                return None
+            if predicted != og:
+                return None
+
+        return {"type": "subgrid_invert", "confidence": 1.0}
+
     # ---- strategy: simple color mapping ---------------------------------
 
     def _try_color_mapping(self, patterns):
@@ -4276,6 +4346,343 @@ class GeneralizeOperator(Operator):
         return {"type": "pattern_tile_fill", "confidence": 1.0}
 
 
+def _marker_arm_extend_transform(raw):
+    """
+    Transform for marker-arm-extend tasks.
+    Finds rectangular blocks on a uniform background, finds isolated
+    single-pixel markers of the same colour, then for each marker draws
+    an arm from the nearest rect edge with cross-shaped endpoints.
+    """
+    from collections import Counter
+
+    h = len(raw)
+    w = len(raw[0]) if raw else 0
+    if h == 0 or w == 0:
+        return None
+
+    counts = Counter(c for row in raw for c in row)
+    bg = counts.most_common(1)[0][0]
+
+    # Find connected components of non-bg cells (4-connected)
+    visited = [[False] * w for _ in range(h)]
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if raw[r][c] != bg and not visited[r][c]:
+                comp = []
+                color = raw[r][c]
+                q = [(r, c)]
+                visited[r][c] = True
+                while q:
+                    cr, cc = q.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == color:
+                            visited[nr][nc] = True
+                            q.append((nr, nc))
+                components.append((color, comp))
+
+    if not components:
+        return None
+
+    # Classify: rectangles (size > 1, actually rectangular) vs markers (size == 1)
+    rects = []
+    markers = []
+    for color, comp in components:
+        if len(comp) == 1:
+            markers.append((comp[0][0], comp[0][1], color))
+        else:
+            rows = [r for r, c in comp]
+            cols = [c for r, c in comp]
+            r0, r1 = min(rows), max(rows)
+            c0, c1 = min(cols), max(cols)
+            if len(comp) == (r1 - r0 + 1) * (c1 - c0 + 1):
+                rects.append((r0, r1, c0, c1, color))
+
+    if not rects or not markers:
+        return None
+
+    out = [row[:] for row in raw]
+
+    for mr, mc, mcolor in markers:
+        # Find the rectangle of the same colour
+        best_rect = None
+        best_dist = float('inf')
+        for r0, r1, c0, c1, rcolor in rects:
+            if rcolor != mcolor:
+                continue
+            # Distance from marker to rect bounding box
+            dr = max(r0 - mr, 0, mr - r1)
+            dc = max(c0 - mc, 0, mc - c1)
+            dist = dr + dc
+            if dist < best_dist:
+                best_dist = dist
+                best_rect = (r0, r1, c0, c1)
+
+        if best_rect is None:
+            continue
+
+        r0, r1, c0, c1 = best_rect
+
+        # Determine which edge is nearest and the arm direction
+        # Marker must be outside the rect
+        if r0 <= mr <= r1 and c0 <= mc <= c1:
+            continue  # marker inside rect, skip
+
+        # Check if marker is aligned with rect rows or cols
+        in_row_range = r0 <= mr <= r1
+        in_col_range = c0 <= mc <= c1
+
+        if in_col_range and not in_row_range:
+            # Vertical arm (marker above or below rect)
+            if mr < r0:
+                # Marker above, arm goes up from top edge
+                arm_start = r0 - 1
+                arm_end = mr + 1  # stop one past marker (toward rect)
+                past_marker = mr - 1
+                # Draw arm
+                for ar in range(arm_end, arm_start + 1):
+                    out[ar][mc] = mcolor
+                # Cross at arm start (adjacent to rect)
+                if 0 <= mc - 1:
+                    out[arm_start][mc - 1] = mcolor
+                if mc + 1 < w:
+                    out[arm_start][mc + 1] = mcolor
+                # Cross at marker
+                out[mr][mc] = bg  # marker position becomes bg
+                if 0 <= mc - 1:
+                    out[mr][mc - 1] = mcolor
+                if mc + 1 < w:
+                    out[mr][mc + 1] = mcolor
+                # One past marker
+                if 0 <= past_marker:
+                    out[past_marker][mc] = mcolor
+            else:
+                # Marker below, arm goes down from bottom edge
+                arm_start = r1 + 1
+                arm_end = mr - 1
+                past_marker = mr + 1
+                for ar in range(arm_start, arm_end + 1):
+                    out[ar][mc] = mcolor
+                if 0 <= mc - 1:
+                    out[arm_start][mc - 1] = mcolor
+                if mc + 1 < w:
+                    out[arm_start][mc + 1] = mcolor
+                out[mr][mc] = bg
+                if 0 <= mc - 1:
+                    out[mr][mc - 1] = mcolor
+                if mc + 1 < w:
+                    out[mr][mc + 1] = mcolor
+                if past_marker < h:
+                    out[past_marker][mc] = mcolor
+
+        elif in_row_range and not in_col_range:
+            # Horizontal arm (marker left or right of rect)
+            if mc < c0:
+                # Marker to the left
+                arm_start = c0 - 1
+                arm_end = mc + 1
+                past_marker = mc - 1
+                for ac in range(arm_end, arm_start + 1):
+                    out[mr][ac] = mcolor
+                if 0 <= mr - 1:
+                    out[mr - 1][arm_start] = mcolor
+                if mr + 1 < h:
+                    out[mr + 1][arm_start] = mcolor
+                out[mr][mc] = bg
+                if 0 <= mr - 1:
+                    out[mr - 1][mc] = mcolor
+                if mr + 1 < h:
+                    out[mr + 1][mc] = mcolor
+                if 0 <= past_marker:
+                    out[mr][past_marker] = mcolor
+            else:
+                # Marker to the right
+                arm_start = c1 + 1
+                arm_end = mc - 1
+                past_marker = mc + 1
+                for ac in range(arm_start, arm_end + 1):
+                    out[mr][ac] = mcolor
+                if 0 <= mr - 1:
+                    out[mr - 1][arm_start] = mcolor
+                if mr + 1 < h:
+                    out[mr + 1][arm_start] = mcolor
+                out[mr][mc] = bg
+                if 0 <= mr - 1:
+                    out[mr - 1][mc] = mcolor
+                if mr + 1 < h:
+                    out[mr + 1][mc] = mcolor
+                if past_marker < w:
+                    out[mr][past_marker] = mcolor
+
+        else:
+            # Diagonal marker (not aligned) — skip
+            continue
+
+    return out
+
+
+def _subgrid_invert_transform(raw):
+    """
+    Transform for subgrid-invert tasks.
+    Grid is divided by 0-separator rows/cols into sub-grids.
+    Each sub-grid is either a pattern template or uniform fill.
+    Colour 5 may be noise.  Output swaps pattern↔uniform.
+    """
+    from collections import Counter
+
+    h = len(raw)
+    w = len(raw[0]) if raw else 0
+    if h == 0 or w == 0:
+        return None
+
+    # Find separator rows (all 0 or all {0,5})
+    sep_rows = []
+    for r in range(h):
+        if all(raw[r][c] in (0, 5) for c in range(w)):
+            sep_rows.append(r)
+
+    sep_cols = []
+    for c in range(w):
+        if all(raw[r][c] in (0, 5) for r in range(h)):
+            sep_cols.append(c)
+
+    if not sep_rows and not sep_cols:
+        return None
+
+    # Build row and col ranges for sub-grids
+    row_ranges = []
+    prev = 0
+    for sr in sep_rows:
+        if sr > prev:
+            row_ranges.append((prev, sr))
+        prev = sr + 1
+    if prev < h:
+        row_ranges.append((prev, h))
+
+    col_ranges = []
+    prev = 0
+    for sc in sep_cols:
+        if sc > prev:
+            col_ranges.append((prev, sc))
+        prev = sc + 1
+    if prev < w:
+        col_ranges.append((prev, w))
+
+    if not row_ranges or not col_ranges:
+        return None
+
+    # All sub-grids must be same size
+    sg_h = row_ranges[0][1] - row_ranges[0][0]
+    sg_w = col_ranges[0][1] - col_ranges[0][0]
+    for rr in row_ranges:
+        if rr[1] - rr[0] != sg_h:
+            return None
+    for cr in col_ranges:
+        if cr[1] - cr[0] != sg_w:
+            return None
+
+    num_r = len(row_ranges)
+    num_c = len(col_ranges)
+
+    # Extract sub-grids, replacing 5 with None (unknown)
+    subgrids = {}
+    for ri, (r0, r1) in enumerate(row_ranges):
+        for ci, (c0, c1) in enumerate(col_ranges):
+            sg = []
+            for r in range(r0, r1):
+                row = []
+                for c in range(c0, c1):
+                    v = raw[r][c]
+                    row.append(None if v == 5 else v)
+                sg.append(row)
+            subgrids[(ri, ci)] = sg
+
+    # Find the template pattern from the cleanest sub-grid
+    # (the one with the most non-None cells and at least 2 distinct colours)
+    best_template = None
+    best_count = -1
+
+    for sg in subgrids.values():
+        vals = set()
+        count = 0
+        for row in sg:
+            for v in row:
+                if v is not None:
+                    vals.add(v)
+                    count += 1
+        if len(vals) >= 2 and count > best_count:
+            best_count = count
+            best_template = sg
+
+    if best_template is None:
+        return None
+
+    # Reconstruct the clean template: merge non-None cells from all multi-colour sub-grids
+    template = [row[:] for row in best_template]
+    for sg in subgrids.values():
+        vals = set(v for row in sg for v in row if v is not None)
+        if len(vals) < 2:
+            continue
+        for r in range(sg_h):
+            for c in range(sg_w):
+                if template[r][c] is None and sg[r][c] is not None:
+                    template[r][c] = sg[r][c]
+
+    # If template still has None, cannot proceed
+    if any(v is None for row in template for v in row):
+        return None
+
+    # Determine majority colour (used for uniform fill in output)
+    tcounts = Counter(v for row in template for v in row)
+    majority_color = tcounts.most_common(1)[0][0]
+    # Minority colour = the colour used for uniform sub-grids in input
+    minority_color = tcounts.most_common()[-1][0]
+
+    # Classify each sub-grid: uniform (minority-filled) vs pattern
+    # In the input, uniform sub-grids are filled with the minority colour.
+    # If all non-None cells in a sub-grid equal the minority colour → uniform.
+    # Otherwise → pattern (the non-None cells should match the template).
+    is_pattern = {}
+    for (ri, ci), sg in subgrids.items():
+        non_none_vals = [v for row in sg for v in row if v is not None]
+        if not non_none_vals:
+            # Fully corrupted — heuristic: check if majority of template cells
+            # at these positions would be minority
+            is_pattern[(ri, ci)] = True  # default to pattern
+        elif all(v == minority_color for v in non_none_vals):
+            is_pattern[(ri, ci)] = False  # uniform
+        else:
+            is_pattern[(ri, ci)] = True   # pattern
+
+    # Build output: invert pattern↔uniform
+    out = [[0] * w for _ in range(h)]
+
+    # Fill separator rows and cols with 0
+    for r in sep_rows:
+        for c in range(w):
+            out[r][c] = 0
+    for c in sep_cols:
+        for r in range(h):
+            out[r][c] = 0
+
+    # Fill sub-grids
+    for ri, (r0, r1) in enumerate(row_ranges):
+        for ci, (c0, c1) in enumerate(col_ranges):
+            was_pattern = is_pattern.get((ri, ci), False)
+            for r in range(sg_h):
+                for c in range(sg_w):
+                    if was_pattern:
+                        # Was pattern → becomes uniform (majority colour)
+                        out[r0 + r][c0 + c] = majority_color
+                    else:
+                        # Was uniform → becomes pattern
+                        out[r0 + r][c0 + c] = template[r][c]
+
+    return out
+
+
 def _build_scatter_x_grid(grid_h, grid_w, rect_h, rect_w, bg, fill, diag):
     """Build output grid with X-diamond in bottom-left rectangle."""
     if rect_h > grid_h or rect_w > grid_w or rect_h <= 0 or rect_w <= 0:
@@ -4695,6 +5102,10 @@ class PredictOperator(Operator):
             return self._apply_domino_cross_intersection(rule, input_grid)
         if rule_type == "separator_projection":
             return self._apply_separator_projection(rule, input_grid)
+        if rule_type == "marker_arm_extend":
+            return self._apply_marker_arm_extend(rule, input_grid)
+        if rule_type == "subgrid_invert":
+            return self._apply_subgrid_invert(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6094,6 +6505,16 @@ class PredictOperator(Operator):
                 orig = raw[sr + r][sc + c]
                 out[r][c] = color_map.get(orig, orig)
         return out
+
+    def _apply_marker_arm_extend(self, rule, input_grid):
+        raw = input_grid.raw
+        result = _marker_arm_extend_transform(raw)
+        return result if result is not None else [row[:] for row in raw]
+
+    def _apply_subgrid_invert(self, rule, input_grid):
+        raw = input_grid.raw
+        result = _subgrid_invert_transform(raw)
+        return result if result is not None else [row[:] for row in raw]
 
 
 # ======================================================================
