@@ -502,6 +502,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_color_key_remap(patterns, task)
 
+        # Strategy: square corner mark (mark corners of square borders)
+        if rule is None:
+            rule = self._try_square_corner_mark(patterns, task)
+
+        # Strategy: domino cross intersection (mark where domino gap-centers cross)
+        if rule is None:
+            rule = self._try_domino_cross_intersection(patterns, task)
+
+        # Strategy: separator projection (crop to separator frame, project pixels)
+        if rule is None:
+            rule = self._try_separator_projection(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -2306,6 +2318,389 @@ class GeneralizeOperator(Operator):
             return None
 
         return (sr, sc, er, ec), color_map
+
+    # ---- strategy: square corner mark ------------------------------------
+
+    def _try_square_corner_mark(self, patterns, task):
+        """
+        Detect: input has square rectangular borders (perimeter-only shapes where
+        width == height >= 2) on a uniform background. Output adds marker pixels
+        at the four corner extensions of each square border.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        marker_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find background color (most common in input)
+            from collections import Counter
+            bg = Counter(inp[r][c] for r in range(h) for c in range(w)).most_common(1)[0][0]
+
+            # Find connected components of non-bg color
+            visited = [[False]*w for _ in range(h)]
+            squares = []
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != bg and not visited[r][c]:
+                        comp = []
+                        color = inp[r][c]
+                        queue = [(r, c)]
+                        visited[r][c] = True
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                                nr, nc = cr+dr, cc+dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] == color:
+                                    visited[nr][nc] = True
+                                    queue.append((nr, nc))
+                        # Check if this is a square rectangular border
+                        r1 = min(p[0] for p in comp)
+                        c1 = min(p[1] for p in comp)
+                        r2 = max(p[0] for p in comp)
+                        c2 = max(p[1] for p in comp)
+                        bh = r2 - r1 + 1
+                        bw = c2 - c1 + 1
+                        if bh != bw or bh < 2:
+                            continue
+                        # Check perimeter cells are filled with color
+                        perimeter = set()
+                        for rr in range(r1, r2+1):
+                            for cc2 in range(c1, c2+1):
+                                if rr == r1 or rr == r2 or cc2 == c1 or cc2 == c2:
+                                    perimeter.add((rr, cc2))
+                        if set(comp) != perimeter:
+                            continue
+                        squares.append((r1, c1, r2, c2, color))
+
+            if not squares:
+                return None
+
+            # Build expected output: start with input, add corner marks
+            expected = [row[:] for row in inp]
+            for (r1, c1, r2, c2, color) in squares:
+                marks = [
+                    (r1-1, c1), (r1, c1-1),   # top-left corner
+                    (r1-1, c2), (r1, c2+1),   # top-right corner
+                    (r2+1, c1), (r2, c1-1),   # bottom-left corner
+                    (r2+1, c2), (r2, c2+1),   # bottom-right corner
+                ]
+                for mr, mc in marks:
+                    if 0 <= mr < h and 0 <= mc < w:
+                        # Detect marker color from actual output diff
+                        if out[mr][mc] != inp[mr][mc] and out[mr][mc] != bg:
+                            if marker_color is None:
+                                marker_color = out[mr][mc]
+                            elif marker_color != out[mr][mc]:
+                                return None
+                        expected[mr][mc] = out[mr][mc]
+
+            if marker_color is None:
+                return None
+
+            # Re-build expected with the learned marker color
+            expected2 = [row[:] for row in inp]
+            for (r1, c1, r2, c2, color) in squares:
+                marks = [
+                    (r1-1, c1), (r1, c1-1),
+                    (r1-1, c2), (r1, c2+1),
+                    (r2+1, c1), (r2, c1-1),
+                    (r2+1, c2), (r2, c2+1),
+                ]
+                for mr, mc in marks:
+                    if 0 <= mr < h and 0 <= mc < w:
+                        expected2[mr][mc] = marker_color
+
+            if expected2 != out:
+                return None
+
+        return {"type": "square_corner_mark", "confidence": 1.0, "marker_color": marker_color}
+
+    # ---- strategy: domino cross intersection ------------------------------
+
+    def _try_domino_cross_intersection(self, patterns, task):
+        """
+        Detect: dominos (2-cell horizontal or vertical components) on a background.
+        Where gap-centers of aligned consecutive dominos intersect, a marker is placed.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        marker_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            from collections import Counter
+            bg = Counter(inp[r][c] for r in range(h) for c in range(w)).most_common(1)[0][0]
+
+            # Find connected components of non-bg color
+            visited = [[False]*w for _ in range(h)]
+            dominos_h = []  # horizontal dominos: (row, c_left, c_right)
+            dominos_v = []  # vertical dominos: (col, r_top, r_bot)
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != bg and not visited[r][c]:
+                        comp = []
+                        queue = [(r, c)]
+                        visited[r][c] = True
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                                nr, nc = cr+dr, cc+dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] != bg:
+                                    visited[nr][nc] = True
+                                    queue.append((nr, nc))
+                        if len(comp) == 2:
+                            (r1, c1), (r2, c2) = comp
+                            if r1 == r2 and abs(c1 - c2) == 1:
+                                dominos_h.append((r1, min(c1, c2), max(c1, c2)))
+                            elif c1 == c2 and abs(r1 - r2) == 1:
+                                dominos_v.append((min(c1, c2), min(r1, r2), max(r1, r2)))
+
+            if not dominos_h and not dominos_v:
+                return None
+
+            # Find gap centers for consecutive aligned dominos
+            # Horizontal dominos: group by row, find gap centers (column-wise)
+            from collections import defaultdict
+            h_by_row = defaultdict(list)
+            for row, cl, cr in dominos_h:
+                h_by_row[row].append((cl, cr))
+            h_gap_centers = set()  # (row, col_center)
+            for row, doms in h_by_row.items():
+                doms.sort()
+                for i in range(len(doms) - 1):
+                    _, cr1 = doms[i]
+                    cl2, _ = doms[i+1]
+                    if cl2 > cr1 + 1:
+                        gap_sum = (cr1 + 1 + cl2 - 1)
+                        if gap_sum % 2 == 0:
+                            h_gap_centers.add((row, gap_sum // 2))
+
+            # Vertical dominos: group by column, find gap centers (row-wise)
+            v_by_col = defaultdict(list)
+            for col, rt, rb in dominos_v:
+                v_by_col[col].append((rt, rb))
+            v_gap_centers = set()  # (row_center, col)
+            for col, doms in v_by_col.items():
+                doms.sort()
+                for i in range(len(doms) - 1):
+                    _, rb1 = doms[i]
+                    rt2, _ = doms[i+1]
+                    if rt2 > rb1 + 1:
+                        gap_sum = (rb1 + 1 + rt2 - 1)
+                        if gap_sum % 2 == 0:
+                            v_gap_centers.add((gap_sum // 2, col))
+
+            # Find intersections
+            intersections = set()
+            for (hr, hc) in h_gap_centers:
+                for (vr, vc) in v_gap_centers:
+                    if hr == vr and hc == vc:
+                        intersections.add((hr, hc))
+
+            if not intersections:
+                return None
+
+            # Detect marker color from output
+            for (ir, ic) in intersections:
+                if out[ir][ic] != inp[ir][ic] and out[ir][ic] != bg:
+                    if marker_color is None:
+                        marker_color = out[ir][ic]
+                    elif marker_color != out[ir][ic]:
+                        return None
+
+            if marker_color is None:
+                return None
+
+            # Verify output matches
+            expected = [row[:] for row in inp]
+            for (ir, ic) in intersections:
+                expected[ir][ic] = marker_color
+
+            if expected != out:
+                return None
+
+        return {"type": "domino_cross_intersection", "confidence": 1.0, "marker_color": marker_color}
+
+    # ---- strategy: separator projection -----------------------------------
+
+    @staticmethod
+    def _find_separator_frame(inp):
+        """Find 4 separator lines (2 rows, 2 cols) by dominant non-zero color.
+        Returns (row1, color1, row2, color2, col1, color1, col2, color2) sorted,
+        or None if not found. Separator = row/col where one non-zero color
+        appears in >= 60% of cells.
+        """
+        from collections import Counter
+        h, w = len(inp), len(inp[0])
+
+        sep_rows = []
+        for r in range(h):
+            cnt = Counter(inp[r])
+            for color, count in cnt.most_common():
+                if color != 0 and count >= w * 0.6:
+                    sep_rows.append((r, color))
+                    break
+
+        sep_cols = []
+        for c in range(w):
+            col = [inp[r][c] for r in range(h)]
+            cnt = Counter(col)
+            for color, count in cnt.most_common():
+                if color != 0 and count >= h * 0.6:
+                    sep_cols.append((c, color))
+                    break
+
+        if len(sep_rows) != 2 or len(sep_cols) != 2:
+            return None
+
+        fr1, fc1 = sep_rows[0]
+        fr2, fc2 = sep_rows[1]
+        fco1, fcc1 = sep_cols[0]
+        fco2, fcc2 = sep_cols[1]
+
+        if fr1 > fr2:
+            fr1, fc1, fr2, fc2 = fr2, fc2, fr1, fc1
+        if fco1 > fco2:
+            fco1, fcc1, fco2, fcc2 = fco2, fcc2, fco1, fcc1
+
+        sep_colors = {fc1, fc2, fcc1, fcc2}
+        if len(sep_colors) != 4:
+            return None
+
+        return (fr1, fc1, fr2, fc2, fco1, fcc1, fco2, fcc2)
+
+    def _try_separator_projection(self, patterns, task):
+        """
+        Detect: grid has 4 separator lines (2 rows, 2 cols) each with a distinct
+        color. Scattered pixels of a color matching one separator. Output is
+        cropped to the separator frame with projections toward the matching
+        separator.
+        """
+        if task is None:
+            return None
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            oh, ow = len(out), len(out[0])
+
+            frame = self._find_separator_frame(inp)
+            if frame is None:
+                return None
+            fr1, fc1, fr2, fc2, fco1, fcc1, fco2, fcc2 = frame
+            sep_colors = {fc1, fc2, fcc1, fcc2}
+
+            inner_r1, inner_r2 = fr1 + 1, fr2 - 1
+            inner_c1, inner_c2 = fco1 + 1, fco2 - 1
+            if inner_r1 > inner_r2 or inner_c1 > inner_c2:
+                return None
+
+            frame_h = fr2 - fr1 + 1
+            frame_w = fco2 - fco1 + 1
+            if oh != frame_h or ow != frame_w:
+                return None
+
+            # Find scattered pixels in the inner region (exclude sep rows/cols)
+            scattered = []
+            scattered_color = None
+            sep_row_set = {fr1, fr2}
+            sep_col_set = {fco1, fco2}
+            for r in range(inner_r1, inner_r2 + 1):
+                for c in range(inner_c1, inner_c2 + 1):
+                    v = inp[r][c]
+                    if v != 0:
+                        if scattered_color is None:
+                            scattered_color = v
+                        elif v != scattered_color:
+                            return None
+                        scattered.append((r, c))
+
+            if scattered_color is None:
+                return None
+            if scattered_color not in sep_colors:
+                return None
+
+            # Determine projection direction
+            match_dir = None
+            if scattered_color == fc1:
+                match_dir = "top"
+            elif scattered_color == fc2:
+                match_dir = "bottom"
+            elif scattered_color == fcc1:
+                match_dir = "left"
+            elif scattered_color == fcc2:
+                match_dir = "right"
+
+            # Build expected output: copy frame borders from input
+            expected = [[0]*frame_w for _ in range(frame_h)]
+            for c in range(frame_w):
+                expected[0][c] = inp[fr1][fco1 + c]
+                expected[frame_h - 1][c] = inp[fr2][fco1 + c]
+            for r in range(frame_h):
+                expected[r][0] = inp[fr1 + r][fco1]
+                expected[r][frame_w - 1] = inp[fr1 + r][fco2]
+
+            for (sr, sc) in scattered:
+                ofr = sr - fr1
+                ofc = sc - fco1
+                expected[ofr][ofc] = scattered_color
+                if match_dir == "top":
+                    for rr in range(1, ofr):
+                        expected[rr][ofc] = scattered_color
+                elif match_dir == "bottom":
+                    for rr in range(ofr + 1, frame_h - 1):
+                        expected[rr][ofc] = scattered_color
+                elif match_dir == "left":
+                    for cc in range(1, ofc):
+                        expected[ofr][cc] = scattered_color
+                elif match_dir == "right":
+                    for cc in range(ofc + 1, frame_w - 1):
+                        expected[ofr][cc] = scattered_color
+
+            if expected != out:
+                return None
+
+        return {"type": "separator_projection", "confidence": 1.0}
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -4294,6 +4689,12 @@ class PredictOperator(Operator):
             return self._apply_enclosed_rect_fill(rule, input_grid)
         if rule_type == "color_key_remap":
             return self._apply_color_key_remap(rule, input_grid)
+        if rule_type == "square_corner_mark":
+            return self._apply_square_corner_mark(rule, input_grid)
+        if rule_type == "domino_cross_intersection":
+            return self._apply_domino_cross_intersection(rule, input_grid)
+        if rule_type == "separator_projection":
+            return self._apply_separator_projection(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5484,6 +5885,200 @@ class PredictOperator(Operator):
             for c in range(w):
                 if raw[r][c] == 0 and not visited[r][c]:
                     out[r][c] = 1
+        return out
+
+    def _apply_square_corner_mark(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        marker_color = rule.get("marker_color", 2)
+        out = [row[:] for row in raw]
+
+        from collections import Counter
+        bg = Counter(raw[r][c] for r in range(h) for c in range(w)).most_common(1)[0][0]
+
+        # Find connected components of non-bg color
+        visited = [[False]*w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg and not visited[r][c]:
+                    comp = []
+                    color = raw[r][c]
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = cr+dr, cc+dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == color:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    # Check if square rectangular border
+                    r1 = min(p[0] for p in comp)
+                    c1 = min(p[1] for p in comp)
+                    r2 = max(p[0] for p in comp)
+                    c2 = max(p[1] for p in comp)
+                    bh = r2 - r1 + 1
+                    bw = c2 - c1 + 1
+                    if bh != bw or bh < 2:
+                        continue
+                    perimeter = set()
+                    for rr in range(r1, r2+1):
+                        for cc2 in range(c1, c2+1):
+                            if rr == r1 or rr == r2 or cc2 == c1 or cc2 == c2:
+                                perimeter.add((rr, cc2))
+                    if set(comp) != perimeter:
+                        continue
+                    # Place corner marks
+                    marks = [
+                        (r1-1, c1), (r1, c1-1),
+                        (r1-1, c2), (r1, c2+1),
+                        (r2+1, c1), (r2, c1-1),
+                        (r2+1, c2), (r2, c2+1),
+                    ]
+                    for mr, mc in marks:
+                        if 0 <= mr < h and 0 <= mc < w:
+                            out[mr][mc] = marker_color
+        return out
+
+    def _apply_domino_cross_intersection(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        marker_color = rule.get("marker_color", 4)
+        out = [row[:] for row in raw]
+
+        from collections import Counter, defaultdict
+        bg = Counter(raw[r][c] for r in range(h) for c in range(w)).most_common(1)[0][0]
+
+        # Find connected components
+        visited = [[False]*w for _ in range(h)]
+        dominos_h = []
+        dominos_v = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg and not visited[r][c]:
+                    comp = []
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = cr+dr, cc+dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] != bg:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    if len(comp) == 2:
+                        (r1, c1), (r2, c2) = comp
+                        if r1 == r2 and abs(c1 - c2) == 1:
+                            dominos_h.append((r1, min(c1, c2), max(c1, c2)))
+                        elif c1 == c2 and abs(r1 - r2) == 1:
+                            dominos_v.append((min(c1, c2), min(r1, r2), max(r1, r2)))
+
+        # Horizontal gap centers
+        h_by_row = defaultdict(list)
+        for row, cl, cr in dominos_h:
+            h_by_row[row].append((cl, cr))
+        h_gap_centers = set()
+        for row, doms in h_by_row.items():
+            doms.sort()
+            for i in range(len(doms) - 1):
+                _, cr1 = doms[i]
+                cl2, _ = doms[i+1]
+                if cl2 > cr1 + 1:
+                    gap_sum = (cr1 + 1 + cl2 - 1)
+                    if gap_sum % 2 == 0:
+                        h_gap_centers.add((row, gap_sum // 2))
+
+        # Vertical gap centers
+        v_by_col = defaultdict(list)
+        for col, rt, rb in dominos_v:
+            v_by_col[col].append((rt, rb))
+        v_gap_centers = set()
+        for col, doms in v_by_col.items():
+            doms.sort()
+            for i in range(len(doms) - 1):
+                _, rb1 = doms[i]
+                rt2, _ = doms[i+1]
+                if rt2 > rb1 + 1:
+                    gap_sum = (rb1 + 1 + rt2 - 1)
+                    if gap_sum % 2 == 0:
+                        v_gap_centers.add((gap_sum // 2, col))
+
+        # Intersections
+        for (hr, hc) in h_gap_centers:
+            for (vr, vc) in v_gap_centers:
+                if hr == vr and hc == vc:
+                    out[hr][hc] = marker_color
+
+        return out
+
+    def _apply_separator_projection(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        frame = GeneralizeOperator._find_separator_frame(raw)
+        if frame is None:
+            return [row[:] for row in raw]
+        fr1, fc1, fr2, fc2, fco1, fcc1, fco2, fcc2 = frame
+        sep_colors = {fc1, fc2, fcc1, fcc2}
+
+        inner_r1, inner_r2 = fr1 + 1, fr2 - 1
+        inner_c1, inner_c2 = fco1 + 1, fco2 - 1
+        frame_h = fr2 - fr1 + 1
+        frame_w = fco2 - fco1 + 1
+
+        # Find scattered pixels
+        scattered = []
+        scattered_color = None
+        for r in range(inner_r1, inner_r2 + 1):
+            for c in range(inner_c1, inner_c2 + 1):
+                v = raw[r][c]
+                if v != 0:
+                    if scattered_color is None:
+                        scattered_color = v
+                    scattered.append((r, c))
+
+        if scattered_color is None:
+            scattered_color = 0
+
+        # Determine projection direction
+        match_dir = None
+        if scattered_color == fc1:
+            match_dir = "top"
+        elif scattered_color == fc2:
+            match_dir = "bottom"
+        elif scattered_color == fcc1:
+            match_dir = "left"
+        elif scattered_color == fcc2:
+            match_dir = "right"
+
+        # Build output frame: copy borders from input
+        out = [[0]*frame_w for _ in range(frame_h)]
+        for c in range(frame_w):
+            out[0][c] = raw[fr1][fco1 + c]
+            out[frame_h - 1][c] = raw[fr2][fco1 + c]
+        for r in range(frame_h):
+            out[r][0] = raw[fr1 + r][fco1]
+            out[r][frame_w - 1] = raw[fr1 + r][fco2]
+
+        for (sr, sc) in scattered:
+            ofr = sr - fr1
+            ofc = sc - fco1
+            out[ofr][ofc] = scattered_color
+            if match_dir == "top":
+                for rr in range(1, ofr):
+                    out[rr][ofc] = scattered_color
+            elif match_dir == "bottom":
+                for rr in range(ofr + 1, frame_h - 1):
+                    out[rr][ofc] = scattered_color
+            elif match_dir == "left":
+                for cc in range(1, ofc):
+                    out[ofr][cc] = scattered_color
+            elif match_dir == "right":
+                for cc in range(ofc + 1, frame_w - 1):
+                    out[ofr][cc] = scattered_color
+
         return out
 
     def _apply_color_key_remap(self, rule, input_grid):

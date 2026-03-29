@@ -687,3 +687,67 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 33
 - Time: 75s
 - Log: logs/learn_20260329_180237.log
+
+---
+## Learning Loop -- 2026-03-29 18:05
+
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 74 -> 76 (+2 learned)
+- Stored rule hits: 33
+- Time: 74s
+- Log: logs/learn_20260329_180439.log
+
+---
+## Learning Loop -- 2026-03-29 18:30
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 79 -> 79 (+0 learned)
+- Stored rule hits: 36
+- Time: 75s
+- Log: logs/learn_20260329_182939.log
+
+---
+## Session 16 -- 2026-03-29 18:30
+
+### New strategies added (3):
+
+1. **square_corner_mark** (14b8e18c): Find connected components that form
+   square rectangular borders (width==height>=2, all perimeter cells filled).
+   Place a marker color at corner-extension positions (one cell beyond each
+   corner along the two border lines). Non-square or non-rectangular shapes
+   are ignored. Category: rectangle/square detection + corner marking tasks.
+
+2. **domino_cross_intersection** (9f5f939b): Find all 2-cell dominos
+   (horizontal/vertical). Group by alignment (same row/column). For each
+   pair of consecutive aligned dominos, compute the exact gap center.
+   Where a vertical gap center and horizontal gap center coincide at the
+   same integer cell, mark it with a learned color. Category: domino
+   alignment / cross-intersection detection tasks.
+
+3. **separator_projection** (5daaa586): Grid has 4 separator lines (2 full
+   rows, 2 full columns, each a distinct color). Scattered pixels of a color
+   matching one separator project lines toward that separator. Output is the
+   cropped inner frame with projected lines. Category: separator-bounded
+   projection / accumulation tasks.
+
+### Results
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)  [############################..]
+- Previous: 35 / 40 (87.5%)  -- improvement: +3 tasks
+- Rules: 76 -> 79 (+3 learned)
+- Stored rule hits: 36
+- Time: 75s
+- Log: logs/learn_20260329_182939.log
+
+---
+## Learning Loop -- 2026-03-29 18:32
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 79 -> 79 (+0 learned)
+- Stored rule hits: 36
+- Time: 74s
+- Log: logs/learn_20260329_183059.log
