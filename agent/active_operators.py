@@ -406,6 +406,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_stripe_zone_fill(patterns, task)
 
+        # Strategy: cross projection to edges (crosses with missing arm)
+        if rule is None:
+            rule = self._try_cross_projection(patterns, task)
+
+        # Strategy: quadrant shape swap (grid divided by 0-lines)
+        if rule is None:
+            rule = self._try_quadrant_shape_swap(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -1428,6 +1436,315 @@ class GeneralizeOperator(Operator):
 
     # ---- strategy: keep center column ------------------------------------
 
+    def _try_cross_projection(self, patterns, task):
+        """
+        Detect: cross shapes (one arm color, different center color) on a
+        uniform background. The missing arm direction determines projection.
+        Center color projects every 2 cells to the grid edge, and that entire
+        edge row/col becomes the center color. Corners where edges meet = 0.
+        Category: directional projection from cross markers to grid edges.
+        """
+        if task is None or not patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        def find_crosses(grid, bg_color):
+            """Find cross shapes: arm_color cells surrounding a center_color cell."""
+            h, w = len(grid), len(grid[0])
+            non_bg = {}
+            for r in range(h):
+                for c in range(w):
+                    if grid[r][c] != bg_color:
+                        non_bg[(r, c)] = grid[r][c]
+            if not non_bg:
+                return None
+
+            # Group non-bg cells by connected components
+            visited = set()
+            components = []
+            for pos in non_bg:
+                if pos in visited:
+                    continue
+                comp = []
+                stack = [pos]
+                visited.add(pos)
+                while stack:
+                    p = stack.pop()
+                    comp.append(p)
+                    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                        np_ = (p[0]+dr, p[1]+dc)
+                        if np_ in non_bg and np_ not in visited:
+                            visited.add(np_)
+                            stack.append(np_)
+                components.append(comp)
+
+            crosses = []
+            for comp in components:
+                colors_in_comp = set(non_bg[p] for p in comp)
+                if len(colors_in_comp) != 2:
+                    continue
+                # One color should be the arm color (majority), the other is center
+                color_counts = Counter(non_bg[p] for p in comp)
+                arm_color, center_color = color_counts.most_common(2)[0][0], color_counts.most_common(2)[1][0]
+                # Find the center cell
+                center_cells = [p for p in comp if non_bg[p] == center_color]
+                if len(center_cells) != 1:
+                    continue
+                cr, cc = center_cells[0]
+                arm_cells = [p for p in comp if non_bg[p] == arm_color]
+
+                # Check which cardinal directions have arms
+                has_up = any(r < cr and c == cc for r, c in arm_cells)
+                has_down = any(r > cr and c == cc for r, c in arm_cells)
+                has_left = any(r == cr and c < cc for r, c in arm_cells)
+                has_right = any(r == cr and c > cc for r, c in arm_cells)
+
+                dirs = [has_up, has_down, has_left, has_right]
+                if sum(dirs) != 3:
+                    continue  # Need exactly one missing arm
+
+                if not has_up:
+                    missing = 'up'
+                elif not has_down:
+                    missing = 'down'
+                elif not has_left:
+                    missing = 'left'
+                else:
+                    missing = 'right'
+
+                crosses.append({
+                    'center': (cr, cc),
+                    'center_color': center_color,
+                    'arm_color': arm_color,
+                    'missing': missing,
+                })
+            return crosses if crosses else None
+
+        # Validate on all example pairs
+        for pair in pairs:
+            g_in = pair.input_grid.raw
+            g_out = pair.output_grid.raw
+            h, w = len(g_in), len(g_in[0])
+
+            # Detect background per pair (most common color)
+            bg = Counter(c for row in g_in for c in row).most_common(1)[0][0]
+
+            crosses = find_crosses(g_in, bg)
+            if not crosses:
+                return None
+
+            # Build expected output
+            expected = [row[:] for row in g_in]
+
+            # Track which edges are claimed by which center colors
+            edge_colors = {}  # 'up'/'down'/'left'/'right' -> center_color
+            projections = []
+
+            for cross in crosses:
+                cr, cc = cross['center']
+                cc_color = cross['center_color']
+                missing = cross['missing']
+                edge_colors[missing] = cc_color
+
+                # Project center color every 2 cells in missing direction
+                if missing == 'up':
+                    r = cr - 2
+                    while r > 0:
+                        projections.append((r, cc, cc_color))
+                        r -= 2
+                elif missing == 'down':
+                    r = cr + 2
+                    while r < h - 1:
+                        projections.append((r, cc, cc_color))
+                        r += 2
+                elif missing == 'left':
+                    c = cc - 2
+                    while c > 0:
+                        projections.append((cr, c, cc_color))
+                        c -= 2
+                elif missing == 'right':
+                    c = cc + 2
+                    while c < w - 1:
+                        projections.append((cr, c, cc_color))
+                        c += 2
+
+            for r, c, color in projections:
+                expected[r][c] = color
+
+            # Fill edges
+            for direction, color in edge_colors.items():
+                if direction == 'up':
+                    for c in range(w):
+                        expected[0][c] = color
+                elif direction == 'down':
+                    for c in range(w):
+                        expected[h-1][c] = color
+                elif direction == 'left':
+                    for r in range(h):
+                        expected[r][0] = color
+                elif direction == 'right':
+                    for r in range(h):
+                        expected[r][w-1] = color
+
+            # Corners where edges meet become 0
+            corner_dirs = {
+                (0, 0): ('up', 'left'),
+                (0, w-1): ('up', 'right'),
+                (h-1, 0): ('down', 'left'),
+                (h-1, w-1): ('down', 'right'),
+            }
+            for (cr_, cc_), (d1, d2) in corner_dirs.items():
+                if d1 in edge_colors and d2 in edge_colors:
+                    expected[cr_][cc_] = 0
+
+            if expected != g_out:
+                return None
+
+        return {
+            "type": "cross_projection",
+            "confidence": 0.9,
+        }
+
+    def _try_quadrant_shape_swap(self, patterns, task):
+        """
+        Detect: grid divided into cells by rows/columns of 0s. Each cell has a
+        background color and a foreground shape. Horizontally paired cells swap
+        their shapes, drawing the swapped shape in the partner's background color.
+        When both cells share the same bg, swapped shapes become invisible (blank).
+        Category: cross-quadrant shape color swapping.
+        """
+        if task is None or not patterns.get("grid_size_preserved"):
+            return None
+
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        def find_dividers(grid):
+            """Find rows and cols that are entirely 0."""
+            h, w = len(grid), len(grid[0])
+            zero_rows = [r for r in range(h) if all(grid[r][c] == 0 for c in range(w))]
+            zero_cols = [c for c in range(w) if all(grid[r][c] == 0 for r in range(h))]
+            return zero_rows, zero_cols
+
+        def get_sections(dividers, total):
+            """Get ranges between divider lines."""
+            sections = []
+            prev = 0
+            groups = []
+            # Group consecutive dividers
+            i = 0
+            while i < len(dividers):
+                start = dividers[i]
+                end = start
+                while i + 1 < len(dividers) and dividers[i+1] == end + 1:
+                    i += 1
+                    end = dividers[i]
+                groups.append((start, end))
+                i += 1
+            # Sections are ranges between groups
+            prev = 0
+            for gs, ge in groups:
+                if gs > prev:
+                    sections.append((prev, gs - 1))
+                prev = ge + 1
+            if prev < total:
+                sections.append((prev, total - 1))
+            return sections
+
+        def extract_cell(grid, r_start, r_end, c_start, c_end):
+            """Extract a sub-grid."""
+            return [grid[r][c_start:c_end+1] for r in range(r_start, r_end+1)]
+
+        def cell_bg_and_shape(cell):
+            """Find background color and shape pixels in a cell."""
+            flat = [c for row in cell for c in row]
+            if not flat:
+                return None, None, None
+            bg = Counter(flat).most_common(1)[0][0]
+            shape_colors = set(flat) - {bg}
+            if len(shape_colors) > 1:
+                return None, None, None
+            fg = shape_colors.pop() if shape_colors else None
+            # Extract relative shape positions
+            shape = set()
+            if fg is not None:
+                for r, row in enumerate(cell):
+                    for c, v in enumerate(row):
+                        if v == fg:
+                            shape.add((r, c))
+            return bg, fg, shape
+
+        # Validate on all example pairs
+        for pair in pairs:
+            g_in = pair.input_grid.raw
+            g_out = pair.output_grid.raw
+            h, w = len(g_in), len(g_in[0])
+
+            zero_rows, zero_cols = find_dividers(g_in)
+            if not zero_cols:
+                return None  # Need at least vertical dividers for horizontal pairing
+
+            row_sections = get_sections(zero_rows, h)
+            col_sections = get_sections(zero_cols, w)
+
+            if len(col_sections) % 2 != 0:
+                return None  # Need even number of column sections for pairing
+
+            # Build expected output
+            expected = [row[:] for row in g_in]
+
+            for rs, re in row_sections:
+                # Pair columns left-to-right: (0,1), (2,3), ...
+                for ci in range(0, len(col_sections), 2):
+                    if ci + 1 >= len(col_sections):
+                        return None
+                    cs_l, ce_l = col_sections[ci]
+                    cs_r, ce_r = col_sections[ci + 1]
+
+                    cell_l = extract_cell(g_in, rs, re, cs_l, ce_l)
+                    cell_r = extract_cell(g_in, rs, re, cs_r, ce_r)
+
+                    bg_l, fg_l, shape_l = cell_bg_and_shape(cell_l)
+                    bg_r, fg_r, shape_r = cell_bg_and_shape(cell_r)
+
+                    if bg_l is None or bg_r is None:
+                        return None
+
+                    # Left cell gets right's shape in right's bg color
+                    cell_h = re - rs + 1
+                    cell_w_l = ce_l - cs_l + 1
+                    cell_w_r = ce_r - cs_r + 1
+
+                    # Clear left cell to its bg, then draw right's shape
+                    for r in range(cell_h):
+                        for c in range(cell_w_l):
+                            expected[rs + r][cs_l + c] = bg_l
+                    if shape_r and cell_w_l == cell_w_r:
+                        for (sr, sc) in shape_r:
+                            if 0 <= sr < cell_h and 0 <= sc < cell_w_l:
+                                expected[rs + sr][cs_l + sc] = bg_r
+
+                    # Clear right cell to its bg, then draw left's shape
+                    for r in range(cell_h):
+                        for c in range(cell_w_r):
+                            expected[rs + r][cs_r + c] = bg_r
+                    if shape_l and cell_w_l == cell_w_r:
+                        for (sr, sc) in shape_l:
+                            if 0 <= sr < cell_h and 0 <= sc < cell_w_r:
+                                expected[rs + sr][cs_r + sc] = bg_l
+
+            if expected != g_out:
+                return None
+
+        return {
+            "type": "quadrant_shape_swap",
+            "confidence": 0.9,
+        }
+
     def _try_keep_center_column(self, patterns, task):
         """
         Detect: output is all background except the center column, which
@@ -1568,6 +1885,10 @@ class PredictOperator(Operator):
             return self._apply_diamond_bridge(rule, input_grid)
         if rule_type == "stripe_zone_fill":
             return self._apply_stripe_zone_fill(rule, input_grid)
+        if rule_type == "cross_projection":
+            return self._apply_cross_projection(rule, input_grid)
+        if rule_type == "quadrant_shape_swap":
+            return self._apply_quadrant_shape_swap(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1852,6 +2173,192 @@ class PredictOperator(Operator):
         return GeneralizeOperator._compute_stripe_zone_fill(
             raw, h, w, spine_col, stripes
         )
+
+    def _apply_cross_projection(self, rule, input_grid):
+        """Find crosses with missing arm, project center color to edge."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        bg = Counter(c for row in raw for c in row).most_common(1)[0][0]
+
+        # Find crosses (same logic as detection)
+        non_bg = {}
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    non_bg[(r, c)] = raw[r][c]
+
+        visited = set()
+        components = []
+        for pos in non_bg:
+            if pos in visited:
+                continue
+            comp = []
+            stack = [pos]
+            visited.add(pos)
+            while stack:
+                p = stack.pop()
+                comp.append(p)
+                for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    np_ = (p[0]+dr, p[1]+dc)
+                    if np_ in non_bg and np_ not in visited:
+                        visited.add(np_)
+                        stack.append(np_)
+            components.append(comp)
+
+        crosses = []
+        for comp in components:
+            color_counts = Counter(non_bg[p] for p in comp)
+            if len(color_counts) != 2:
+                continue
+            arm_color = color_counts.most_common(2)[0][0]
+            center_color = color_counts.most_common(2)[1][0]
+            center_cells = [p for p in comp if non_bg[p] == center_color]
+            if len(center_cells) != 1:
+                continue
+            cr, cc = center_cells[0]
+            arm_cells = [p for p in comp if non_bg[p] == arm_color]
+            has_up = any(r < cr and c == cc for r, c in arm_cells)
+            has_down = any(r > cr and c == cc for r, c in arm_cells)
+            has_left = any(r == cr and c < cc for r, c in arm_cells)
+            has_right = any(r == cr and c > cc for r, c in arm_cells)
+            dirs = [has_up, has_down, has_left, has_right]
+            if sum(dirs) != 3:
+                continue
+            if not has_up: missing = 'up'
+            elif not has_down: missing = 'down'
+            elif not has_left: missing = 'left'
+            else: missing = 'right'
+            crosses.append({'center': (cr, cc), 'center_color': center_color, 'missing': missing})
+
+        output = [row[:] for row in raw]
+        edge_colors = {}
+        for cross in crosses:
+            cr, cc = cross['center']
+            cc_color = cross['center_color']
+            missing = cross['missing']
+            edge_colors[missing] = cc_color
+            if missing == 'up':
+                r = cr - 2
+                while r > 0:
+                    output[r][cc] = cc_color
+                    r -= 2
+            elif missing == 'down':
+                r = cr + 2
+                while r < h - 1:
+                    output[r][cc] = cc_color
+                    r += 2
+            elif missing == 'left':
+                c = cc - 2
+                while c > 0:
+                    output[cr][c] = cc_color
+                    c -= 2
+            elif missing == 'right':
+                c = cc + 2
+                while c < w - 1:
+                    output[cr][c] = cc_color
+                    c += 2
+        for direction, color in edge_colors.items():
+            if direction == 'up':
+                for c in range(w): output[0][c] = color
+            elif direction == 'down':
+                for c in range(w): output[h-1][c] = color
+            elif direction == 'left':
+                for r in range(h): output[r][0] = color
+            elif direction == 'right':
+                for r in range(h): output[r][w-1] = color
+        corner_dirs = {
+            (0, 0): ('up', 'left'), (0, w-1): ('up', 'right'),
+            (h-1, 0): ('down', 'left'), (h-1, w-1): ('down', 'right'),
+        }
+        for (cr_, cc_), (d1, d2) in corner_dirs.items():
+            if d1 in edge_colors and d2 in edge_colors:
+                output[cr_][cc_] = 0
+        return output
+
+    def _apply_quadrant_shape_swap(self, rule, input_grid):
+        """Swap shapes between horizontally paired quadrants."""
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Find dividers
+        zero_rows = [r for r in range(h) if all(raw[r][c] == 0 for c in range(w))]
+        zero_cols = [c for c in range(w) if all(raw[r][c] == 0 for r in range(h))]
+
+        def get_sections(dividers, total):
+            sections = []
+            groups = []
+            i = 0
+            while i < len(dividers):
+                start = dividers[i]
+                end = start
+                while i + 1 < len(dividers) and dividers[i+1] == end + 1:
+                    i += 1
+                    end = dividers[i]
+                groups.append((start, end))
+                i += 1
+            prev = 0
+            for gs, ge in groups:
+                if gs > prev:
+                    sections.append((prev, gs - 1))
+                prev = ge + 1
+            if prev < total:
+                sections.append((prev, total - 1))
+            return sections
+
+        row_sections = get_sections(zero_rows, h)
+        col_sections = get_sections(zero_cols, w)
+
+        output = [row[:] for row in raw]
+
+        for rs, re in row_sections:
+            for ci in range(0, len(col_sections) - 1, 2):
+                cs_l, ce_l = col_sections[ci]
+                cs_r, ce_r = col_sections[ci + 1]
+                cell_h = re - rs + 1
+                cell_w_l = ce_l - cs_l + 1
+                cell_w_r = ce_r - cs_r + 1
+
+                # Extract cells
+                cell_l = [raw[r][cs_l:ce_l+1] for r in range(rs, re+1)]
+                cell_r = [raw[r][cs_r:ce_r+1] for r in range(rs, re+1)]
+
+                # Find bg and shape
+                flat_l = [c for row in cell_l for c in row]
+                flat_r = [c for row in cell_r for c in row]
+                bg_l = Counter(flat_l).most_common(1)[0][0]
+                bg_r = Counter(flat_r).most_common(1)[0][0]
+
+                # Get shapes
+                shape_r = set()
+                for r, row in enumerate(cell_r):
+                    for c, v in enumerate(row):
+                        if v != bg_r:
+                            shape_r.add((r, c))
+                shape_l = set()
+                for r, row in enumerate(cell_l):
+                    for c, v in enumerate(row):
+                        if v != bg_l:
+                            shape_l.add((r, c))
+
+                # Clear left, draw right's shape in right's bg
+                for r in range(cell_h):
+                    for c in range(cell_w_l):
+                        output[rs + r][cs_l + c] = bg_l
+                if cell_w_l == cell_w_r:
+                    for (sr, sc) in shape_r:
+                        if 0 <= sr < cell_h and 0 <= sc < cell_w_l:
+                            output[rs + sr][cs_l + sc] = bg_r
+
+                # Clear right, draw left's shape in left's bg
+                for r in range(cell_h):
+                    for c in range(cell_w_r):
+                        output[rs + r][cs_r + c] = bg_r
+                if cell_w_l == cell_w_r:
+                    for (sr, sc) in shape_l:
+                        if 0 <= sr < cell_h and 0 <= sc < cell_w_r:
+                            output[rs + sr][cs_r + sc] = bg_l
+
+        return output
 
     # ---- helpers ---------------------------------------------------------
 

@@ -201,3 +201,52 @@
 - Stored rule hits: 10
 - Time: 37s
 - Log: logs/learn_20260329_152039.log
+
+---
+## Learning Loop -- 2026-03-29 15:22
+
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%)
+- Rules: 23 -> 23 (+0 learned)
+- Stored rule hits: 10
+- Time: 36s
+- Log: logs/learn_20260329_152200.log
+
+---
+## Session 6 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **cross_projection** -- find cross shapes (arm color + unique center color) on a uniform background. The one missing arm direction determines projection: center color is projected every 2 cells toward the nearest edge, and that full edge row/col is filled with the center color. Corners where two projected edges meet become 0. Handles directional projection / cross-marker-to-edge tasks.
+2. **quadrant_shape_swap** -- grid divided into cells by rows/columns of 0s. Each cell has a background color and a foreground shape. Horizontally paired cells swap their shapes, drawing the swapped shape in the partner's background color. When both cells share the same background, swapped shapes become invisible (blank). Handles cross-quadrant shape exchange tasks.
+
+### Tasks Solved
+- `13f06aa5`: cross_projection
+- `5a719d11`: quadrant_shape_swap
+
+### Results
+- Before: 11/20 (55%)
+- After: 13/20 (65%)
+- Regression gate (08ed6ac7): CORRECT
+
+### Note
+Procedural memory was rebuilt from scratch during this session (stale type=None rules cleaned). All 14 valid rules were rediscovered by the pipeline and stored correctly.
+
+---
+## Learning Loop -- 2026-03-29 15:39
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 2 -> 14 (+12 learned)
+- Stored rule hits: 2
+- Time: 37s
+- Log: logs/learn_20260329_153914.log
+
+---
+## Learning Loop -- 2026-03-29 15:40
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 12
+- Time: 36s
+- Log: logs/learn_20260329_153957.log
