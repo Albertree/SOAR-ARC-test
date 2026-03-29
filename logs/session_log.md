@@ -86,3 +86,32 @@
 
 **Improvement:** 6/20 → 8/20 (30% → 40%)
 **Memory reuse:** 6 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size, reverse_frames, scale_up, staircase_fill)
+
+---
+## Learning Loop -- 2026-03-29 23:41
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 13 -> 14 (+1 learned)
+- Stored rule hits: 8
+- Time: 36s
+- Log: logs/learn_20260329_234100.log
+
+---
+## Learning Loop -- 2026-03-29 23:54
+
+- Split: training, Tasks: 20
+- Correct: 10 / 20 (50.0%)
+- Rules: 14 -> 17 (+3 learned)
+- Stored rule hits: 8
+- Time: 37s
+- Log: logs/learn_20260329_235419.log
+
+### Session 4 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `path_with_turns` (connect) — draw L-shaped path from edge source pixel, turning CW at color-6 signals and CCW at color-8 signals; path bounces through a chain of waypoints → solved e5790162
+2. `zone_expand` (separator) — grid has a vertical spine column (color 8) and horizontal marker rows; each background row fills with the nearest marker's color (Voronoi); ties between different-colored markers create boundary rows of crossing color → solved 332202d5
+
+**Improvement:** 8/20 → 10/20 (40% → 50%)
+**Memory reuse:** 8 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size, reverse_frames, scale_up, staircase_fill, quadrant_fill, fill_by_interior_size)

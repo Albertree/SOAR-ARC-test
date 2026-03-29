@@ -23,6 +23,8 @@ _loaded = False
 # Rules listed here are tried in this order; any newly added rules
 # not in this list are appended at the end automatically.
 WATERFALL_ORDER = [
+    "path_with_turns",
+    "zone_expand",
     "mirror_vertical_append",
     "reverse_frames",
     "scale_up",
