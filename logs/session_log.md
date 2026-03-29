@@ -1093,3 +1093,13 @@ to find new failures (41/80 = 51.2% before improvements).
 - Stored rule hits: 52
 - Time: 143s
 - Log: logs/learn_20260329_201718.log
+
+---
+## Learning Loop -- 2026-03-29 20:22
+
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%)
+- Rules: 175 -> 180 (+5 learned)
+- Stored rule hits: 55
+- Time: 139s
+- Log: logs/learn_20260329_202033.log
