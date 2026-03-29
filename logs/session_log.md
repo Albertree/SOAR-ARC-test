@@ -272,3 +272,13 @@
 **Improvement:** 18/20 → 20/20 (90% → 100%)
 **Memory reuse:** 18 stored rules successfully reused
 **Milestone:** All 20 training tasks solved!
+
+---
+## Learning Loop -- 2026-03-30 01:37
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 28 -> 28 (+0 learned)
+- Stored rule hits: 20
+- Time: 46s
+- Log: logs/learn_20260330_013638.log
