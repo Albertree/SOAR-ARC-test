@@ -144,8 +144,7 @@ Each strategy must handle a CATEGORY of tasks, not just one.
 PROMPT
 )" \
         --permission-mode bypassPermissions \
-        --output-format stream-json \
-        --verbose \
+        --output-format text \
         2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
 
     log "Claude Code finished."

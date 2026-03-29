@@ -10,8 +10,74 @@ Pipeline operators (all fire in S2, read/write S1):
   SubmitOperator        -> write prediction to output-link, satisfy goal
 """
 
+from collections import Counter
+
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
+
+
+# ======================================================================
+# Shared helpers
+# ======================================================================
+
+def _find_outlined_rectangles(grid, outline_color, bg_color):
+    """Find rectangles outlined with outline_color whose interior is bg_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = [[False] * w for _ in range(h)]
+    rects = []
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == outline_color and not visited[r][c]:
+                # BFS to find connected component of outline_color
+                component = []
+                queue = [(r, c)]
+                visited[r][c] = True
+                while queue:
+                    cr, cc = queue.pop(0)
+                    component.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == outline_color:
+                            visited[nr][nc] = True
+                            queue.append((nr, nc))
+
+                # Bounding box
+                min_r = min(p[0] for p in component)
+                max_r = max(p[0] for p in component)
+                min_c = min(p[1] for p in component)
+                max_c = max(p[1] for p in component)
+
+                if max_r - min_r < 2 or max_c - min_c < 2:
+                    continue
+
+                # Check component matches a perfect rectangle outline
+                expected = set()
+                for rr in range(min_r, max_r + 1):
+                    expected.add((rr, min_c))
+                    expected.add((rr, max_c))
+                for cc in range(min_c, max_c + 1):
+                    expected.add((min_r, cc))
+                    expected.add((max_r, cc))
+
+                if set(component) != expected:
+                    continue
+
+                # Check interior is all bg_color
+                interior_ok = True
+                for rr in range(min_r + 1, max_r):
+                    for cc in range(min_c + 1, max_c):
+                        if grid[rr][cc] != bg_color:
+                            interior_ok = False
+                            break
+                    if not interior_ok:
+                        break
+
+                if interior_ok:
+                    rects.append((min_r, min_c, max_r, max_c))
+
+    return rects
 
 
 # ======================================================================
@@ -289,12 +355,25 @@ class GeneralizeOperator(Operator):
         if not patterns:
             return
 
+        task = wm.task
         rule = None
 
-        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        # Strategy: vertical mirror append (output = input + flipped input)
+        rule = self._try_vertical_mirror_append(patterns, task)
 
-        # Strategy 2: simple 1:1 color mapping
+        # Strategy: fill outlined rectangles by interior area
+        if rule is None:
+            rule = self._try_fill_rectangles_by_size(patterns, task)
+
+        # Strategy: sequential recoloring (e.g., color objects 1, 2, 3, ...)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
+
+        # Strategy: keep only center column (before color_mapping — more specific)
+        if rule is None:
+            rule = self._try_keep_center_column(patterns, task)
+
+        # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -397,6 +476,164 @@ class GeneralizeOperator(Operator):
 
         return None
 
+    # ---- strategy: vertical mirror append --------------------------------
+
+    def _try_vertical_mirror_append(self, patterns, task):
+        """
+        Detect: output is the input rows followed by the input rows in
+        reverse order (vertical mirror/reflection appended below).
+        Category: any task where output_h == 2 * input_h and the bottom
+        half is the vertically flipped top half.
+        """
+        if task is None:
+            return None
+        # This strategy is for size-changing tasks
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            if h_out != 2 * h_in or w_out != w_in:
+                return None
+
+            # Top half must equal input, bottom half must equal reversed input
+            for r in range(h_in):
+                if raw_out[r] != raw_in[r]:
+                    return None
+                if raw_out[h_out - 1 - r] != raw_in[r]:
+                    return None
+
+        return {"type": "vertical_mirror_append", "confidence": 1.0}
+
+    # ---- strategy: fill rectangles by interior size ----------------------
+
+    def _try_fill_rectangles_by_size(self, patterns, task):
+        """
+        Detect: rectangles outlined with one color on a background; each
+        rectangle's interior is filled with a color that depends on its
+        interior area.  Category: size-based rectangle fill.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        # Determine bg and outline colors from first example input
+        raw0 = task.example_pairs[0].input_grid.raw
+        flat = [c for row in raw0 for c in row]
+        bg_color = Counter(flat).most_common(1)[0][0]
+        non_bg = [c for c in flat if c != bg_color]
+        if not non_bg:
+            return None
+        outline_color = Counter(non_bg).most_common(1)[0][0]
+
+        size_to_color = {}
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+
+            rects = _find_outlined_rectangles(raw_in, outline_color, bg_color)
+            if not rects:
+                return None
+
+            for (r1, c1, r2, c2) in rects:
+                interior_h = r2 - r1 - 1
+                interior_w = c2 - c1 - 1
+                if interior_h <= 0 or interior_w <= 0:
+                    return None
+                area = interior_h * interior_w
+
+                # What color fills the interior in the output?
+                fill_color = raw_out[r1 + 1][c1 + 1]
+                # Verify entire interior has the same fill
+                for rr in range(r1 + 1, r2):
+                    for cc in range(c1 + 1, c2):
+                        if raw_out[rr][cc] != fill_color:
+                            return None
+
+                if area in size_to_color:
+                    if size_to_color[area] != fill_color:
+                        return None
+                else:
+                    size_to_color[area] = fill_color
+
+        if not size_to_color:
+            return None
+
+        return {
+            "type": "fill_rectangles_by_size",
+            "outline_color": outline_color,
+            "bg_color": bg_color,
+            "size_to_color": size_to_color,
+            "confidence": 0.9,
+        }
+
+    # ---- strategy: keep center column ------------------------------------
+
+    def _try_keep_center_column(self, patterns, task):
+        """
+        Detect: output is all background except the center column, which
+        preserves the input values.
+        Category: column extraction / projection.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        bg_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if w == 0 or h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            center_col = w // 2
+
+            # Determine bg from output (most common value)
+            flat_out = [c for row in raw_out for c in row]
+            pair_bg = Counter(flat_out).most_common(1)[0][0]
+            if bg_color is None:
+                bg_color = pair_bg
+            elif bg_color != pair_bg:
+                return None
+
+            # Every non-center-column cell must be bg
+            for r in range(h):
+                for c in range(w):
+                    if c == center_col:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+                    else:
+                        if raw_out[r][c] != bg_color:
+                            return None
+
+        return {
+            "type": "keep_center_column",
+            "bg_color": bg_color,
+            "confidence": 0.8,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -464,6 +701,12 @@ class PredictOperator(Operator):
             return self._apply_recolor_sequential(rule, input_grid)
         if rule_type == "color_mapping":
             return self._apply_color_mapping(rule, input_grid)
+        if rule_type == "vertical_mirror_append":
+            return self._apply_vertical_mirror_append(rule, input_grid)
+        if rule_type == "fill_rectangles_by_size":
+            return self._apply_fill_rectangles_by_size(rule, input_grid)
+        if rule_type == "keep_center_column":
+            return self._apply_keep_center_column(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -515,6 +758,52 @@ class PredictOperator(Operator):
         output = []
         for row in raw:
             output.append([mapping.get(cell, cell) for cell in row])
+        return output
+
+    def _apply_vertical_mirror_append(self, rule, input_grid):
+        """Output = input rows followed by input rows reversed."""
+        raw = input_grid.raw
+        output = [row[:] for row in raw]
+        for r in range(len(raw) - 1, -1, -1):
+            output.append(raw[r][:])
+        return output
+
+    def _apply_fill_rectangles_by_size(self, rule, input_grid):
+        """Find outlined rectangles and fill interiors based on area."""
+        raw = input_grid.raw
+        outline_color = rule["outline_color"]
+        bg_color = rule["bg_color"]
+        size_to_color = rule["size_to_color"]
+
+        output = [row[:] for row in raw]
+        rects = _find_outlined_rectangles(raw, outline_color, bg_color)
+
+        for (r1, c1, r2, c2) in rects:
+            interior_h = r2 - r1 - 1
+            interior_w = c2 - c1 - 1
+            area = interior_h * interior_w
+            # Handle both int and string keys (JSON round-trip)
+            fill_color = size_to_color.get(area)
+            if fill_color is None:
+                fill_color = size_to_color.get(str(area))
+            if fill_color is not None:
+                for rr in range(r1 + 1, r2):
+                    for cc in range(c1 + 1, c2):
+                        output[rr][cc] = fill_color
+
+        return output
+
+    def _apply_keep_center_column(self, rule, input_grid):
+        """Keep only the center column from input, fill rest with bg."""
+        raw = input_grid.raw
+        bg_color = rule["bg_color"]
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        center_col = w // 2
+
+        output = [[bg_color] * w for _ in range(h)]
+        for r in range(h):
+            output[r][center_col] = raw[r][center_col]
         return output
 
     # ---- helpers ---------------------------------------------------------
