@@ -265,3 +265,42 @@
 - Stored rule hits: 20
 - Time: 73s
 - Log: logs/learn_20260330_051054.log
+
+---
+## Learning Loop -- 2026-03-30 05:13
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 23 -> 23 (+0 learned)
+- Stored rule hits: 23
+- Time: 73s
+- Log: logs/learn_20260330_051232.log
+
+---
+## Session 10 (Claude) -- 2026-03-30 05:35
+
+### Changes
+- Added `reflect_2x2_corners` primitive to `_primitives.py` — finds a 2×2 block of 4 distinct colors, fills each diagonal quadrant with the opposite corner's color (capped at 2×2 adjacent to block)
+- Created `procedural_memory/concepts/reflect_2x2_corners.json` (solves 93b581b8)
+- Added `extend_diagonal_arms` primitive to `_primitives.py` — finds a 2×2 block with single-pixel diagonal arms, extends each arm's diagonal to the grid boundary
+- Created `procedural_memory/concepts/extend_diagonal_arms.json` (solves 7ddcd7ec)
+- Added `fill_framed_interior` primitive to `_primitives.py` — finds closed rectangular frames of color 2, fills interiors (bg cells) with color 1
+- Created `procedural_memory/concepts/fill_framed_interior.json` (solves a5313dff)
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%) — up from 23/40 (57.5%)
+- Rules: 23 -> 26 (+3 learned)
+- Stored rule hits: 23
+- Time: 74s
+- Log: logs/learn_20260330_053353.log
+
+---
+## Learning Loop -- 2026-03-30 05:35
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 23 -> 26 (+3 learned)
+- Stored rule hits: 23
+- Time: 74s
+- Log: logs/learn_20260330_053353.log

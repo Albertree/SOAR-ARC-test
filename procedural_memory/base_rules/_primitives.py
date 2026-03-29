@@ -1816,3 +1816,179 @@ def tile_content_upward(grid, bg=None):
         output.append(content[content_row_idx][:])
 
     return output
+
+
+def reflect_2x2_corners(grid, bg=0):
+    """Find a 2x2 block of non-bg colors in the grid. For each corner of the 2x2,
+    fill the rectangular area between the adjacent grid edge and the 2x2 block
+    with the OPPOSITE (diagonally opposite) corner's color.
+
+    The fill area for corner (r,c) going toward grid edge:
+    - rows: from (r±1) to edge, exclusive of the last row/col
+    - cols: from (c±1) to edge, exclusive of the last row/col
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find the 2x2 block
+    block_r, block_c = None, None
+    for r in range(h - 1):
+        for c in range(w - 1):
+            if (grid[r][c] != bg and grid[r][c + 1] != bg and
+                grid[r + 1][c] != bg and grid[r + 1][c + 1] != bg):
+                block_r, block_c = r, c
+                break
+        if block_r is not None:
+            break
+
+    if block_r is None:
+        return output
+
+    # The 4 corners of the 2x2 block
+    tl = grid[block_r][block_c]          # top-left
+    tr = grid[block_r][block_c + 1]      # top-right
+    bl = grid[block_r + 1][block_c]      # bottom-left
+    br = grid[block_r + 1][block_c + 1]  # bottom-right
+
+    # For each corner, fill a rectangle adjacent to the 2x2 block,
+    # capped at block size (2) in each dimension, with opposite corner's color.
+
+    # Top-left -> fill with bottom-right color
+    fh = min(block_r, 2)
+    fw = min(block_c, 2)
+    for r in range(block_r - fh, block_r):
+        for c in range(block_c - fw, block_c):
+            output[r][c] = br
+
+    # Top-right -> fill with bottom-left color
+    fh = min(block_r, 2)
+    fw = min(w - block_c - 2, 2)
+    for r in range(block_r - fh, block_r):
+        for c in range(block_c + 2, block_c + 2 + fw):
+            output[r][c] = bl
+
+    # Bottom-left -> fill with top-right color
+    fh = min(h - block_r - 2, 2)
+    fw = min(block_c, 2)
+    for r in range(block_r + 2, block_r + 2 + fh):
+        for c in range(block_c - fw, block_c):
+            output[r][c] = tr
+
+    # Bottom-right -> fill with top-left color
+    fh = min(h - block_r - 2, 2)
+    fw = min(w - block_c - 2, 2)
+    for r in range(block_r + 2, block_r + 2 + fh):
+        for c in range(block_c + 2, block_c + 2 + fw):
+            output[r][c] = tl
+
+    return output
+
+
+def extend_diagonal_arms(grid, bg=0):
+    """Find a shape consisting of a 2x2 block with single-pixel 'arms' at diagonal
+    corners. Extend each arm's diagonal line to the grid boundary.
+
+    The 2x2 block is identified, then each adjacent single pixel on a diagonal
+    is an 'arm'. The arm's direction determines the extension direction."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find the 2x2 block of non-bg cells (all same color)
+    block_r, block_c = None, None
+    color = None
+    for r in range(h - 1):
+        for c in range(w - 1):
+            if (grid[r][c] != bg and grid[r][c + 1] != bg and
+                grid[r + 1][c] != bg and grid[r + 1][c + 1] != bg):
+                vals = {grid[r][c], grid[r][c + 1], grid[r + 1][c], grid[r + 1][c + 1]}
+                if len(vals) == 1:
+                    block_r, block_c = r, c
+                    color = grid[r][c]
+                    break
+        if block_r is not None:
+            break
+
+    if block_r is None:
+        return output
+
+    # Check 4 diagonal positions for arms
+    diag_checks = [
+        (block_r - 1, block_c - 1, -1, -1),  # top-left diagonal
+        (block_r - 1, block_c + 2, -1, +1),  # top-right diagonal
+        (block_r + 2, block_c - 1, +1, -1),  # bottom-left diagonal
+        (block_r + 2, block_c + 2, +1, +1),  # bottom-right diagonal
+    ]
+
+    for arm_r, arm_c, dr, dc in diag_checks:
+        if 0 <= arm_r < h and 0 <= arm_c < w and grid[arm_r][arm_c] == color:
+            # Extend from the arm position outward
+            r, c = arm_r + dr, arm_c + dc
+            while 0 <= r < h and 0 <= c < w:
+                output[r][c] = color
+                r += dr
+                c += dc
+
+    return output
+
+
+def fill_framed_interior(grid, frame_color=2, fill_color=1, bg=0):
+    """Find closed rectangular frames of frame_color. If a frame's interior
+    contains a single pixel of frame_color (marker dot), fill the rest of
+    the interior with fill_color, keeping the marker dot.
+
+    Frames without interior marker dots are left unchanged."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    visited_frames = set()
+
+    for top in range(h):
+        for left in range(w):
+            if grid[top][left] != frame_color:
+                continue
+
+            for right in range(left + 2, w):
+                if grid[top][right] != frame_color:
+                    continue
+                if not all(grid[top][c] == frame_color for c in range(left, right + 1)):
+                    continue
+
+                for bottom in range(top + 2, h):
+                    if grid[bottom][left] != frame_color or grid[bottom][right] != frame_color:
+                        continue
+                    if not all(grid[bottom][c] == frame_color for c in range(left, right + 1)):
+                        continue
+                    if not all(grid[r][left] == frame_color for r in range(top, bottom + 1)):
+                        continue
+                    if not all(grid[r][right] == frame_color for r in range(top, bottom + 1)):
+                        continue
+
+                    # Valid frame border. Check interior has only bg or frame_color.
+                    valid_interior = True
+                    has_bg = False
+                    for r in range(top + 1, bottom):
+                        for c in range(left + 1, right):
+                            v = grid[r][c]
+                            if v == bg:
+                                has_bg = True
+                            elif v != frame_color:
+                                valid_interior = False
+                                break
+                        if not valid_interior:
+                            break
+
+                    if not valid_interior or not has_bg:
+                        continue
+
+                    frame_key = (top, left, bottom, right)
+                    if frame_key not in visited_frames:
+                        visited_frames.add(frame_key)
+                        for r in range(top + 1, bottom):
+                            for c in range(left + 1, right):
+                                if output[r][c] == bg:
+                                    output[r][c] = fill_color
+
+    return output
