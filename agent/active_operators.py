@@ -11,6 +11,7 @@ Pipeline operators (all fire in S2, read/write S1):
 """
 
 from collections import Counter
+from itertools import permutations
 
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
@@ -393,6 +394,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_corner_fill_quadrants(patterns, task)
 
+        # Strategy: gravity slide (objects drop toward wall with 1-cell gap)
+        if rule is None:
+            rule = self._try_gravity_slide(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -459,6 +464,97 @@ class GeneralizeOperator(Operator):
             if colors != list(range(colors[0], colors[0] + len(colors))):
                 return False
         return True
+
+    # ---- strategy: gravity slide -----------------------------------------
+
+    def _try_gravity_slide(self, patterns, task):
+        """
+        Detect: grid has 3 colors (bg, wall, object). Objects slide downward
+        toward the wall, stopping with exactly 1 empty cell gap.
+        Category: gravity / sliding toward boundary tasks.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            color_counts = Counter(c for row in raw_in for c in row)
+            if len(color_counts) != 3:
+                return None
+
+            colors = [c for c, _ in color_counts.most_common()]
+
+            # Try all 6 permutations of (bg, wall, obj)
+            matched = False
+            for bg, wall_color, obj_color in permutations(colors):
+                if self._simulate_gravity(raw_in, raw_out, bg, wall_color, obj_color, h, w):
+                    matched = True
+                    break
+
+            if not matched:
+                return None
+
+        return {"type": "gravity_slide", "confidence": 0.9}
+
+    @staticmethod
+    def _gravity_slide_grid(raw_in, bg, wall_color, obj_color, h, w):
+        """Compute gravity slide result. Returns the output grid."""
+        components = GeneralizeOperator._find_components(raw_in, obj_color)
+        if not components:
+            return None
+
+        # Working grid: start with input, clear all object cells
+        wg = [row[:] for row in raw_in]
+        for comp in components:
+            for r, c in comp:
+                wg[r][c] = bg
+
+        # Sort components bottom-first (largest max-row first)
+        components.sort(key=lambda comp: max(r for r, c in comp), reverse=True)
+
+        for comp in components:
+            max_slide = h
+            for r, c in comp:
+                # Find first non-bg cell below in the working grid
+                obstacle_row = h  # grid boundary
+                is_wall = True  # treat boundary like wall
+                for rr in range(r + 1, h):
+                    if wg[rr][c] != bg:
+                        obstacle_row = rr
+                        is_wall = (wg[rr][c] == wall_color)
+                        break
+                # 1-cell gap for wall, 0-cell gap for other objects
+                gap = 2 if is_wall else 1
+                cell_slide = obstacle_row - r - gap
+                if cell_slide < max_slide:
+                    max_slide = cell_slide
+
+            if max_slide < 0:
+                max_slide = 0
+
+            for r, c in comp:
+                nr = r + max_slide
+                if 0 <= nr < h:
+                    wg[nr][c] = obj_color
+
+        return wg
+
+    def _simulate_gravity(self, raw_in, raw_out, bg, wall_color, obj_color, h, w):
+        """Simulate gravity slide and check if it matches expected output."""
+        components = self._find_components(raw_in, obj_color)
+        if not components:
+            return False
+        result = self._gravity_slide_grid(raw_in, bg, wall_color, obj_color, h, w)
+        return result == raw_out
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -1143,6 +1239,8 @@ class PredictOperator(Operator):
             return self._apply_staircase_growth(rule, input_grid)
         if rule_type == "corner_fill_quadrants":
             return self._apply_corner_fill_quadrants(rule, input_grid)
+        if rule_type == "gravity_slide":
+            return self._apply_gravity_slide(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1315,6 +1413,48 @@ class PredictOperator(Operator):
             count = n + i
             output.append([color if j < count else 0 for j in range(w)])
         return output
+
+    def _apply_gravity_slide(self, rule, input_grid):
+        """Slide object-color components down toward wall with 1-cell gap."""
+        from itertools import permutations
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        color_counts = Counter(c for row in raw for c in row)
+        if len(color_counts) != 3:
+            return [row[:] for row in raw]
+
+        colors = [c for c, _ in color_counts.most_common()]
+
+        for bg, wall_color, obj_color in permutations(colors):
+            components = GeneralizeOperator._find_components(raw, obj_color)
+            if not components:
+                continue
+
+            result = GeneralizeOperator._gravity_slide_grid(
+                raw, bg, wall_color, obj_color, h, w
+            )
+            if result is None:
+                continue
+
+            # Verify wall cells unchanged and result differs from input
+            valid = True
+            changed = False
+            for r in range(h):
+                for c in range(w):
+                    if raw[r][c] == wall_color and result[r][c] != wall_color:
+                        valid = False
+                        break
+                    if result[r][c] != raw[r][c]:
+                        changed = True
+                if not valid:
+                    break
+
+            if valid and changed:
+                return result
+
+        return [row[:] for row in raw]
 
     def _apply_corner_fill_quadrants(self, rule, input_grid):
         """Rectangle(s) with corner markers → fill quadrants with corner colors."""

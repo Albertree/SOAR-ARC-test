@@ -131,3 +131,37 @@
 - Stored rule hits: 8
 - Time: 36s
 - Log: logs/learn_20260329_145332.log
+
+---
+## Learning Loop -- 2026-03-29 14:55
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 17 -> 18 (+1 learned)
+- Stored rule hits: 8
+- Time: 36s
+- Log: logs/learn_20260329_145459.log
+
+---
+## Session 4 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **gravity_slide** -- grid has 3 colors (background, wall, object). Connected components of the object color slide downward toward the wall boundary, stopping with exactly 1 empty cell gap from any wall cell. Components stack against each other with 0 gap. Handles gravity/sliding-toward-boundary tasks. Tries all color permutations to detect which is bg/wall/object.
+
+### Tasks Solved
+- `825aa9e9`: gravity_slide
+
+### Results
+- Before: 8/20 (40%)
+- After: 9/20 (45%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 15:12
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 19 -> 20 (+1 learned)
+- Stored rule hits: 8
+- Time: 43s
+- Log: logs/learn_20260329_151124.log
