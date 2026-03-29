@@ -282,3 +282,43 @@
 - Stored rule hits: 20
 - Time: 46s
 - Log: logs/learn_20260330_013638.log
+
+---
+## Learning Loop -- 2026-03-30 02:19
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 0 -> 20 (+20 learned)
+- Stored rule hits: 0
+- Time: 44s
+- Log: logs/learn_20260330_021852.log
+
+---
+## Learning Loop -- 2026-03-30 02:27
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 0 -> 5 (+5 learned)
+- Stored rule hits: 0
+- Time: 44s
+- Log: logs/learn_20260330_022709.log
+
+---
+## Learning Loop -- 2026-03-30 02:31
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 5 -> 10 (+5 learned)
+- Stored rule hits: 2
+- Time: 33s
+- Log: logs/learn_20260330_023121.log
+
+### Session 10 Analysis (Claude Code)
+
+**New rules added (3):**
+1. `recolor_by_size` (color) — single-color objects recolored by descending size rank (largest=1, medium=2, smallest=3); same-size objects get same color → solved 6e82a1ae
+2. `staircase_fill` (fill) — 1-row input with colored prefix of length N grows into w/2 rows; each row adds one more colored cell forming a descending staircase triangle → solved bbc9ae5d
+3. `reverse_frames` (structure) — concentric rectangular frames (uniform color per ring) get color order reversed (outer↔inner) → solved 85c4e7cd
+
+**Improvement:** 2/20 → 5/20 (10% → 25%)
+**Memory reuse:** 2 stored rules successfully reused (mirror_and_concat, scale_uniform)

@@ -1,4 +1,4 @@
-"""recolor_by_size -- connected components recolored by descending size rank."""
+"""recolor_by_size -- objects of single source color recolored by descending size rank."""
 from procedural_memory.base_rules._helpers import find_components
 
 RULE_TYPE = "recolor_by_size"
@@ -6,73 +6,53 @@ CATEGORY = "color"
 
 
 def try_rule(patterns, task):
-    """Detect: single non-bg color's components are recolored 1,2,3,... by size descending."""
-    pairs = task.example_pairs
-    if not pairs:
-        return None
-
-    if not patterns.get("grid_size_preserved"):
+    """Detect: all non-bg cells are one color; objects recolored 1,2,3,... by size descending."""
+    pair_analyses = patterns.get("pair_analyses", [])
+    if not pair_analyses or not patterns.get("grid_size_preserved"):
         return None
 
     source_color = None
-
-    for pair in pairs:
-        inp = pair.input_grid.raw
-        out = pair.output_grid.raw
-        h = len(inp)
-        w = len(inp[0]) if inp else 0
-
-        # Find non-background colors in input (background = most common color)
-        color_counts = {}
-        for r in range(h):
-            for c in range(w):
-                color_counts[inp[r][c]] = color_counts.get(inp[r][c], 0) + 1
-        bg = max(color_counts, key=color_counts.get)
-
-        # Find the single non-bg color
-        non_bg = set(color_counts.keys()) - {bg}
+    for pair in task.example_pairs:
+        raw = pair.input_grid.raw
+        bg = _bg(raw)
+        non_bg = set()
+        for row in raw:
+            for v in row:
+                if v != bg:
+                    non_bg.add(v)
         if len(non_bg) != 1:
             return None
-        src = non_bg.pop()
-
+        sc = non_bg.pop()
         if source_color is None:
-            source_color = src
-        elif source_color != src:
+            source_color = sc
+        elif source_color != sc:
             return None
 
-        # Find connected components of source color
-        comps = find_components(inp, src)
+    # Check output: objects ranked by size descending → colors 1,2,3,...
+    for pair in task.example_pairs:
+        raw_in = pair.input_grid.raw
+        raw_out = pair.output_grid.raw
+        bg = _bg(raw_in)
+        comps = find_components(raw_in, source_color)
         if not comps:
             return None
 
-        # Check that background cells are unchanged
-        for r in range(h):
-            for c in range(w):
-                if inp[r][c] == bg and out[r][c] != bg:
-                    return None
-
-        # Map each component to its output color (should be uniform per component)
-        comp_colors = []
+        # Group by size
+        size_groups = {}
         for comp in comps:
-            out_colors = set(out[r][c] for r, c in comp)
-            if len(out_colors) != 1:
-                return None
-            comp_colors.append((len(comp), out_colors.pop()))
+            sz = len(comp)
+            if sz not in size_groups:
+                size_groups[sz] = []
+            size_groups[sz].append(comp)
 
-        # Group by size, check each size maps to one color
-        size_to_color = {}
-        for size, color in comp_colors:
-            if size in size_to_color:
-                if size_to_color[size] != color:
-                    return None
-            else:
-                size_to_color[size] = color
+        sorted_sizes = sorted(size_groups.keys(), reverse=True)
 
-        # Colors should be sequential starting from 1, assigned by descending size
-        sorted_sizes = sorted(size_to_color.keys(), reverse=True)
-        for i, sz in enumerate(sorted_sizes):
-            if size_to_color[sz] != i + 1:
-                return None
+        for rank, sz in enumerate(sorted_sizes):
+            expected_color = rank + 1
+            for comp in size_groups[sz]:
+                for r, c in comp:
+                    if raw_out[r][c] != expected_color:
+                        return None
 
     return {
         "type": RULE_TYPE,
@@ -82,24 +62,38 @@ def try_rule(patterns, task):
 
 
 def apply_rule(rule, input_grid):
-    """Recolor components by descending size: largest->1, next->2, etc."""
+    """Apply recolor_by_size rule."""
     raw = input_grid.raw
-    h = len(raw)
-    w = len(raw[0]) if raw else 0
-    src = rule["source_color"]
+    source_color = rule["source_color"]
+    bg = _bg(raw)
 
-    comps = find_components(raw, src)
+    comps = find_components(raw, source_color)
     if not comps:
         return [row[:] for row in raw]
 
-    # Get distinct sizes sorted descending
-    sizes = sorted(set(len(c) for c in comps), reverse=True)
-    size_to_color = {sz: i + 1 for i, sz in enumerate(sizes)}
+    # Group by size, rank descending
+    size_groups = {}
+    for comp in comps:
+        sz = len(comp)
+        if sz not in size_groups:
+            size_groups[sz] = []
+        size_groups[sz].append(comp)
+
+    sorted_sizes = sorted(size_groups.keys(), reverse=True)
 
     output = [row[:] for row in raw]
-    for comp in comps:
-        new_color = size_to_color[len(comp)]
-        for r, c in comp:
-            output[r][c] = new_color
+    for rank, sz in enumerate(sorted_sizes):
+        new_color = rank + 1
+        for comp in size_groups[sz]:
+            for r, c in comp:
+                output[r][c] = new_color
 
     return output
+
+
+def _bg(grid):
+    counts = {}
+    for row in grid:
+        for v in row:
+            counts[v] = counts.get(v, 0) + 1
+    return max(counts, key=counts.get)

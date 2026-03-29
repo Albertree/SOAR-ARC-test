@@ -23,28 +23,11 @@ _loaded = False
 # Rules listed here are tried in this order; any newly added rules
 # not in this list are appended at the end automatically.
 WATERFALL_ORDER = [
-    "path_with_turns",
-    "connect_diamonds",
-    "separator_reflect",
-    "zone_expand",
-    "quadrant_shape_swap",
-    "mirror_vertical_append",
-    "reverse_frames",
-    "scale_up",
-    "staircase_fill",
-    "quadrant_fill",
-    "fill_by_interior_size",
-    "arrow_ray_edge",
-    "recolor_by_size",
-    "extract_center_column",
     "recolor_sequential",
+    "recolor_by_size",
     "color_mapping",
-    "grid_shear",
-    "gravity_settle",
-    "count_diagonal_x",
-    "tile_grid_pack",
-    "connector_block_split",
-    "template_rotate_place",
+    "staircase_fill",
+    "reverse_frames",
 ]
 
 
