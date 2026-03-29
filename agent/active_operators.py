@@ -522,6 +522,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_subgrid_invert(patterns, task)
 
+        # Strategy: invert tile (swap 0↔nonzero, tile 2x2)
+        if rule is None:
+            rule = self._try_invert_tile(patterns, task)
+
+        # Strategy: double mirror (reflect H+V → 2Nx2N)
+        if rule is None:
+            rule = self._try_double_mirror(patterns, task)
+
+        # Strategy: column fill tile (active columns filled with 8, tile 2x2)
+        if rule is None:
+            rule = self._try_column_fill_tile(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -2771,6 +2783,128 @@ class GeneralizeOperator(Operator):
                 return None
 
         return {"type": "subgrid_invert", "confidence": 1.0}
+
+    # ---- strategy: invert tile (swap 0↔nonzero, tile 2x2) ---------------
+
+    def _try_invert_tile(self, patterns, task):
+        """
+        Detect: output = 2Nx2N tiling of the NxN input with 0↔nonzero swapped.
+        Category: color-inversion + simple tiling tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh != 2 * h or ow != 2 * w:
+                return None
+            # Detect the single non-zero color in input
+            nz = set()
+            for row in ig:
+                for c in row:
+                    if c != 0:
+                        nz.add(c)
+            if len(nz) != 1:
+                return None
+            fg = next(iter(nz))
+            # Build inverted grid
+            inv = []
+            for row in ig:
+                inv.append([fg if c == 0 else 0 for c in row])
+            # Verify tiling 2x2
+            for r in range(oh):
+                for c in range(ow):
+                    if og[r][c] != inv[r % h][c % w]:
+                        return None
+        return {"type": "invert_tile", "confidence": 1.0}
+
+    # ---- strategy: double mirror (reflect H+V → 2Nx2N) ------------------
+
+    def _try_double_mirror(self, patterns, task):
+        """
+        Detect: output is 2Nx2N created by reflecting NxN input horizontally
+        (left-right) then reflecting the combined result vertically (top-bottom).
+        Category: kaleidoscope / 4-fold mirror symmetry expansion tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh != 2 * h or ow != 2 * w:
+                return None
+            # Build the expected 2Nx2N by H-mirror then V-mirror
+            wide = []
+            for row in ig:
+                wide.append(list(row) + list(reversed(row)))
+            full = wide + list(reversed(wide))
+            for r in range(oh):
+                for c in range(ow):
+                    if og[r][c] != full[r][c]:
+                        return None
+        return {"type": "double_mirror", "confidence": 1.0}
+
+    # ---- strategy: column fill tile (active columns → 8, tile 2x2) ------
+
+    def _try_column_fill_tile(self, patterns, task):
+        """
+        Detect: columns with any non-zero cell get 0→fill_color replacement;
+        all-zero columns stay 0. Result is tiled 2x2 to produce 2Nx2N output.
+        Category: column-activation fill + tiling tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        fill_color = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if oh != 2 * h or ow != 2 * w:
+                return None
+            # Determine active columns
+            active = set()
+            for c in range(w):
+                for r in range(h):
+                    if ig[r][c] != 0:
+                        active.add(c)
+                        break
+            # Determine fill color from output (non-zero, non-input-color 0 replacements)
+            for c in active:
+                for r in range(h):
+                    if ig[r][c] == 0:
+                        fc = og[r][c]
+                        if fc == 0:
+                            return None  # should be filled
+                        if fill_color is None:
+                            fill_color = fc
+                        elif fill_color != fc:
+                            return None
+            # Build transformed grid
+            transformed = []
+            for r in range(h):
+                row = []
+                for c in range(w):
+                    if c in active:
+                        row.append(ig[r][c] if ig[r][c] != 0 else fill_color)
+                    else:
+                        row.append(0)
+                transformed.append(row)
+            # Verify tiling 2x2
+            for r in range(oh):
+                for c in range(ow):
+                    if og[r][c] != transformed[r % h][c % w]:
+                        return None
+        if fill_color is None:
+            return None
+        return {"type": "column_fill_tile", "fill_color": fill_color, "confidence": 1.0}
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -5106,6 +5240,12 @@ class PredictOperator(Operator):
             return self._apply_marker_arm_extend(rule, input_grid)
         if rule_type == "subgrid_invert":
             return self._apply_subgrid_invert(rule, input_grid)
+        if rule_type == "invert_tile":
+            return self._apply_invert_tile(rule, input_grid)
+        if rule_type == "double_mirror":
+            return self._apply_double_mirror(rule, input_grid)
+        if rule_type == "column_fill_tile":
+            return self._apply_column_fill_tile(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6515,6 +6655,58 @@ class PredictOperator(Operator):
         raw = input_grid.raw
         result = _subgrid_invert_transform(raw)
         return result if result is not None else [row[:] for row in raw]
+
+    def _apply_invert_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        nz = set()
+        for row in raw:
+            for c in row:
+                if c != 0:
+                    nz.add(c)
+        fg = next(iter(nz)) if nz else 0
+        inv = []
+        for row in raw:
+            inv.append([fg if c == 0 else 0 for c in row])
+        # Tile 2x2
+        out = []
+        for r in range(2 * h):
+            out.append([inv[r % h][c % w] for c in range(2 * w)])
+        return out
+
+    def _apply_double_mirror(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        wide = []
+        for row in raw:
+            wide.append(list(row) + list(reversed(row)))
+        full = wide + list(reversed(wide))
+        return full
+
+    def _apply_column_fill_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        fill_color = rule.get("fill_color", 8)
+        active = set()
+        for c in range(w):
+            for r in range(h):
+                if raw[r][c] != 0:
+                    active.add(c)
+                    break
+        transformed = []
+        for r in range(h):
+            row = []
+            for c in range(w):
+                if c in active:
+                    row.append(raw[r][c] if raw[r][c] != 0 else fill_color)
+                else:
+                    row.append(0)
+            transformed.append(row)
+        # Tile 2x2
+        out = []
+        for r in range(2 * h):
+            out.append([transformed[r % h][c % w] for c in range(2 * w)])
+        return out
 
 
 # ======================================================================

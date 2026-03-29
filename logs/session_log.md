@@ -775,3 +775,67 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
   - `marker_arm_extend`: rectangles with isolated single-pixel markers; arms extend from nearest rect edge toward marker with cross-shaped endpoints (solves a2d730bd)
   - `subgrid_invert`: grid divided by 0-separator lines into sub-grids; swaps pattern↔uniform fill, removes colour-5 noise; uniform uses minority colour in input, majority in output (solves 6350f1f4)
 - Improvement: 95.0% → 100.0% (+2 tasks)
+
+---
+## Learning Loop -- 2026-03-29 18:46
+
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 81 -> 81 (+0 learned)
+- Stored rule hits: 38
+- Time: 74s
+- Log: logs/learn_20260329_184530.log
+
+---
+## Session 18 -- 2026-03-29 18:55
+
+### Context
+Session 18 started at 40/40 (100%) on the core 40-task set. Expanded to 80 tasks
+to find new failures (41/80 = 51.2% before improvements).
+
+### New strategies added (3):
+
+1. **invert_tile** (48131b3c): Input NxN with 0 and one non-zero color. Output is
+   2Nx2N tiling of the color-inverted grid (swap 0 ↔ nonzero). Category: color
+   inversion + simple tiling tasks.
+
+2. **double_mirror** (62c24649): NxN input → 2Nx2N output via horizontal reflection
+   (left-right) then vertical reflection (top-bottom), creating 4-fold kaleidoscope
+   symmetry. Also solved `67e8384a` via memory reuse. Category: kaleidoscope /
+   double-mirror expansion tasks.
+
+3. **column_fill_tile** (f5b8619d): Columns with any non-zero cell have their 0s
+   replaced with a learned fill color (e.g. 8); all-zero columns stay 0. Result is
+   tiled 2x2 to produce 2Nx2N output. Category: column-activation fill + tiling tasks.
+
+### Results
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)  [################..............]
+- Previous: 41 / 80 (51.2%)  -- improvement: +4 tasks
+- Core 40 tasks: 40 / 40 (100%) maintained
+- Rules: 92 -> 98 (+6 learned)
+- Stored rule hits: 42
+- Time: 135s
+- Log: logs/learn_20260329_185547.log
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 18:49
+
+- Split: training, Tasks: 80
+- Correct: 41 / 80 (51.2%)
+- Rules: 81 -> 89 (+8 learned)
+- Stored rule hits: 38
+- Time: 153s
+- Log: logs/learn_20260329_184704.log
+
+---
+## Learning Loop -- 2026-03-29 18:58
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)
+- Rules: 92 -> 98 (+6 learned)
+- Stored rule hits: 42
+- Time: 135s
+- Log: logs/learn_20260329_185547.log
