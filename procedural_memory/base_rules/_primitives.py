@@ -259,3 +259,189 @@ def unique_colors(grid, exclude_bg=True):
             if c != bg:
                 colors.add(c)
     return sorted(colors)
+
+
+# ============================================================
+# HIGHER-LEVEL primitives (composable, parameterized operations)
+# ============================================================
+
+def recolor_components_by_rank(grid, source_color, sort_key, start_color):
+    """Find connected components of source_color, sort by sort_key, recolor sequentially.
+    sort_key: 'top_row' | 'top_col' | 'size' | 'size_desc'
+    Assigns start_color to first component, start_color+1 to second, etc."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find all cells of source_color
+    target_cells = [(r, c) for r in range(h) for c in range(w) if grid[r][c] == source_color]
+    if not target_cells:
+        return [row[:] for row in grid]
+
+    # Group into connected components
+    groups = group_positions(target_cells)
+
+    # Sort by key
+    def _sort_val(group):
+        if sort_key == "top_row":
+            return min(r for r, c in group)
+        if sort_key == "top_col":
+            return min(c for r, c in group)
+        if sort_key == "size":
+            return len(group)
+        if sort_key == "size_desc":
+            return -len(group)
+        return 0
+
+    sorted_groups = sorted(groups, key=_sort_val)
+
+    output = [row[:] for row in grid]
+    for idx, group in enumerate(sorted_groups):
+        new_color = start_color + idx
+        for r, c in group:
+            output[r][c] = new_color
+    return output
+
+
+def reverse_frame_colors(grid):
+    """Detect concentric rectangular frames, reverse their color order.
+    Peels frames from outside in, collects colors, then reassigns reversed."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Peel frames layer by layer
+    frames = []  # list of (set_of_positions, color)
+    remaining = set((r, c) for r in range(h) for c in range(w))
+    layer = 0
+    while remaining:
+        min_r = min(r for r, c in remaining)
+        max_r = max(r for r, c in remaining)
+        min_c = min(c for r, c in remaining)
+        max_c = max(c for r, c in remaining)
+        border = set()
+        for r, c in remaining:
+            if r == min_r or r == max_r or c == min_c or c == max_c:
+                border.add((r, c))
+        if not border:
+            break
+        # Get the color of this frame (should be uniform)
+        colors = set(grid[r][c] for r, c in border)
+        if len(colors) != 1:
+            break  # not uniform frame, bail
+        frames.append((border, colors.pop()))
+        remaining -= border
+        layer += 1
+
+    if not frames:
+        return [row[:] for row in grid]
+
+    # Reverse the color assignment
+    colors_reversed = [f[1] for f in reversed(frames)]
+    output = [row[:] for row in grid]
+    for i, (positions, _) in enumerate(frames):
+        for r, c in positions:
+            output[r][c] = colors_reversed[i]
+    return output
+
+
+def staircase_expand(grid):
+    """Expand a 1-row grid with colored prefix into a staircase triangle.
+    Input: 1 row with K colored cells followed by zeros.
+    Output: K rows where row i has (K-i) colored cells."""
+    if len(grid) != 1:
+        return None
+    row = grid[0]
+    w = len(row)
+    bg = 0
+    # Find colored prefix length
+    k = 0
+    for c in row:
+        if c != bg:
+            k += 1
+        else:
+            break
+    if k == 0:
+        return None
+    # Build staircase
+    output = []
+    for i in range(k):
+        new_row = [bg] * w
+        for j in range(k - i):
+            new_row[j] = row[j]
+        output.append(new_row)
+    return output
+
+
+def staircase_grow(grid):
+    """Expand a 1-row grid with colored prefix into a growing staircase.
+    Input: 1 row with K colored cells followed by zeros, width W.
+    Output: W/2 rows where row i has (K+i) colored cells."""
+    if len(grid) != 1:
+        return None
+    row = grid[0]
+    w = len(row)
+    bg = 0
+    # Find colored prefix length and color
+    k = 0
+    color = None
+    for c in row:
+        if c != bg:
+            k += 1
+            color = c
+        else:
+            break
+    if k == 0 or color is None:
+        return None
+    num_rows = w // 2
+    output = []
+    for i in range(num_rows):
+        new_row = [bg] * w
+        for j in range(k + i):
+            if j < w:
+                new_row[j] = color
+        output.append(new_row)
+    return output
+
+
+def fill_rects_by_size(grid, border_color, bg=0, start_color=6):
+    """Find rectangles bordered by border_color, fill interiors by size.
+    Fill color = start_color + (interior_width - 1), giving a fixed mapping."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find rectangular outlines of border_color
+    comps = find_components(grid, border_color)
+    rects = []
+    for comp in comps:
+        min_r = min(r for r, c in comp)
+        max_r = max(r for r, c in comp)
+        min_c = min(c for r, c in comp)
+        max_c = max(c for r, c in comp)
+        rect_h = max_r - min_r + 1
+        rect_w = max_c - min_c + 1
+        if rect_h < 3 or rect_w < 3:
+            continue
+        # Check it's actually a rectangle border
+        comp_set = set(comp)
+        is_rect = True
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                on_border = (r == min_r or r == max_r or c == min_c or c == max_c)
+                if on_border and (r, c) not in comp_set:
+                    is_rect = False
+                    break
+            if not is_rect:
+                break
+        if not is_rect:
+            continue
+        interior_h = rect_h - 2
+        interior_w = rect_w - 2
+        rects.append((min_r, min_c, max_r, max_c, interior_h, interior_w))
+    if not rects:
+        return [row[:] for row in grid]
+    output = [row[:] for row in grid]
+    for min_r, min_c, max_r, max_c, interior_h, interior_w in rects:
+        fill_color = start_color + min(interior_h, interior_w) - 1
+        for r in range(min_r + 1, max_r):
+            for c in range(min_c + 1, max_c):
+                output[r][c] = fill_color
+    return output

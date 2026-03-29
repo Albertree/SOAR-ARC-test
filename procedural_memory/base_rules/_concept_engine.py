@@ -348,6 +348,66 @@ def _infer_column_index(task, arckg_features, patterns):
     return col
 
 
+@_register_infer("source_color_from_arckg")
+def _infer_source_color(task, arckg_features, patterns):
+    """Find the single input color that maps to MULTIPLE output colors.
+    Uses ARCKG contents DIFF to inspect color transitions."""
+    transitions = {}  # input_color -> set of output_colors
+    for pair in task.example_pairs:
+        g0, g1 = pair.input_grid, pair.output_grid
+        if g0 is None or g1 is None:
+            continue
+        comparison = arckg_compare(g0, g1)
+        cat = comparison.get("result", {}).get("category", {})
+        contents = cat.get("contents", {})
+        if contents.get("type") != "DIFF":
+            continue
+        grid_in = contents.get("comp1", [])
+        grid_out = contents.get("comp2", [])
+        if not grid_in or not grid_out:
+            continue
+        h = min(len(grid_in), len(grid_out))
+        for r in range(h):
+            w = min(len(grid_in[r]), len(grid_out[r]))
+            for c in range(w):
+                old, new = grid_in[r][c], grid_out[r][c]
+                if old != new:
+                    transitions.setdefault(old, set()).add(new)
+    # Source color maps to multiple outputs (sequential recoloring)
+    candidates = [c for c, outs in transitions.items() if len(outs) > 1]
+    if len(candidates) == 1:
+        return candidates[0]
+    return None
+
+
+@_register_infer("start_color_from_arckg")
+def _infer_start_color(task, arckg_features, patterns):
+    """Find the minimum output color among changed cells via ARCKG DIFF."""
+    min_out = None
+    for pair in task.example_pairs:
+        g0, g1 = pair.input_grid, pair.output_grid
+        if g0 is None or g1 is None:
+            continue
+        comparison = arckg_compare(g0, g1)
+        cat = comparison.get("result", {}).get("category", {})
+        contents = cat.get("contents", {})
+        if contents.get("type") != "DIFF":
+            continue
+        grid_in = contents.get("comp1", [])
+        grid_out = contents.get("comp2", [])
+        if not grid_in or not grid_out:
+            continue
+        h = min(len(grid_in), len(grid_out))
+        for r in range(h):
+            w = min(len(grid_in[r]), len(grid_out[r]))
+            for c in range(w):
+                if grid_in[r][c] != grid_out[r][c]:
+                    out_c = grid_out[r][c]
+                    if min_out is None or out_c < min_out:
+                        min_out = out_c
+    return min_out
+
+
 @_register_infer("from_examples")
 def _infer_from_examples(task, arckg_features, patterns):
     """Placeholder — actual brute-force handled by the engine."""

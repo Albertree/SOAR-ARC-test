@@ -1,0 +1,38 @@
+{
+  "concept_id": "recolor_sequential",
+  "version": 1,
+  "description": "Connected components of one color recolored 1,2,3... sorted by position",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "source_color": {
+      "type": "color",
+      "infer": "source_color_from_arckg"
+    },
+    "sort_key": {
+      "type": "str",
+      "infer": "from_examples",
+      "candidates": ["top_row", "top_col", "size_desc"]
+    },
+    "start_color": {
+      "type": "color",
+      "infer": "start_color_from_arckg"
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "recolor_components_by_rank",
+      "args": {
+        "grid": "$input",
+        "source_color": "$source_color",
+        "sort_key": "$sort_key",
+        "start_color": "$start_color"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

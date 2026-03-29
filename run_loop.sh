@@ -133,23 +133,22 @@ Your task:
 1. Pick 1-3 INCORRECT tasks from above
 2. Read their JSON from data/ARC_AGI/training/<hex>.json
 3. Understand what transformation each task needs
-4. PREFERRED: Create a concept JSON in procedural_memory/concepts/<name>.json
+4. Create a concept JSON in procedural_memory/concepts/<name>.json
    - Compose primitives from procedural_memory/base_rules/_primitives.py
    - Use inference methods from procedural_memory/base_rules/_concept_engine.py
    - See existing concepts in procedural_memory/concepts/ for examples
-   - Concept rules are parameterized and reusable across similar tasks
-5. FALLBACK: If the transformation needs complex procedural logic (pathfinding, simulation),
-   create a Python rule module in procedural_memory/base_rules/<category>/<name>.py
-   and add its RULE_TYPE to WATERFALL_ORDER in agent/rule_engine.py
-6. If you need a new primitive: add it to procedural_memory/base_rules/_primitives.py
-7. If you need a new inference method: add it to procedural_memory/base_rules/_concept_engine.py
-8. Verify: python run_task.py must output CORRECT
-9. Verify: python run_learn.py --limit ${TASKS_PER_SESSION} --shuffle shows improvement
-10. Append results to logs/session_log.md
+5. If you need a new primitive: add it to procedural_memory/base_rules/_primitives.py
+6. If you need a new inference method: add it to procedural_memory/base_rules/_concept_engine.py
+7. Verify: python run_task.py must output CORRECT
+8. Verify: python run_learn.py --limit ${TASKS_PER_SESSION} --shuffle shows improvement
+9. Append results to logs/session_log.md
 
-Do NOT modify: data/, agent/cycle.py, agent/wm.py, agent/active_operators.py
-Each strategy must handle a CATEGORY of tasks, not just one.
-Do NOT hardcode task-specific colors or positions — use parameters.
+CRITICAL RULES:
+- Do NOT create Python rule modules. ALL rules must be concept JSONs.
+- Do NOT modify: data/, agent/cycle.py, agent/wm.py, agent/active_operators.py, agent/rule_engine.py
+- Do NOT hardcode task-specific colors or positions — use parameterized inference.
+- Each concept must handle a CATEGORY of tasks, not just one.
+- Prefer adding reusable primitives over complex single-use concepts.
 PROMPT
 )" \
         --permission-mode bypassPermissions \
