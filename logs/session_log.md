@@ -584,3 +584,40 @@
 - Stored rule hits: 46
 - Time: 149s
 - Log: logs/learn_20260330_083110.log
+
+---
+## Learning Loop -- 2026-03-30 08:36
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 47 -> 47 (+0 learned)
+- Stored rule hits: 48
+- Time: 137s
+- Log: logs/learn_20260330_083428.log
+
+---
+## Learning Loop -- 2026-03-30 08:43
+
+- Split: training, Tasks: 80
+- Correct: 51 / 80 (63.7%)
+- Rules: 47 -> 50 (+3 learned)
+- Stored rule hits: 48
+- Time: 137s
+- Log: logs/learn_20260330_084108.log
+
+---
+## Session 19 (Claude) -- 2026-03-30 08:41
+
+### Changes
+- Added `fill_bbox_holes` primitive to `_primitives.py` — finds bounding box of non-bg pixels, fills bg cells inside it with a specified fill color
+- Added `xor_halves` primitive to `_primitives.py` — splits grid at separator row, XORs two binary halves (result_color where exactly one is non-zero)
+- Added `sort_pixels_snake` primitive to `_primitives.py` — extracts non-bg pixels, sorts by column, fills into compact grid in boustrophedon (snake) order
+- Created `procedural_memory/concepts/fill_bbox_holes.json` (solves 6d75e8bb) — fill holes within shape's bounding box
+- Created `procedural_memory/concepts/xor_halves.json` (solves 99b1bc43) — XOR of two binary grid halves
+- Created `procedural_memory/concepts/sort_pixels_snake.json` (solves cdecee7f) — spatial binning of scattered pixels into compact grid
+
+### Results
+- Before: 48 / 80 (60.0%)
+- After:  51 / 80 (63.7%)  +3 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 3 (fill_bbox_holes, xor_halves, sort_pixels_snake)

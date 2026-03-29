@@ -3186,3 +3186,85 @@ def fill_active_columns(grid, fill_color=8):
             if out[r][c] == 0:
                 out[r][c] = fill_color
     return out
+
+
+def fill_bbox_holes(grid, bg=0, fill_color=2):
+    """Find bounding box of all non-bg pixels, fill bg cells inside it with fill_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find bounding box of non-bg cells
+    min_r, max_r, min_c, max_c = h, -1, w, -1
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                if r < min_r: min_r = r
+                if r > max_r: max_r = r
+                if c < min_c: min_c = c
+                if c > max_c: max_c = c
+    if max_r < 0:
+        return [row[:] for row in grid]
+    out = [row[:] for row in grid]
+    for r in range(min_r, max_r + 1):
+        for c in range(min_c, max_c + 1):
+            if out[r][c] == bg:
+                out[r][c] = fill_color
+    return out
+
+
+def xor_halves(grid, result_color=3):
+    """Split grid at separator row, XOR the two binary halves.
+    Where exactly one half has a non-zero value, output result_color; else 0."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find separator row (all same non-zero value)
+    sep_r = None
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != 0:
+            sep_r = r
+            break
+    if sep_r is None:
+        return [row[:] for row in grid]
+    top = grid[:sep_r]
+    bottom = grid[sep_r + 1:]
+    th, bh = len(top), len(bottom)
+    out_h = max(th, bh)
+    out = [[0] * w for _ in range(out_h)]
+    for r in range(out_h):
+        for c in range(w):
+            t = top[r][c] if r < th else 0
+            b = bottom[r][c] if r < bh else 0
+            t_on = (t != 0)
+            b_on = (b != 0)
+            if t_on != b_on:
+                out[r][c] = result_color
+    return out
+
+
+def sort_pixels_snake(grid, bg=0, out_h=3, out_w=3):
+    """Extract non-bg pixels, sort by column, fill into out_h x out_w grid in snake order.
+    Row 0: left-to-right, row 1: right-to-left, etc. Remaining cells are 0."""
+    pixels = []
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                pixels.append((c, r, grid[r][c]))
+    # Sort by column, then by row for ties
+    pixels.sort(key=lambda p: (p[0], p[1]))
+    colors = [p[2] for p in pixels]
+    out = [[0] * out_w for _ in range(out_h)]
+    idx = 0
+    for r in range(out_h):
+        if r % 2 == 0:
+            for c in range(out_w):
+                if idx < len(colors):
+                    out[r][c] = colors[idx]
+                    idx += 1
+        else:
+            for c in range(out_w - 1, -1, -1):
+                if idx < len(colors):
+                    out[r][c] = colors[idx]
+                    idx += 1
+    return out
