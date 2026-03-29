@@ -352,3 +352,49 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 15
 - Time: 36s
 - Log: logs/learn_20260329_161234.log
+
+---
+## Learning Loop -- 2026-03-29 16:14
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 15
+- Time: 36s
+- Log: logs/learn_20260329_161408.log
+
+---
+## Learning Loop -- 2026-03-29 16:30
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 16
+- Time: 35s
+- Log: logs/learn_20260329_163018.log
+
+---
+## Learning Loop -- 2026-03-29 16:41
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 17
+- Time: 37s
+- Log: logs/learn_20260329_164035.log
+
+---
+## Session 9 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **block_grid_gravity** -- large (~30×30) grid of 3×3 hollow-square blocks arranged on a 4-cell grid. One edge has a border line of 1s. Output compresses each block to a single cell and applies directional gravity (compacting non-zero values) perpendicular to the border: top→push right, bottom→push left, left→push up, right→push down. Handles block-grid summarisation with directional compaction tasks.
+2. **template_reconstruct** -- input contains multi-colour template shapes (body colour + endpoint colours) and isolated marker pixels sharing the same endpoint colours. Output removes templates and draws D4-transformed (rotation/reflection) copies centered on marker positions. The D4 element is determined by mapping template endpoint positions to marker positions. Handles template-to-marker reconstruction with symmetry tasks.
+
+### Tasks Solved
+- `afe3afe9`: block_grid_gravity
+- `0e206a2e`: template_reconstruct
+
+### Results
+- Before: 17/20 (85%)
+- After: 19/20 (95%)
+- Regression gate (08ed6ac7): CORRECT

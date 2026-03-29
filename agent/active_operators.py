@@ -11,7 +11,7 @@ Pipeline operators (all fire in S2, read/write S1):
 """
 
 from collections import Counter
-from itertools import permutations
+from itertools import permutations, product
 
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
@@ -429,6 +429,14 @@ class GeneralizeOperator(Operator):
         # Strategy: three-shape rearrange (connector moves into split block)
         if rule is None:
             rule = self._try_three_shape_rearrange(patterns, task)
+
+        # Strategy: template reconstruct (shapes rebuilt at marker positions with D4 symmetry)
+        if rule is None:
+            rule = self._try_template_reconstruct(patterns, task)
+
+        # Strategy: block grid gravity (30x30 block grid compressed with directional gravity)
+        if rule is None:
+            rule = self._try_block_grid_gravity(patterns, task)
 
         # Strategy: simple 1:1 color mapping
         if rule is None:
@@ -2419,6 +2427,319 @@ class GeneralizeOperator(Operator):
         return output
 
 
+    # ---- strategy: template reconstruct -----------------------------------
+
+    def _try_template_reconstruct(self, patterns, task):
+        """
+        Detect: input has template shapes (multi-colour connected components
+        with a body colour and endpoint colours) plus isolated marker pixels.
+        Output removes templates and draws D4-transformed copies at markers.
+
+        Category: template-to-marker reconstruction with rotation/reflection.
+        """
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+            result = _template_reconstruct_transform(g0.raw)
+            if result is None or result != g1.raw:
+                return None
+        return {"type": "template_reconstruct", "confidence": 1.0}
+
+    # ---- strategy: block grid gravity ------------------------------------
+
+    def _try_block_grid_gravity(self, patterns, task):
+        """
+        Detect: large grid with 3x3 hollow-square blocks on a 4-cell grid.
+        One edge has a line of 1s (border). Output is a compressed block-color
+        grid with gravity applied perpendicular to the border direction.
+
+        Category: block-grid summarisation with directional compaction.
+        """
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            if g0.height < 20 or g0.width < 20:
+                return None
+
+        # Validate on every training pair
+        for pair in task.example_pairs:
+            raw = pair.input_grid.raw
+            h, w = len(raw), len(raw[0])
+            result = _block_grid_gravity_transform(raw, h, w)
+            if result is None:
+                return None
+            if result != pair.output_grid.raw:
+                return None
+
+        return {"type": "block_grid_gravity", "confidence": 1.0}
+
+
+# D4 symmetry transforms: (r,c) -> transformed (r,c)
+_D4 = [
+    lambda r, c: (r, c),       # identity
+    lambda r, c: (c, -r),      # 90 CW
+    lambda r, c: (-r, -c),     # 180
+    lambda r, c: (-c, r),      # 90 CCW
+    lambda r, c: (r, -c),      # h-flip
+    lambda r, c: (-r, c),      # v-flip
+    lambda r, c: (c, r),       # main diagonal
+    lambda r, c: (-c, -r),     # anti-diagonal
+]
+
+
+def _template_reconstruct_transform(raw):
+    """
+    Given a grid with template shapes and marker pixels, find the D4
+    transform mapping each template onto its marker group and draw the
+    result on a blank grid.
+    """
+    h = len(raw)
+    w = len(raw[0]) if raw else 0
+    if h == 0 or w == 0:
+        return None
+
+    # --- find 4-connected components of non-zero cells ---
+    visited = [[False] * w for _ in range(h)]
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if raw[r][c] != 0 and not visited[r][c]:
+                comp = []
+                q = [(r, c)]
+                visited[r][c] = True
+                while q:
+                    cr, cc = q.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] != 0:
+                            visited[nr][nc] = True
+                            q.append((nr, nc))
+                components.append(comp)
+
+    templates = []
+    marker_list = []
+    for comp in components:
+        if len(comp) == 1:
+            r, c = comp[0]
+            marker_list.append((r, c, raw[r][c]))
+        elif len(comp) > 3:
+            templates.append(comp)
+
+    if not templates or not marker_list:
+        return None
+
+    # --- parse each template ---
+    tpl_data = []
+    for comp in templates:
+        cc = {}
+        for r, c in comp:
+            v = raw[r][c]
+            cc[v] = cc.get(v, 0) + 1
+        body = max(cc, key=cc.get)
+        eps = {}
+        for r, c in comp:
+            v = raw[r][c]
+            if v != body:
+                if v in eps:
+                    return None
+                eps[v] = (r, c)
+        if len(eps) < 2:
+            return None
+        ep_colors = sorted(eps.keys())
+        ref = ep_colors[0]
+        rr, rc = eps[ref]
+        rel = [(r - rr, c - rc, raw[r][c]) for r, c in comp]
+        rel_eps = {v: (r - rr, c - rc) for v, (r, c) in eps.items() if v != ref}
+        tpl_data.append({
+            'rel': rel, 'body': body, 'ep_colors': ep_colors,
+            'ref': ref, 'rel_eps': rel_eps,
+        })
+
+    ep_set = frozenset(tpl_data[0]['ep_colors'])
+    if any(frozenset(t['ep_colors']) != ep_set for t in tpl_data):
+        return None
+
+    ep_colors = tpl_data[0]['ep_colors']
+    ref_color = ep_colors[0]
+    non_ref = [c for c in ep_colors if c != ref_color]
+
+    mbc = {}
+    for r, c, v in marker_list:
+        if v in ep_set:
+            mbc.setdefault(v, []).append((r, c))
+
+    for v in ep_colors:
+        if v not in mbc:
+            return None
+
+    ng = len(mbc[ref_color])
+    if ng != len(templates):
+        return None
+    for v in ep_colors:
+        if len(mbc[v]) != ng:
+            return None
+
+    # --- match templates to marker groups via D4 transforms ---
+    ref_markers = mbc[ref_color]
+    non_ref_perms = [list(permutations(mbc[c])) for c in non_ref]
+
+    for combo in product(*non_ref_perms):
+        groups = []
+        for j in range(ng):
+            g = {ref_color: ref_markers[j]}
+            for i, c in enumerate(non_ref):
+                g[c] = combo[i][j]
+            groups.append(g)
+
+        for tperm in permutations(range(ng)):
+            assignment = []
+            ok = True
+            for gidx in range(ng):
+                tidx = tperm[gidx]
+                td = tpl_data[tidx]
+                mg_ref = groups[gidx][ref_color]
+                mg_rel = {}
+                for cv in non_ref:
+                    pr, pc = groups[gidx][cv]
+                    mg_rel[cv] = (pr - mg_ref[0], pc - mg_ref[1])
+
+                found = None
+                for di, tf in enumerate(_D4):
+                    if all(tf(*td['rel_eps'][cv]) == mg_rel[cv] for cv in non_ref):
+                        found = di
+                        break
+                if found is None:
+                    ok = False
+                    break
+                assignment.append((tidx, gidx, found))
+
+            if ok:
+                result = [[0] * w for _ in range(h)]
+                for tidx, gidx, di in assignment:
+                    td = tpl_data[tidx]
+                    mg_ref = groups[gidx][ref_color]
+                    tf = _D4[di]
+                    for dr, dc, color in td['rel']:
+                        tr, tc = tf(dr, dc)
+                        nr, nc = mg_ref[0] + tr, mg_ref[1] + tc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            result[nr][nc] = color
+                return result
+
+    return None
+
+
+def _find_block_border(raw, h, w):
+    """Find which edge of a grid has a solid line of 1s."""
+    if all(raw[0][c] == 1 for c in range(w)):
+        return "top"
+    if all(raw[h - 1][c] == 1 for c in range(w)):
+        return "bottom"
+    if all(raw[r][0] == 1 for r in range(h)):
+        return "left"
+    if all(raw[r][w - 1] == 1 for r in range(h)):
+        return "right"
+    return None
+
+
+def _parse_block_grid(raw, h, w, border):
+    """
+    Parse a grid of 3x3 hollow-square blocks spaced 4 cells apart.
+    Returns a 2-D list of block colours (0 where no block exists).
+    """
+    # Block start offsets depend on which edge the border occupies.
+    if border == "top":
+        row_start, col_start = 2, 1
+    elif border == "bottom":
+        row_start, col_start = 1, 1
+    elif border == "left":
+        row_start, col_start = 1, 2
+    else:  # right
+        row_start, col_start = 1, 1
+
+    row_positions = list(range(row_start, h - 2, 4))
+    col_positions = list(range(col_start, w - 2, 4))
+
+    if not row_positions or not col_positions:
+        return None
+
+    grid = []
+    for br in row_positions:
+        row = []
+        for bc in col_positions:
+            color = raw[br][bc]
+            if color != 0 and raw[br + 1][bc + 1] == 0:
+                row.append(color)
+            else:
+                row.append(0)
+        grid.append(row)
+    return grid
+
+
+def _block_grid_gravity_transform(raw, h, w):
+    """Full transform: parse blocks, remove separators, apply gravity."""
+    border = _find_block_border(raw, h, w)
+    if border is None:
+        return None
+
+    block_grid = _parse_block_grid(raw, h, w, border)
+    if block_grid is None:
+        return None
+
+    rows = len(block_grid)
+    cols = len(block_grid[0])
+
+    # Remove all-zero rows and columns (separators)
+    zero_rows = {r for r in range(rows)
+                 if all(block_grid[r][c] == 0 for c in range(cols))}
+    zero_cols = {c for c in range(cols)
+                 if all(block_grid[r][c] == 0 for r in range(rows))}
+
+    kept_rows = [r for r in range(rows) if r not in zero_rows]
+    kept_cols = [c for c in range(cols) if c not in zero_cols]
+
+    grid = [[block_grid[r][c] for c in kept_cols] for r in kept_rows]
+
+    num_rows = len(grid)
+    num_cols = len(grid[0]) if grid else 0
+
+    if num_rows == 0 or num_cols == 0:
+        return None
+
+    # Apply gravity perpendicular to the border
+    if border in ("top", "bottom"):
+        # Row-based compaction
+        result = []
+        for row in grid:
+            nz = [v for v in row if v != 0]
+            if border == "top":
+                result.append([0] * (num_cols - len(nz)) + nz)
+            else:
+                result.append(nz + [0] * (num_cols - len(nz)))
+        return result
+    else:
+        # Column-based compaction
+        result = [[0] * num_cols for _ in range(num_rows)]
+        for c in range(num_cols):
+            nz = [grid[r][c] for r in range(num_rows) if grid[r][c] != 0]
+            if border == "left":
+                for i, v in enumerate(nz):
+                    result[i][c] = v
+            else:
+                off = num_rows - len(nz)
+                for i, v in enumerate(nz):
+                    result[off + i][c] = v
+        return result
+
+
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
@@ -2519,6 +2840,10 @@ class PredictOperator(Operator):
             return self._apply_grid_zigzag_shear(rule, input_grid)
         if rule_type == "three_shape_rearrange":
             return self._apply_three_shape_rearrange(rule, input_grid)
+        if rule_type == "block_grid_gravity":
+            return self._apply_block_grid_gravity(rule, input_grid)
+        if rule_type == "template_reconstruct":
+            return self._apply_template_reconstruct(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3181,6 +3506,21 @@ class PredictOperator(Operator):
             groups.append(group)
 
         return groups
+
+    def _apply_block_grid_gravity(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        result = _block_grid_gravity_transform(raw, h, w)
+        if result is None:
+            return [row[:] for row in raw]
+        return result
+
+    def _apply_template_reconstruct(self, rule, input_grid):
+        raw = input_grid.raw
+        result = _template_reconstruct_transform(raw)
+        if result is None:
+            return [row[:] for row in raw]
+        return result
 
 
 # ======================================================================
