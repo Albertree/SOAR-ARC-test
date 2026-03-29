@@ -596,3 +596,42 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 27
 - Time: 73s
 - Log: logs/learn_20260329_173248.log
+
+---
+## Learning Loop -- 2026-03-29 17:35
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 57 -> 60 (+3 learned)
+- Stored rule hits: 27
+- Time: 74s
+- Log: logs/learn_20260329_173435.log
+
+---
+## Session 14 -- 2026-03-29 17:49
+
+### New strategies added (3):
+
+1. **flood_fill_partition** (84db8fc4): One color vanishes, replaced by two new
+   colors. Border-reachable cells (4-connected to grid edge) get exterior color;
+   unreachable cells get interior color. Category: inside/outside region coloring,
+   maze partitioning.
+
+2. **rotation_tile_repeat** (cf5fd0ad): NxN input → 4Nx4N output. Output is 2×2
+   macro-quadrants, each filled with a 2×2 tiling of a specific rotation (0/90/180/270)
+   of the input. Layout auto-detected from examples. Category: rotation symmetry
+   expansion with repetition.
+
+3. **cross_arm_mode** (642d658d): Grid has plus-shaped patterns centered on a
+   specific color (e.g. 4). Each cross has 4 same-color arms. Output is 1×1: the
+   arm color appearing in the most crosses. Category: pattern counting / mode-finding.
+
+### Results
+
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%)  [########################......]
+- Previous: 29 / 40 (72.5%)  — improvement: +3 tasks
+- Rules: 63 -> 66 (+3 learned)
+- Stored rule hits: 30
+- Time: 76s
+- Log: logs/learn_20260329_174919.log

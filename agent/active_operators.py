@@ -478,6 +478,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_seed_quadrant_project(patterns, task)
 
+        # Strategy: flood fill partition (two bg regions → two distinct colors)
+        if rule is None:
+            rule = self._try_flood_fill_partition(patterns, task)
+
+        # Strategy: rotation tile repeat (NxN → 4Nx4N, quadrants = 2×2 tiles of rotations)
+        if rule is None:
+            rule = self._try_rotation_tile_repeat(patterns, task)
+
+        # Strategy: cross arm mode (plus-shapes centered on 4 → most frequent arm color)
+        if rule is None:
+            rule = self._try_cross_arm_mode(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -1697,6 +1709,256 @@ class GeneralizeOperator(Operator):
                 return None
 
         return {"type": "seed_quadrant_project", "confidence": 0.95}
+
+    # ---- strategy: flood fill partition ---------------------------------
+
+    def _try_flood_fill_partition(self, patterns, task):
+        """
+        Detect: one color vanishes, replaced by two new colors. Border-reachable
+        cells of the vanishing color (4-connected to any grid edge) get one
+        replacement color (exterior), unreachable cells get the other (interior).
+        Category: inside/outside region coloring, maze partitioning tasks.
+        """
+        if not patterns.get("grid_size_preserved"):
+            return None
+        pairs = task.example_pairs if task else []
+        if not pairs:
+            return None
+
+        zero_color = None
+        exterior_color = None
+        interior_color = None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            in_colors = set(c for row in inp for c in row)
+            out_colors = set(c for row in out for c in row)
+            vanished = in_colors - out_colors
+            appeared = out_colors - in_colors
+
+            if len(vanished) != 1 or len(appeared) != 2:
+                return None
+
+            zc = vanished.pop()
+            if zero_color is None:
+                zero_color = zc
+            elif zc != zero_color:
+                return None
+
+            # Verify non-vanishing cells are unchanged
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != zero_color and inp[r][c] != out[r][c]:
+                        return None
+
+            # Flood-fill from border zero-cells (4-connected)
+            visited = [[False] * w for _ in range(h)]
+            queue = []
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == zero_color and (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                        if not visited[r][c]:
+                            visited[r][c] = True
+                            queue.append((r, c))
+
+            exterior = set()
+            qi = 0
+            while qi < len(queue):
+                cr, cc = queue[qi]
+                qi += 1
+                exterior.add((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] == zero_color:
+                        visited[nr][nc] = True
+                        queue.append((nr, nc))
+
+            interior = set()
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == zero_color and (r, c) not in exterior:
+                        interior.add((r, c))
+
+            if not exterior or not interior:
+                return None
+
+            # Determine which replacement color is exterior vs interior
+            ext_sample = next(iter(exterior))
+            int_sample = next(iter(interior))
+            ext_c = out[ext_sample[0]][ext_sample[1]]
+            int_c = out[int_sample[0]][int_sample[1]]
+            if ext_c == int_c:
+                return None
+
+            # Verify consistency
+            for r, c in exterior:
+                if out[r][c] != ext_c:
+                    return None
+            for r, c in interior:
+                if out[r][c] != int_c:
+                    return None
+
+            if exterior_color is None:
+                exterior_color = ext_c
+                interior_color = int_c
+            elif ext_c != exterior_color or int_c != interior_color:
+                return None
+
+        return {
+            "type": "flood_fill_partition",
+            "zero_color": zero_color,
+            "color_a": exterior_color,
+            "color_b": interior_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: rotation tile repeat ---------------------------------
+
+    def _try_rotation_tile_repeat(self, patterns, task):
+        """
+        Detect: NxN input → 4Nx4N output. The output is a 2×2 arrangement of
+        quadrants (each 2N×2N), and each quadrant is a 2×2 tiling of a rotated
+        version of the input (0°/90°/180°/270°).
+        Category: rotation symmetry / tiling expansion tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        layout = None  # will be a tuple of 4 rotation indices for TL,TR,BL,BR
+
+        def rot(grid, n, k):
+            """Rotate grid by k*90 degrees CW."""
+            g = [row[:] for row in grid]
+            for _ in range(k % 4):
+                g = [[g[n - 1 - c][r] for c in range(n)] for r in range(n)]
+            return g
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            ih, iw = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if ih != iw:
+                return None
+            n = ih
+            if oh != 4 * n or ow != 4 * n:
+                return None
+
+            # Pre-compute all 4 rotations
+            rotations = [rot(ig, n, k) for k in range(4)]
+
+            # For each quadrant, find which rotation (tiled 2x2) matches
+            quadrant_offsets = [(0, 0), (0, 2 * n), (2 * n, 0), (2 * n, 2 * n)]
+            found_layout = []
+            for qr, qc in quadrant_offsets:
+                matched = -1
+                for k in range(4):
+                    rk = rotations[k]
+                    ok = True
+                    for r in range(2 * n):
+                        for c in range(2 * n):
+                            if og[qr + r][qc + c] != rk[r % n][c % n]:
+                                ok = False
+                                break
+                        if not ok:
+                            break
+                    if ok:
+                        matched = k
+                        break
+                if matched == -1:
+                    return None
+                found_layout.append(matched)
+
+            found_layout = tuple(found_layout)
+            if layout is None:
+                layout = found_layout
+            elif layout != found_layout:
+                return None
+
+        return {
+            "type": "rotation_tile_repeat",
+            "layout": list(layout),  # [TL, TR, BL, BR] rotation indices
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: cross arm mode ---------------------------------------
+
+    def _try_cross_arm_mode(self, patterns, task):
+        """
+        Detect: grid contains plus/cross patterns centered on a specific color
+        (center_color). Each cross has 4 orthogonal arms of the same non-bg color.
+        Output is 1×1: the arm color that appears in the most crosses.
+        Category: pattern counting / mode-finding tasks.
+        """
+        if task is None:
+            return None
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+
+        center_color = None
+
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            oh, ow = len(og), len(og[0])
+            if oh != 1 or ow != 1:
+                return None
+
+            h, w = len(ig), len(ig[0])
+            expected_output = og[0][0]
+
+            # Find the background color (most common)
+            color_counts = Counter(c for row in ig for c in row)
+            bg = color_counts.most_common(1)[0][0]
+
+            # Find all cells that could be cross centers:
+            # 4 orthogonal neighbors all same non-bg color
+            crosses = {}  # center_val -> list of arm colors
+            for r in range(1, h - 1):
+                for c in range(1, w - 1):
+                    cv = ig[r][c]
+                    if cv == bg:
+                        continue
+                    neighbors = [ig[r - 1][c], ig[r + 1][c], ig[r][c - 1], ig[r][c + 1]]
+                    if len(set(neighbors)) == 1 and neighbors[0] != bg and neighbors[0] != cv:
+                        crosses.setdefault(cv, []).append(neighbors[0])
+
+            if not crosses:
+                return None
+
+            # Should be exactly one center color
+            if len(crosses) != 1:
+                return None
+            cc = list(crosses.keys())[0]
+
+            if center_color is None:
+                center_color = cc
+            elif center_color != cc:
+                return None
+
+            arm_colors = crosses[cc]
+            # Find the mode
+            arm_counts = Counter(arm_colors)
+            mode_color = arm_counts.most_common(1)[0][0]
+            if mode_color != expected_output:
+                return None
+
+        return {
+            "type": "cross_arm_mode",
+            "center_color": center_color,
+            "confidence": 1.0,
+        }
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -3673,6 +3935,12 @@ class PredictOperator(Operator):
             return self._apply_extend_diagonal_arms(rule, input_grid)
         if rule_type == "seed_quadrant_project":
             return self._apply_seed_quadrant_project(rule, input_grid)
+        if rule_type == "flood_fill_partition":
+            return self._apply_flood_fill_partition(rule, input_grid)
+        if rule_type == "rotation_tile_repeat":
+            return self._apply_rotation_tile_repeat(rule, input_grid)
+        if rule_type == "cross_arm_mode":
+            return self._apply_cross_arm_mode(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4712,6 +4980,93 @@ class PredictOperator(Operator):
                 out[sr + 2 + dr][sc + 2 + dc] = seed[0][0]
 
         return out
+
+    def _apply_flood_fill_partition(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        zero_color = rule["zero_color"]
+        color_a = rule["color_a"]   # exterior (border-reachable)
+        color_b = rule["color_b"]   # interior
+
+        # Flood-fill from border zero-cells (4-connected)
+        visited = [[False] * w for _ in range(h)]
+        queue = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == zero_color and (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                    if not visited[r][c]:
+                        visited[r][c] = True
+                        queue.append((r, c))
+
+        exterior = set()
+        qi = 0
+        while qi < len(queue):
+            cr, cc = queue[qi]
+            qi += 1
+            exterior.add((cr, cc))
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == zero_color:
+                    visited[nr][nc] = True
+                    queue.append((nr, nc))
+
+        out = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == zero_color:
+                    out[r][c] = color_a if (r, c) in exterior else color_b
+        return out
+
+    def _apply_rotation_tile_repeat(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h != w or h == 0:
+            return [row[:] for row in raw]
+        n = h
+        layout = rule["layout"]  # [TL, TR, BL, BR] rotation indices
+
+        def rot(grid, k):
+            g = [row[:] for row in grid]
+            for _ in range(k % 4):
+                g = [[g[n - 1 - c][r] for c in range(n)] for r in range(n)]
+            return g
+
+        rotations = [rot(raw, k) for k in range(4)]
+
+        out = [[0] * (4 * n) for _ in range(4 * n)]
+        quadrant_offsets = [(0, 0), (0, 2 * n), (2 * n, 0), (2 * n, 2 * n)]
+        for idx, (qr, qc) in enumerate(quadrant_offsets):
+            rk = rotations[layout[idx]]
+            for r in range(2 * n):
+                for c in range(2 * n):
+                    out[qr + r][qc + c] = rk[r % n][c % n]
+        return out
+
+    def _apply_cross_arm_mode(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        center_color = rule["center_color"]
+
+        # Find background color
+        color_counts = Counter(c for row in raw for c in row)
+        bg = color_counts.most_common(1)[0][0]
+
+        # Find all crosses
+        arm_colors = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if raw[r][c] != center_color:
+                    continue
+                neighbors = [raw[r - 1][c], raw[r + 1][c], raw[r][c - 1], raw[r][c + 1]]
+                if len(set(neighbors)) == 1 and neighbors[0] != bg and neighbors[0] != center_color:
+                    arm_colors.append(neighbors[0])
+
+        if not arm_colors:
+            return [[0]]
+
+        mode_color = Counter(arm_colors).most_common(1)[0][0]
+        return [[mode_color]]
 
 
 # ======================================================================
