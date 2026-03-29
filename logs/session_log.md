@@ -31,3 +31,35 @@
 - Before: 0/20 (0%)
 - After:  3/20 (15%)
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 23:09
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 8 -> 10 (+2 learned)
+- Stored rule hits: 3
+- Time: 36s
+- Log: logs/learn_20260329_230834.log
+
+---
+## Learning Loop -- 2026-03-29 23:14
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 10 -> 14 (+4 learned)
+- Stored rule hits: 3
+- Time: 36s
+- Log: logs/learn_20260329_231405.log
+
+---
+## Session 2 Analysis — 2026-03-29 23:14
+
+### New Rules Added (2)
+1. **corner_quadrant_fill** (fill) — rectangle of uniform color with 4 diagonal corner markers; fill each quadrant with its corner color, remove markers. Handles multiple rectangles per grid. Solves e9ac8c9e.
+2. **component_size_recolor** (detect) — find connected components of a source color, rank by unique sizes (largest first), recolor each component with rank-based color (1, 2, 3, ...). Solves 6e82a1ae, also solves regression gate 08ed6ac7.
+
+### Result
+- Before: 3/20 (15%)
+- After:  5/20 (25%)
+- Regression gate (08ed6ac7): CORRECT
