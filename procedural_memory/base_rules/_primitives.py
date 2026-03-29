@@ -882,3 +882,196 @@ def mirror_displacement_across_separator(grid, bg=7):
             output[new_mirror_r][new_mirror_c] = mirror_color
 
     return output
+
+
+def connect_aligned_diamonds(grid, diamond_color, line_color, bg=0):
+    """Find diamond/cross shapes of diamond_color and connect aligned ones with lines.
+    Each diamond is a 4-cell cross: top, left, right, bottom around a bg center.
+    Diamonds sharing the same center row get horizontal lines between their tips.
+    Diamonds sharing the same center column get vertical lines between their tips."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find diamond centers: bg cell with diamond_color in all 4 cardinal directions
+    centers = []
+    for r in range(1, h - 1):
+        for c in range(1, w - 1):
+            if grid[r][c] == bg:
+                if (grid[r-1][c] == diamond_color and grid[r+1][c] == diamond_color and
+                    grid[r][c-1] == diamond_color and grid[r][c+1] == diamond_color):
+                    centers.append((r, c))
+
+    # Connect horizontally aligned (same row) diamonds
+    row_groups = {}
+    for r, c in centers:
+        row_groups.setdefault(r, []).append(c)
+    for r, cols in row_groups.items():
+        cols.sort()
+        for i in range(len(cols) - 1):
+            c1 = cols[i] + 2  # right tip + 1
+            c2 = cols[i+1] - 1  # left tip
+            for c in range(c1, c2):
+                if output[r][c] == bg:
+                    output[r][c] = line_color
+
+    # Connect vertically aligned (same column) diamonds
+    col_groups = {}
+    for r, c in centers:
+        col_groups.setdefault(c, []).append(r)
+    for c, rows in col_groups.items():
+        rows.sort()
+        for i in range(len(rows) - 1):
+            r1 = rows[i] + 2  # bottom tip + 1
+            r2 = rows[i+1] - 1  # top tip
+            for r in range(r1, r2):
+                if output[r][c] == bg:
+                    output[r][c] = line_color
+
+    return output
+
+
+def summarize_box_grid(grid, bg=0):
+    """Summarize a 30x30 grid of 3x3 bordered boxes into a compact bar-chart.
+    The grid has a 1-border on one edge, a 7x7 grid of box cells (3x3 each,
+    spaced 4 apart), with box-row/col 3 as separator between colored and 8 halves.
+    Output: bar-chart where each slice counts colored and 8 boxes."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find 1-border edge
+    border = None  # 'top', 'bottom', 'left', 'right'
+    for r in range(h):
+        if all(grid[r][c] == 1 for c in range(w)):
+            border = 'top' if r < h // 2 else 'bottom'
+            break
+    if border is None:
+        for c in range(w):
+            if all(grid[r][c] == 1 for r in range(h)):
+                border = 'left' if c < w // 2 else 'right'
+                break
+    if border is None:
+        return None
+
+    # Determine grid origin (skip the 1-border row/col)
+    # Box at (bi, bj) has its top-left corner at origin + (bi*4, bj*4)
+    # The 3x3 box spans 3 rows and 3 cols
+    if border == 'top':
+        row_origin = 2  # skip border row + separator row
+        col_origin = 1
+    elif border == 'bottom':
+        row_origin = 1
+        col_origin = 1
+    elif border == 'left':
+        row_origin = 1
+        col_origin = 2
+    else:  # right
+        row_origin = 1
+        col_origin = 1
+
+    # Read 7x7 box grid
+    box_colors = [[0] * 7 for _ in range(7)]
+    for bi in range(7):
+        for bj in range(7):
+            r0 = row_origin + bi * 4
+            c0 = col_origin + bj * 4
+            # Check if box is present (non-bg, non-0 in the border cells)
+            color = 0
+            for dr in range(3):
+                for dc in range(3):
+                    r, c = r0 + dr, c0 + dc
+                    if 0 <= r < h and 0 <= c < w:
+                        v = grid[r][c]
+                        if v != bg and v != 0 and v != 1:
+                            color = v
+            box_colors[bi][bj] = color
+
+    # Determine separator axis and stacking direction
+    if border in ('top', 'bottom'):
+        # Vertical separator at col 3, horizontal stacking
+        # Left half: cols 0-2, Right half: cols 4-6
+        # Count per row, output is 7 rows x 6 cols
+        left_colors = [[box_colors[bi][bj] for bj in range(3)] for bi in range(7)]
+        right_colors = [[box_colors[bi][bj] for bj in range(4, 7)] for bi in range(7)]
+
+        # Determine which side is 8
+        left_8 = sum(1 for bi in range(7) for bj in range(3) if box_colors[bi][bj] == 8)
+        right_8 = sum(1 for bi in range(7) for bj in range(4, 7) if box_colors[bi][bj] == 8)
+        eight_on_right = right_8 > left_8
+
+        output = [[0] * 6 for _ in range(7)]
+        for bi in range(7):
+            if eight_on_right:
+                colored_cells = left_colors[bi]
+                eight_cells = right_colors[bi]
+            else:
+                colored_cells = right_colors[bi]
+                eight_cells = left_colors[bi]
+
+            n_color = sum(1 for v in colored_cells if v != 0)
+            n_eight = sum(1 for v in eight_cells if v == 8)
+            # Find the non-8 color for this row
+            row_color = 0
+            for v in colored_cells:
+                if v != 0 and v != 8:
+                    row_color = v
+                    break
+
+            if eight_on_right:
+                # 8 fills from right, color fills leftward
+                for k in range(n_eight):
+                    output[bi][5 - k] = 8
+                for k in range(n_color):
+                    output[bi][5 - n_eight - k] = row_color
+            else:
+                # 8 fills from left, color fills rightward
+                for k in range(n_eight):
+                    output[bi][k] = 8
+                for k in range(n_color):
+                    output[bi][n_eight + k] = row_color
+
+        return output
+
+    else:
+        # Horizontal separator at row 3, vertical stacking
+        # Top half: rows 0-2, Bottom half: rows 4-6
+        # Count per column, output is 6 rows x 7 cols
+        top_colors = [[box_colors[bi][bj] for bj in range(7)] for bi in range(3)]
+        bottom_colors = [[box_colors[bi][bj] for bj in range(7)] for bi in range(4, 7)]
+
+        # Determine which side is 8
+        top_8 = sum(1 for bi in range(3) for bj in range(7) if box_colors[bi][bj] == 8)
+        bottom_8 = sum(1 for bi in range(4, 7) for bj in range(7) if box_colors[bi][bj] == 8)
+        eight_on_bottom = bottom_8 > top_8
+
+        output = [[0] * 7 for _ in range(6)]
+        for bj in range(7):
+            if eight_on_bottom:
+                colored_cells = [top_colors[bi][bj] for bi in range(3)]
+                eight_cells = [bottom_colors[bi][bj] for bi in range(3)]
+            else:
+                colored_cells = [bottom_colors[bi][bj] for bi in range(3)]
+                eight_cells = [top_colors[bi][bj] for bi in range(3)]
+
+            n_color = sum(1 for v in colored_cells if v != 0)
+            n_eight = sum(1 for v in eight_cells if v == 8)
+            col_color = 0
+            for v in colored_cells:
+                if v != 0 and v != 8:
+                    col_color = v
+                    break
+
+            if eight_on_bottom:
+                # 8 fills from bottom, color fills upward
+                for k in range(n_eight):
+                    output[5 - k][bj] = 8
+                for k in range(n_color):
+                    output[5 - n_eight - k][bj] = col_color
+            else:
+                # 8 fills from top, color fills downward
+                for k in range(n_eight):
+                    output[k][bj] = 8
+                for k in range(n_color):
+                    output[n_eight + k][bj] = col_color
+
+        return output

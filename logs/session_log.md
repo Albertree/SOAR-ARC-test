@@ -108,3 +108,30 @@
 - Stored rule hits: 10
 - Time: 35s
 - Log: logs/learn_20260330_034927.log
+
+---
+## Learning Loop -- 2026-03-30 03:51
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 12 -> 12 (+0 learned)
+- Stored rule hits: 12
+- Time: 35s
+- Log: logs/learn_20260330_035044.log
+
+---
+## Session 5 (Claude) -- 2026-03-30 04:04
+
+### Changes
+- Added `connect_aligned_diamonds` primitive to `_primitives.py` — finds diamond/cross shapes (4-cell cross pattern around bg center), connects those sharing same row or column center with horizontal/vertical lines
+- Added `summarize_box_grid` primitive to `_primitives.py` — parses 30×30 grid of 3×3 bordered boxes into 7×7 box matrix, identifies 1-border edge and separator axis, counts colored vs 8-boxes per row/column, outputs compact bar-chart
+- Created `procedural_memory/concepts/connect_aligned_diamonds.json` (solves 60a26a3e)
+- Created `procedural_memory/concepts/summarize_box_grid.json` (solves afe3afe9)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 14 / 20 (70.0%) — up from 12/20 (60.0%)
+- Rules: 12 -> 14 (+2 learned)
+- Stored rule hits: 12
+- Time: 36s
+- Log: logs/learn_20260330_040423.log
