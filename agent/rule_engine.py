@@ -27,6 +27,8 @@ WATERFALL_ORDER = [
     "reverse_frames",
     "scale_up",
     "staircase_fill",
+    "quadrant_fill",
+    "fill_by_interior_size",
     "recolor_by_size",
     "extract_center_column",
     "recolor_sequential",

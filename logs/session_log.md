@@ -57,3 +57,32 @@
 
 **Improvement:** 3/20 → 6/20 (15% → 30%)
 **Memory reuse:** 3 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size)
+
+---
+## Learning Loop -- 2026-03-29 23:35
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 9 -> 10 (+1 learned)
+- Stored rule hits: 6
+- Time: 36s
+- Log: logs/learn_20260329_233456.log
+
+---
+## Learning Loop -- 2026-03-29 23:40
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 10 -> 13 (+3 learned)
+- Stored rule hits: 6
+- Time: 35s
+- Log: logs/learn_20260329_233953.log
+
+### Session 3 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `quadrant_fill` (fill) — solid rectangle of filler color (e.g. 5) with 4 diagonal corner markers; fills each quadrant with its nearest corner's color → solved e9ac8c9e
+2. `fill_by_interior_size` (fill) — hollow rectangles bordered by a single color get interiors filled based on interior dimensions (1x1→6, 2x2→7, 3x3→8) → solved c0f76784
+
+**Improvement:** 6/20 → 8/20 (30% → 40%)
+**Memory reuse:** 6 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size, reverse_frames, scale_up, staircase_fill)
