@@ -115,3 +115,32 @@
 
 **Improvement:** 8/20 → 10/20 (40% → 50%)
 **Memory reuse:** 8 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size, reverse_frames, scale_up, staircase_fill, quadrant_fill, fill_by_interior_size)
+
+---
+## Learning Loop -- 2026-03-29 23:56
+
+- Split: training, Tasks: 20
+- Correct: 10 / 20 (50.0%)
+- Rules: 17 -> 18 (+1 learned)
+- Stored rule hits: 10
+- Time: 37s
+- Log: logs/learn_20260329_235548.log
+
+---
+## Learning Loop -- 2026-03-30 00:05
+
+- Split: training, Tasks: 20
+- Correct: 12 / 20 (60.0%)
+- Rules: 18 -> 20 (+2 learned)
+- Stored rule hits: 10
+- Time: 43s
+- Log: logs/learn_20260330_000456.log
+
+### Session 5 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `connect_diamonds` (connect) — find diamond/cross shapes (4-cell crosses of one color), connect consecutive aligned diamonds (same row or column) with lines of a new color between their tips → solved 60a26a3e
+2. `separator_reflect` (separator) — grid split by a uniform-color separator row; below: target dots follow chains of adjacent guide dots to final positions; those positions are reflected across the separator to the top half as mirror-color dots → solved c9680e90
+
+**Improvement:** 10/20 → 12/20 (50% → 60%)
+**Memory reuse:** 10 stored rules successfully reused (mirror_vertical_append, extract_center_column, recolor_by_size, reverse_frames, scale_up, staircase_fill, quadrant_fill, fill_by_interior_size, path_with_turns, zone_expand)

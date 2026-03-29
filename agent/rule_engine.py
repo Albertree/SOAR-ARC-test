@@ -24,6 +24,8 @@ _loaded = False
 # not in this list are appended at the end automatically.
 WATERFALL_ORDER = [
     "path_with_turns",
+    "connect_diamonds",
+    "separator_reflect",
     "zone_expand",
     "mirror_vertical_append",
     "reverse_frames",
