@@ -2499,3 +2499,240 @@ def recolor_framed_pattern_by_keys(grid, bg=0):
         output.append(row)
 
     return output
+
+
+def cross_pattern_vote(grid):
+    """Find all cross patterns (center=4, 4 cardinal arms of same color).
+    Return 1x1 grid with the arm color that appears most frequently."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    counts = {}
+    for r in range(1, h - 1):
+        for c in range(1, w - 1):
+            if grid[r][c] != 4:
+                continue
+            up = grid[r - 1][c]
+            down = grid[r + 1][c]
+            left = grid[r][c - 1]
+            right = grid[r][c + 1]
+            if up == down == left == right and up != 4:
+                counts[up] = counts.get(up, 0) + 1
+    if not counts:
+        return grid
+    winner = max(counts, key=counts.get)
+    return [[winner]]
+
+
+def mark_square_corners(grid):
+    """Find rectangular connected components of non-bg color that have a square
+    bounding box. For each, place color 2 at the two outward-extension cells
+    of each corner. Non-square shapes and 1D lines are left unchanged."""
+    bg = find_bg_color(grid)
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    out = [row[:] for row in grid]
+
+    visited = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            # BFS to find connected component
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+
+            # Bounding box
+            min_r = min(p[0] for p in comp)
+            max_r = max(p[0] for p in comp)
+            min_c = min(p[1] for p in comp)
+            max_c = max(p[1] for p in comp)
+            bh = max_r - min_r + 1
+            bw = max_c - min_c + 1
+
+            # Must be square and at least 2x2
+            if bh != bw or bh < 2:
+                continue
+
+            # Place 2 at each outer corner's two perpendicular extension cells
+            corners = [
+                (min_r, min_c, -1, 0, 0, -1),  # top-left: up and left
+                (min_r, max_c, -1, 0, 0, 1),    # top-right: up and right
+                (max_r, min_c, 1, 0, 0, -1),    # bottom-left: down and left
+                (max_r, max_c, 1, 0, 0, 1),     # bottom-right: down and right
+            ]
+            for cr, cc, dr1, dc1, dr2, dc2 in corners:
+                nr1, nc1 = cr + dr1, cc + dc1
+                nr2, nc2 = cr + dr2, cc + dc2
+                if 0 <= nr1 < h and 0 <= nc1 < w:
+                    out[nr1][nc1] = 2
+                if 0 <= nr2 < h and 0 <= nc2 < w:
+                    out[nr2][nc2] = 2
+
+    return out
+
+
+def bridge_markers_to_rects(grid):
+    """Find rectangular blocks and isolated single-pixel markers of the same color.
+    For each marker, draw a cross at marker (center->bg, 4 arms->color),
+    a line from marker to nearest rect face, and widen the connection by 1 at the rect face."""
+    bg = find_bg_color(grid)
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    out = [row[:] for row in grid]
+
+    # Find connected components of non-bg cells
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            color = grid[r][c]
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == color:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            min_r = min(p[0] for p in comp)
+            max_r = max(p[0] for p in comp)
+            min_c = min(p[1] for p in comp)
+            max_c = max(p[1] for p in comp)
+            components.append({
+                "positions": set(comp),
+                "color": color,
+                "bbox": (min_r, min_c, max_r, max_c),
+                "size": len(comp),
+            })
+
+    # Separate rectangles (size > 1) from markers (size == 1)
+    rects = [c for c in components if c["size"] > 1]
+    markers = [c for c in components if c["size"] == 1]
+
+    for marker in markers:
+        mc = marker["color"]
+        mr, mcc = list(marker["positions"])[0]
+
+        # Find nearest rect of same color
+        best_rect = None
+        best_dist = float("inf")
+        for rect in rects:
+            if rect["color"] != mc:
+                continue
+            rmin_r, rmin_c, rmax_r, rmax_c = rect["bbox"]
+            # Distance to nearest edge
+            dist = float("inf")
+            if rmin_c <= mcc <= rmax_c:
+                # Vertically aligned
+                if mr < rmin_r:
+                    dist = rmin_r - mr
+                elif mr > rmax_r:
+                    dist = mr - rmax_r
+            if rmin_r <= mr <= rmax_r:
+                # Horizontally aligned
+                if mcc < rmin_c:
+                    d = rmin_c - mcc
+                elif mcc > rmax_c:
+                    d = mcc - rmax_c
+                else:
+                    d = 0
+                dist = min(dist, d)
+            # General distance to nearest edge
+            if dist == float("inf"):
+                dr = max(rmin_r - mr, 0, mr - rmax_r)
+                dc = max(rmin_c - mcc, 0, mcc - rmax_c)
+                dist = dr + dc
+            if dist < best_dist:
+                best_dist = dist
+                best_rect = rect
+
+        if best_rect is None:
+            continue
+
+        rmin_r, rmin_c, rmax_r, rmax_c = best_rect["bbox"]
+
+        # Determine direction from marker to rect
+        # Find which face is closest
+        candidates = []
+        if rmin_c <= mcc <= rmax_c:
+            if mr < rmin_r:
+                candidates.append(("down", rmin_r - mr))
+            if mr > rmax_r:
+                candidates.append(("up", mr - rmax_r))
+        if rmin_r <= mr <= rmax_r:
+            if mcc < rmin_c:
+                candidates.append(("right", rmin_c - mcc))
+            if mcc > rmax_c:
+                candidates.append(("left", mcc - rmax_c))
+
+        if not candidates:
+            continue
+
+        direction = min(candidates, key=lambda x: x[1])[0]
+
+        # Draw cross at marker position (center -> bg, 4 arms -> color)
+        out[mr][mcc] = bg
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = mr + dr, mcc + dc
+            if 0 <= nr < h and 0 <= nc < w:
+                out[nr][nc] = mc
+
+        # Draw line from marker toward rect
+        if direction == "down":
+            # Line goes from mr+1 to rmin_r-1 at col mcc
+            for r in range(mr + 2, rmin_r):
+                out[r][mcc] = mc
+            # Widen at rmin_r-1 (row just before rect face)
+            wr = rmin_r - 1
+            if wr > mr:
+                if 0 <= mcc - 1 < w:
+                    out[wr][mcc - 1] = mc
+                out[wr][mcc] = mc
+                if 0 <= mcc + 1 < w:
+                    out[wr][mcc + 1] = mc
+        elif direction == "up":
+            for r in range(mr - 2, rmax_r, -1):
+                out[r][mcc] = mc
+            wr = rmax_r + 1
+            if wr < mr:
+                if 0 <= mcc - 1 < w:
+                    out[wr][mcc - 1] = mc
+                out[wr][mcc] = mc
+                if 0 <= mcc + 1 < w:
+                    out[wr][mcc + 1] = mc
+        elif direction == "right":
+            for c in range(mcc + 2, rmin_c):
+                out[mr][c] = mc
+            wc = rmin_c - 1
+            if wc > mcc:
+                if 0 <= mr - 1 < h:
+                    out[mr - 1][wc] = mc
+                out[mr][wc] = mc
+                if 0 <= mr + 1 < h:
+                    out[mr + 1][wc] = mc
+        elif direction == "left":
+            for c in range(mcc - 2, rmax_c, -1):
+                out[mr][c] = mc
+            wc = rmax_c + 1
+            if wc < mcc:
+                if 0 <= mr - 1 < h:
+                    out[mr - 1][wc] = mc
+                out[mr][wc] = mc
+                if 0 <= mr + 1 < h:
+                    out[mr + 1][wc] = mc
+
+    return out

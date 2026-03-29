@@ -408,3 +408,40 @@
 - Stored rule hits: 32
 - Time: 74s
 - Log: logs/learn_20260330_063331.log
+
+---
+## Learning Loop -- 2026-03-30 06:37
+
+- Split: training, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 34 -> 34 (+0 learned)
+- Stored rule hits: 34
+- Time: 75s
+- Log: logs/learn_20260330_063547.log
+
+---
+## Session 14 (Claude) -- 2026-03-30 06:50
+
+### Changes
+- Added `cross_pattern_vote` primitive to `_primitives.py` — finds cross patterns (center=4, 4 same-color cardinal arms), returns 1x1 grid with most frequent arm color
+- Added `mark_square_corners` primitive to `_primitives.py` — finds connected components with square bounding boxes (>=2x2), places color 2 at two outward-extension cells per corner
+- Added `bridge_markers_to_rects` primitive to `_primitives.py` — finds isolated single-pixel markers and same-color rectangles, draws cross at marker (center->bg), line toward nearest rect face, widens connection to 3 at rect face
+- Created `procedural_memory/concepts/cross_pattern_vote.json` (solves 642d658d)
+- Created `procedural_memory/concepts/mark_square_corners.json` (solves 14b8e18c)
+- Created `procedural_memory/concepts/bridge_markers_to_rects.json` (solves a2d730bd)
+
+### Results
+- Before: 34 / 40 (85.0%)
+- After:  37 / 40 (92.5%)  +3 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 3
+
+---
+## Learning Loop -- 2026-03-30 06:48
+
+- Split: training, Tasks: 40
+- Correct: 37 / 40 (92.5%)
+- Rules: 34 -> 37 (+3 learned)
+- Stored rule hits: 34
+- Time: 75s
+- Log: logs/learn_20260330_064707.log
