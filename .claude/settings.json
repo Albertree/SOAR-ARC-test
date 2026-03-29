@@ -1,18 +1,5 @@
 {
   "permissions": {
-    "allow": ["Bash", "Write", "Read"]
-  },
-  "hooks": {
-    "Stop": [
-      {
-        "matcher": "",
-        "hooks": [
-          {
-            "type": "command",
-            "command": ".claude/ralph-hook.sh"
-          }
-        ]
-      }
-    ]
+    "allow": ["Bash", "Write", "Read", "Edit", "Glob", "Grep", "Agent", "Skill"]
   }
 }

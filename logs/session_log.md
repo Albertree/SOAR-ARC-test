@@ -63,3 +63,13 @@
 - Before: 3/20 (15%)
 - After:  5/20 (25%)
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 23:15
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 14 -> 16 (+2 learned)
+- Stored rule hits: 5
+- Time: 36s
+- Log: logs/learn_20260329_231518.log
