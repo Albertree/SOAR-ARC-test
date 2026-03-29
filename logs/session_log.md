@@ -546,3 +546,41 @@
 - Stored rule hits: 42
 - Time: 137s
 - Log: logs/learn_20260330_073158.log
+
+---
+## Learning Loop -- 2026-03-30 07:37
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)
+- Rules: 44 -> 44 (+0 learned)
+- Stored rule hits: 45
+- Time: 142s
+- Log: logs/learn_20260330_073451.log
+
+---
+## Session 18 (Claude) -- 2026-03-30 08:31
+
+### Changes
+- Added `invert_binary` primitive to `_primitives.py` — swaps 0 and the single non-zero color in a binary grid
+- Added `reverse_concentric_rings` primitive to `_primitives.py` — detects concentric rectangular color rings, extracts unique color sequence, rotates right by 1, applies as color mapping
+- Added `fill_active_columns` primitive to `_primitives.py` — replaces 0s with fill_color in columns that contain any non-zero pixel
+- Created `procedural_memory/concepts/invert_tile_2x2.json` (solves 48131b3c) — inverts binary grid then tiles 2x2
+- Created `procedural_memory/concepts/reverse_concentric_rings.json` (solves bda2d7a6) — rotates concentric ring colors inward by one step
+- Created `procedural_memory/concepts/fill_columns_tile_2x2.json` (solves f5b8619d) — fills active columns with 8, tiles 2x2
+- Fixed infinite loop bug in `reverse_concentric_rings` when grid is not a concentric ring pattern (thickness=0 guard)
+
+### Results
+- Before: 45 / 80 (56.2%)
+- After:  48 / 80 (60.0%)  +3 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 2 (reverse_concentric_rings, fill_columns_tile_2x2) + 1 memory hit (invert_tile_2x2)
+
+---
+## Learning Loop -- 2026-03-30 08:33
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 45 -> 47 (+2 learned)
+- Stored rule hits: 46
+- Time: 149s
+- Log: logs/learn_20260330_083110.log

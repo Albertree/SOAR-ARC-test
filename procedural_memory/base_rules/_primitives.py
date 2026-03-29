@@ -3102,3 +3102,87 @@ def kronecker_self(grid):
                     for c in range(w):
                         out[br * h + r][bc * w + c] = grid[r][c]
     return out
+
+
+def invert_binary(grid):
+    """Swap 0 and the single non-zero color.
+    All 0s become the non-zero color and vice versa."""
+    color = None
+    for row in grid:
+        for v in row:
+            if v != 0:
+                if color is None:
+                    color = v
+                elif v != color:
+                    return None  # more than one non-zero color
+    if color is None:
+        return grid
+    return [[0 if cell == color else color if cell == 0 else cell for cell in row] for row in grid]
+
+
+def reverse_concentric_rings(grid):
+    """Rotate concentric ring colors inward by one step.
+    Detects nested uniform-color rectangular frames, extracts unique color
+    sequence, rotates right by 1, and applies as a color mapping."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Detect ring colors from outside in
+    ring_colors = []
+    top, left, bottom, right = 0, 0, h - 1, w - 1
+    while top <= bottom and left <= right:
+        color = grid[top][left]
+        thickness = 0
+        while top + thickness <= bottom - thickness and left + thickness <= right - thickness:
+            t, l, b, r = top + thickness, left + thickness, bottom - thickness, right - thickness
+            if grid[t][l] != color:
+                break
+            ok = True
+            for c in range(l, r + 1):
+                if grid[t][c] != color or grid[b][c] != color:
+                    ok = False
+                    break
+            if ok:
+                for rr in range(t, b + 1):
+                    if grid[rr][l] != color or grid[rr][r] != color:
+                        ok = False
+                        break
+            if not ok:
+                break
+            thickness += 1
+        if thickness == 0:
+            return None  # not a concentric ring pattern
+        ring_colors.append(color)
+        top += thickness
+        left += thickness
+        bottom -= thickness
+        right -= thickness
+    # Build unique color sequence preserving order
+    seen = []
+    for c in ring_colors:
+        if c not in seen:
+            seen.append(c)
+    if len(seen) < 2:
+        return [row[:] for row in grid]
+    # Rotate unique colors right by 1
+    rotated = [seen[-1]] + seen[:-1]
+    mapping = {seen[i]: rotated[i] for i in range(len(seen))}
+    # Apply mapping
+    return [[mapping.get(cell, cell) for cell in row] for row in grid]
+
+
+def fill_active_columns(grid, fill_color=8):
+    """For each column containing any non-zero pixel, replace all 0s with fill_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    active_cols = set()
+    for c in range(w):
+        for r in range(h):
+            if grid[r][c] != 0:
+                active_cols.add(c)
+                break
+    out = [row[:] for row in grid]
+    for c in active_cols:
+        for r in range(h):
+            if out[r][c] == 0:
+                out[r][c] = fill_color
+    return out
