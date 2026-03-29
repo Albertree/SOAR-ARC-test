@@ -43,6 +43,8 @@ WATERFALL_ORDER = [
     "gravity_settle",
     "count_diagonal_x",
     "tile_grid_pack",
+    "connector_block_split",
+    "template_rotate_place",
 ]
 
 
@@ -94,8 +96,10 @@ def _ensure_loaded():
 
 
 def try_all(patterns, task):
-    """Try each rule in priority order. Returns first matching rule dict, or None."""
+    """Try each rule in priority order, then concepts. Returns first match or None."""
     _ensure_loaded()
+
+    # Existing module waterfall
     for mod in _try_order:
         try:
             result = mod.try_rule(patterns, task)
@@ -103,12 +107,32 @@ def try_all(patterns, task):
                 return result
         except Exception:
             continue
+
+    # Concept-based matching (parameterized compositions of primitives)
+    try:
+        from procedural_memory.base_rules._concept_engine import try_concepts
+        result = try_concepts(patterns, task)
+        if result is not None:
+            return result
+    except Exception:
+        pass
+
     return None
 
 
 def apply(rule_type, rule, input_grid):
     """Apply a specific rule by type. Returns grid (list-of-lists) or None."""
     _ensure_loaded()
+
+    # Handle concept rules (type starts with "concept:")
+    if rule_type.startswith("concept:"):
+        try:
+            from procedural_memory.base_rules._concept_engine import apply_concept
+            return apply_concept(rule, input_grid)
+        except Exception:
+            return None
+
+    # Existing module-based lookup
     mod = _registry.get(rule_type)
     if mod is None:
         return None

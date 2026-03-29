@@ -23,49 +23,51 @@ pipeline, and design constraints. CLAUDE.md is the authoritative reference.
 - **Knowledge as relations** -- store why (relations), not how (programs)
 - **Failure is information** -- impasses reveal what knowledge is missing
 - **Memory-based learning** -- the agent reuses rules it discovered earlier
+- **Structure Mapping Theory** -- all matching uses ARCKG COMM/DIFF, not raw cell diffs
 
-## Rule Architecture
+## Concept Architecture (PREFERRED)
 
-Rules are **standalone Python modules** in `procedural_memory/base_rules/<category>/`.
-The rule engine (`agent/rule_engine.py`) auto-discovers them at runtime.
+Concepts are **parameterized JSON definitions** in `procedural_memory/concepts/`.
+Each concept composes primitives from `_primitives.py` with inferred parameters.
 
-Each rule module has this interface:
-```python
-"""<name> — one-line description."""
-from procedural_memory.base_rules._helpers import <needed_helpers>
-
-RULE_TYPE = "<name>"
-CATEGORY = "<category>"
-
-def try_rule(patterns, task):
-    """Returns rule dict or None."""
-    ...
-
-def apply_rule(rule, input_grid):
-    """Returns grid (list-of-lists) or None."""
-    ...
+```json
+{
+  "concept_id": "<name>",
+  "version": 1,
+  "description": "One-line description",
+  "signature": {"grid_size_preserved": true, "requires_content_diff": true},
+  "parameters": {"param": {"type": "int", "infer": "method_name"}},
+  "steps": [
+    {"id": "s1", "primitive": "fn", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}
 ```
 
-Categories: `color/`, `geometry/`, `fill/`, `structure/`, `connect/`, `separator/`, `detect/`
+Concepts are matched using ARCKG COMM/DIFF structures, parameters inferred
+from relational graphs, and validated by execution against example pairs.
 
-Shared helpers live in `procedural_memory/base_rules/_helpers.py`.
+Available primitives: `procedural_memory/base_rules/_primitives.py`
+Available inference methods: `procedural_memory/base_rules/_concept_engine.py`
 
-After creating a new rule, add its RULE_TYPE to `WATERFALL_ORDER` in
-`agent/rule_engine.py` at the appropriate priority position.
+## Rule Module Architecture (FALLBACK)
+
+For complex procedural logic (pathfinding, simulation) that can't be expressed
+as primitive compositions, create Python modules in `base_rules/<category>/`.
 
 ## What Claude Code Should Do Each Session
 
-1. Read the learning loop output (which tasks passed/failed, what rules exist)
+1. Read the learning loop output (which tasks passed/failed)
 2. Pick failing tasks and read their JSON data
 3. Understand the transformation pattern each task requires
-4. Create new rule modules in `procedural_memory/base_rules/<category>/<name>.py`:
-   - `try_rule(patterns, task)` -- detect the pattern from extracted diffs
-   - `apply_rule(rule, input_grid)` -- apply the rule to produce output
-5. Add the new rule's RULE_TYPE to `WATERFALL_ORDER` in `agent/rule_engine.py`
-6. Each strategy must handle a **category** of tasks, not a single task
-7. Use helpers from `_helpers.py` or add new shared helpers there
-8. Verify: `python run_task.py` must still output CORRECT
-9. Append session results to `logs/session_log.md`
+4. PREFERRED: Create concept JSONs in `procedural_memory/concepts/`
+   - Compose primitives, use inference methods, parameterize variations
+   - Each concept must handle a **category** of tasks, not just one
+   - Do NOT hardcode task-specific colors or positions
+5. FALLBACK: Create Python rule modules for complex procedural logic
+6. Add new primitives to `_primitives.py` or inference methods to `_concept_engine.py` as needed
+7. Verify: `python run_task.py` must still output CORRECT
+8. Append session results to `logs/session_log.md`
 
 ## Do NOT Modify
 

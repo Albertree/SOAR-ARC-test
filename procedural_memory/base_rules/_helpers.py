@@ -52,3 +52,34 @@ def find_components(grid, color):
                             queue.append((nr, nc))
                 components.append(comp)
     return components
+
+
+def find_non_bg_components(grid, bg):
+    """Find 4-connected components of non-background cells (any color)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                components.append(comp)
+    return components
+
+
+def bounding_box(cells):
+    """Return (min_r, max_r, min_c, max_c) for a list of (r, c) positions."""
+    rs = [r for r, c in cells]
+    cs = [c for r, c in cells]
+    return min(rs), max(rs), min(cs), max(cs)

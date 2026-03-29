@@ -122,6 +122,10 @@ def _rules_equivalent(a: dict, b: dict) -> bool:
     if a.get("type") != b.get("type"):
         return False
     t = a.get("type")
+    # Concept rules: same concept_id + same params = equivalent
+    if t and t.startswith("concept:"):
+        return (a.get("concept_id") == b.get("concept_id")
+                and a.get("params") == b.get("params"))
     if t == "recolor_sequential":
         return (a.get("sort_key") == b.get("sort_key")
                 and a.get("start_color") == b.get("start_color")

@@ -87,32 +87,50 @@ The rule engine auto-discovers them at runtime via `importlib`.
 
 ## How to Add Generalization Strategies (the main improvement target)
 
-Create a new file in `procedural_memory/base_rules/<category>/<name>.py`:
+### PREFERRED: Create a Concept JSON (parameterized, composable)
 
-```python
-"""<name> — one-line description."""
-from procedural_memory.base_rules._helpers import <needed_helpers>
+Create `procedural_memory/concepts/<name>.json`:
 
-RULE_TYPE = "<name>"
-CATEGORY = "<category>"
-
-def try_rule(patterns, task):
-    """Detect pattern from extracted diffs. Returns rule dict or None."""
-    ...
-
-def apply_rule(rule, input_grid):
-    """Apply the rule to produce output grid. Returns list-of-lists or None."""
-    ...
+```json
+{
+  "concept_id": "<name>",
+  "version": 1,
+  "description": "One-line description",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "param_name": {"type": "int|color|color_map|position|str", "infer": "method_name"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "fn_name", "args": {"grid": "$input", "param": "$param_name"}, "output": "result"}
+  ],
+  "result": "$result"
+}
 ```
 
-Then add RULE_TYPE to `WATERFALL_ORDER` in `agent/rule_engine.py`.
+Available primitives (`_primitives.py`): scale, flip_vertical, flip_horizontal, rotate_cw, transpose, gravity, concat_vertical, concat_horizontal, overlay, recolor, fill_region, mask_keep, extract_subgrid, extract_column, extract_row, extract_objects, make_uniform, place_column, place_row
+
+Available inference methods (`_concept_engine.py`): bg_color, ratio_hw, non_bg_single, color_map_from_arckg, column_index_from_arckg, from_examples
+
+Concept rules use ARCKG COMM/DIFF structures for matching, not raw cell diffs.
+
+### FALLBACK: Create a Python rule module (for complex procedural logic)
+
+Only when the transformation requires simulation, pathfinding, or logic that can't be expressed as primitive compositions.
+
+Create `procedural_memory/base_rules/<category>/<name>.py` with `RULE_TYPE`, `CATEGORY`, `try_rule()`, `apply_rule()`. Add to `WATERFALL_ORDER`.
+
+### DO NOT:
+- Hardcode task-specific colors or positions
+- Create one rule per task (that's overfitting)
+- Modify `agent/active_operators.py`
 
 Categories: `color/`, `geometry/`, `fill/`, `structure/`, `connect/`, `separator/`, `detect/`
-Shared helpers: `procedural_memory/base_rules/_helpers.py`
-
-The `patterns` dict contains per-pair cell-level analysis: changed cells grouped into connected components with input/output colors and positions.
-
-Do NOT modify `agent/active_operators.py` — it delegates to the rule engine.
 
 ## ARCKG 5-Level Knowledge Graph (`ARCKG/`)
 
@@ -159,7 +177,8 @@ basics/                  <- visualization
 data/ARC_AGI/            <- ARC tasks (read-only)
 semantic_memory/         <- KG attributes (regenerated per run)
 procedural_memory/       <- learned rules (accumulates)
-  base_rules/            <- rule modules (MAIN EDIT TARGET)
+  concepts/              <- concept JSONs (PREFERRED EDIT TARGET)
+  base_rules/            <- rule modules (fallback for complex logic)
     _helpers.py          <- shared helper functions
     color/               <- color transformation rules
     geometry/            <- geometric transformation rules

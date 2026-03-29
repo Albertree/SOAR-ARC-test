@@ -232,3 +232,43 @@
 **Improvement:** 16/20 → 18/20 (80% → 90%)
 **Memory reuse:** 16 stored rules successfully reused
 **Remaining failures:** 0e206a2e (template-based cross reconstruction), 9f669b64 (block absorb/split)
+
+---
+## Learning Loop -- 2026-03-30 01:11
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 26 -> 26 (+0 learned)
+- Stored rule hits: 18
+- Time: 43s
+- Log: logs/learn_20260330_011025.log
+
+---
+## Learning Loop -- 2026-03-30 01:30
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 26 -> 26 (+0 learned)
+- Stored rule hits: 18
+- Time: 58s
+- Log: logs/learn_20260330_012956.log
+
+---
+## Learning Loop -- 2026-03-30 01:36
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 26 -> 28 (+2 learned)
+- Stored rule hits: 18
+- Time: 57s
+- Log: logs/learn_20260330_013512.log
+
+### Session 9 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `connector_block_split` (structure) — three single-color blocks stacked linearly on uniform background; the middle connector block pushes through one outer block which splits perpendicular to the stack axis, each half growing 1 cell outward; the connector lands at the split block's far edge from the fixed block → solved 9f669b64
+2. `template_rotate_place` (geometry) — connected multi-color template shapes (skeleton + endpoint colors) paired with scattered single-pixel markers; each template is rotated/reflected (1 of 8 rigid transforms) and placed at marker positions via backtracking search; templates are removed from output → solved 0e206a2e
+
+**Improvement:** 18/20 → 20/20 (90% → 100%)
+**Memory reuse:** 18 stored rules successfully reused
+**Milestone:** All 20 training tasks solved!

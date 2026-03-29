@@ -1,0 +1,40 @@
+{
+  "concept_id": "extract_column_keep",
+  "version": 1,
+  "description": "Keep only one column from input, fill rest with background",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "col_index": {
+      "type": "position",
+      "infer": "column_index_from_arckg"
+    },
+    "bg_color": {
+      "type": "color",
+      "infer": "bg_color"
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "extract_column",
+      "args": {"grid": "$input", "col_index": "$col_index"},
+      "output": "column_data"
+    },
+    {
+      "id": "s2",
+      "primitive": "make_uniform",
+      "args": {"height": "$input_height", "width": "$input_width", "color": "$bg_color"},
+      "output": "blank"
+    },
+    {
+      "id": "s3",
+      "primitive": "place_column",
+      "args": {"grid": "$blank", "column": "$column_data", "col_index": "$col_index"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
