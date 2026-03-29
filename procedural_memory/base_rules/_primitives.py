@@ -2736,3 +2736,193 @@ def bridge_markers_to_rects(grid):
                     out[mr + 1][wc] = mc
 
     return out
+
+
+def flood_fill_border_interior(grid, bg=0, exterior_color=2, interior_color=5):
+    """Replace bg cells connected to the grid border with exterior_color,
+    and bg cells NOT connected to the border with interior_color.
+    Non-bg cells are unchanged."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # BFS from all border bg cells
+    visited = set()
+    queue = []
+    for r in range(h):
+        for c in range(w):
+            if (r == 0 or r == h - 1 or c == 0 or c == w - 1) and grid[r][c] == bg:
+                if (r, c) not in visited:
+                    visited.add((r, c))
+                    queue.append((r, c))
+
+    while queue:
+        cr, cc = queue.pop(0)
+        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+            nr, nc = cr + dr, cc + dc
+            if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == bg:
+                visited.add((nr, nc))
+                queue.append((nr, nc))
+
+    output = [row[:] for row in grid]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg:
+                output[r][c] = exterior_color if (r, c) in visited else interior_color
+    return output
+
+
+def invert_tiled_subgrids(grid, sep_value=0, corrupt_value=5):
+    """Grid divided by sep_value rows/cols into a tiled arrangement of sub-grids.
+    Two tile types exist: 'pattern' (uses 2 colors) and 'uniform' (single color).
+    Corrupt tiles have corrupt_value replacing some cells.
+    Inversion: pattern tiles become uniform (dominant color), uniform become pattern.
+    Corrupt tiles are classified by surviving non-corrupt cells, then inverted.
+    Separator lines are cleaned (corrupt_value -> sep_value)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Find separator rows and cols (all sep_value, ignoring corrupt_value)
+    sep_rows = []
+    for r in range(h):
+        if all(grid[r][c] == sep_value or grid[r][c] == corrupt_value for c in range(w)):
+            non_corrupt = [grid[r][c] for c in range(w) if grid[r][c] != corrupt_value]
+            if not non_corrupt or all(v == sep_value for v in non_corrupt):
+                sep_rows.append(r)
+
+    sep_cols = []
+    for c in range(w):
+        if all(grid[r][c] == sep_value or grid[r][c] == corrupt_value for r in range(h)):
+            non_corrupt = [grid[r][c] for r in range(h) if grid[r][c] != corrupt_value]
+            if not non_corrupt or all(v == sep_value for v in non_corrupt):
+                sep_cols.append(c)
+
+    # Extract row/col regions between separators
+    def _regions(sep_indices, total):
+        regions = []
+        prev = 0
+        for s in sorted(sep_indices):
+            if s > prev:
+                regions.append((prev, s - 1))
+            prev = s + 1
+        if prev < total:
+            regions.append((prev, total - 1))
+        return regions
+
+    row_regions = _regions(sep_rows, h)
+    col_regions = _regions(sep_cols, w)
+
+    if not row_regions or not col_regions:
+        return [row[:] for row in grid]
+
+    # Extract sub-grids
+    subgrids = []
+    for ri, (r0, r1) in enumerate(row_regions):
+        for ci, (c0, c1) in enumerate(col_regions):
+            cells = []
+            for r in range(r0, r1 + 1):
+                row_cells = []
+                for c in range(c0, c1 + 1):
+                    row_cells.append(grid[r][c])
+                cells.append(row_cells)
+            subgrids.append((ri, ci, r0, r1, c0, c1, cells))
+
+    # Find the two non-sep, non-corrupt colors
+    all_colors = set()
+    for _, _, _, _, _, _, cells in subgrids:
+        for row in cells:
+            for v in row:
+                if v != sep_value and v != corrupt_value:
+                    all_colors.add(v)
+
+    if len(all_colors) < 2:
+        return [row[:] for row in grid]
+
+    # Find the "pattern" template from clean sub-grids (no corrupt_value)
+    clean_grids = []
+    for ri, ci, r0, r1, c0, c1, cells in subgrids:
+        has_corrupt = any(v == corrupt_value for row in cells for v in row)
+        if not has_corrupt:
+            clean_grids.append(cells)
+
+    if not clean_grids:
+        return [row[:] for row in grid]
+
+    # Count distinct sub-grid types among clean grids
+    grid_counts = {}
+    for cg in clean_grids:
+        key = tuple(tuple(r) for r in cg)
+        grid_counts[key] = grid_counts.get(key, 0) + 1
+
+    # The pattern is the most common clean sub-grid
+    sorted_patterns = sorted(grid_counts.items(), key=lambda x: -x[1])
+    pattern_key = sorted_patterns[0][0]
+    pattern_template = [list(r) for r in pattern_key]
+
+    # Determine dominant color (most frequent in pattern)
+    color_counts = {}
+    for row in pattern_template:
+        for v in row:
+            if v != sep_value and v != corrupt_value:
+                color_counts[v] = color_counts.get(v, 0) + 1
+
+    dominant_color = max(color_counts, key=color_counts.get)
+
+    # Determine the secondary color
+    secondary_colors = [c for c in all_colors if c != dominant_color]
+    secondary_color = secondary_colors[0] if secondary_colors else dominant_color
+
+    # Uniform template = all dominant_color, same dimensions as pattern
+    sh = len(pattern_template)
+    sw = len(pattern_template[0]) if pattern_template else 0
+    uniform_template = [[dominant_color] * sw for _ in range(sh)]
+
+    # Classify each sub-grid as pattern or uniform
+    def _classify(cells):
+        """Returns 'pattern', 'uniform', or 'unknown'."""
+        ch = len(cells)
+        cw = len(cells[0]) if cells else 0
+        if ch != sh or cw != sw:
+            return 'unknown'
+        pattern_match = True
+        uniform_match = True
+        for r in range(ch):
+            for c in range(cw):
+                v = cells[r][c]
+                if v == corrupt_value:
+                    continue
+                if v != pattern_template[r][c]:
+                    pattern_match = False
+                if v != secondary_color:
+                    uniform_match = False
+        if pattern_match and not uniform_match:
+            return 'pattern'
+        if uniform_match and not pattern_match:
+            return 'uniform'
+        if pattern_match and uniform_match:
+            return 'pattern'
+        return 'unknown'
+
+    # Build output
+    output = [[sep_value] * w for _ in range(h)]
+
+    for ri, ci, r0, r1, c0, c1, cells in subgrids:
+        cls = _classify(cells)
+        if cls == 'pattern':
+            template = uniform_template
+        elif cls == 'uniform':
+            template = pattern_template
+        else:
+            template = uniform_template
+
+        for r in range(r0, r1 + 1):
+            for c in range(c0, c1 + 1):
+                tr = r - r0
+                tc = c - c0
+                if tr < len(template) and tc < len(template[0]):
+                    output[r][c] = template[tr][tc]
+
+    return output

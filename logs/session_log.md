@@ -445,3 +445,31 @@
 - Stored rule hits: 34
 - Time: 75s
 - Log: logs/learn_20260330_064707.log
+
+---
+## Learning Loop -- 2026-03-30 06:50
+
+- Split: training, Tasks: 40
+- Correct: 37 / 40 (92.5%)
+- Rules: 37 -> 37 (+0 learned)
+- Stored rule hits: 37
+- Time: 74s
+- Log: logs/learn_20260330_064916.log
+
+---
+## Session 15 (Claude) -- 2026-03-30 07:09
+
+### Changes
+- Added `flood_fill_border_interior` primitive to `_primitives.py` — BFS from border cells of bg color, marks border-connected bg cells as exterior_color and enclosed bg cells as interior_color
+- Added `invert_tiled_subgrids` primitive to `_primitives.py` — finds separator rows/cols (value 0, ignoring corruption value 5), divides grid into tiled sub-grids, identifies majority pattern template vs uniform tiles, inverts them (pattern→uniform, uniform→pattern), and repairs corrupted tiles
+- Created `procedural_memory/concepts/flood_fill_border_interior.json` (solves 84db8fc4)
+- Created `procedural_memory/concepts/invert_tiled_subgrids.json` (solves 6350f1f4)
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 39 / 40 (97.5%) — up from 37/40 (92.5%)
+- Rules: 37 -> 39 (+2 learned)
+- Stored rule hits: 37
+- Time: 74s
+- Log: logs/learn_20260330_070806.log
+- Remaining failure: 5daaa586 (separator-bounded gravity with accumulation from all regions)
