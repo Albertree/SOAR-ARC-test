@@ -538,6 +538,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_separator_xor(patterns, task)
 
+        # Strategy: separator OR (split by separator, OR two halves)
+        if rule is None:
+            rule = self._try_separator_or(patterns, task)
+
+        # Strategy: line connect (same-color pixel pairs → draw lines between them)
+        if rule is None:
+            rule = self._try_line_connect(patterns, task)
+
         # Strategy: bbox fill (fill bounding box of shape with fill color)
         if rule is None:
             rule = self._try_bbox_fill(patterns, task)
@@ -2998,6 +3006,150 @@ class GeneralizeOperator(Operator):
                 return None
         return {"type": "separator_xor", "output_color": learned["output_color"],
                 "sep_color": learned["sep_color"], "confidence": 1.0}
+
+    # ---- strategy: separator OR (split by separator, OR two halves) -------
+
+    def _try_separator_or(self, patterns, task):
+        """
+        Detect: input split by a full separator row (all same non-0 color) into
+        two equal-sized sub-grids. Top uses color A, bottom uses color B.
+        Output: where at least one of (top, bottom) is non-zero → output_color;
+        where both are zero → 0.  Category: two-half OR / boolean overlay tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        learned = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            # Find separator row: must split grid into two equal halves
+            sep_row = None
+            sep_color = None
+            for r in range(h):
+                vals = set(ig[r])
+                if len(vals) == 1 and 0 not in vals:
+                    top_h = r
+                    bot_h = h - r - 1
+                    if top_h == bot_h and top_h > 0:
+                        sep_row = r
+                        sep_color = ig[r][0]
+                        break
+            if sep_row is None:
+                return None
+            top = ig[:sep_row]
+            bottom = ig[sep_row + 1:]
+            th, bh = len(top), len(bottom)
+            if th != bh or th != oh or w != ow:
+                return None
+            # Detect the two half colors
+            top_colors = set()
+            bot_colors = set()
+            for row in top:
+                for c in row:
+                    if c != 0:
+                        top_colors.add(c)
+            for row in bottom:
+                for c in row:
+                    if c != 0:
+                        bot_colors.add(c)
+            if len(top_colors) != 1 or len(bot_colors) != 1:
+                return None
+            tc = next(iter(top_colors))
+            bc = next(iter(bot_colors))
+            if tc == bc:
+                return None
+            # Detect output color
+            out_colors = set()
+            for row in og:
+                for c in row:
+                    if c != 0:
+                        out_colors.add(c)
+            if len(out_colors) != 1:
+                return None
+            oc = next(iter(out_colors))
+            # Verify OR: at least one of top/bottom non-zero → oc, else 0
+            ok = True
+            for r in range(th):
+                for c in range(w):
+                    t_on = (top[r][c] != 0)
+                    b_on = (bottom[r][c] != 0)
+                    expected = oc if (t_on or b_on) else 0
+                    if og[r][c] != expected:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                return None
+            if learned is None:
+                learned = {"sep_color": sep_color, "output_color": oc}
+            elif learned["output_color"] != oc:
+                return None
+        return {"type": "separator_or", "output_color": learned["output_color"],
+                "sep_color": learned["sep_color"], "confidence": 1.0}
+
+    # ---- strategy: line connect (same-color pairs → draw lines) ----------
+
+    def _try_line_connect(self, patterns, task):
+        """
+        Detect: sparse grid with isolated colored pixels. Each non-zero color
+        appears exactly twice. Pairs aligned in the same row → horizontal line
+        between them. Pairs in the same column → vertical line between them.
+        At crossings, vertical lines overwrite horizontal lines.
+        Category: pixel-pair line-drawing / crosshair tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            if len(og) != h or len(og[0]) != w:
+                return None
+            # Collect colored pixel positions
+            color_positions = {}
+            for r in range(h):
+                for c in range(w):
+                    v = ig[r][c]
+                    if v != 0:
+                        color_positions.setdefault(v, []).append((r, c))
+            if not color_positions:
+                return None
+            # Each color must appear exactly twice
+            for col, positions in color_positions.items():
+                if len(positions) != 2:
+                    return None
+            # Each pair must be aligned (same row or same column)
+            for col, positions in color_positions.items():
+                (r1, c1), (r2, c2) = positions
+                if r1 != r2 and c1 != c2:
+                    return None
+            # Build expected output: draw lines, vertical overwrites horizontal
+            expected = [[0] * w for _ in range(h)]
+            h_lines = []
+            v_lines = []
+            for col, positions in color_positions.items():
+                (r1, c1), (r2, c2) = positions
+                if r1 == r2:
+                    h_lines.append((r1, min(c1, c2), max(c1, c2), col))
+                else:
+                    v_lines.append((min(r1, r2), max(r1, r2), c1, col))
+            # Draw horizontal lines first
+            for r, c_min, c_max, col in h_lines:
+                for c in range(c_min, c_max + 1):
+                    expected[r][c] = col
+            # Draw vertical lines on top (vertical wins at crossings)
+            for r_min, r_max, c, col in v_lines:
+                for r in range(r_min, r_max + 1):
+                    expected[r][c] = col
+            # Verify
+            if expected != og:
+                return None
+        return {"type": "line_connect", "confidence": 1.0}
 
     # ---- strategy: bbox fill (fill bounding box of shape) ----------------
 
@@ -5542,6 +5694,10 @@ class PredictOperator(Operator):
             return self._apply_column_fill_tile(rule, input_grid)
         if rule_type == "separator_xor":
             return self._apply_separator_xor(rule, input_grid)
+        if rule_type == "separator_or":
+            return self._apply_separator_or(rule, input_grid)
+        if rule_type == "line_connect":
+            return self._apply_line_connect(rule, input_grid)
         if rule_type == "bbox_fill":
             return self._apply_bbox_fill(rule, input_grid)
         if rule_type == "sector_max_fill":
@@ -7035,6 +7191,67 @@ class PredictOperator(Operator):
                 b_on = (bottom[r][c] != 0)
                 row.append(oc if (t_on != b_on) else 0)
             out.append(row)
+        return out
+
+    def _apply_separator_or(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        oc = rule["output_color"]
+        sep_row = None
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and 0 not in vals and r > 0 and h - r - 1 == r:
+                sep_row = r
+                break
+        if sep_row is None:
+            return [row[:] for row in raw]
+        top = raw[:sep_row]
+        bottom = raw[sep_row + 1:]
+        th = len(top)
+        bh = len(bottom)
+        if th != bh or th == 0:
+            return [row[:] for row in raw]
+        out = []
+        for r in range(th):
+            row = []
+            for c in range(w):
+                t_on = (top[r][c] != 0)
+                b_on = (bottom[r][c] != 0)
+                row.append(oc if (t_on or b_on) else 0)
+            out.append(row)
+        return out
+
+    def _apply_line_connect(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        # Collect colored pixel positions
+        color_positions = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0:
+                    color_positions.setdefault(v, []).append((r, c))
+        # Separate into horizontal and vertical pairs
+        h_lines = []
+        v_lines = []
+        for col, positions in color_positions.items():
+            if len(positions) != 2:
+                return [row[:] for row in raw]
+            (r1, c1), (r2, c2) = positions
+            if r1 == r2:
+                h_lines.append((r1, min(c1, c2), max(c1, c2), col))
+            elif c1 == c2:
+                v_lines.append((min(r1, r2), max(r1, r2), c1, col))
+            else:
+                return [row[:] for row in raw]
+        # Build output: horizontal first, vertical overwrites
+        out = [[0] * w for _ in range(h)]
+        for r, c_min, c_max, col in h_lines:
+            for c in range(c_min, c_max + 1):
+                out[r][c] = col
+        for r_min, r_max, c, col in v_lines:
+            for r in range(r_min, r_max + 1):
+                out[r][c] = col
         return out
 
     def _apply_bbox_fill(self, rule, input_grid):

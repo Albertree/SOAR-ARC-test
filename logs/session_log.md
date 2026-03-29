@@ -912,3 +912,59 @@ to find new failures (41/80 = 51.2% before improvements).
 - Time: 141s
 - Log: logs/learn_20260329_191017.log
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 19:16
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 117 -> 122 (+5 learned)
+- Stored rule hits: 45
+- Time: 153s
+- Log: logs/learn_20260329_191329.log
+
+---
+## Learning Loop -- 2026-03-29 19:27
+
+- Split: training, Tasks: 80
+- Correct: 49 / 80 (61.3%)
+- Rules: 122 -> 128 (+6 learned)
+- Stored rule hits: 45
+- Time: 143s
+- Log: logs/learn_20260329_192451.log
+
+---
+## Learning Loop -- 2026-03-29 19:31
+
+- Split: training, Tasks: 80
+- Correct: 50 / 80 (62.5%)
+- Rules: 128 -> 134 (+6 learned)
+- Stored rule hits: 46
+- Time: 151s
+- Log: logs/learn_20260329_192906.log
+
+---
+## Session 20 -- 2026-03-29
+
+### New strategies added (2):
+
+1. **separator_or** (506d28a5): Input split by a full separator row (all same
+   non-0 color) into two equal-sized sub-grids. Top half uses color A, bottom
+   uses color B. Output: where at least one half is non-zero → output_color;
+   both zero → 0. Category: two-half OR / boolean overlay tasks.
+
+2. **line_connect** (070dd51e): Sparse grid with isolated colored pixels. Each
+   non-zero color appears exactly twice. Pairs aligned in same row → horizontal
+   line between them. Pairs in same column → vertical line between them. At
+   crossings, vertical lines overwrite horizontal lines. Category: pixel-pair
+   line-drawing / crosshair tasks.
+
+### Results
+
+- Split: training, Tasks: 80
+- Correct: 50 / 80 (62.5%)  [##################............]
+- Previous: 48 / 80 (60.0%)  -- improvement: +2 tasks
+- Rules: 128 -> 134 (+6 learned)
+- Stored rule hits: 46
+- Time: 151s
+- Regression gate (08ed6ac7): CORRECT
