@@ -839,3 +839,76 @@ to find new failures (41/80 = 51.2% before improvements).
 - Stored rule hits: 42
 - Time: 135s
 - Log: logs/learn_20260329_185547.log
+
+---
+## Learning Loop -- 2026-03-29 19:00
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)
+- Rules: 98 -> 104 (+6 learned)
+- Stored rule hits: 42
+- Time: 136s
+- Log: logs/learn_20260329_185837.log
+
+---
+## Learning Loop -- 2026-03-29 19:06
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 104 -> 104 (+0 learned)
+- Stored rule hits: 0
+- Time: 9s
+- Log: logs/learn_20260329_190601.log
+
+---
+## Learning Loop -- 2026-03-29 19:09
+
+- Split: training, Tasks: 80
+- Correct: 47 / 80 (58.8%)
+- Rules: 107 -> 112 (+5 learned)
+- Stored rule hits: 45
+- Time: 172s
+- Log: logs/learn_20260329_190650.log
+
+---
+## Learning Loop -- 2026-03-29 19:12
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 112 -> 117 (+5 learned)
+- Stored rule hits: 45
+- Time: 141s
+- Log: logs/learn_20260329_191017.log
+
+---
+## Session 19 -- 2026-03-29 19:06
+
+### New strategies added (3):
+
+1. **separator_xor** (99b1bc43): Input split by a full separator row (all same
+   non-0 color) into two equal-sized sub-grids. Top half uses color A, bottom
+   uses color B. Output: where exactly one half is non-zero → output_color;
+   both or neither → 0. Category: two-half XOR / binary overlay tasks.
+
+2. **bbox_fill** (6d75e8bb): Single foreground color (e.g. 8) on black
+   background. The bounding box of all foreground pixels is computed; every
+   0-cell inside the bbox becomes a fill color (e.g. 2), while foreground
+   pixels are preserved. Category: bounding-box interior fill / shape
+   completion tasks.
+
+3. **sector_max_fill** (29623171): Grid divided by full rows/cols of a
+   separator color (e.g. 5) into equal-sized sectors. Each sector has scattered
+   pixels of one accent color. Sector(s) with the maximum pixel count are
+   filled entirely with the accent color; all others cleared to 0. Separators
+   unchanged. Category: grid-sector voting / max-count fill tasks.
+
+### Results
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)  [##################............]
+- Previous: 45 / 80 (56.2%)  -- improvement: +3 tasks
+- Rules: 112 -> 117 (+5 learned)
+- Stored rule hits: 45
+- Time: 141s
+- Log: logs/learn_20260329_191017.log
+- Regression gate (08ed6ac7): CORRECT

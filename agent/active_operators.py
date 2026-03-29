@@ -534,6 +534,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_column_fill_tile(patterns, task)
 
+        # Strategy: separator XOR (split by separator, XOR two halves)
+        if rule is None:
+            rule = self._try_separator_xor(patterns, task)
+
+        # Strategy: bbox fill (fill bounding box of shape with fill color)
+        if rule is None:
+            rule = self._try_bbox_fill(patterns, task)
+
+        # Strategy: sector max fill (grid ÷ by separator lines → fill max-count sectors)
+        if rule is None:
+            rule = self._try_sector_max_fill(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -2906,6 +2918,288 @@ class GeneralizeOperator(Operator):
             return None
         return {"type": "column_fill_tile", "fill_color": fill_color, "confidence": 1.0}
 
+    # ---- strategy: separator XOR (split by separator, binary op) --------
+
+    def _try_separator_xor(self, patterns, task):
+        """
+        Detect: input split by a full separator row (all same non-0 color) into
+        two equal-sized sub-grids. Top uses color A, bottom uses color B.
+        Output: where exactly one of (top, bottom) is non-zero → output_color;
+        where both or neither → 0.  Category: two-half XOR / overlay tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        learned = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            # Find separator row (all cells same non-0 color)
+            sep_row = None
+            sep_color = None
+            for r in range(h):
+                vals = set(ig[r])
+                if len(vals) == 1 and 0 not in vals:
+                    sep_row = r
+                    sep_color = ig[r][0]
+                    break
+            if sep_row is None:
+                return None
+            top = ig[:sep_row]
+            bottom = ig[sep_row + 1:]
+            th, bh = len(top), len(bottom)
+            if th != bh or th != oh or w != ow:
+                return None
+            # Detect the two half colors
+            top_colors = set()
+            bot_colors = set()
+            for row in top:
+                for c in row:
+                    if c != 0:
+                        top_colors.add(c)
+            for row in bottom:
+                for c in row:
+                    if c != 0:
+                        bot_colors.add(c)
+            if len(top_colors) != 1 or len(bot_colors) != 1:
+                return None
+            tc = next(iter(top_colors))
+            bc = next(iter(bot_colors))
+            if tc == bc:
+                return None
+            # Detect output color
+            out_colors = set()
+            for row in og:
+                for c in row:
+                    if c != 0:
+                        out_colors.add(c)
+            if len(out_colors) != 1:
+                return None
+            oc = next(iter(out_colors))
+            # Verify XOR: exactly one of top/bottom non-zero → oc, else 0
+            ok = True
+            for r in range(th):
+                for c in range(w):
+                    t_on = (top[r][c] != 0)
+                    b_on = (bottom[r][c] != 0)
+                    expected = oc if (t_on != b_on) else 0
+                    if og[r][c] != expected:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                return None
+            if learned is None:
+                learned = {"sep_color": sep_color, "output_color": oc}
+            elif learned["output_color"] != oc:
+                return None
+        return {"type": "separator_xor", "output_color": learned["output_color"],
+                "sep_color": learned["sep_color"], "confidence": 1.0}
+
+    # ---- strategy: bbox fill (fill bounding box of shape) ----------------
+
+    def _try_bbox_fill(self, patterns, task):
+        """
+        Detect: single foreground color on bg 0. Output fills the bounding box
+        of the foreground shape: 0-cells inside bbox become fill_color, fg stays.
+        Category: bounding-box interior fill / shape completion tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        fill_color = None
+        fg_color = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if h != oh or w != ow:
+                return None
+            # Detect single foreground color
+            fgs = set()
+            for row in ig:
+                for c in row:
+                    if c != 0:
+                        fgs.add(c)
+            if len(fgs) != 1:
+                return None
+            fg = next(iter(fgs))
+            if fg_color is None:
+                fg_color = fg
+            elif fg_color != fg:
+                return None
+            # Bounding box of fg
+            min_r, max_r, min_c, max_c = h, -1, w, -1
+            for r in range(h):
+                for c in range(w):
+                    if ig[r][c] == fg:
+                        min_r = min(min_r, r)
+                        max_r = max(max_r, r)
+                        min_c = min(min_c, c)
+                        max_c = max(max_c, c)
+            if max_r < 0:
+                return None
+            # Detect fill color: new color in output that wasn't in input
+            new_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if og[r][c] != ig[r][c] and og[r][c] != 0:
+                        new_colors.add(og[r][c])
+            if len(new_colors) != 1:
+                return None
+            fc = next(iter(new_colors))
+            if fill_color is None:
+                fill_color = fc
+            elif fill_color != fc:
+                return None
+            # Verify: inside bbox, 0→fc; fg stays; outside bbox unchanged
+            ok = True
+            for r in range(h):
+                for c in range(w):
+                    if min_r <= r <= max_r and min_c <= c <= max_c:
+                        if ig[r][c] == fg:
+                            expected = fg
+                        else:
+                            expected = fc
+                    else:
+                        expected = ig[r][c]
+                    if og[r][c] != expected:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                return None
+        return {"type": "bbox_fill", "fg_color": fg_color,
+                "fill_color": fill_color, "confidence": 1.0}
+
+    # ---- strategy: sector max fill (grid ÷ separators → fill max sectors) -
+
+    def _try_sector_max_fill(self, patterns, task):
+        """
+        Detect: grid divided by full rows/cols of a separator color into NxN
+        equal-sized sectors. Each sector has scattered pixels of one accent color.
+        Output: sector(s) with the maximum pixel count are filled entirely with
+        the accent color; others are cleared to 0. Separators unchanged.
+        Category: grid-sector voting / max-count fill tasks.
+        """
+        pairs = task.example_pairs
+        if not pairs:
+            return None
+        sep_color = None
+        for pair in pairs:
+            ig = pair.input_grid.raw
+            og = pair.output_grid.raw
+            h, w = len(ig), len(ig[0])
+            oh, ow = len(og), len(og[0])
+            if h != oh or w != ow:
+                return None
+            # Find separator rows (all cells = some non-0 color)
+            sep_rows = []
+            sc_cand = None
+            for r in range(h):
+                vals = set(ig[r])
+                if len(vals) == 1 and 0 not in vals:
+                    sep_rows.append(r)
+                    sc_cand = ig[r][0]
+            # Find separator cols
+            sep_cols = []
+            for c in range(w):
+                vals = set(ig[r_][c] for r_ in range(h))
+                if len(vals) == 1 and 0 not in vals:
+                    sep_cols.append(c)
+            if not sep_rows or not sep_cols or sc_cand is None:
+                return None
+            if sep_color is None:
+                sep_color = sc_cand
+            elif sep_color != sc_cand:
+                return None
+            # Extract sector boundaries
+            row_bounds = []
+            prev = 0
+            for sr in sep_rows:
+                if sr > prev:
+                    row_bounds.append((prev, sr - 1))
+                prev = sr + 1
+            if prev < h:
+                row_bounds.append((prev, h - 1))
+            col_bounds = []
+            prev = 0
+            for sc in sep_cols:
+                if sc > prev:
+                    col_bounds.append((prev, sc - 1))
+                prev = sc + 1
+            if prev < w:
+                col_bounds.append((prev, w - 1))
+            if not row_bounds or not col_bounds:
+                return None
+            # Check sectors are equal-sized
+            sec_h = row_bounds[0][1] - row_bounds[0][0] + 1
+            sec_w = col_bounds[0][1] - col_bounds[0][0] + 1
+            for rb in row_bounds:
+                if rb[1] - rb[0] + 1 != sec_h:
+                    return None
+            for cb in col_bounds:
+                if cb[1] - cb[0] + 1 != sec_w:
+                    return None
+            # Count accent pixels per sector and find accent color
+            accent_color = None
+            sector_counts = {}
+            for ri, (r0, r1) in enumerate(row_bounds):
+                for ci, (c0, c1) in enumerate(col_bounds):
+                    cnt = 0
+                    for r in range(r0, r1 + 1):
+                        for c in range(c0, c1 + 1):
+                            v = ig[r][c]
+                            if v != 0 and v != sep_color:
+                                cnt += 1
+                                if accent_color is None:
+                                    accent_color = v
+                                elif accent_color != v:
+                                    return None
+                    sector_counts[(ri, ci)] = cnt
+            if accent_color is None:
+                return None
+            max_cnt = max(sector_counts.values())
+            if max_cnt == 0:
+                return None
+            max_sectors = {k for k, v in sector_counts.items() if v == max_cnt}
+            # Verify output: max sectors filled, others cleared, separators kept
+            ok = True
+            for r in range(h):
+                for c in range(w):
+                    if r in sep_rows or c in sep_cols:
+                        expected = sep_color
+                    else:
+                        # Find which sector
+                        sec = None
+                        for ri, (r0, r1) in enumerate(row_bounds):
+                            if r0 <= r <= r1:
+                                for ci, (c0, c1) in enumerate(col_bounds):
+                                    if c0 <= c <= c1:
+                                        sec = (ri, ci)
+                                        break
+                                break
+                        if sec is None:
+                            expected = ig[r][c]
+                        elif sec in max_sectors:
+                            expected = accent_color
+                        else:
+                            expected = 0
+                    if og[r][c] != expected:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                return None
+        return {"type": "sector_max_fill", "sep_color": sep_color,
+                "confidence": 1.0}
+
     # ---- strategy: simple color mapping ---------------------------------
 
     def _try_color_mapping(self, patterns):
@@ -5246,6 +5540,12 @@ class PredictOperator(Operator):
             return self._apply_double_mirror(rule, input_grid)
         if rule_type == "column_fill_tile":
             return self._apply_column_fill_tile(rule, input_grid)
+        if rule_type == "separator_xor":
+            return self._apply_separator_xor(rule, input_grid)
+        if rule_type == "bbox_fill":
+            return self._apply_bbox_fill(rule, input_grid)
+        if rule_type == "sector_max_fill":
+            return self._apply_sector_max_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6706,6 +7006,124 @@ class PredictOperator(Operator):
         out = []
         for r in range(2 * h):
             out.append([transformed[r % h][c % w] for c in range(2 * w)])
+        return out
+
+    def _apply_separator_xor(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        oc = rule["output_color"]
+        # Find separator row
+        sep_row = None
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and 0 not in vals:
+                sep_row = r
+                break
+        if sep_row is None:
+            return [row[:] for row in raw]
+        top = raw[:sep_row]
+        bottom = raw[sep_row + 1:]
+        th = len(top)
+        bh = len(bottom)
+        if th != bh or th == 0:
+            return [row[:] for row in raw]
+        out = []
+        for r in range(th):
+            row = []
+            for c in range(w):
+                t_on = (top[r][c] != 0)
+                b_on = (bottom[r][c] != 0)
+                row.append(oc if (t_on != b_on) else 0)
+            out.append(row)
+        return out
+
+    def _apply_bbox_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        fg = rule["fg_color"]
+        fc = rule["fill_color"]
+        # Find bounding box
+        min_r, max_r, min_c, max_c = h, -1, w, -1
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fg:
+                    min_r = min(min_r, r)
+                    max_r = max(max_r, r)
+                    min_c = min(min_c, c)
+                    max_c = max(max_c, c)
+        out = [row[:] for row in raw]
+        if max_r < 0:
+            return out
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if out[r][c] == 0:
+                    out[r][c] = fc
+        return out
+
+    def _apply_sector_max_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        sc = rule["sep_color"]
+        # Find separator rows and cols
+        sep_rows = set()
+        for r in range(h):
+            vals = set(raw[r])
+            if len(vals) == 1 and raw[r][0] == sc:
+                sep_rows.add(r)
+        sep_cols = set()
+        for c in range(w):
+            vals = set(raw[r_][c] for r_ in range(h))
+            if len(vals) == 1 and raw[0][c] == sc:
+                sep_cols.add(c)
+        # Sector boundaries
+        row_bounds = []
+        prev = 0
+        for sr in sorted(sep_rows):
+            if sr > prev:
+                row_bounds.append((prev, sr - 1))
+            prev = sr + 1
+        if prev < h:
+            row_bounds.append((prev, h - 1))
+        col_bounds = []
+        prev = 0
+        for sc_ in sorted(sep_cols):
+            if sc_ > prev:
+                col_bounds.append((prev, sc_ - 1))
+            prev = sc_ + 1
+        if prev < w:
+            col_bounds.append((prev, w - 1))
+        # Count per sector
+        accent_color = None
+        sector_counts = {}
+        for ri, (r0, r1) in enumerate(row_bounds):
+            for ci, (c0, c1) in enumerate(col_bounds):
+                cnt = 0
+                for r in range(r0, r1 + 1):
+                    for c in range(c0, c1 + 1):
+                        v = raw[r][c]
+                        if v != 0 and v != sc:
+                            cnt += 1
+                            accent_color = v
+                sector_counts[(ri, ci)] = cnt
+        max_cnt = max(sector_counts.values()) if sector_counts else 0
+        max_sectors = {k for k, v in sector_counts.items() if v == max_cnt} if max_cnt > 0 else set()
+        # Build output
+        out = [[0] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if r in sep_rows or c in sep_cols:
+                    out[r][c] = sc
+                else:
+                    sec = None
+                    for ri, (r0, r1) in enumerate(row_bounds):
+                        if r0 <= r <= r1:
+                            for ci, (c0, c1) in enumerate(col_bounds):
+                                if c0 <= c <= c1:
+                                    sec = (ri, ci)
+                                    break
+                            break
+                    if sec in max_sectors and accent_color is not None:
+                        out[r][c] = accent_color
         return out
 
 
