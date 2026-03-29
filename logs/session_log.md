@@ -473,3 +473,29 @@
 - Time: 74s
 - Log: logs/learn_20260330_070806.log
 - Remaining failure: 5daaa586 (separator-bounded gravity with accumulation from all regions)
+
+---
+## Learning Loop -- 2026-03-30 07:11
+
+- Split: training, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 39 -> 39 (+0 learned)
+- Stored rule hits: 39
+- Time: 75s
+- Log: logs/learn_20260330_071038.log
+
+---
+## Session 16 (Claude) -- 2026-03-30 07:22
+
+### Changes
+- Added `separator_gravity_bars` primitive to `_primitives.py` — finds 4 separator lines (2 horizontal, 2 vertical) defining a center rectangle; identifies scattered marker color matching one separator; fills bars from the matching wall to the farthest marker per column/row within center
+- Created `procedural_memory/concepts/separator_gravity_bars.json` (solves 5daaa586)
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%) — up from 39/40 (97.5%)
+- Rules: 39 -> 40 (+1 learned)
+- Stored rule hits: 39
+- Time: 77s
+- Log: logs/learn_20260330_072140.log
+- Regression gate (08ed6ac7): CORRECT

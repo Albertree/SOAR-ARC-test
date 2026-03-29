@@ -2926,3 +2926,149 @@ def invert_tiled_subgrids(grid, sep_value=0, corrupt_value=5):
                     output[r][c] = template[tr][tc]
 
     return output
+
+
+# ------------------------------------------------------------------
+# separator_gravity_bars -- extract center rectangle from a grid
+# divided by 4 separators, then fill bars toward the gravity wall
+# ------------------------------------------------------------------
+
+def separator_gravity_bars(grid):
+    """Grid has 2 horizontal + 2 vertical full-span separator lines defining
+    a center rectangle.  One separator's color also appears scattered elsewhere
+    as a marker.  The output is the center rectangle framed by the separator
+    borders.  Inside, for each column (vertical gravity) or row (horizontal
+    gravity), a solid bar of the marker color extends from the matching
+    separator wall to the farthest marker in that line within the center.
+
+    Returns the framed output grid, or None on failure.
+    """
+    from collections import Counter
+
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+    if H < 4 or W < 4:
+        return None
+
+    # -- find separator rows (every cell non-zero) -------------------
+    sep_rows = []
+    for r in range(H):
+        if all(grid[r][c] != 0 for c in range(W)):
+            cnt = Counter(grid[r])
+            sep_rows.append((r, cnt.most_common(1)[0][0]))
+    if len(sep_rows) != 2:
+        return None
+
+    # -- find separator cols -----------------------------------------
+    sep_cols = []
+    for c in range(W):
+        col = [grid[r][c] for r in range(H)]
+        if all(v != 0 for v in col):
+            cnt = Counter(col)
+            sep_cols.append((c, cnt.most_common(1)[0][0]))
+    if len(sep_cols) != 2:
+        return None
+
+    r1, top_c = sep_rows[0]
+    r2, bot_c = sep_rows[1]
+    c1, left_c = sep_cols[0]
+    c2, right_c = sep_cols[1]
+
+    sep_colors = {top_c, bot_c, left_c, right_c}
+
+    # -- identify marker color (separator color that appears scattered)
+    marker = None
+    for r in range(H):
+        if r == r1 or r == r2:
+            continue
+        for c in range(W):
+            if c == c1 or c == c2:
+                continue
+            v = grid[r][c]
+            if v != 0 and v in sep_colors:
+                marker = v
+                break
+        if marker is not None:
+            break
+    if marker is None:
+        return None
+
+    # -- gravity direction -------------------------------------------
+    if marker == top_c:
+        gravity = 'up'
+    elif marker == bot_c:
+        gravity = 'down'
+    elif marker == left_c:
+        gravity = 'left'
+    else:
+        gravity = 'right'
+
+    # -- center region bounds ----------------------------------------
+    inner_r1 = r1 + 1
+    inner_r2 = r2 - 1
+    inner_c1 = c1 + 1
+    inner_c2 = c2 - 1
+    inner_h = inner_r2 - inner_r1 + 1
+    inner_w = inner_c2 - inner_c1 + 1
+    if inner_h < 1 or inner_w < 1:
+        return None
+
+    # -- build inner grid with gravity bars --------------------------
+    inner = [[0] * inner_w for _ in range(inner_h)]
+
+    if gravity in ('up', 'down'):
+        for col in range(inner_w):
+            ic = inner_c1 + col
+            positions = []
+            for r in range(inner_r1, inner_r2 + 1):
+                if grid[r][ic] == marker:
+                    positions.append(r - inner_r1)
+            if not positions:
+                continue
+            if gravity == 'down':
+                farthest = min(positions)
+                for row in range(farthest, inner_h):
+                    inner[row][col] = marker
+            else:
+                farthest = max(positions)
+                for row in range(farthest + 1):
+                    inner[row][col] = marker
+    else:
+        for row in range(inner_h):
+            ir = inner_r1 + row
+            positions = []
+            for c in range(inner_c1, inner_c2 + 1):
+                if grid[ir][c] == marker:
+                    positions.append(c - inner_c1)
+            if not positions:
+                continue
+            if gravity == 'right':
+                farthest = min(positions)
+                for col in range(farthest, inner_w):
+                    inner[row][col] = marker
+            else:
+                farthest = max(positions)
+                for col in range(farthest + 1):
+                    inner[row][col] = marker
+
+    # -- assemble output with borders from input intersections -------
+    out_h = inner_h + 2
+    out_w = inner_w + 2
+    out = [[0] * out_w for _ in range(out_h)]
+
+    # top / bottom border rows (read directly from input separators)
+    for oc in range(out_w):
+        out[0][oc] = grid[r1][c1 + oc]
+        out[out_h - 1][oc] = grid[r2][c1 + oc]
+
+    # left / right border columns
+    for orow in range(out_h):
+        out[orow][0] = grid[r1 + orow][c1]
+        out[orow][out_w - 1] = grid[r1 + orow][c2]
+
+    # fill inner
+    for r in range(inner_h):
+        for c in range(inner_w):
+            out[r + 1][c + 1] = inner[r][c]
+
+    return out
