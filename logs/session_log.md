@@ -202,3 +202,33 @@
 
 **Improvement:** 14/20 → 16/20 (70% → 80%)
 **Memory reuse:** 14 stored rules successfully reused
+
+---
+## Learning Loop -- 2026-03-30 00:44
+
+- Split: training, Tasks: 20
+- Correct: 16 / 20 (80.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 16
+- Time: 37s
+- Log: logs/learn_20260330_004347.log
+
+---
+## Learning Loop -- 2026-03-30 01:09
+
+- Split: training, Tasks: 20
+- Correct: 18 / 20 (90.0%)
+- Rules: 24 -> 26 (+2 learned)
+- Stored rule hits: 16
+- Time: 38s
+- Log: logs/learn_20260330_010917.log
+
+### Session 8 Analysis (Claude Code)
+
+**New rules added (2):**
+1. `count_diagonal_x` (detect) — two non-bg colors scattered as isolated pixels; count each (W=larger, H=smaller); draw H×W rectangle at bottom-left of 16×16 grid filled with 2, with two crossing diagonal lines of 4 from bottom corners → solved 878187ab
+2. `tile_grid_pack` (structure) — 30×30 grid with a border row/col of 1s and 3×3 hollow tiles in a 7×7 grid; tiles split into colored and 8-halves by a separator at position 3; output removes separator and gravity-packs non-zero values toward the 8-half side → solved afe3afe9
+
+**Improvement:** 16/20 → 18/20 (80% → 90%)
+**Memory reuse:** 16 stored rules successfully reused
+**Remaining failures:** 0e206a2e (template-based cross reconstruction), 9f669b64 (block absorb/split)

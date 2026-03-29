@@ -41,6 +41,8 @@ WATERFALL_ORDER = [
     "color_mapping",
     "grid_shear",
     "gravity_settle",
+    "count_diagonal_x",
+    "tile_grid_pack",
 ]
 
 
