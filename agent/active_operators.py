@@ -566,6 +566,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_sector_max_fill(patterns, task)
 
+        # Strategy: boustrophedon sort (scattered pixels → small grid in snake order)
+        if rule is None:
+            rule = self._try_boustrophedon_sort(patterns, task)
+
+        # Strategy: concentric color rotate (cyclic color shift on nested frames)
+        if rule is None:
+            rule = self._try_concentric_color_rotate(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -3595,6 +3603,165 @@ class GeneralizeOperator(Operator):
                 "output_shape": list(output_shape),
                 "confidence": 1.0}
 
+    # ---- strategy: boustrophedon sort ------------------------------------
+
+    def _try_boustrophedon_sort(self, patterns, task):
+        """
+        Detect: scattered non-zero pixels on a large grid are collected,
+        sorted by column, then placed into a smaller NxM output grid in
+        boustrophedon (snake/zigzag) order — even rows L-R, odd rows R-L.
+        Category: pixel collection / spatial sorting / grid compression.
+        """
+        if task is None:
+            return None
+        # Output must be smaller than input
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        out_rows = None
+        out_cols = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            if h_out >= h_in or w_out >= w_in:
+                return None
+            if h_out == 0 or w_out == 0:
+                return None
+
+            # Consistent output dimensions across pairs
+            if out_rows is None:
+                out_rows = h_out
+                out_cols = w_out
+            elif out_rows != h_out or out_cols != w_out:
+                return None
+
+            # Collect non-zero pixels from input, sorted by column then row
+            pixels = []
+            for r in range(h_in):
+                for c in range(w_in):
+                    if raw_in[r][c] != 0:
+                        pixels.append((c, r, raw_in[r][c]))
+            pixels.sort(key=lambda p: (p[0], p[1]))
+            colors = [p[2] for p in pixels]
+
+            # Build expected output in boustrophedon order
+            capacity = out_rows * out_cols
+            # Pad with zeros if fewer pixels than capacity
+            while len(colors) < capacity:
+                colors.append(0)
+
+            expected = []
+            for row_i in range(out_rows):
+                start = row_i * out_cols
+                row_colors = colors[start:start + out_cols]
+                if row_i % 2 == 1:
+                    row_colors = row_colors[::-1]
+                expected.append(row_colors)
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "boustrophedon_sort",
+                "out_rows": out_rows, "out_cols": out_cols,
+                "confidence": 1.0}
+
+    # ---- strategy: concentric color rotate --------------------------------
+
+    def _try_concentric_color_rotate(self, patterns, task):
+        """
+        Detect: grid is made of concentric rectangular frames, each a single
+        color. The transformation cyclically rotates the colors: if layers
+        outer-to-inner are [A, B, C], output maps A→C, B→A, C→B.
+        Category: concentric frame color permutation / ring recoloring.
+        """
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        color_map = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h < 2 or w < 2:
+                return None
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            # Extract layer colors by peeling concentric rings
+            in_layers = self._peel_ring_colors(raw_in, h, w)
+            if in_layers is None or len(in_layers) < 2:
+                return None
+
+            # Get unique colors in layer order (deduplicate but keep order)
+            seen = set()
+            unique_colors = []
+            for c in in_layers:
+                if c not in seen:
+                    seen.add(c)
+                    unique_colors.append(c)
+
+            if len(unique_colors) < 2:
+                return None
+
+            # Build the cyclic rotation mapping: each color -> the one that
+            # was one step further inward, with the innermost wrapping to outer
+            # For [A, B, C]: A->C, B->A, C->B (right-rotate by 1)
+            pair_map = {}
+            n = len(unique_colors)
+            for i in range(n):
+                pair_map[unique_colors[i]] = unique_colors[(i - 1) % n]
+
+            # Verify this mapping produces the correct output
+            for r in range(h):
+                for c in range(w):
+                    expected = pair_map.get(raw_in[r][c], raw_in[r][c])
+                    if raw_out[r][c] != expected:
+                        return None
+
+            # Check consistency across pairs
+            if color_map is None:
+                color_map = pair_map
+            # Color map may differ across pairs (different colors) — that's fine
+
+        return {"type": "concentric_color_rotate", "confidence": 1.0}
+
+    def _peel_ring_colors(self, raw, h, w):
+        """Extract color of each concentric ring layer from outside in."""
+        layers = []
+        top, left, bottom, right = 0, 0, h - 1, w - 1
+        while top <= bottom and left <= right:
+            # The ring color should be uniform — check first cell
+            color = raw[top][left]
+            # Verify entire ring is this color
+            for c in range(left, right + 1):
+                if raw[top][c] != color or raw[bottom][c] != color:
+                    return None
+            for r in range(top, bottom + 1):
+                if raw[r][left] != color or raw[r][right] != color:
+                    return None
+            layers.append(color)
+            top += 1
+            left += 1
+            bottom -= 1
+            right -= 1
+        return layers
+
     # ---- strategy: simple color mapping ---------------------------------
 
     def _try_color_mapping(self, patterns):
@@ -5951,6 +6118,10 @@ class PredictOperator(Operator):
             return self._apply_layer_overlay(rule, input_grid)
         if rule_type == "rect_interior_compare":
             return self._apply_rect_interior_compare(rule, input_grid)
+        if rule_type == "boustrophedon_sort":
+            return self._apply_boustrophedon_sort(rule, input_grid)
+        if rule_type == "concentric_color_rotate":
+            return self._apply_concentric_color_rotate(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7676,6 +7847,73 @@ class PredictOperator(Operator):
         if best_color is None:
             return [row[:] for row in raw]
         return [[best_color] * ow for _ in range(oh)]
+
+    def _apply_boustrophedon_sort(self, rule, input_grid):
+        """Collect non-zero pixels, sort by column, fill output in snake order."""
+        raw = input_grid.raw
+        h_in = len(raw)
+        w_in = len(raw[0]) if raw else 0
+        out_rows = rule["out_rows"]
+        out_cols = rule["out_cols"]
+
+        # Collect non-zero pixels sorted by column then row
+        pixels = []
+        for r in range(h_in):
+            for c in range(w_in):
+                if raw[r][c] != 0:
+                    pixels.append((c, r, raw[r][c]))
+        pixels.sort(key=lambda p: (p[0], p[1]))
+        colors = [p[2] for p in pixels]
+
+        capacity = out_rows * out_cols
+        while len(colors) < capacity:
+            colors.append(0)
+
+        output = []
+        for row_i in range(out_rows):
+            start = row_i * out_cols
+            row_colors = colors[start:start + out_cols]
+            if row_i % 2 == 1:
+                row_colors = row_colors[::-1]
+            output.append(row_colors)
+        return output
+
+    def _apply_concentric_color_rotate(self, rule, input_grid):
+        """Cyclically rotate colors of concentric rectangular frames."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Extract ring colors
+        layers = []
+        top, left, bottom, right = 0, 0, h - 1, w - 1
+        while top <= bottom and left <= right:
+            layers.append(raw[top][left])
+            top += 1
+            left += 1
+            bottom -= 1
+            right -= 1
+
+        # Get unique colors in layer order
+        seen = set()
+        unique_colors = []
+        for c in layers:
+            if c not in seen:
+                seen.add(c)
+                unique_colors.append(c)
+
+        # Build cyclic rotation: A->C, B->A, C->B for [A,B,C]
+        n = len(unique_colors)
+        if n < 2:
+            return [row[:] for row in raw]
+        cmap = {}
+        for i in range(n):
+            cmap[unique_colors[i]] = unique_colors[(i - 1) % n]
+
+        output = []
+        for row in raw:
+            output.append([cmap.get(v, v) for v in row])
+        return output
 
 
 # ======================================================================

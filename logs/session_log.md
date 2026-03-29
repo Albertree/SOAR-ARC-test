@@ -1028,3 +1028,34 @@ to find new failures (41/80 = 51.2% before improvements).
 - Time: 156s
 - Log: logs/learn_20260329_195016.log
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 19:56
+
+- Split: training, Tasks: 80
+- Correct: 53 / 80 (66.2%)
+- Rules: 150 -> 155 (+5 learned)
+- Stored rule hits: 50
+- Time: 167s
+- Log: logs/learn_20260329_195330.log
+
+---
+## Session 22 -- 2026-03-29 20:01
+
+**Baseline**: 53/80 (66.2%)
+
+**New strategies added**:
+1. `boustrophedon_sort` — scattered non-zero pixels on large grid collected, sorted by column, placed into smaller NxM output in snake/zigzag order (even rows L-R, odd rows R-L). Solves cdecee7f.
+2. `concentric_color_rotate` — concentric rectangular frames with 3 distinct colors; cyclically rotate colors one step (outer gets innermost color, middle gets outer, inner gets middle). Solves bda2d7a6.
+
+**Result**: 55/80 (68.8%) — +2 tasks
+
+---
+## Learning Loop -- 2026-03-29 20:04
+
+- Split: training, Tasks: 80
+- Correct: 55 / 80 (68.8%)
+- Rules: 155 -> 162 (+7 learned)
+- Stored rule hits: 50
+- Time: 169s
+- Log: logs/learn_20260329_200144.log
