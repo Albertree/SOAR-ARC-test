@@ -2064,3 +2064,147 @@ def remove_noise_keep_blocks(grid, bg=0):
             if has_h and has_v:
                 output[r][c] = v
     return output
+
+
+def extend_pixel_to_corner(grid, bg=0):
+    """For each non-bg pixel, draw an L-shaped line toward the nearest grid corner.
+
+    The pixel extends horizontally to the nearest left/right edge and vertically
+    to the nearest top/bottom edge, forming an L going into the nearest corner."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    pixels = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                pixels.append((r, c, grid[r][c]))
+
+    for r, c, color in pixels:
+        # Determine nearest corner direction
+        go_left = c < (w - 1 - c)     # True if closer to left edge
+        go_up = r < (h - 1 - r)       # True if closer to top edge
+
+        # Draw horizontal line to nearest horizontal edge
+        if go_left:
+            for cc in range(0, c + 1):
+                output[r][cc] = color
+        else:
+            for cc in range(c, w):
+                output[r][cc] = color
+
+        # Draw vertical line to nearest vertical edge
+        if go_up:
+            for rr in range(0, r + 1):
+                output[rr][c] = color
+        else:
+            for rr in range(r, h):
+                output[rr][c] = color
+
+    return output
+
+
+def mark_domino_cross_centers(grid, domino_color=1, mark_color=4, bg=8):
+    """Find 2-cell domino shapes of domino_color, pair perpendicular matched
+    pairs, and place mark_color at the center of each cross.
+
+    A cross is formed when:
+    - Two vertical dominoes share the same column, with integer midpoint row R
+    - Two horizontal dominoes share the same row, with integer midpoint col C
+    - R and C coincide: place mark_color at (R, C)
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find all 2-cell dominoes (connected components of domino_color with size 2)
+    visited = set()
+    vert_dominoes = {}   # col -> list of (center_row,)
+    horiz_dominoes = {}  # row -> list of (center_col,)
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != domino_color or (r, c) in visited:
+                continue
+            # BFS to find connected component
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if (0 <= nr < h and 0 <= nc < w and
+                            (nr, nc) not in visited and grid[nr][nc] == domino_color):
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+
+            if len(comp) != 2:
+                continue
+
+            (r1, c1), (r2, c2) = comp
+            if c1 == c2:  # vertical domino
+                center_r = (r1 + r2) / 2.0
+                col = c1
+                vert_dominoes.setdefault(col, []).append(center_r)
+            elif r1 == r2:  # horizontal domino
+                center_c = (c1 + c2) / 2.0
+                row = r1
+                horiz_dominoes.setdefault(row, []).append(center_c)
+
+    # Find midpoints of vertical domino pairs (per column)
+    vert_midpoints = {}  # (R, C) -> True
+    for col, centers in vert_dominoes.items():
+        centers.sort()
+        for i in range(len(centers)):
+            for j in range(i + 1, len(centers)):
+                mid_r = (centers[i] + centers[j]) / 2.0
+                if mid_r == int(mid_r):
+                    vert_midpoints.setdefault(int(mid_r), set()).add(col)
+
+    # Find midpoints of horizontal domino pairs (per row)
+    horiz_midpoints = {}  # (R, C) -> True
+    for row, centers in horiz_dominoes.items():
+        centers.sort()
+        for i in range(len(centers)):
+            for j in range(i + 1, len(centers)):
+                mid_c = (centers[i] + centers[j]) / 2.0
+                if mid_c == int(mid_c):
+                    horiz_midpoints.setdefault(row, set()).add(int(mid_c))
+
+    # Find intersections
+    output = [r[:] for r in grid]
+    for R, v_cols in vert_midpoints.items():
+        if R in horiz_midpoints:
+            h_cols = horiz_midpoints[R]
+            for C in v_cols & h_cols:
+                if 0 <= R < h and 0 <= C < w and output[R][C] == bg:
+                    output[R][C] = mark_color
+
+    return output
+
+
+def rotation_quad_tile_2x2(grid):
+    """Create a 4x4 tiling (12x12 from 3x3) with rotation quadrants.
+
+    Layout:
+      TL: 180° tiled 2x2    TR: 90°CW tiled 2x2
+      BL: 270°CW tiled 2x2  BR: 0° tiled 2x2
+    """
+    rot180 = rotate_cw(grid, 2)
+    rot90 = rotate_cw(grid, 1)
+    rot270 = rotate_cw(grid, 3)
+
+    def tile_2x2(g):
+        top = concat_horizontal(g, g)
+        return concat_vertical(top, top)
+
+    tl = tile_2x2(rot180)
+    tr = tile_2x2(rot90)
+    bl = tile_2x2(rot270)
+    br = tile_2x2(grid)
+
+    top_half = concat_horizontal(tl, tr)
+    bottom_half = concat_horizontal(bl, br)
+    return concat_vertical(top_half, bottom_half)

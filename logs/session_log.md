@@ -333,3 +333,43 @@
 - Stored rule hits: 26
 - Time: 74s
 - Log: logs/learn_20260330_055404.log
+
+---
+## Learning Loop -- 2026-03-30 05:57
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 29 -> 29 (+0 learned)
+- Stored rule hits: 29
+- Time: 75s
+- Log: logs/learn_20260330_055546.log
+
+---
+## Session 12 (Claude) -- 2026-03-30 06:12
+
+### Changes
+- Added `extend_pixel_to_corner` primitive to `_primitives.py` — for each non-bg pixel, draws an L-shaped line toward the nearest grid corner (horizontal + vertical to nearest edge)
+- Added `mark_domino_cross_centers` primitive to `_primitives.py` — finds 2-cell domino shapes, pairs perpendicular matched pairs with integer midpoint, places mark color at crossing center
+- Added `rotation_quad_tile_2x2` primitive to `_primitives.py` — creates 4×4 tiling with rotation quadrants (TL=180°, TR=90°CW, BL=270°CW, BR=0°), each tiled 2×2
+- Added `color_added_in_output` inference method to `_concept_engine.py` — finds the single color present in output but absent from input
+- Created `procedural_memory/concepts/extend_pixel_to_corner.json` (solves 705a3229)
+- Created `procedural_memory/concepts/mark_domino_cross.json` (solves 9f5f939b)
+- Created `procedural_memory/concepts/rotation_quad_tile_2x2.json` (solves cf5fd0ad)
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%) — up from 29/40 (72.5%)
+- Rules: 29 -> 32 (+3 learned)
+- Stored rule hits: 29
+- Time: 76s
+- Log: logs/learn_20260330_061249.log
+
+---
+## Learning Loop -- 2026-03-30 06:14
+
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%)
+- Rules: 29 -> 32 (+3 learned)
+- Stored rule hits: 29
+- Time: 76s
+- Log: logs/learn_20260330_061249.log

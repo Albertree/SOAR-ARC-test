@@ -483,6 +483,30 @@ def _infer_max_dim_even(task, arckg_features, patterns):
     return side
 
 
+@_register_infer("color_added_in_output")
+def _infer_color_added_in_output(task, arckg_features, patterns):
+    """Find the single color present in output but not in input (across all pairs)."""
+    added = None
+    for pair in task.example_pairs:
+        in_colors = set()
+        for row in pair.input_grid.raw:
+            for v in row:
+                in_colors.add(v)
+        out_colors = set()
+        for row in pair.output_grid.raw:
+            for v in row:
+                out_colors.add(v)
+        new_colors = out_colors - in_colors
+        if len(new_colors) != 1:
+            return None
+        c = new_colors.pop()
+        if added is None:
+            added = c
+        elif added != c:
+            return None
+    return added
+
+
 @_register_infer("from_examples")
 def _infer_from_examples(task, arckg_features, patterns):
     """Placeholder — actual brute-force handled by the engine."""
