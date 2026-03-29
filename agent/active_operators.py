@@ -466,6 +466,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_horizontal_mirror_mark(patterns, task)
 
+        # Strategy: denoise keep rectangles (remove isolated pixels, keep solid rectangular blocks)
+        if rule is None:
+            rule = self._try_denoise_keep_rectangles(patterns, task)
+
+        # Strategy: extend diagonal arms (2×2 block with diagonal tips → extend tips to grid edge)
+        if rule is None:
+            rule = self._try_extend_diagonal_arms(patterns, task)
+
+        # Strategy: seed quadrant project (2×2 seed projects diag-opposite colors into quadrants)
+        if rule is None:
+            rule = self._try_seed_quadrant_project(patterns, task)
+
         # Strategy: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -1434,6 +1446,257 @@ class GeneralizeOperator(Operator):
             return None
         return {"type": "horizontal_mirror_mark", "fg_color": fg_color,
                 "new_color": new_color, "confidence": 0.95}
+
+    # ---- strategy: denoise keep rectangles --------------------------------
+
+    def _try_denoise_keep_rectangles(self, patterns, task):
+        """
+        Detect pattern: input has solid filled rectangles plus scattered single
+        pixels (noise) of the same color.  Output keeps only the rectangles
+        and removes the noise.  Handles denoise / keep-rectangles tasks.
+        """
+        if not patterns.get("grid_size_preserved"):
+            return None
+        pairs = task.example_pairs if task else []
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find foreground color(s) – non-zero
+            fg_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != 0:
+                        fg_colors.add(inp[r][c])
+
+            # Expect exactly one fg color per pair
+            if len(fg_colors) != 1:
+                return None
+            fg = list(fg_colors)[0]
+
+            # A fg pixel is "kept" iff it belongs to at least one 2×2 all-fg block.
+            # This separates thick rectangular structures from isolated noise.
+            keep = [[False] * w for _ in range(h)]
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    if inp[r][c] == fg and inp[r][c + 1] == fg and \
+                       inp[r + 1][c] == fg and inp[r + 1][c + 1] == fg:
+                        keep[r][c] = True
+                        keep[r][c + 1] = True
+                        keep[r + 1][c] = True
+                        keep[r + 1][c + 1] = True
+
+            # Must have both kept and removed fg pixels
+            has_kept = any(keep[r][c] for r in range(h) for c in range(w))
+            has_noise = any(inp[r][c] == fg and not keep[r][c]
+                           for r in range(h) for c in range(w))
+            if not has_kept or not has_noise:
+                return None
+
+            # Verify output matches: kept pixels = fg, rest = 0
+            expected = [[fg if keep[r][c] else 0 for c in range(w)] for r in range(h)]
+            if expected != out:
+                return None
+
+        return {"type": "denoise_keep_rectangles", "confidence": 0.9}
+
+    # ---- strategy: extend diagonal arms ------------------------------------
+
+    def _try_extend_diagonal_arms(self, patterns, task):
+        """
+        Detect pattern: a 2×2 block of one color with 1-2 single-pixel diagonal
+        tips.  Each tip extends diagonally (same direction from the block) to the
+        grid edge.  Handles diagonal-ray / arm-extension tasks.
+        """
+        if not patterns.get("grid_size_preserved"):
+            return None
+        pairs = task.example_pairs if task else []
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find foreground color
+            fg_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] != 0:
+                        fg_colors.add(inp[r][c])
+            if len(fg_colors) != 1:
+                return None
+            fg = list(fg_colors)[0]
+
+            # Find connected component(s) of fg (8-connectivity)
+            visited = [[False] * w for _ in range(h)]
+            components = []
+            for r in range(h):
+                for c in range(w):
+                    if inp[r][c] == fg and not visited[r][c]:
+                        comp = []
+                        queue = [(r, c)]
+                        visited[r][c] = True
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1),
+                                           (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                                nr, nc = cr + dr, cc + dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and inp[nr][nc] == fg:
+                                    visited[nr][nc] = True
+                                    queue.append((nr, nc))
+                        components.append(comp)
+
+            if len(components) != 1:
+                return None
+            comp = components[0]
+            comp_set = set(comp)
+
+            # Find the 2×2 block within the component
+            block = None
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    if (r, c) in comp_set and (r, c + 1) in comp_set and \
+                       (r + 1, c) in comp_set and (r + 1, c + 1) in comp_set:
+                        block = (r, c)
+                        break
+                if block:
+                    break
+
+            if block is None:
+                return None
+
+            br, bc = block
+            block_cells = {(br, bc), (br, bc + 1), (br + 1, bc), (br + 1, bc + 1)}
+            tips = [p for p in comp if p not in block_cells]
+
+            if len(tips) < 1 or len(tips) > 2:
+                return None
+
+            # Each tip must be diagonally adjacent to the block
+            for (tr, tc) in tips:
+                corners = [(br - 1, bc - 1), (br - 1, bc + 2),
+                           (br + 2, bc - 1), (br + 2, bc + 2)]
+                if (tr, tc) not in corners:
+                    return None
+
+            # Verify output: block stays, each tip extends diagonally to edge
+            expected = [[0] * w for _ in range(h)]
+            for (cr, cc) in block_cells:
+                expected[cr][cc] = fg
+            for (tr, tc) in tips:
+                dr = 1 if tr > br else -1
+                dc = 1 if tc > bc else -1
+                r2, c2 = tr, tc
+                while 0 <= r2 < h and 0 <= c2 < w:
+                    expected[r2][c2] = fg
+                    r2 += dr
+                    c2 += dc
+
+            if expected != out:
+                return None
+
+        return {"type": "extend_diagonal_arms", "confidence": 0.95}
+
+    # ---- strategy: seed quadrant project -----------------------------------
+
+    def _try_seed_quadrant_project(self, patterns, task):
+        """
+        Detect pattern: a 2×2 non-zero seed in an otherwise zero grid.
+        Each quadrant around the seed gets filled with the diagonally-opposite
+        seed color.  Fill size = min(2, available_space) in each dimension,
+        positioned adjacent to the seed.
+        """
+        if not patterns.get("grid_size_preserved"):
+            return None
+        pairs = task.example_pairs if task else []
+        if not pairs:
+            return None
+
+        for pair in pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            h, w = len(inp), len(inp[0])
+            if len(out) != h or len(out[0]) != w:
+                return None
+
+            # Find non-zero cells → must form exactly a 2×2 block
+            nz = [(r, c) for r in range(h) for c in range(w) if inp[r][c] != 0]
+            if len(nz) != 4:
+                return None
+            rows = sorted(set(r for r, c in nz))
+            cols = sorted(set(c for r, c in nz))
+            if len(rows) != 2 or len(cols) != 2:
+                return None
+            if rows[1] - rows[0] != 1 or cols[1] - cols[0] != 1:
+                return None
+
+            sr, sc = rows[0], cols[0]  # top-left of 2×2 seed
+            seed = [[inp[sr][sc], inp[sr][sc + 1]],
+                    [inp[sr + 1][sc], inp[sr + 1][sc + 1]]]
+
+            # All 4 seed values must be non-zero and distinct
+            seed_vals = [seed[0][0], seed[0][1], seed[1][0], seed[1][1]]
+            if 0 in seed_vals or len(set(seed_vals)) != 4:
+                return None
+
+            # Build expected output
+            expected = [[0] * w for _ in range(h)]
+            # Copy seed
+            for dr in range(2):
+                for dc in range(2):
+                    expected[sr + dr][sc + dc] = seed[dr][dc]
+
+            # Quadrant fills: color = diag opposite, size = min(2, available)
+            above = sr
+            below = h - sr - 2
+            left = sc
+            right = w - sc - 2
+
+            # Top-left: color = seed[1][1] (bottom-right)
+            fh, fw = min(2, above), min(2, left)
+            for dr in range(fh):
+                for dc in range(fw):
+                    expected[sr - fh + dr][sc - fw + dc] = seed[1][1]
+
+            # Top-right: color = seed[1][0] (bottom-left)
+            fh, fw = min(2, above), min(2, right)
+            for dr in range(fh):
+                for dc in range(fw):
+                    expected[sr - fh + dr][sc + 2 + dc] = seed[1][0]
+
+            # Bottom-left: color = seed[0][1] (top-right)
+            fh, fw = min(2, below), min(2, left)
+            for dr in range(fh):
+                for dc in range(fw):
+                    expected[sr + 2 + dr][sc - fw + dc] = seed[0][1]
+
+            # Bottom-right: color = seed[0][0] (top-left)
+            fh, fw = min(2, below), min(2, right)
+            for dr in range(fh):
+                for dc in range(fw):
+                    expected[sr + 2 + dr][sc + 2 + dc] = seed[0][0]
+
+            if expected != out:
+                return None
+
+        return {"type": "seed_quadrant_project", "confidence": 0.95}
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -3404,6 +3667,12 @@ class PredictOperator(Operator):
             return self._apply_frame_inversion(rule, input_grid)
         if rule_type == "horizontal_mirror_mark":
             return self._apply_horizontal_mirror_mark(rule, input_grid)
+        if rule_type == "denoise_keep_rectangles":
+            return self._apply_denoise_keep_rectangles(rule, input_grid)
+        if rule_type == "extend_diagonal_arms":
+            return self._apply_extend_diagonal_arms(rule, input_grid)
+        if rule_type == "seed_quadrant_project":
+            return self._apply_seed_quadrant_project(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4286,6 +4555,162 @@ class PredictOperator(Operator):
                     mirror_c = w - 1 - c
                     if raw[r][mirror_c] == fg:
                         out[r][c] = nc
+        return out
+
+    def _apply_denoise_keep_rectangles(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        # Find fg color
+        fg = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    fg = raw[r][c]
+                    break
+            if fg is not None:
+                break
+        if fg is None:
+            return [row[:] for row in raw]
+
+        # Keep pixels that belong to at least one 2×2 all-fg block
+        keep = [[False] * w for _ in range(h)]
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if raw[r][c] == fg and raw[r][c + 1] == fg and \
+                   raw[r + 1][c] == fg and raw[r + 1][c + 1] == fg:
+                    keep[r][c] = True
+                    keep[r][c + 1] = True
+                    keep[r + 1][c] = True
+                    keep[r + 1][c + 1] = True
+
+        return [[fg if keep[r][c] else 0 for c in range(w)] for r in range(h)]
+
+    def _apply_extend_diagonal_arms(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        # Find fg color
+        fg = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    fg = raw[r][c]
+                    break
+            if fg is not None:
+                break
+        if fg is None:
+            return [row[:] for row in raw]
+
+        # Find all fg cells using 8-connectivity
+        visited = [[False] * w for _ in range(h)]
+        comp = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fg and not visited[r][c]:
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1),
+                                       (-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == fg:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    break
+            if comp:
+                break
+
+        comp_set = set(comp)
+
+        # Find 2×2 block
+        block = None
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (r, c) in comp_set and (r, c + 1) in comp_set and \
+                   (r + 1, c) in comp_set and (r + 1, c + 1) in comp_set:
+                    block = (r, c)
+                    break
+            if block:
+                break
+
+        if block is None:
+            return [row[:] for row in raw]
+
+        br, bc = block
+        block_cells = {(br, bc), (br, bc + 1), (br + 1, bc), (br + 1, bc + 1)}
+        tips = [p for p in comp if p not in block_cells]
+
+        out = [[0] * w for _ in range(h)]
+        for (cr, cc) in block_cells:
+            out[cr][cc] = fg
+
+        for (tr, tc) in tips:
+            dr = 1 if tr > br else -1
+            dc = 1 if tc > bc else -1
+            r2, c2 = tr, tc
+            while 0 <= r2 < h and 0 <= c2 < w:
+                out[r2][c2] = fg
+                r2 += dr
+                c2 += dc
+        return out
+
+    def _apply_seed_quadrant_project(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Find 2×2 seed
+        sr = sc = None
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if raw[r][c] != 0 and raw[r][c + 1] != 0 and \
+                   raw[r + 1][c] != 0 and raw[r + 1][c + 1] != 0:
+                    sr, sc = r, c
+                    break
+            if sr is not None:
+                break
+
+        if sr is None:
+            return [row[:] for row in raw]
+
+        seed = [[raw[sr][sc], raw[sr][sc + 1]],
+                [raw[sr + 1][sc], raw[sr + 1][sc + 1]]]
+
+        out = [[0] * w for _ in range(h)]
+        # Copy seed
+        for dr in range(2):
+            for dc in range(2):
+                out[sr + dr][sc + dc] = seed[dr][dc]
+
+        above = sr
+        below = h - sr - 2
+        left = sc
+        right = w - sc - 2
+
+        # Top-left: color = seed[1][1]
+        fh, fw = min(2, above), min(2, left)
+        for dr in range(fh):
+            for dc in range(fw):
+                out[sr - fh + dr][sc - fw + dc] = seed[1][1]
+
+        # Top-right: color = seed[1][0]
+        fh, fw = min(2, above), min(2, right)
+        for dr in range(fh):
+            for dc in range(fw):
+                out[sr - fh + dr][sc + 2 + dc] = seed[1][0]
+
+        # Bottom-left: color = seed[0][1]
+        fh, fw = min(2, below), min(2, left)
+        for dr in range(fh):
+            for dc in range(fw):
+                out[sr + 2 + dr][sc - fw + dc] = seed[0][1]
+
+        # Bottom-right: color = seed[0][0]
+        fh, fw = min(2, below), min(2, right)
+        for dr in range(fh):
+            for dc in range(fw):
+                out[sr + 2 + dr][sc + 2 + dc] = seed[0][0]
+
         return out
 
 

@@ -558,3 +558,41 @@ Procedural memory was rebuilt from scratch during this session (stale type=None 
 - Stored rule hits: 24
 - Time: 74s
 - Log: logs/learn_20260329_171729.log
+
+---
+## Learning Loop -- 2026-03-29 17:20
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 46 -> 50 (+4 learned)
+- Stored rule hits: 24
+- Time: 74s
+- Log: logs/learn_20260329_171911.log
+
+---
+## Session 13 -- Claude Code Improvements (2026-03-29)
+
+### Strategies Added
+1. **denoise_keep_rectangles** -- input has solid filled rectangles plus scattered single-pixel noise of the same color. Output keeps only pixels that belong to at least one 2×2 all-foreground block, removing isolated noise. Handles denoise / keep-rectangles tasks.
+2. **extend_diagonal_arms** -- a 2×2 block of one color with 1-2 single-pixel diagonal tips. Each tip extends diagonally in the same direction to the grid edge. Handles diagonal-ray / arm-extension tasks.
+3. **seed_quadrant_project** -- a 2×2 non-zero seed in an otherwise zero grid. Each quadrant around the seed gets filled with the diagonally-opposite seed color. Fill size = min(2, available_space) in each dimension, positioned adjacent to the seed. Handles 2×2 seed diagonal quadrant projection tasks.
+
+### Tasks Solved
+- `7f4411dc`: denoise_keep_rectangles
+- `7ddcd7ec`: extend_diagonal_arms
+- `93b581b8`: seed_quadrant_project
+
+### Results
+- Before: 26/40 (65.0%)
+- After: 29/40 (72.5%)
+- Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-03-29 17:34
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 54 -> 57 (+3 learned)
+- Stored rule hits: 27
+- Time: 73s
+- Log: logs/learn_20260329_173248.log
