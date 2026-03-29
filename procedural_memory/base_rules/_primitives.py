@@ -1992,3 +1992,75 @@ def fill_framed_interior(grid, frame_color=2, fill_color=1, bg=0):
                                     output[r][c] = fill_color
 
     return output
+
+
+def mirror_recolor_vertical(grid, target_color, replace_color):
+    """For each cell with target_color, check if its vertical-axis mirror also
+    has target_color. If so, change both to replace_color; otherwise keep as-is."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == target_color:
+                mc = w - 1 - c
+                if 0 <= mc < w and grid[r][mc] == target_color:
+                    output[r][c] = replace_color
+    return output
+
+
+def count_inside_rect_fill(grid):
+    """Find rectangle bordered by 1s, count non-0 non-1 cells inside,
+    output 3x3 grid filled left-to-right top-to-bottom with marker color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find the rectangle of 1s
+    ones = [(r, c) for r in range(h) for c in range(w) if grid[r][c] == 1]
+    if not ones:
+        return [[0]*3 for _ in range(3)]
+    top = min(r for r, c in ones)
+    bottom = max(r for r, c in ones)
+    left = min(c for r, c in ones)
+    right = max(c for r, c in ones)
+    # Find marker color and count inside interior
+    marker = None
+    count = 0
+    for r in range(top + 1, bottom):
+        for c in range(left + 1, right):
+            v = grid[r][c]
+            if v != 0 and v != 1:
+                if marker is None:
+                    marker = v
+                if v == marker:
+                    count += 1
+    if marker is None:
+        return [[0]*3 for _ in range(3)]
+    # Fill 3x3 grid
+    out = [[0]*3 for _ in range(3)]
+    filled = 0
+    for r in range(3):
+        for c in range(3):
+            if filled < count:
+                out[r][c] = marker
+                filled += 1
+    return out
+
+
+def remove_noise_keep_blocks(grid, bg=0):
+    """Remove colored pixels that lack both a horizontal and vertical
+    same-color neighbor. Keeps only pixels that are part of solid blocks."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [[bg]*w for _ in range(h)]
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v == bg:
+                continue
+            has_h = ((c > 0 and grid[r][c-1] == v) or
+                     (c < w-1 and grid[r][c+1] == v))
+            has_v = ((r > 0 and grid[r-1][c] == v) or
+                     (r < h-1 and grid[r+1][c] == v))
+            if has_h and has_v:
+                output[r][c] = v
+    return output

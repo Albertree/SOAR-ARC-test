@@ -304,3 +304,32 @@
 - Stored rule hits: 23
 - Time: 74s
 - Log: logs/learn_20260330_053353.log
+
+---
+## Learning Loop -- 2026-03-30 05:37
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 26 -> 26 (+0 learned)
+- Stored rule hits: 26
+- Time: 74s
+- Log: logs/learn_20260330_053556.log
+
+---
+## Session 11 (Claude) -- 2026-03-30 05:54
+
+### Changes
+- Added `mirror_recolor_vertical` primitive to `_primitives.py` — for each cell with target_color, changes to replace_color if its vertical-axis mirror also has target_color
+- Added `count_inside_rect_fill` primitive to `_primitives.py` — finds rectangle bordered by 1s, counts marker pixels inside, outputs 3x3 grid filled left-to-right top-to-bottom
+- Added `remove_noise_keep_blocks` primitive to `_primitives.py` — removes colored pixels that lack both a horizontal and vertical same-color neighbor
+- Created `procedural_memory/concepts/mirror_recolor_symmetric.json` (solves ce039d91)
+- Created `procedural_memory/concepts/count_inside_rect.json` (solves c8b7cc0f)
+- Created `procedural_memory/concepts/remove_noise_blocks.json` (solves 7f4411dc)
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%) — up from 26/40 (65.0%)
+- Rules: 26 -> 29 (+3 learned)
+- Stored rule hits: 26
+- Time: 74s
+- Log: logs/learn_20260330_055404.log
