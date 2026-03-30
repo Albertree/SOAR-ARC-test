@@ -4310,3 +4310,194 @@ def decode_section_holes(grid, mapping, sep_color=0):
         colors.append(color)
 
     return [[color] * n for color in colors]
+
+
+def bar_height_difference(grid, bg=7):
+    """Bars at odd columns grow upward from the bottom row.
+
+    Two non-bg bar colors (A, B) exist; color 5 is the output color.
+    New bar of color 5 is placed at the next empty odd column with
+    height = |sum(heights_A) - sum(heights_B)|.
+
+    Category: bar-chart arithmetic / visual difference tasks.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return None
+
+    # Find bars at odd columns (bottom-anchored)
+    bars = []  # (col, color, height)
+    first_empty_odd = None
+    for c in range(1, w, 2):
+        # Check if this column has a non-bg bar from the bottom
+        bar_color = None
+        bar_height = 0
+        for r in range(h - 1, -1, -1):
+            v = grid[r][c]
+            if v != bg:
+                if bar_color is None:
+                    bar_color = v
+                if v == bar_color:
+                    bar_height += 1
+                else:
+                    break
+            else:
+                break
+        if bar_color is not None and bar_height > 0:
+            bars.append((c, bar_color, bar_height))
+        else:
+            if first_empty_odd is None:
+                first_empty_odd = c
+
+    if first_empty_odd is None:
+        return None
+
+    # Group heights by color (excluding color 5)
+    color_sums = {}
+    for col, color, height in bars:
+        if color == 5:
+            continue
+        color_sums[color] = color_sums.get(color, 0) + height
+
+    # Compute new bar height = |sum_A - sum_B|
+    sums = sorted(color_sums.values(), reverse=True)
+    if len(sums) == 0:
+        return None
+    elif len(sums) == 1:
+        new_height = sums[0]
+    else:
+        new_height = abs(sums[0] - sums[1])
+
+    if new_height <= 0:
+        return None
+
+    # Build output: copy grid, add new bar of color 5
+    out = [row[:] for row in grid]
+    for i in range(new_height):
+        r = h - 1 - i
+        if 0 <= r < h:
+            out[r][first_empty_odd] = 5
+
+    return out
+
+
+def recolor_shapes_by_template(grid, bg=0, sep_color=5, source_color=3):
+    """Header region (bounded by sep_color L-border) contains template shapes.
+
+    Body region contains shapes of source_color. Each source shape is matched
+    to a template (allowing all 8 rotations/reflections). Matched shapes get
+    recolored to the template's color.
+
+    Category: template matching / shape classification with recoloring.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the separator L-border: a full-width horizontal line and a
+    # full-height vertical line of sep_color
+    sep_row = None
+    for r in range(h):
+        if all(grid[r][c] == sep_color for c in range(w) if grid[r][c] == sep_color):
+            # Check if this row has a long run of sep_color
+            count = sum(1 for c in range(w) if grid[r][c] == sep_color)
+            if count >= w * 0.3:
+                sep_row = r
+                break
+
+    sep_col = None
+    for c in range(w):
+        count = sum(1 for r in range(h) if grid[r][c] == sep_color)
+        if count >= h * 0.3:
+            sep_col = c
+            break
+
+    if sep_row is None and sep_col is None:
+        return None
+
+    # Determine header region (above sep_row and left of sep_col)
+    header_rows = range(0, sep_row) if sep_row is not None else range(0, h)
+    header_cols = range(0, sep_col) if sep_col is not None else range(0, w)
+
+    # Extract connected components of specific colors in the header
+    def _flood_fill(grid_data, visited, r, c, color, h, w):
+        stack = [(r, c)]
+        cells = []
+        while stack:
+            cr, cc = stack.pop()
+            if (cr, cc) in visited:
+                continue
+            if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                continue
+            if grid_data[cr][cc] != color:
+                continue
+            visited.add((cr, cc))
+            cells.append((cr, cc))
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                stack.append((cr + dr, cc + dc))
+        return cells
+
+    def _normalize_shape(cells):
+        """Normalize a set of cells to canonical form (min coords at 0,0)."""
+        if not cells:
+            return frozenset()
+        min_r = min(r for r, c in cells)
+        min_c = min(c for r, c in cells)
+        return frozenset((r - min_r, c - min_c) for r, c in cells)
+
+    def _all_orientations(shape):
+        """Generate all 8 rotations/reflections of a normalized shape."""
+        orientations = set()
+        current = shape
+        for _ in range(4):
+            orientations.add(_normalize_shape(current))
+            # Reflect
+            reflected = frozenset((r, -c) for r, c in current)
+            orientations.add(_normalize_shape(reflected))
+            # Rotate 90 CW: (r, c) -> (c, -r)
+            current = frozenset((c, -r) for r, c in current)
+        return orientations
+
+    # Find template shapes in header (non-bg, non-sep, non-source colors)
+    templates = {}  # color -> normalized shape
+    visited = set()
+    for r in header_rows:
+        for c in header_cols:
+            if (r, c) in visited:
+                continue
+            v = grid[r][c]
+            if v == bg or v == sep_color or v == source_color:
+                continue
+            cells = _flood_fill(grid, visited, r, c, v, h, w)
+            if cells:
+                norm = _normalize_shape(cells)
+                templates[v] = norm
+
+    if not templates:
+        return None
+
+    # Build orientation lookup: frozen_shape -> color
+    orientation_to_color = {}
+    for color, shape in templates.items():
+        for orient in _all_orientations(shape):
+            orientation_to_color[orient] = color
+
+    # Find source-colored shapes in the entire grid and recolor
+    out = [row[:] for row in grid]
+    visited2 = set()
+    for r in range(h):
+        for c in range(w):
+            if (r, c) in visited2:
+                continue
+            if grid[r][c] != source_color:
+                continue
+            cells = _flood_fill(grid, visited2, r, c, source_color, h, w)
+            if not cells:
+                continue
+            norm = _normalize_shape(cells)
+            matched_color = orientation_to_color.get(norm)
+            if matched_color is not None:
+                for cr, cc in cells:
+                    out[cr][cc] = matched_color
+
+    return out

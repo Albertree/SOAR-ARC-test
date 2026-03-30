@@ -802,3 +802,27 @@
   - `decode_section_holes` — classify grid sections by internal hole pattern, output uniform-color rows (solved 995c5fa3)
 - New primitives: `overlay_color_layers`, `complete_diamond_symmetry`, `decode_section_holes`
 - New inference methods: `layer_priority`, `section_hole_mapping`
+
+---
+## Learning Loop -- 2026-03-30 10:18
+
+- Split: training, Tasks: 80
+- Correct: 69 / 80 (86.2%)
+- Rules: 68 -> 68 (+0 learned)
+- Stored rule hits: 69
+- Time: 139s
+- Log: logs/learn_20260330_101541.log
+
+---
+## Session 26 -- 2026-03-30 10:30
+
+- Split: training, Tasks: 80
+- Correct: 71 / 80 (88.8%) ← was 69/80 (86.2%)
+- Rules: 68 -> 70 (+2 learned)
+- Stored rule hits: 69
+- Time: 140s
+- Log: logs/learn_20260330_103026.log
+- New concepts:
+  - `bar_height_difference` — bars at odd columns; add color-5 bar with height = |sum(heights_A) - sum(heights_B)| (solved 37ce87bb)
+  - `recolor_shapes_by_template` — header templates behind L-shaped separator; body shapes of color 3 recolored to matching template color via rotation/reflection-invariant matching (solved 845d6e51)
+- New primitives: `bar_height_difference`, `recolor_shapes_by_template`
