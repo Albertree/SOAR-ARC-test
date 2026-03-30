@@ -4501,3 +4501,73 @@ def recolor_shapes_by_template(grid, bg=0, sep_color=5, source_color=3):
                     out[cr][cc] = matched_color
 
     return out
+
+
+def stamp_shape_template(grid, template_color=2, target_color=0):
+    """Find connected component of template_color, then stamp all matching
+    groups of target_color cells with the same shape.
+
+    For 1D templates (single row or column), only stamps within the same
+    row/column.  For 2D templates, stamps greedily across the entire grid,
+    resolving overlaps by preferring placements with fewer external
+    target_color neighbours.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Collect template cells
+    template = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == template_color:
+                template.add((r, c))
+    if not template:
+        return [row[:] for row in grid]
+
+    # Normalise shape
+    min_r = min(r for r, _ in template)
+    min_c = min(c for _, c in template)
+    shape = frozenset((r - min_r, c - min_c) for r, c in template)
+    sh = max(r for r, _ in shape) + 1
+    sw = max(c for _, c in shape) + 1
+
+    # Enumerate valid placements
+    dirs4 = [(-1, 0), (1, 0), (0, -1), (0, 1)]
+    placements = []
+    for r in range(h - sh + 1):
+        for c in range(w - sw + 1):
+            cells = frozenset((r + dr, c + dc) for dr, dc in shape)
+            if cells & template:
+                continue
+            if not all(grid[cr][cc] == target_color for cr, cc in cells):
+                continue
+            ext = 0
+            for cr, cc in cells:
+                for dr2, dc2 in dirs4:
+                    nr, nc = cr + dr2, cc + dc2
+                    if ((nr, nc) not in cells and (nr, nc) not in template
+                            and 0 <= nr < h and 0 <= nc < w
+                            and grid[nr][nc] == target_color):
+                        ext += 1
+            placements.append((ext, r, c, cells))
+
+    # 1D constraint: single-row or single-column templates only stamp
+    # within the same row / column
+    if sh == 1:
+        placements = [(e, r, c, s) for e, r, c, s in placements
+                      if r == min_r]
+    elif sw == 1:
+        placements = [(e, r, c, s) for e, r, c, s in placements
+                      if c == min_c]
+
+    placements.sort()  # fewest external target neighbours first
+
+    out = [row[:] for row in grid]
+    used = set(template)
+    for _, r, c, cells in placements:
+        if cells & used:
+            continue
+        used.update(cells)
+        for cr, cc in cells:
+            out[cr][cc] = template_color
+    return out

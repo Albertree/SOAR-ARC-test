@@ -826,3 +826,28 @@
   - `bar_height_difference` — bars at odd columns; add color-5 bar with height = |sum(heights_A) - sum(heights_B)| (solved 37ce87bb)
   - `recolor_shapes_by_template` — header templates behind L-shaped separator; body shapes of color 3 recolored to matching template color via rotation/reflection-invariant matching (solved 845d6e51)
 - New primitives: `bar_height_difference`, `recolor_shapes_by_template`
+
+---
+## Learning Loop -- 2026-03-30 10:35
+
+- Split: training, Tasks: 80
+- Correct: 71 / 80 (88.8%)
+- Rules: 70 -> 70 (+0 learned)
+- Stored rule hits: 71
+- Time: 149s
+- Log: logs/learn_20260330_103328.log
+
+---
+## Session 27 (Claude) -- 2026-03-30 11:14
+
+### Changes
+- Added `stamp_shape_template` primitive to `_primitives.py` — finds a colored template shape (connected cells of one color), then stamps all matching groups of a target color with that shape. Uses greedy overlap resolution (fewest external neighbors first). For 1D templates (single row/column), constrains matches to the same row/column.
+- Created `procedural_memory/concepts/stamp_shape_template.json` (solves e5062a87)
+
+### Results
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%) — up from 71/80 (88.8%)
+- Rules: 70 -> 71 (+1 learned)
+- Stored rule hits: 71
+- Time: 172s
+- Log: logs/learn_20260330_111136.log
