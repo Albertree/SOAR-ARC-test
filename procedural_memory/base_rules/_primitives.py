@@ -3566,3 +3566,225 @@ def nor_halves(grid):
                 output[r][c] = 4
 
     return output
+
+
+def or_halves(grid, result_color=3):
+    """Split grid at separator row, OR the two binary halves.
+    Where EITHER half has a non-zero value, output result_color; else 0."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find separator row (all same non-zero value, closest to center)
+    candidates = []
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != 0:
+            candidates.append(r)
+    sep_r = None
+    if candidates:
+        mid = h / 2.0
+        sep_r = min(candidates, key=lambda r: abs(r - mid))
+    if sep_r is None:
+        return [row[:] for row in grid]
+    top = grid[:sep_r]
+    bottom = grid[sep_r + 1:]
+    th, bh = len(top), len(bottom)
+    out_h = max(th, bh)
+    out = [[0] * w for _ in range(out_h)]
+    for r in range(out_h):
+        for c in range(w):
+            t = top[r][c] if r < th else 0
+            b = bottom[r][c] if r < bh else 0
+            if t != 0 or b != 0:
+                out[r][c] = result_color
+    return out
+
+
+def crosshatch_from_rect(grid):
+    """Find a large rectangle of a single majority color with scattered minority cells
+    embedded in a noisy grid. Extract it, then extend minority cells into full
+    rows and columns to form a crosshatch pattern."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Build prefix sums for each color for O(1) rectangle color counting
+    prefix = {}
+    for C in range(10):
+        p = [[0] * (w + 1) for _ in range(h + 1)]
+        for r in range(h):
+            for c in range(w):
+                p[r + 1][c + 1] = p[r][c + 1] + p[r + 1][c] - p[r][c] + (1 if grid[r][c] == C else 0)
+        prefix[C] = p
+
+    def count_color(C, r1, c1, r2, c2):
+        p = prefix[C]
+        return p[r2 + 1][c2 + 1] - p[r1][c2 + 1] - p[r2 + 1][c1] + p[r1][c1]
+
+    best = None
+    best_area = 0
+    # Search for the largest rectangle dominated by one color with exactly one minority
+    for C in range(10):
+        for r1 in range(h):
+            for r2 in range(r1 + 2, h):
+                for c1 in range(w):
+                    for c2 in range(c1 + 2, w):
+                        rect_h = r2 - r1 + 1
+                        rect_w = c2 - c1 + 1
+                        area = rect_h * rect_w
+                        if area <= best_area:
+                            continue
+                        cnt = count_color(C, r1, c1, r2, c2)
+                        if cnt < area * 0.7:
+                            continue
+                        # Check exactly 1 other color inside
+                        other = None
+                        valid = True
+                        for r in range(r1, r2 + 1):
+                            for c in range(c1, c2 + 1):
+                                v = grid[r][c]
+                                if v != C:
+                                    if other is None:
+                                        other = v
+                                    elif v != other:
+                                        valid = False
+                                        break
+                            if not valid:
+                                break
+                        if valid and other is not None:
+                            best = (r1, c1, r2, c2, C, other)
+                            best_area = area
+    if best is None:
+        return [row[:] for row in grid]
+    r1, c1, r2, c2, major, minor = best
+    rect_h = r2 - r1 + 1
+    rect_w = c2 - c1 + 1
+    # Find minority positions and extend to full rows/columns
+    minor_rows = set()
+    minor_cols = set()
+    for r in range(r1, r2 + 1):
+        for c in range(c1, c2 + 1):
+            if grid[r][c] == minor:
+                minor_rows.add(r - r1)
+                minor_cols.add(c - c1)
+    out = [[major] * rect_w for _ in range(rect_h)]
+    for r in range(rect_h):
+        for c in range(rect_w):
+            if r in minor_rows or c in minor_cols:
+                out[r][c] = minor
+    return out
+
+
+def fill_interior_from_seed(grid, bg=0):
+    """Find a bordered rectangle (single color border). Inside, find the seed pattern
+    (non-bg, non-border colored cells). Scale the seed color pattern to fill the
+    entire interior, keeping border intact. Output = extracted rectangle with filled interior."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find the bordered rectangle
+    color_positions = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_positions.setdefault(v, []).append((r, c))
+    border_color = None
+    border_rect = None
+    for color, positions in color_positions.items():
+        if len(positions) < 4:
+            continue
+        min_r = min(p[0] for p in positions)
+        max_r = max(p[0] for p in positions)
+        min_c = min(p[1] for p in positions)
+        max_c = max(p[1] for p in positions)
+        # Check if this forms a rectangular border
+        is_border = True
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if r == min_r or r == max_r or c == min_c or c == max_c:
+                    if grid[r][c] != color:
+                        is_border = False
+                        break
+            if not is_border:
+                break
+        if is_border and (max_r - min_r) >= 2 and (max_c - min_c) >= 2:
+            border_color = color
+            border_rect = (min_r, min_c, max_r, max_c)
+            break
+    if border_color is None or border_rect is None:
+        return [row[:] for row in grid]
+    tr, lc, br, rc = border_rect
+    int_h = br - tr - 1
+    int_w = rc - lc - 1
+    # Find seed cells inside interior
+    seed_cells = []
+    for r in range(tr + 1, br):
+        for c in range(lc + 1, rc):
+            v = grid[r][c]
+            if v != bg and v != border_color:
+                seed_cells.append((r - tr - 1, c - lc - 1, v))
+    if not seed_cells:
+        return [row[:] for row in grid]
+    # Find seed bounding box
+    seed_min_r = min(s[0] for s in seed_cells)
+    seed_max_r = max(s[0] for s in seed_cells)
+    seed_min_c = min(s[1] for s in seed_cells)
+    seed_max_c = max(s[1] for s in seed_cells)
+    seed_h = seed_max_r - seed_min_r + 1
+    seed_w = seed_max_c - seed_min_c + 1
+    # Build seed grid
+    seed = [[bg] * seed_w for _ in range(seed_h)]
+    for sr, sc, sv in seed_cells:
+        seed[sr - seed_min_r][sc - seed_min_c] = sv
+    # Detect the color pattern by finding unique color rows/cols
+    # Each "block" in seed is a rectangular region of the same color
+    # Find column color boundaries
+    col_colors = []
+    c = 0
+    while c < seed_w:
+        col_color = seed[0][c]
+        col_colors.append(col_color)
+        c2 = c + 1
+        while c2 < seed_w and seed[0][c2] == col_color:
+            c2 += 1
+        c = c2
+    row_colors = []
+    r = 0
+    while r < seed_h:
+        row_color = seed[r][0]
+        row_colors.append(row_color)
+        r2 = r + 1
+        while r2 < seed_h and seed[r2][0] == row_color:
+            r2 += 1
+        r = r2
+    pat_h = len(row_colors)
+    pat_w = len(col_colors)
+    # Build color pattern grid
+    color_pattern = [[bg] * pat_w for _ in range(pat_h)]
+    # Sample from seed to fill the pattern
+    r_idx = 0
+    for pr in range(pat_h):
+        c_idx = 0
+        cc = 0
+        for pc in range(pat_w):
+            color_pattern[pr][pc] = seed[r_idx][cc]
+            # Advance past this color block
+            next_cc = cc + 1
+            while next_cc < seed_w and seed[0][next_cc] == seed[0][cc]:
+                next_cc += 1
+            cc = next_cc
+        # Advance row past this color block
+        next_r = r_idx + 1
+        while next_r < seed_h and seed[next_r][0] == seed[r_idx][0]:
+            next_r += 1
+        r_idx = next_r
+    # Scale pattern to fill int_h x int_w
+    block_h = int_h // pat_h
+    block_w = int_w // pat_w
+    # Build output (extracted rectangle with filled interior)
+    out_h = br - tr + 1
+    out_w = rc - lc + 1
+    out = [[border_color] * out_w for _ in range(out_h)]
+    for r in range(int_h):
+        for c in range(int_w):
+            pr = min(r // block_h, pat_h - 1)
+            pc = min(c // block_w, pat_w - 1)
+            out[r + 1][c + 1] = color_pattern[pr][pc]
+    return out

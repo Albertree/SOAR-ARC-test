@@ -696,3 +696,33 @@
 - After:  57 / 80 (71.2%)  +3 tasks fixed
 - Regression gate (08ed6ac7): CORRECT
 - New rules discovered: 3 (pyramid_from_seed, connect_pairs_with_lines, nor_halves)
+
+---
+## Learning Loop -- 2026-03-30 09:15
+
+- Split: training, Tasks: 80
+- Correct: 57 / 80 (71.2%)
+- Rules: 56 -> 56 (+0 learned)
+- Stored rule hits: 57
+- Time: 138s
+- Log: logs/learn_20260330_091340.log
+
+---
+## Session 22 (Claude) -- 2026-03-30 09:27
+
+### Changes
+- Added `or_halves` primitive to `_primitives.py` — splits grid at separator row (closest to center), ORs two binary halves into result color (where EITHER half has non-zero → result_color)
+- Added `crosshatch_from_rect` primitive to `_primitives.py` — finds a large rectangle of one majority color with scattered minority cells in a noisy grid (using prefix-sum rectangle search), extracts it, extends minority cells into full rows/columns to form crosshatch
+- Added `fill_interior_from_seed` primitive to `_primitives.py` — finds a bordered rectangle, locates seed color pattern inside, scales it to fill entire interior while preserving border
+- Created `procedural_memory/concepts/or_halves.json` (solves 506d28a5)
+- Created `procedural_memory/concepts/crosshatch_from_rect.json` (solves 8731374e)
+- Created `procedural_memory/concepts/fill_interior_from_seed.json` (solves e7a25a18)
+
+### Results
+- Split: training, Tasks: 80
+- Correct: 60 / 80 (75.0%) — up from 57/80 (71.2%)
+- Rules: 56 -> 59 (+3 learned)
+- Stored rule hits: 57
+- New rules discovered: 3 (or_halves, crosshatch_from_rect, fill_interior_from_seed)
+- Time: 140s
+- Log: logs/learn_20260330_092513.log
