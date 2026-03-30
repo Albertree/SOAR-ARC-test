@@ -1,0 +1,21 @@
+{
+  "concept_id": "stamp_tile_to_strip",
+  "version": 1,
+  "description": "Tile 3x3 stamp patterns toward matching solid-color strips",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "stamp_tile_to_strip",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

@@ -4571,3 +4571,251 @@ def stamp_shape_template(grid, template_color=2, target_color=0):
         for cr, cc in cells:
             out[cr][cc] = template_color
     return out
+
+
+def tile_shape_to_markers(grid, marker_color=1, bg=0):
+    """Tile rectangular shapes toward aligned marker line segments.
+
+    Finds rectangular shapes (non-bg, non-marker connected components) and
+    marker segments (contiguous runs of marker_color). For each shape–marker
+    pair where the marker segment exactly matches the shape's column range
+    (horizontal marker) or row range (vertical marker), the shape's pattern
+    is tiled periodically between the shape and the marker.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    result = [row[:] for row in grid]
+
+    # --- find horizontal marker segments (contiguous runs on a row) ---
+    h_markers = []
+    for r in range(h):
+        start = None
+        for c in range(w + 1):
+            if c < w and grid[r][c] == marker_color:
+                if start is None:
+                    start = c
+            else:
+                if start is not None:
+                    h_markers.append((r, start, c - 1))
+                    start = None
+
+    # --- find vertical marker segments (contiguous runs on a column) ---
+    v_markers = []
+    for c in range(w):
+        start = None
+        for r in range(h + 1):
+            if r < h and grid[r][c] == marker_color:
+                if start is None:
+                    start = r
+            else:
+                if start is not None:
+                    v_markers.append((c, start, r - 1))
+                    start = None
+
+    # --- find shapes via connected components of non-bg, non-marker cells ---
+    shape_colors = set()
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg and v != marker_color:
+                shape_colors.add(v)
+
+    visited = set()
+    shapes = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] in shape_colors and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if (0 <= nr < h and 0 <= nc < w
+                                and (nr, nc) not in visited
+                                and grid[nr][nc] in shape_colors):
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                min_r = min(p[0] for p in comp)
+                max_r = max(p[0] for p in comp)
+                min_c = min(p[1] for p in comp)
+                max_c = max(p[1] for p in comp)
+                shapes.append((min_r, min_c, max_r - min_r + 1, max_c - min_c + 1))
+
+    # --- remove markers from result first ---
+    for r in range(h):
+        for c in range(w):
+            if result[r][c] == marker_color:
+                result[r][c] = bg
+
+    # --- tile each shape toward its aligned markers ---
+    for (top, left, sh, sw) in shapes:
+        pattern = [grid[r][left:left + sw] for r in range(top, top + sh)]
+
+        # horizontal markers: same column span -> tile vertically
+        for mr, mc_s, mc_e in h_markers:
+            if mc_s == left and (mc_e - mc_s + 1) == sw:
+                if mr < top:
+                    for r in range(mr, top):
+                        pr = (r - top) % sh
+                        for c in range(sw):
+                            result[r][left + c] = pattern[pr][c]
+                elif mr >= top + sh:
+                    for r in range(top + sh, mr + 1):
+                        pr = (r - top) % sh
+                        for c in range(sw):
+                            result[r][left + c] = pattern[pr][c]
+
+        # vertical markers: same row span -> tile horizontally
+        for mc, mr_s, mr_e in v_markers:
+            if mr_s == top and (mr_e - mr_s + 1) == sh:
+                if mc < left:
+                    for c in range(mc, left):
+                        pc = (c - left) % sw
+                        for r in range(sh):
+                            result[top + r][c] = pattern[r][pc]
+                elif mc >= left + sw:
+                    for c in range(left + sw, mc + 1):
+                        pc = (c - left) % sw
+                        for r in range(sh):
+                            result[top + r][c] = pattern[r][pc]
+
+    return result
+
+
+def stamp_tile_to_strip(grid, bg=8):
+    """Tile 3x3 stamp patterns toward matching solid-color strips.
+
+    Finds 3x3 'stamps' (uniform-border ring with a different center) and
+    large solid-color rectangular strips.  Each stamp's center color
+    determines which strip it connects to.  The stamp pattern tiles
+    periodically from its position toward the matching strip.
+
+    The number of full 3-cell periods is floor(distance / 3), where
+    *distance* is measured from the stamp edge to the strip's far edge
+    (the edge furthest from the stamp).
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    result = [row[:] for row in grid]
+
+    # --- find 3x3 stamps: auto-detect border color per stamp ---
+    stamps = []  # (top_row, left_col, center_color, border_color)
+    for r in range(h - 2):
+        for c in range(w - 2):
+            ring = [
+                grid[r][c], grid[r][c + 1], grid[r][c + 2],
+                grid[r + 1][c],              grid[r + 1][c + 2],
+                grid[r + 2][c], grid[r + 2][c + 1], grid[r + 2][c + 2],
+            ]
+            center = grid[r + 1][c + 1]
+            border = ring[0]
+            if (border != bg and center != bg and center != border
+                    and all(v == border for v in ring)):
+                stamps.append((r, c, center, border))
+
+    border_colors = set(s[3] for s in stamps)
+
+    # --- find solid-color rectangular strips (≥4 cells, non-bg, non-border) ---
+    stamp_cells = set()
+    for sr, sc, _, _ in stamps:
+        for dr in range(3):
+            for dc in range(3):
+                stamp_cells.add((sr + dr, sc + dc))
+
+    strips = []  # (top, left, height, width, color)
+    strip_visited = set()
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if (v == bg or v in border_colors
+                    or (r, c) in strip_visited or (r, c) in stamp_cells):
+                continue
+            color = v
+            max_w = 0
+            for cc in range(c, w):
+                if grid[r][cc] == color:
+                    max_w += 1
+                else:
+                    break
+            if max_w < 2:
+                continue
+            max_h = 0
+            for rr in range(r, h):
+                if all(grid[rr][cc] == color for cc in range(c, c + max_w)):
+                    max_h += 1
+                else:
+                    break
+            area = max_h * max_w
+            if area >= 4:
+                for rr in range(r, r + max_h):
+                    for cc in range(c, c + max_w):
+                        strip_visited.add((rr, cc))
+                strips.append((r, c, max_h, max_w, color))
+
+    # --- match each stamp to its target strip and tile ---
+    for sr, sc, center_color, _bdr in stamps:
+        pattern = [grid[r][sc:sc + 3] for r in range(sr, sr + 3)]
+
+        # find the strip whose color matches the stamp's center
+        target = None
+        for st, sl, s_h, s_w, s_color in strips:
+            if s_color == center_color:
+                target = (st, sl, s_h, s_w)
+                break
+        if target is None:
+            continue
+        st, sl, s_h, s_w = target
+
+        # determine tiling direction: which axis has NO overlap?
+        row_ovlp = max(sr, st) < min(sr + 3, st + s_h)
+        col_ovlp = max(sc, sl) < min(sc + 3, sl + s_w)
+
+        if not col_ovlp:
+            # horizontal tiling
+            if sl + s_w <= sc:
+                # strip is LEFT of stamp
+                near_edge = sl + s_w - 1  # strip's right col (near stamp)
+                gap = sc - near_edge - 1
+                n_add = (gap + 2) // 3 if gap >= 0 else 0
+                tile_left = sc - n_add * 3
+                for c in range(tile_left, sc):
+                    pc = (c - sc) % 3
+                    for ri in range(3):
+                        result[sr + ri][c] = pattern[ri][pc]
+            else:
+                # strip is RIGHT of stamp
+                near_edge = sl  # strip's left col (near stamp)
+                gap = near_edge - (sc + 2) - 1
+                n_add = (gap + 2) // 3 if gap >= 0 else 0
+                tile_right = sc + 2 + n_add * 3
+                for c in range(sc + 3, tile_right + 1):
+                    pc = (c - sc) % 3
+                    for ri in range(3):
+                        result[sr + ri][c] = pattern[ri][pc]
+        elif not row_ovlp:
+            # vertical tiling
+            if st + s_h <= sr:
+                # strip is ABOVE stamp
+                near_edge = st + s_h - 1  # strip's bottom row (near stamp)
+                gap = sr - near_edge - 1
+                n_add = (gap + 2) // 3 if gap >= 0 else 0
+                tile_top = sr - n_add * 3
+                for r in range(tile_top, sr):
+                    pr = (r - sr) % 3
+                    for ci in range(3):
+                        result[r][sc + ci] = pattern[pr][ci]
+            else:
+                # strip is BELOW stamp
+                near_edge = st  # strip's top row (near stamp)
+                gap = near_edge - (sr + 2) - 1
+                n_add = (gap + 2) // 3 if gap >= 0 else 0
+                tile_bottom = sr + 2 + n_add * 3
+                for r in range(sr + 3, tile_bottom + 1):
+                    pr = (r - sr) % 3
+                    for ci in range(3):
+                        result[r][sc + ci] = pattern[pr][ci]
+
+    return result

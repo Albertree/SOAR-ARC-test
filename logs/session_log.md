@@ -851,3 +851,31 @@
 - Stored rule hits: 71
 - Time: 172s
 - Log: logs/learn_20260330_111136.log
+
+---
+## Learning Loop -- 2026-03-30 11:18
+
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%)
+- Rules: 71 -> 71 (+0 learned)
+- Stored rule hits: 72
+- Time: 166s
+- Log: logs/learn_20260330_111522.log
+
+---
+## Session 28 (Claude) -- 2026-03-30 11:47
+
+### Changes
+- Added `tile_shape_to_markers` primitive to `_primitives.py` — finds rectangular shapes and marker line segments of a given color, tiles each shape periodically toward its aligned markers (horizontal or vertical)
+- Added `stamp_tile_to_strip` primitive to `_primitives.py` — finds 3x3 stamps (auto-detects border color), matches each stamp's center color to a solid-color strip, tiles the stamp pattern toward the strip using ceil(gap/3) additional periods
+- Created `procedural_memory/concepts/tile_shape_to_markers.json` (solves c62e2108)
+- Created `procedural_memory/concepts/stamp_tile_to_strip.json` (solves 985ae207)
+
+### Results
+- Split: training, Tasks: 80
+- Correct: 74 / 80 (92.5%) — up from 72/80 (90.0%)
+- Rules: 71 -> 73 (+2 learned)
+- Stored rule hits: 72
+- Discovered: 2 new rules from pipeline
+- Time: 169s
+- Log: logs/learn_20260330_114411.log
