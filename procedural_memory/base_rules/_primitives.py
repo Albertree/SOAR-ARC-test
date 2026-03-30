@@ -3912,3 +3912,255 @@ def recolor_tiles_by_key(grid, tile_color=5, bg=0):
                     if out[r][c] == tile_color:
                         out[r][c] = color
     return out
+
+
+def separator_block_decode(grid, sep_color=5, noise_color=8, bg=0):
+    """Grid divided into NxN blocks by separator lines.
+    Find the unique block that does NOT contain noise_color.
+    Each non-bg color at within-block position (r,c) maps to:
+    fill output block (r,c) with that color; all other blocks filled with bg.
+
+    Category: separator grids with positional encoding and noise marker."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator rows and cols
+    sep_rows = [r for r in range(h) if all(grid[r][c] == sep_color for c in range(w))]
+    sep_cols = [c for c in range(w) if all(grid[r][c] == sep_color for r in range(h))]
+
+    # Extract block ranges (between separators)
+    def ranges_between(seps, total):
+        edges = [-1] + seps + [total]
+        result = []
+        for i in range(len(edges) - 1):
+            start = edges[i] + 1
+            end = edges[i + 1]
+            if start < end:
+                result.append((start, end))
+        return result
+
+    row_ranges = ranges_between(sep_rows, h)
+    col_ranges = ranges_between(sep_cols, w)
+    n_rows = len(row_ranges)
+    n_cols = len(col_ranges)
+    if n_rows != n_cols or n_rows == 0:
+        return None
+
+    # Extract blocks and find the one without noise_color
+    clean_block = None
+    clean_br = clean_bc = -1
+    for br, (r0, r1) in enumerate(row_ranges):
+        for bc, (c0, c1) in enumerate(col_ranges):
+            has_noise = False
+            for r in range(r0, r1):
+                for c in range(c0, c1):
+                    if grid[r][c] == noise_color:
+                        has_noise = True
+                        break
+                if has_noise:
+                    break
+            if not has_noise:
+                if clean_block is not None:
+                    return None  # multiple clean blocks
+                clean_br, clean_bc = br, bc
+                block_h = r1 - r0
+                block_w = c1 - c0
+                clean_block = []
+                for r in range(r0, r1):
+                    row = []
+                    for c in range(c0, c1):
+                        row.append(grid[r][c])
+                    clean_block.append(row)
+
+    if clean_block is None:
+        return None
+
+    # Build output: same size as input, sep lines preserved
+    out = [[bg] * w for _ in range(h)]
+    for r in sep_rows:
+        for c in range(w):
+            out[r][c] = sep_color
+    for c in sep_cols:
+        for r in range(h):
+            out[r][c] = sep_color
+
+    # Map clean block's non-bg colors to output blocks
+    for dr in range(block_h):
+        for dc in range(block_w):
+            color = clean_block[dr][dc]
+            if color != bg and color != sep_color:
+                # This color fills output block (dr, dc) entirely
+                if dr < n_rows and dc < n_cols:
+                    tr0, tr1 = row_ranges[dr]
+                    tc0, tc1 = col_ranges[dc]
+                    for r in range(tr0, tr1):
+                        for c in range(tc0, tc1):
+                            out[r][c] = color
+
+    return out
+
+
+def corner_blocks_reflect_inward(grid, bg=7):
+    """Corner blocks of colored rectangles are reflected inward by their block size.
+    The majority color (most corners) moves inward; minority stays.
+
+    Category: corner-block reflection/movement tasks."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return None
+
+    # Find corner blocks: scan from each corner to find rectangular blocks
+    def scan_corner(r_start, c_start, r_dir, c_dir):
+        color = grid[r_start][c_start]
+        if color == bg:
+            return None
+        # Find block extent
+        bh = 0
+        for r in range(r_start, r_start + r_dir * h, r_dir):
+            if 0 <= r < h and grid[r][c_start] == color:
+                bh += 1
+            else:
+                break
+        bw = 0
+        for c in range(c_start, c_start + c_dir * w, c_dir):
+            if 0 <= c < w and grid[r_start][c] == color:
+                bw += 1
+            else:
+                break
+        # Verify full rectangle
+        r0 = min(r_start, r_start + r_dir * (bh - 1))
+        c0 = min(c_start, c_start + c_dir * (bw - 1))
+        for r in range(r0, r0 + bh):
+            for c in range(c0, c0 + bw):
+                if grid[r][c] != color:
+                    return None
+        return (color, bh, bw, r0, c0)
+
+    tl = scan_corner(0, 0, 1, 1)
+    tr = scan_corner(0, w - 1, 1, -1)
+    bl = scan_corner(h - 1, 0, -1, 1)
+    br = scan_corner(h - 1, w - 1, -1, -1)
+
+    if not all([tl, tr, bl, br]):
+        return None
+
+    # Count which color appears most
+    color_count = {}
+    corner_list = [("tl", tl), ("tr", tr), ("bl", bl), ("br", br)]
+    for name, (color, bh, bw, r0, c0) in corner_list:
+        color_count[color] = color_count.get(color, 0) + 1
+
+    max_count = max(color_count.values())
+    majority_color = [c for c, cnt in color_count.items() if cnt == max_count][0]
+
+    # Build output
+    out = [[bg] * w for _ in range(h)]
+
+    for name, (color, bh, bw, r0, c0) in corner_list:
+        if color != majority_color:
+            # Minority: stays in place
+            for r in range(r0, r0 + bh):
+                for c in range(c0, c0 + bw):
+                    out[r][c] = color
+        else:
+            # Majority: reflect inward by block size
+            if name == "tl":
+                nr0, nc0 = r0 + bh, c0 + bw
+            elif name == "tr":
+                nr0, nc0 = r0 + bh, c0 - bw
+            elif name == "bl":
+                nr0, nc0 = r0 - bh, c0 + bw
+            elif name == "br":
+                nr0, nc0 = r0 - bh, c0 - bw
+            for dr in range(bh):
+                for dc in range(bw):
+                    r, c = nr0 + dr, nc0 + dc
+                    if 0 <= r < h and 0 <= c < w:
+                        out[r][c] = color
+
+    return out
+
+
+def slide_block_along_dots(grid, bg=0, block_color=2, dot_color=3):
+    """A 3x3 bordered block sits on a line of evenly-spaced dot markers.
+    Slide the block one dot-step in the positive direction (right/down).
+
+    Category: block movement along marker lines."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the 3x3 block of block_color
+    block_r = block_c = -1
+    for r in range(h - 2):
+        for c in range(w - 2):
+            if all(grid[r + dr][c + dc] == block_color
+                   for dr in range(3) for dc in range(3)
+                   if not (dr == 1 and dc == 1)):
+                block_r, block_c = r, c
+                break
+        if block_r >= 0:
+            break
+
+    if block_r < 0:
+        return None
+
+    # Find dot positions (dot_color cells not part of the block interior)
+    dots = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == dot_color:
+                dots.append((r, c))
+
+    if not dots:
+        return None
+
+    # Determine if line is horizontal or vertical
+    center_r = block_r + 1
+    center_c = block_c + 1
+
+    # Check horizontal: dots share the same row as block center
+    h_dots = [(r, c) for r, c in dots if r == center_r]
+    v_dots = [(r, c) for r, c in dots if c == center_c]
+
+    if len(h_dots) >= len(v_dots):
+        # Horizontal line - find dot spacing and slide right
+        all_cols = sorted(set(c for _, c in h_dots) | {center_c})
+        if len(all_cols) < 2:
+            return None
+        spacing = all_cols[1] - all_cols[0]
+        dr, dc = 0, spacing
+    else:
+        # Vertical line - find dot spacing and slide down
+        all_rows = sorted(set(r for r, _ in v_dots) | {center_r})
+        if len(all_rows) < 2:
+            return None
+        spacing = all_rows[1] - all_rows[0]
+        dr, dc = spacing, 0
+
+    # Build output: copy grid, erase old block, place new block
+    out = [row[:] for row in grid]
+
+    # Erase old block (restore dots/bg underneath)
+    for ddr in range(3):
+        for ddc in range(3):
+            r, c = block_r + ddr, block_c + ddc
+            if ddr == 1 and ddc == 1:
+                # Center was dot_color
+                out[r][c] = dot_color
+            elif grid[r][c] == block_color:
+                out[r][c] = bg
+
+    # Place new block
+    new_r = block_r + dr
+    new_c = block_c + dc
+    for ddr in range(3):
+        for ddc in range(3):
+            r, c = new_r + ddr, new_c + ddc
+            if 0 <= r < h and 0 <= c < w:
+                if ddr == 1 and ddc == 1:
+                    out[r][c] = dot_color  # center stays dot_color
+                else:
+                    out[r][c] = block_color
+
+    return out

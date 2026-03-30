@@ -1,0 +1,23 @@
+{
+  "concept_id": "slide_block_along_dots",
+  "version": 1,
+  "description": "3x3 bordered block on a line of evenly-spaced dot markers slides one step in the positive direction",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"},
+    "block_color": {"type": "color", "default": 2},
+    "dot_color": {"type": "color", "default": 3}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "slide_block_along_dots",
+      "args": {"grid": "$input", "bg": "$bg", "block_color": "$block_color", "dot_color": "$dot_color"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

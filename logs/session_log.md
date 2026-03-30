@@ -751,3 +751,28 @@
   - `recolor_tiles_by_key` — replace tile-color pixels using key matrix (solved 33b52de3)
   - `larger_frame_2x2` — output 2x2 of the bigger rectangular frame color (solved 445eab21)
 - New primitives: `recolor_tiles_by_key`, `larger_frame_2x2`
+
+---
+## Learning Loop -- 2026-03-30 09:43
+
+- Split: training, Tasks: 80
+- Correct: 63 / 80 (78.8%)
+- Rules: 62 -> 62 (+0 learned)
+- Stored rule hits: 63
+- Time: 140s
+- Log: logs/learn_20260330_094050.log
+
+---
+## Session 24 -- 2026-03-30 09:56
+
+- Split: training, Tasks: 80
+- Correct: 66 / 80 (82.5%) ← was 63/80 (78.8%)
+- Rules: 62 -> 65 (+3 learned)
+- Stored rule hits: 63
+- Time: 138s
+- Log: logs/learn_20260330_095409.log
+- New concepts:
+  - `separator_block_decode` — find clean block (no color 8) in separator grid, map its color positions to output blocks (solved 09629e4f)
+  - `corner_blocks_reflect` — reflect majority-color corner blocks inward by block size, minority stays (solved 22208ba4)
+  - `slide_block_along_dots` — slide 3x3 block one dot-step along evenly-spaced marker line (solved 5168d44c)
+- New primitives: `separator_block_decode`, `corner_blocks_reflect_inward`, `slide_block_along_dots`
