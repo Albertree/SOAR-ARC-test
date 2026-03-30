@@ -726,3 +726,28 @@
 - New rules discovered: 3 (or_halves, crosshatch_from_rect, fill_interior_from_seed)
 - Time: 140s
 - Log: logs/learn_20260330_092513.log
+
+---
+## Learning Loop -- 2026-03-30 09:30
+
+- Split: training, Tasks: 80
+- Correct: 60 / 80 (75.0%)
+- Rules: 59 -> 59 (+0 learned)
+- Stored rule hits: 60
+- Time: 147s
+- Log: logs/learn_20260330_092812.log
+
+---
+## Session 23 -- 2026-03-30 09:40
+
+- Split: training, Tasks: 80
+- Correct: 63 / 80 (78.8%) ← was 60/80 (75.0%)
+- Rules: 59 -> 62 (+3 learned)
+- Stored rule hits: 60
+- Time: 138s
+- Log: logs/learn_20260330_093758.log
+- New concepts:
+  - `mirror_h_tile_2x` — flip_h + concat + tile 2x (solved 59341089)
+  - `recolor_tiles_by_key` — replace tile-color pixels using key matrix (solved 33b52de3)
+  - `larger_frame_2x2` — output 2x2 of the bigger rectangular frame color (solved 445eab21)
+- New primitives: `recolor_tiles_by_key`, `larger_frame_2x2`

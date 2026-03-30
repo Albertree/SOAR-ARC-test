@@ -3788,3 +3788,127 @@ def fill_interior_from_seed(grid, bg=0):
             pc = min(c // block_w, pat_w - 1)
             out[r + 1][c + 1] = color_pattern[pr][pc]
     return out
+
+
+def larger_frame_2x2(grid, bg=0):
+    """Find two rectangular frames, return 2x2 grid of the color with larger interior area."""
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+    colors = set()
+    for r in range(H):
+        for c in range(W):
+            if grid[r][c] != bg:
+                colors.add(grid[r][c])
+
+    frame_info = []
+    for color in colors:
+        min_r = min_c = float('inf')
+        max_r = max_c = -1
+        for r in range(H):
+            for c in range(W):
+                if grid[r][c] == color:
+                    min_r = min(min_r, r)
+                    max_r = max(max_r, r)
+                    min_c = min(min_c, c)
+                    max_c = max(max_c, c)
+        if max_r - min_r < 2 or max_c - min_c < 2:
+            continue
+        is_frame = True
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                on_border = (r == min_r or r == max_r or c == min_c or c == max_c)
+                if on_border and grid[r][c] != color:
+                    is_frame = False
+                    break
+            if not is_frame:
+                break
+        if is_frame:
+            interior = (max_r - min_r - 1) * (max_c - min_c - 1)
+            frame_info.append((color, interior))
+
+    if not frame_info:
+        return None
+    frame_info.sort(key=lambda x: x[1], reverse=True)
+    c = frame_info[0][0]
+    return [[c, c], [c, c]]
+
+
+def recolor_tiles_by_key(grid, tile_color=5, bg=0):
+    """Replace tile_color pixels in a regular tile grid with colors from a key matrix.
+
+    The grid contains:
+    - A regular grid of tiles made of `tile_color` (with possible bg holes)
+    - A key matrix elsewhere made of other non-bg, non-tile_color values
+    Each tile gets its tile_color pixels replaced by the corresponding key value.
+    """
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+
+    # Find all tile_color positions
+    tile_rows = set()
+    tile_cols = set()
+    for r in range(H):
+        for c in range(W):
+            if grid[r][c] == tile_color:
+                tile_rows.add(r)
+                tile_cols.add(c)
+    if not tile_rows or not tile_cols:
+        return [row[:] for row in grid]
+
+    # Group consecutive rows/cols into tile bands
+    def group_consecutive(vals):
+        vals = sorted(vals)
+        groups = []
+        cur = [vals[0]]
+        for v in vals[1:]:
+            if v == cur[-1] + 1:
+                cur.append(v)
+            else:
+                groups.append(cur)
+                cur = [v]
+        groups.append(cur)
+        return groups
+
+    row_groups = group_consecutive(tile_rows)
+    col_groups = group_consecutive(tile_cols)
+    n_tr = len(row_groups)
+    n_tc = len(col_groups)
+
+    # Find key matrix: non-bg, non-tile_color pixels
+    key_positions = []
+    for r in range(H):
+        for c in range(W):
+            v = grid[r][c]
+            if v != bg and v != tile_color:
+                key_positions.append((r, c))
+    if not key_positions:
+        return [row[:] for row in grid]
+
+    kr = [p[0] for p in key_positions]
+    kc = [p[1] for p in key_positions]
+    kr_min, kr_max = min(kr), max(kr)
+    kc_min, kc_max = min(kc), max(kc)
+    key_h = kr_max - kr_min + 1
+    key_w = kc_max - kc_min + 1
+
+    if key_h != n_tr or key_w != n_tc:
+        return None
+
+    # Extract key
+    key = []
+    for r in range(kr_min, kr_max + 1):
+        row = []
+        for c in range(kc_min, kc_max + 1):
+            row.append(grid[r][c])
+        key.append(row)
+
+    # Build output
+    out = [row[:] for row in grid]
+    for tr_idx, rg in enumerate(row_groups):
+        for tc_idx, cg in enumerate(col_groups):
+            color = key[tr_idx][tc_idx]
+            for r in rg:
+                for c in cg:
+                    if out[r][c] == tile_color:
+                        out[r][c] = color
+    return out
