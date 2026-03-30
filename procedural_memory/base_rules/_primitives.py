@@ -4164,3 +4164,149 @@ def slide_block_along_dots(grid, bg=0, block_color=2, dot_color=3):
                     out[r][c] = block_color
 
     return out
+
+
+# ============================================================
+# OVERLAY / COMPOSITE primitives
+# ============================================================
+
+def overlay_color_layers(grid, priority):
+    """Overlay vertically-stacked single-color layers with given priority.
+
+    Input grid has N layers stacked vertically (total_h = layer_h * N).
+    Each layer uses exactly one non-zero color; 0 = transparent.
+    priority: list of colors in decreasing priority (highest first).
+    Returns layer_h x W grid.
+    """
+    n_layers = len(priority)
+    total_h = len(grid)
+    w = len(grid[0]) if grid else 0
+    layer_h = total_h // n_layers
+    if layer_h * n_layers != total_h or layer_h == 0:
+        return None
+
+    # Identify each layer's color
+    layer_colors = []
+    for i in range(n_layers):
+        start = i * layer_h
+        color = 0
+        for r in range(start, start + layer_h):
+            for c in range(w):
+                if grid[r][c] != 0:
+                    color = grid[r][c]
+                    break
+            if color != 0:
+                break
+        layer_colors.append(color)
+
+    # Build priority lookup: color -> rank (lower = higher priority)
+    priority_map = {c: idx for idx, c in enumerate(priority)}
+
+    output = []
+    for r in range(layer_h):
+        row = []
+        for c in range(w):
+            best_color = 0
+            best_pri = len(priority) + 1
+            for i in range(n_layers):
+                v = grid[i * layer_h + r][c]
+                if v != 0:
+                    pri = priority_map.get(layer_colors[i], len(priority))
+                    if pri < best_pri:
+                        best_pri = pri
+                        best_color = layer_colors[i]
+            row.append(best_color)
+        output.append(row)
+    return output
+
+
+# ============================================================
+# SYMMETRY primitives
+# ============================================================
+
+def complete_diamond_symmetry(grid, bg=0):
+    """Complete 4-fold rotational symmetry of a sparse diamond/checkerboard pattern.
+
+    Finds non-bg cells, computes the center of their bounding box,
+    then rotates every non-bg cell by 90/180/270 degrees to fill gaps.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    non_zero = [(r, c) for r in range(h) for c in range(w) if grid[r][c] != bg]
+    if not non_zero:
+        return [row[:] for row in grid]
+
+    min_r = min(p[0] for p in non_zero)
+    max_r = max(p[0] for p in non_zero)
+    min_c = min(p[1] for p in non_zero)
+    max_c = max(p[1] for p in non_zero)
+
+    center_r = (min_r + max_r) / 2.0
+    center_c = (min_c + max_c) / 2.0
+
+    output = [row[:] for row in grid]
+
+    for r, c in non_zero:
+        color = grid[r][c]
+        dr = r - center_r
+        dc = c - center_c
+        # 4-fold rotational: 0deg, 90CW, 180, 270CW
+        for rot_dr, rot_dc in [(dr, dc), (dc, -dr), (-dr, -dc), (-dc, dr)]:
+            mr = int(round(center_r + rot_dr))
+            mc = int(round(center_c + rot_dc))
+            if 0 <= mr < h and 0 <= mc < w and output[mr][mc] == bg:
+                output[mr][mc] = color
+    return output
+
+
+# ============================================================
+# SECTION DECODE primitives
+# ============================================================
+
+def decode_section_holes(grid, mapping, sep_color=0):
+    """Decode grid sections separated by full-height columns of sep_color.
+
+    Each section is classified by its internal hole pattern (positions of sep_color
+    within the section). mapping: dict {pattern_key -> output_color}.
+    Returns N x N grid of uniform-color rows (one per section).
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator columns (full-height columns of sep_color)
+    sep_cols = set()
+    for c in range(w):
+        if all(grid[r][c] == sep_color for r in range(h)):
+            sep_cols.add(c)
+
+    # Extract section boundaries
+    sections = []
+    start = None
+    for c in range(w):
+        if c in sep_cols:
+            if start is not None:
+                sections.append((start, c))
+                start = None
+        else:
+            if start is None:
+                start = c
+    if start is not None:
+        sections.append((start, w))
+
+    n = len(sections)
+    if n == 0:
+        return None
+
+    colors = []
+    for left, right in sections:
+        holes = []
+        for r in range(h):
+            for c in range(left, right):
+                if grid[r][c] == sep_color:
+                    holes.append((r, c - left))
+        key = str(sorted(holes))
+        color = mapping.get(key, 0)
+        colors.append(color)
+
+    return [[color] * n for color in colors]

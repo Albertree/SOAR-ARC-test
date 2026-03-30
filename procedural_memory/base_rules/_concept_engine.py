@@ -530,6 +530,140 @@ def _infer_separator_color(task, arckg_features, patterns):
     return sep
 
 
+@_register_infer("layer_priority")
+def _infer_layer_priority(task, arckg_features, patterns):
+    """Infer color priority order for overlay_color_layers.
+
+    Splits input into N vertical layers (N = input_h / output_h),
+    identifies each layer's color, then determines pairwise precedence
+    from the training outputs to build a total ordering.
+    """
+    pair0 = task.example_pairs[0]
+    g_in = pair0.input_grid.raw
+    g_out = pair0.output_grid.raw
+    h_in = len(g_in)
+    h_out = len(g_out)
+    w = len(g_in[0]) if g_in else 0
+    if h_out == 0 or h_in % h_out != 0:
+        return None
+    n_layers = h_in // h_out
+    layer_h = h_out
+    if n_layers < 2:
+        return None
+
+    # Identify each layer's unique non-zero color
+    layer_colors = []
+    for i in range(n_layers):
+        start = i * layer_h
+        color = None
+        for r in range(start, start + layer_h):
+            for c in range(w):
+                v = g_in[r][c]
+                if v != 0:
+                    if color is None:
+                        color = v
+                    elif color != v:
+                        return None
+        if color is None:
+            return None
+        layer_colors.append(color)
+
+    # Build pairwise precedence from all training pairs
+    wins = set()  # (winner, loser)
+    for pair in task.example_pairs:
+        g_in_p = pair.input_grid.raw
+        g_out_p = pair.output_grid.raw
+        for r in range(layer_h):
+            for c in range(w):
+                active = set()
+                for i in range(n_layers):
+                    if g_in_p[i * layer_h + r][c] != 0:
+                        active.add(layer_colors[i])
+                out_c = g_out_p[r][c]
+                if out_c != 0 and len(active) > 1 and out_c in active:
+                    for a in active:
+                        if a != out_c:
+                            wins.add((out_c, a))
+
+    # Topological sort by win count
+    all_colors = list(dict.fromkeys(layer_colors))  # preserve order, unique
+    win_count = {c: 0 for c in all_colors}
+    for winner, _ in wins:
+        if winner in win_count:
+            win_count[winner] += 1
+    priority = sorted(all_colors, key=lambda c: -win_count[c])
+
+    # Validate consistency
+    rank = {c: i for i, c in enumerate(priority)}
+    for winner, loser in wins:
+        if rank.get(winner, 999) >= rank.get(loser, 999):
+            return None
+    return priority
+
+
+@_register_infer("section_hole_mapping")
+def _infer_section_hole_mapping(task, arckg_features, patterns):
+    """Infer hole-pattern to color mapping for decode_section_holes.
+
+    Splits input into sections by full-height separator columns (color 0),
+    classifies each section by its internal 0-positions, and maps each
+    pattern to the corresponding output row color.
+    """
+    mapping = {}
+    for pair in task.example_pairs:
+        g_in = pair.input_grid.raw
+        g_out = pair.output_grid.raw
+        h = len(g_in)
+        w = len(g_in[0]) if g_in else 0
+
+        # Find full-height 0 separator columns
+        sep_cols = set()
+        for c in range(w):
+            if all(g_in[r][c] == 0 for r in range(h)):
+                sep_cols.add(c)
+
+        # Extract section boundaries
+        sections = []
+        start = None
+        for c in range(w):
+            if c in sep_cols:
+                if start is not None:
+                    sections.append((start, c))
+                    start = None
+            else:
+                if start is None:
+                    start = c
+        if start is not None:
+            sections.append((start, w))
+
+        n = len(sections)
+        if n == 0 or len(g_out) != n:
+            return None
+
+        # Each output row must be uniform
+        out_colors = []
+        for r in range(len(g_out)):
+            vals = set(g_out[r])
+            if len(vals) != 1:
+                return None
+            out_colors.append(vals.pop())
+
+        # Map each section's hole pattern to output color
+        for idx, (left, right) in enumerate(sections):
+            holes = []
+            for r in range(h):
+                for c in range(left, right):
+                    if g_in[r][c] == 0:
+                        holes.append((r, c - left))
+            key = str(sorted(holes))
+            color = out_colors[idx]
+            if key in mapping and mapping[key] != color:
+                return None
+            mapping[key] = color
+
+    return mapping if mapping else None
+
+
 @_register_infer("from_examples")
 def _infer_from_examples(task, arckg_features, patterns):
     """Placeholder — actual brute-force handled by the engine."""

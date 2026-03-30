@@ -776,3 +776,29 @@
   - `corner_blocks_reflect` — reflect majority-color corner blocks inward by block size, minority stays (solved 22208ba4)
   - `slide_block_along_dots` — slide 3x3 block one dot-step along evenly-spaced marker line (solved 5168d44c)
 - New primitives: `separator_block_decode`, `corner_blocks_reflect_inward`, `slide_block_along_dots`
+
+---
+## Learning Loop -- 2026-03-30 09:59
+
+- Split: training, Tasks: 80
+- Correct: 66 / 80 (82.5%)
+- Rules: 65 -> 65 (+0 learned)
+- Stored rule hits: 66
+- Time: 139s
+- Log: logs/learn_20260330_095708.log
+
+---
+## Session 25 -- 2026-03-30 10:12
+
+- Split: training, Tasks: 80
+- Correct: 69 / 80 (86.2%) ← was 66/80 (82.5%)
+- Rules: 65 -> 68 (+3 learned)
+- Stored rule hits: 66
+- Time: 138s
+- Log: logs/learn_20260330_101242.log
+- New concepts:
+  - `overlay_color_layers` — overlay N vertically-stacked single-color layers with inferred priority order (solved 3d31c5b3)
+  - `complete_diamond_symmetry` — complete 4-fold rotational symmetry of sparse checkerboard diamond pattern (solved 11852cab)
+  - `decode_section_holes` — classify grid sections by internal hole pattern, output uniform-color rows (solved 995c5fa3)
+- New primitives: `overlay_color_layers`, `complete_diamond_symmetry`, `decode_section_holes`
+- New inference methods: `layer_priority`, `section_hole_mapping`
