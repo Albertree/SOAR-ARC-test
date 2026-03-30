@@ -3447,3 +3447,122 @@ def repeat_colors_growing_gaps(grid):
         gap += 1
 
     return output
+
+
+def pyramid_from_seed(grid):
+    """Find a horizontal row of color-2 cells starting at col 0. Grow a staircase
+    of color 3 upward (each row +1 wider) and color 1 downward (each row -1 narrower).
+    Used for triangular expansion patterns."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the seed row: the row containing contiguous 2s starting at col 0
+    seed_row = None
+    seed_width = 0
+    for r in range(h):
+        if grid[r][0] == 2:
+            count = 0
+            for c in range(w):
+                if grid[r][c] == 2:
+                    count += 1
+                else:
+                    break
+            if count > 0:
+                seed_row = r
+                seed_width = count
+                break
+
+    if seed_row is None:
+        return [row[:] for row in grid]
+
+    output = [[0] * w for _ in range(h)]
+
+    # Place seed row
+    for c in range(seed_width):
+        output[seed_row][c] = 2
+
+    # Grow upward with color 3: each row above adds 1 more cell
+    for dist in range(1, seed_row + 1):
+        r = seed_row - dist
+        fill_w = min(seed_width + dist, w)
+        for c in range(fill_w):
+            output[r][c] = 3
+
+    # Shrink downward with color 1: each row below removes 1 cell
+    for dist in range(1, h - seed_row):
+        fill_w = seed_width - dist
+        if fill_w <= 0:
+            break
+        r = seed_row + dist
+        for c in range(fill_w):
+            output[r][c] = 1
+
+    return output
+
+
+def connect_pairs_with_lines(grid):
+    """Find pairs of same-color non-bg pixels. Connect each pair with a horizontal
+    or vertical line. Vertical lines are drawn after horizontal ones (overwrite at
+    intersections). Single pixels with no pair are left as-is."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+
+    # Collect non-bg pixels grouped by color
+    color_positions = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_positions.setdefault(v, []).append((r, c))
+
+    output = [[bg] * w for _ in range(h)]
+
+    horizontal_lines = []
+    vertical_lines = []
+
+    for color, positions in color_positions.items():
+        if len(positions) == 2:
+            (r1, c1), (r2, c2) = positions
+            if r1 == r2:
+                # Same row → horizontal line
+                horizontal_lines.append((r1, min(c1, c2), max(c1, c2), color))
+            elif c1 == c2:
+                # Same column → vertical line
+                vertical_lines.append((c1, min(r1, r2), max(r1, r2), color))
+        # Single pixels or more than 2: just place them
+        elif len(positions) != 2:
+            for r, c in positions:
+                output[r][c] = grid[r][c]
+
+    # Draw horizontal lines first
+    for row, c_start, c_end, color in horizontal_lines:
+        for c in range(c_start, c_end + 1):
+            output[row][c] = color
+
+    # Draw vertical lines second (overwrite at intersections)
+    for col, r_start, r_end, color in vertical_lines:
+        for r in range(r_start, r_end + 1):
+            output[r][col] = color
+
+    return output
+
+
+def nor_halves(grid):
+    """Split grid vertically into two equal halves. Output a half-sized grid where
+    cells are marked with color 4 where BOTH halves have bg (0), else 0.
+    NOR of two binary patterns."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    half_w = w // 2
+
+    left = [row[:half_w] for row in grid]
+    right = [row[half_w:] for row in grid]
+
+    output = [[0] * half_w for _ in range(h)]
+    for r in range(h):
+        for c in range(half_w):
+            if left[r][c] == 0 and right[r][c] == 0:
+                output[r][c] = 4
+
+    return output

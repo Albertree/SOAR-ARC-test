@@ -659,3 +659,40 @@
 - Stored rule hits: 51
 - Time: 137s
 - Log: logs/learn_20260330_085340.log
+
+---
+## Learning Loop -- 2026-03-30 08:59
+
+- Split: training, Tasks: 80
+- Correct: 54 / 80 (67.5%)
+- Rules: 53 -> 53 (+0 learned)
+- Stored rule hits: 54
+- Time: 138s
+- Log: logs/learn_20260330_085654.log
+
+---
+## Learning Loop -- 2026-03-30 09:12
+
+- Split: training, Tasks: 80
+- Correct: 57 / 80 (71.2%)
+- Rules: 53 -> 56 (+3 learned)
+- Stored rule hits: 54
+- Time: 137s
+- Log: logs/learn_20260330_091039.log
+
+---
+## Session 21 (Claude) -- 2026-03-30 09:10
+
+### Changes
+- Added `pyramid_from_seed` primitive to `_primitives.py` — finds a horizontal row of 2s at left edge, grows color-3 staircase upward (+1 cell/row) and color-1 staircase downward (-1 cell/row)
+- Added `connect_pairs_with_lines` primitive to `_primitives.py` — finds pairs of same-color pixels, connects each with horizontal or vertical line; vertical lines overwrite horizontal at intersections
+- Added `nor_halves` primitive to `_primitives.py` — splits grid vertically into two halves, outputs 4 where both halves are 0 (NOR of binary patterns)
+- Created `procedural_memory/concepts/pyramid_from_seed.json` (solves a65b410d)
+- Created `procedural_memory/concepts/connect_pairs_with_lines.json` (solves 070dd51e)
+- Created `procedural_memory/concepts/nor_halves.json` (solves e345f17b)
+
+### Results
+- Before: 54 / 80 (67.5%)
+- After:  57 / 80 (71.2%)  +3 tasks fixed
+- Regression gate (08ed6ac7): CORRECT
+- New rules discovered: 3 (pyramid_from_seed, connect_pairs_with_lines, nor_halves)
