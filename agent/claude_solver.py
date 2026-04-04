@@ -146,13 +146,19 @@ The concept JSON format:
   "result": "$result"
 }}
 
-Available primitives: Read procedural_memory/base_rules/_primitives.py for the full list.
+Available primitives (FROZEN — do NOT add new ones to _primitives.py):
+  Transform: scale, flip_vertical, flip_horizontal, rotate_cw, transpose, gravity
+  Compose: concat_vertical, concat_horizontal, overlay
+  Color: recolor, fill_region, mask_keep
+  Extract: extract_subgrid, extract_column, extract_row, extract_objects
+  Construct: make_uniform, place_column, place_row
+  Analysis: find_bg_color, grid_dimensions, find_separator_lines, count_color, unique_colors
 Available inference methods: bg_color, ratio_hw, color_map_from_arckg, non_bg_single, from_examples, separator_color, color_added_in_output, source_color_from_arckg, start_color_from_arckg
 
 Rules:
 - "$input" = input grid, "$param_name" = inferred parameter
 - Do NOT hardcode colors or positions — use parameter inference
-- If no existing primitive fits, add a new one to _primitives.py
+- Do NOT modify _primitives.py — the primitive set is frozen. Compose existing primitives in concept steps.
 - The concept must work for ALL examples, not just one
 - Create exactly ONE concept file that solves this task"""
 

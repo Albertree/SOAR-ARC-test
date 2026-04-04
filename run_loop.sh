@@ -59,13 +59,10 @@ get_last_session() {
 }
 
 # ============================================================
-# Clean start: reset memory folders
+# Cleanup: only remove transient caches, preserve learned rules
 # ============================================================
-log "Cleaning memory folders..."
 find semantic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
 find semantic_memory -type d -empty ! -path 'semantic_memory' -delete 2>/dev/null
-find procedural_memory -type f \( -name 'rule_*.json' -o -name 'episode_*.json' \) -delete 2>/dev/null
-find episodic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
 find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
 
 SESSION=$(get_last_session)
@@ -180,7 +177,7 @@ For each strategy:
   a. Create a concept JSON in procedural_memory/concepts/<name>.json
      - Compose primitives from procedural_memory/base_rules/_primitives.py
      - Use inference methods from procedural_memory/base_rules/_concept_engine.py
-  b. If needed: add new primitives to _primitives.py
+  b. Do NOT modify _primitives.py (frozen). Compose existing primitives in concepts.
   c. If needed: add new inference methods to _concept_engine.py
 
 Step 4 — VALIDATION
@@ -199,7 +196,7 @@ CRITICAL RULES:
 - Do NOT modify: data/, agent/cycle.py, agent/wm.py, agent/active_operators.py, agent/rule_engine.py
 - Do NOT hardcode task-specific colors or positions — use parameterized inference.
 - Each concept must handle a CATEGORY of tasks, not just one.
-- Prefer adding reusable primitives over complex single-use concepts.
+- Do NOT modify _primitives.py — the primitive set is frozen at 24 functions.
 - Topology dicts must contain ONLY "COMM" or "DIFF" as values — no concrete values.
 PROMPT
 )" \

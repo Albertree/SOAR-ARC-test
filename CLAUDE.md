@@ -19,6 +19,7 @@ This runs the SOAR agent on ARC tasks, then invokes Claude Code to improve the a
 - `data/` -- ARC dataset (read-only)
 - `agent/cycle.py` -- SOAR decision cycle engine
 - `agent/wm.py` -- WorkingMemory
+- `procedural_memory/base_rules/_primitives.py` -- frozen at 24 primitives
 
 ## SOAR Decision Cycle
 
@@ -113,7 +114,7 @@ Create `procedural_memory/concepts/<name>.json`:
 }
 ```
 
-Available primitives (`_primitives.py`): scale, flip_vertical, flip_horizontal, rotate_cw, transpose, gravity, concat_vertical, concat_horizontal, overlay, recolor, fill_region, mask_keep, extract_subgrid, extract_column, extract_row, extract_objects, make_uniform, place_column, place_row
+Available primitives (`_primitives.py` — FROZEN, do not add new ones): scale, flip_vertical, flip_horizontal, rotate_cw, transpose, gravity, concat_vertical, concat_horizontal, overlay, recolor, fill_region, mask_keep, extract_subgrid, extract_column, extract_row, extract_objects, make_uniform, place_column, place_row, find_bg_color, grid_dimensions, find_separator_lines, count_color, unique_colors
 
 Available inference methods (`_concept_engine.py`): bg_color, ratio_hw, non_bg_single, color_map_from_arckg, column_index_from_arckg, from_examples
 
@@ -127,6 +128,7 @@ Never create `.py` files in `procedural_memory/base_rules/`. The existing infras
 - Hardcode task-specific colors or positions
 - Create one rule per task (that's overfitting)
 - Modify `agent/active_operators.py`
+- Modify `_primitives.py` (the primitive set is frozen at 24 functions)
 - Create `.py` rule files in `procedural_memory/base_rules/` subdirectories
 
 Categories: `color/`, `geometry/`, `fill/`, `structure/`, `connect/`, `separator/`, `detect/`
