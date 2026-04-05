@@ -1,19 +1,19 @@
 {
-  "rule_id": "chunked_20260406_044345_denoise_swap_sections",
+  "rule_id": "chunked_20260406_051116_mark_domino_crosshairs",
   "source": "chunked",
   "source_tasks": [
-    "6350f1f4"
+    "9f5f939b"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "multi_group",
-        "change_scope": "subset",
+        "change_pattern": "column_wise",
+        "change_scope": "single_object",
         "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "denoise_swap_sections",
-    "param_source": "no_params"
+    "concept": "mark_domino_crosshairs",
+    "param_source": "inferred(bg)"
   }
 }

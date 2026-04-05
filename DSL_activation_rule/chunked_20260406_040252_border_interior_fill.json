@@ -2,9 +2,10 @@
   "rule_id": "chunked_20260406_040252_border_interior_fill",
   "source": "chunked",
   "source_tasks": [
-    "84db8fc4"
+    "84db8fc4",
+    "7b6016b9"
   ],
-  "times_validated": 2,
+  "times_validated": 3,
   "times_failed": 0,
   "condition": {
     "level": "GRID",

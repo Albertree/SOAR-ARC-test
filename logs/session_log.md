@@ -1,5 +1,22 @@
 
 ---
+## Session 51 (Claude) -- 2026-04-06
+
+### Changes
+- Added 2 new primitives to `_primitives.py`:
+  - `mark_domino_crosshairs`: finds domino pairs (2-cell adjacent groups) forming a crosshair with gap=1 on each side, marks center with color 4
+  - `separator_zone_gravity`: finds 4 separator lines (2 vertical, 2 horizontal), extracts bounded zone, applies gravity toward the separator matching the scattered data color
+- Created 2 new concept JSONs:
+  - `mark_domino_crosshairs.json` (solves 9f5f939b)
+  - `separator_zone_gravity.json` (solves 5daaa586)
+
+### Results
+- Previous session: 36/40 (90.0%)
+- New tasks solved: 9f5f939b, 5daaa586 (+2)
+- Regression gate (08ed6ac7): CORRECT
+- Total concepts: 39
+
+---
 ## Session 50 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2335,3 +2352,43 @@ Three architectural features added to the SOAR pipeline:
 - Previous: 34/40 (85.0%)
 - New tasks solved: 7837ac64, 6350f1f4
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-04-06 04:48
+
+- Split: training, Tasks: 40
+- Correct: 36 / 40 (90.0%)
+- Rules: 36 -> 38 (+2 learned)
+- Stored rule hits: 34
+- Time: 109s
+- Log: logs/learn_20260406_044628.log
+
+---
+## Learning Loop -- 2026-04-06 04:50
+
+- Split: training, Tasks: 1000
+- Correct: 41 / 1000 (4.1%)
+- Rules: 34 -> 38 (+4 learned)
+- Stored rule hits: 42
+- Time: 3997s
+- Log: logs/learn_20260406_034346.log
+
+---
+## Learning Loop -- 2026-04-06 04:56
+
+- Split: training, Tasks: 40
+- Correct: 2 / 40 (5.0%)
+- Rules: 38 -> 38 (+0 learned)
+- Stored rule hits: 2
+- Time: 142s
+- Log: logs/learn_20260406_045346.log
+
+---
+## Learning Loop -- 2026-04-06 04:58
+
+- Split: training, Tasks: 40
+- Correct: 2 / 40 (5.0%)
+- Rules: 38 -> 38 (+0 learned)
+- Stored rule hits: 2
+- Time: 135s
+- Log: logs/learn_20260406_045626.log

@@ -2884,3 +2884,266 @@ def compress_grid_intersections(grid, bg=0):
         output.append(row)
 
     return output
+
+
+def mark_domino_crosshairs(grid, bg=8, domino_color=1, mark_color=4):
+    """Find pairs of adjacent cells (dominoes) of domino_color.
+    When four dominoes form a crosshair pattern — one above, below, left, right
+    of an empty cell, each separated by exactly one gap cell — mark the center
+    with mark_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    out = [row[:] for row in grid]
+
+    # Find all dominoes (pairs of adjacent same-color non-bg cells)
+    h_dominoes = []  # horizontal: (r, c_left, c_right)
+    v_dominoes = []  # vertical: (c, r_top, r_bot)
+    for r in range(h):
+        for c in range(w - 1):
+            if grid[r][c] == domino_color and grid[r][c + 1] == domino_color:
+                h_dominoes.append((r, c, c + 1))
+    for r in range(h - 1):
+        for c in range(w):
+            if grid[r][c] == domino_color and grid[r + 1][c] == domino_color:
+                v_dominoes.append((c, r, r + 1))
+
+    # Index: vertical dominoes by column, horizontal dominoes by row
+    v_by_col = {}
+    for (col, r_top, r_bot) in v_dominoes:
+        v_by_col.setdefault(col, []).append((r_top, r_bot))
+    h_by_row = {}
+    for (row, c_left, c_right) in h_dominoes:
+        h_by_row.setdefault(row, []).append((c_left, c_right))
+
+    # For each candidate center cell (r, c) that is bg:
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                continue
+            # Check: vertical domino above with gap=1 (bottom of domino at r-2)
+            above = False
+            if c in v_by_col:
+                for (r_top, r_bot) in v_by_col[c]:
+                    if r_bot == r - 2:
+                        above = True
+                        break
+            if not above:
+                continue
+            # Check: vertical domino below with gap=1 (top of domino at r+2)
+            below = False
+            if c in v_by_col:
+                for (r_top, r_bot) in v_by_col[c]:
+                    if r_top == r + 2:
+                        below = True
+                        break
+            if not below:
+                continue
+            # Check: horizontal domino left with gap=1 (right of domino at c-2)
+            left = False
+            if r in h_by_row:
+                for (c_left, c_right) in h_by_row[r]:
+                    if c_right == c - 2:
+                        left = True
+                        break
+            if not left:
+                continue
+            # Check: horizontal domino right with gap=1 (left of domino at c+2)
+            right = False
+            if r in h_by_row:
+                for (c_left, c_right) in h_by_row[r]:
+                    if c_left == c + 2:
+                        right = True
+                        break
+            if not right:
+                continue
+            out[r][c] = mark_color
+    return out
+
+
+def separator_zone_gravity(grid):
+    """Find 4 separator lines (2 vertical, 2 horizontal) in a grid.
+    Extract the rectangular zone they enclose.
+    Scattered pixels inside the zone whose color matches one separator
+    fill toward that separator (gravity).
+    Returns the extracted zone with separator borders."""
+    from collections import Counter
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # A separator line is one color across its entire length, except at
+    # intersections with other separators. Detect with a threshold:
+    # at least 80% of cells share one non-0 color.
+    threshold = 0.8
+
+    # Pass 1: find candidate column separators
+    col_seps = []  # (col_index, color)
+    for c in range(w):
+        col_vals = [grid[r][c] for r in range(h)]
+        cnt = Counter(col_vals)
+        dominant, dom_count = cnt.most_common(1)[0]
+        if dominant != 0 and dom_count >= h * threshold:
+            col_seps.append((c, dominant))
+
+    # Pass 2: find candidate row separators (ignoring known col sep positions)
+    col_sep_positions = {c for c, _ in col_seps}
+    row_seps = []  # (row_index, color)
+    for r in range(h):
+        # Exclude cells at known column separator positions
+        row_vals = [grid[r][c] for c in range(w) if c not in col_sep_positions]
+        if not row_vals:
+            continue
+        cnt = Counter(row_vals)
+        dominant, dom_count = cnt.most_common(1)[0]
+        if dominant != 0 and dom_count >= len(row_vals) * threshold:
+            row_seps.append((r, dominant))
+
+    # Pass 3: re-check columns ignoring row sep positions (catches cols
+    # that are non-pure only at row sep intersections)
+    row_sep_positions = {r for r, _ in row_seps}
+    col_seps2 = []
+    for c in range(w):
+        col_vals = [grid[r][c] for r in range(h) if r not in row_sep_positions]
+        if not col_vals:
+            continue
+        cnt = Counter(col_vals)
+        dominant, dom_count = cnt.most_common(1)[0]
+        if dominant != 0 and dom_count >= len(col_vals) * threshold:
+            col_seps2.append((c, dominant))
+    # Merge: keep any col sep found in either pass
+    seen_cols = {c for c, _ in col_seps}
+    for c, clr in col_seps2:
+        if c not in seen_cols:
+            col_seps.append((c, clr))
+
+    # Filter: remove bg-colored separators
+    col_seps = [(c, clr) for c, clr in col_seps if clr != 0]
+    row_seps = [(r, clr) for r, clr in row_seps if clr != 0]
+
+    if len(col_seps) < 2 or len(row_seps) < 2:
+        return None
+
+    # Take the two col seps and two row seps
+    col_seps.sort()
+    row_seps.sort()
+    c1, c1_color = col_seps[0]
+    c2, c2_color = col_seps[-1]
+    r1, r1_color = row_seps[0]
+    r2, r2_color = row_seps[-1]
+
+    # Zone interior
+    zone_rows = range(r1 + 1, r2)
+    zone_cols = range(c1 + 1, c2)
+    zone_h = len(zone_rows)
+    zone_w = len(zone_cols)
+
+    if zone_h <= 0 or zone_w <= 0:
+        return None
+
+    # Find the "data color" — non-bg, non-separator-line color scattered in zone
+    sep_colors = {c1_color, c2_color, r1_color, r2_color}
+    # Find the most common non-bg scattered color in the zone
+    from collections import Counter
+    data_counts = Counter()
+    bg = 0
+    for r in zone_rows:
+        for c in zone_cols:
+            v = grid[r][c]
+            if v != bg and v not in sep_colors:
+                data_counts[v] += 1
+
+    # The data color should match one of the 4 separator colors
+    # Find which separator color appears as scattered pixels in the zone
+    scatter_in_zone = Counter()
+    for r in zone_rows:
+        for c in zone_cols:
+            v = grid[r][c]
+            if v != bg:
+                scatter_in_zone[v] += 1
+
+    data_color = None
+    for clr, _ in scatter_in_zone.most_common():
+        if clr in sep_colors:
+            data_color = clr
+            break
+
+    if data_color is None:
+        # Try non-separator scattered color
+        if data_counts:
+            data_color = data_counts.most_common(1)[0][0]
+        else:
+            return None
+
+    # Determine gravity direction: toward the separator that matches data_color
+    if r2_color == data_color:
+        direction = "down"
+    elif r1_color == data_color:
+        direction = "up"
+    elif c2_color == data_color:
+        direction = "right"
+    elif c1_color == data_color:
+        direction = "left"
+    else:
+        direction = "down"  # fallback
+
+    # Collect data pixel positions in zone (relative coords)
+    zone_row_list = list(zone_rows)
+    zone_col_list = list(zone_cols)
+    data_positions = []
+    for ri, r in enumerate(zone_row_list):
+        for ci, c in enumerate(zone_col_list):
+            if grid[r][c] == data_color:
+                data_positions.append((ri, ci))
+
+    # Build output interior (all bg initially)
+    interior = [[bg] * zone_w for _ in range(zone_h)]
+
+    # Apply gravity: each data pixel fills from itself to the target border
+    if direction == "down":
+        for ri, ci in data_positions:
+            for fill_r in range(ri, zone_h):
+                interior[fill_r][ci] = data_color
+    elif direction == "up":
+        for ri, ci in data_positions:
+            for fill_r in range(0, ri + 1):
+                interior[fill_r][ci] = data_color
+    elif direction == "right":
+        for ri, ci in data_positions:
+            for fill_c in range(ci, zone_w):
+                interior[ri][fill_c] = data_color
+    elif direction == "left":
+        for ri, ci in data_positions:
+            for fill_c in range(0, ci + 1):
+                interior[ri][fill_c] = data_color
+
+    # Build output with borders
+    out_h = zone_h + 2  # top border + interior + bottom border
+    out_w = zone_w + 2  # left border + interior + right border
+    out = [[bg] * out_w for _ in range(out_h)]
+
+    # Fill borders — corners use actual input values at separator intersections
+    # Top row
+    out[0][0] = grid[r1][c1]
+    for j in range(1, out_w - 1):
+        out[0][j] = r1_color
+    out[0][out_w - 1] = grid[r1][c2]
+
+    # Bottom row
+    out[out_h - 1][0] = grid[r2][c1]
+    for j in range(1, out_w - 1):
+        out[out_h - 1][j] = r2_color
+    out[out_h - 1][out_w - 1] = grid[r2][c2]
+
+    # Left column (excluding corners)
+    for i in range(1, out_h - 1):
+        out[i][0] = c1_color
+
+    # Right column (excluding corners)
+    for i in range(1, out_h - 1):
+        out[i][out_w - 1] = c2_color
+
+    # Fill interior
+    for i in range(zone_h):
+        for j in range(zone_w):
+            out[i + 1][j + 1] = interior[i][j]
+
+    return out

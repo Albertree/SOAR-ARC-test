@@ -1,0 +1,24 @@
+{
+  "concept_id": "mark_domino_crosshairs",
+  "version": 1,
+  "description": "Find domino pairs forming crosshair patterns with gap=1 on each side, mark center with color 4",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "mark_domino_crosshairs",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
