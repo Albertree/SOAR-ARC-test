@@ -1,0 +1,35 @@
+{
+  "concept_id": "mirror_trail_across_separator",
+  "version": 1,
+  "description": "Move colored pixels along trail markers and mirror their displacement across a separator row",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "sep_color": {"type": "color", "infer": "separator_color"},
+    "primary_below": {"type": "color", "infer": "primary_below_sep"},
+    "trail_color": {"type": "color", "infer": "trail_color_removed"},
+    "primary_above": {"type": "color", "infer": "primary_above_sep"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "mirror_trail_across_separator",
+      "args": {
+        "grid": "$input",
+        "sep_color": "$sep_color",
+        "primary_below": "$primary_below",
+        "trail_color": "$trail_color",
+        "primary_above": "$primary_above",
+        "bg": "$bg"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

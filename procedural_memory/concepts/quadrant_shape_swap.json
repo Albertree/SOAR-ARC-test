@@ -1,0 +1,27 @@
+{
+  "concept_id": "quadrant_shape_swap",
+  "version": 1,
+  "description": "Swap shapes between horizontally adjacent quadrant pairs divided by separator lines, recoloring each shape to the source quadrant background",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "sep_color": {"type": "color", "infer": "separator_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "quadrant_shape_swap",
+      "args": {
+        "grid": "$input",
+        "sep_color": "$sep_color"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

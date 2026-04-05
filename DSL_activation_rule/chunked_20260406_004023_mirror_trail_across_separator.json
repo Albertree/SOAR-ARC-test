@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_004023_mirror_trail_across_separator",
+  "source": "chunked",
+  "source_tasks": [
+    "c9680e90"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": "DIFF",
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "mirror_trail_across_separator",
+    "param_source": "inferred(bg), inferred(primary_above), inferred(primary_below), inferred(sep_color), inferred(trail_color)"
+  }
+}

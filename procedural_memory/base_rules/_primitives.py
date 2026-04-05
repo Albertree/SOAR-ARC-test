@@ -1015,3 +1015,112 @@ def l_path_chain(grid, source_color=3, cw_color=6, ccw_color=8):
             break
 
     return out
+
+
+def quadrant_shape_swap(grid, sep_color=0):
+    """Swap shapes between horizontally adjacent quadrant pairs in a grid
+    divided by separator rows/columns.
+
+    The grid is partitioned by full rows/columns of sep_color into rectangular
+    quadrants. Each quadrant has a uniform background color and may contain a
+    shape drawn in a different color. Quadrants are paired horizontally (left-right
+    in the same row band). Within each pair, the shapes are swapped: each shape
+    takes on the background color of the quadrant it came FROM.
+
+    If both quadrants in a pair share the same background, the swapped shapes
+    become invisible (bg on bg), effectively clearing both quadrants.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator rows and columns
+    sep_rows = []
+    for r in range(h):
+        if all(grid[r][c] == sep_color for c in range(w)):
+            sep_rows.append(r)
+
+    sep_cols = []
+    for c in range(w):
+        if all(grid[r][c] == sep_color for r in range(h)):
+            sep_cols.append(c)
+
+    # Extract row bands (ranges between separator row groups)
+    row_bands = []
+    r = 0
+    while r < h:
+        if r in set(sep_rows):
+            r += 1
+            continue
+        start = r
+        while r < h and r not in set(sep_rows):
+            r += 1
+        row_bands.append((start, r))  # [start, end)
+
+    # Extract column bands
+    col_bands = []
+    c = 0
+    while c < w:
+        if c in set(sep_cols):
+            c += 1
+            continue
+        start = c
+        while c < w and c not in set(sep_cols):
+            c += 1
+        col_bands.append((start, c))
+
+    # Build output, starting from a copy of input
+    output = [row[:] for row in grid]
+
+    # Process each row band: pair up column bands left-right
+    for r_start, r_end in row_bands:
+        # Pair consecutive column bands
+        for i in range(0, len(col_bands) - 1, 2):
+            c1_start, c1_end = col_bands[i]
+            c2_start, c2_end = col_bands[i + 1]
+
+            # Determine background of each quadrant (most frequent color)
+            def _quadrant_bg(rs, re, cs, ce):
+                counts = {}
+                for rr in range(rs, re):
+                    for cc in range(cs, ce):
+                        v = grid[rr][cc]
+                        counts[v] = counts.get(v, 0) + 1
+                return max(counts, key=counts.get) if counts else 0
+
+            bg1 = _quadrant_bg(r_start, r_end, c1_start, c1_end)
+            bg2 = _quadrant_bg(r_start, r_end, c2_start, c2_end)
+
+            # Extract shape positions (non-bg cells) with relative coords
+            def _extract_shape(rs, re, cs, ce, bg):
+                cells = []
+                for rr in range(rs, re):
+                    for cc in range(cs, ce):
+                        if grid[rr][cc] != bg:
+                            cells.append((rr - rs, cc - cs))
+                return cells
+
+            shape1 = _extract_shape(r_start, r_end, c1_start, c1_end, bg1)
+            shape2 = _extract_shape(r_start, r_end, c2_start, c2_end, bg2)
+
+            # Clear both quadrants to their own bg
+            for rr in range(r_start, r_end):
+                for cc in range(c1_start, c1_end):
+                    output[rr][cc] = bg1
+                for cc in range(c2_start, c2_end):
+                    output[rr][cc] = bg2
+
+            # Place shape2 into quadrant1 with color = bg2 (source's bg)
+            for dr, dc in shape2:
+                rr = r_start + dr
+                cc = c1_start + dc
+                if r_start <= rr < r_end and c1_start <= cc < c1_end:
+                    output[rr][cc] = bg2
+
+            # Place shape1 into quadrant2 with color = bg1 (source's bg)
+            for dr, dc in shape1:
+                rr = r_start + dr
+                cc = c2_start + dc
+                if r_start <= rr < r_end and c2_start <= cc < c2_end:
+                    output[rr][cc] = bg1
+
+    return output

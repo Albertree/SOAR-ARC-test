@@ -1,5 +1,20 @@
 
 ---
+## Session 41 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive `quadrant_shape_swap` in `_primitives.py` — swaps shapes between horizontally adjacent quadrant pairs (divided by separator lines), recoloring each shape to the source quadrant's background color
+- New concept `quadrant_shape_swap.json` (solves 5a719d11)
+- New concept `mirror_trail_across_separator.json` (solves c9680e90) — uses existing primitive, just needed the concept JSON wiring
+
+### Regression
+- 08ed6ac7: CORRECT
+- 5a719d11: CORRECT
+- c9680e90: CORRECT
+
+### Prior session: 11/20 (55.0%) — added 2 new concepts, expect ~13/20 (65%)
+
+---
 ## Session 40 (Claude) -- 2026-04-06
 
 ### Changes
@@ -1893,3 +1908,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 9
 - Time: 98s
 - Log: logs/learn_20260406_001748.log
+
+---
+## Learning Loop -- 2026-04-06 00:31
+
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%)
+- Rules: 12 -> 14 (+2 learned)
+- Stored rule hits: 9
+- Time: 82s
+- Log: logs/learn_20260406_003035.log
