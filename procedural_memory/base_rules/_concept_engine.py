@@ -31,6 +31,7 @@ def _ensure_loaded():
     )
     if not os.path.isdir(concepts_dir):
         _loaded = True
+        print("[CONCEPT] No concepts directory found")
         return
     for fname in sorted(os.listdir(concepts_dir)):
         if fname.endswith(".json"):
@@ -39,9 +40,19 @@ def _ensure_loaded():
                 with open(path, "r") as f:
                     concept = json.load(f)
                 _concepts.append(concept)
-            except (json.JSONDecodeError, IOError):
+            except (json.JSONDecodeError, IOError) as e:
+                print(f"[CONCEPT] Failed to load {fname}: {e}")
                 continue
+    print(f"[CONCEPT] Loaded {len(_concepts)} concepts from {concepts_dir}")
     _loaded = True
+
+
+def reload_concepts():
+    """Force reload concepts from disk. Call after creating new concept files."""
+    global _loaded, _concepts
+    _concepts = []
+    _loaded = False
+    _ensure_loaded()
 
 
 # ======================================================================
@@ -729,8 +740,9 @@ def _brute_force_resolve(concept, known_params, unresolved, task):
 # Step execution
 # ======================================================================
 
-def _execute_concept(concept, params, input_grid_raw):
+def _execute_concept(concept, params, input_grid_raw, verbose=False):
     """Execute concept steps on a raw grid. Returns output grid or None."""
+    cid = concept.get("concept_id", "?")
     env = {"input": input_grid_raw}
     env["input_height"] = len(input_grid_raw)
     env["input_width"] = len(input_grid_raw[0]) if input_grid_raw else 0
@@ -745,6 +757,8 @@ def _execute_concept(concept, params, input_grid_raw):
         primitive_name = step["primitive"]
         fn = getattr(P, primitive_name, None)
         if fn is None:
+            if verbose:
+                print(f"[CONCEPT] {cid}: primitive '{primitive_name}' not found in _primitives.py")
             return None
 
         # Resolve args — $ref lookups from env
@@ -753,6 +767,9 @@ def _execute_concept(concept, params, input_grid_raw):
             if isinstance(arg_val, str) and arg_val.startswith("$"):
                 ref = arg_val[1:]
                 if ref not in env:
+                    if verbose:
+                        print(f"[CONCEPT] {cid}: step '{step.get('id','')}' "
+                              f"variable '${ref}' not found (available: {list(env.keys())})")
                     return None
                 resolved_args[arg_name] = env[ref]
             else:
@@ -760,7 +777,10 @@ def _execute_concept(concept, params, input_grid_raw):
 
         try:
             result = fn(**resolved_args)
-        except Exception:
+        except Exception as e:
+            if verbose:
+                print(f"[CONCEPT] {cid}: step '{step.get('id','')}' "
+                      f"primitive '{primitive_name}' raised {type(e).__name__}: {e}")
             return None
 
         env[step["output"]] = result
@@ -769,6 +789,8 @@ def _execute_concept(concept, params, input_grid_raw):
     result_ref = concept.get("result", "")
     if isinstance(result_ref, str) and result_ref.startswith("$"):
         return env.get(result_ref[1:])
+    if verbose:
+        print(f"[CONCEPT] {cid}: no valid result ref (got '{result_ref}')")
     return None
 
 
@@ -776,13 +798,30 @@ def _execute_concept(concept, params, input_grid_raw):
 # Validation
 # ======================================================================
 
-def _validate_concept(concept, params, task):
+def _validate_concept(concept, params, task, verbose=False):
     """Check that concept with these params produces correct output for ALL example pairs."""
-    for pair in task.example_pairs:
+    cid = concept.get("concept_id", "?")
+    for idx, pair in enumerate(task.example_pairs):
         if pair.input_grid is None or pair.output_grid is None:
             continue
-        predicted = _execute_concept(concept, params, pair.input_grid.raw)
-        if predicted is None or predicted != pair.output_grid.raw:
+        predicted = _execute_concept(concept, params, pair.input_grid.raw, verbose=verbose)
+        if predicted is None:
+            if verbose:
+                print(f"[CONCEPT] {cid}: validation failed on pair {idx} — execution returned None")
+            return False
+        if predicted != pair.output_grid.raw:
+            if verbose:
+                # Show first difference
+                expected = pair.output_grid.raw
+                for r in range(min(len(predicted), len(expected))):
+                    for c in range(min(len(predicted[r]), len(expected[r]))):
+                        if predicted[r][c] != expected[r][c]:
+                            print(f"[CONCEPT] {cid}: validation failed on pair {idx} — "
+                                  f"cell ({r},{c}): predicted {predicted[r][c]}, expected {expected[r][c]}")
+                            return False
+                print(f"[CONCEPT] {cid}: validation failed on pair {idx} — "
+                      f"size mismatch: predicted {len(predicted)}x{len(predicted[0]) if predicted else 0}, "
+                      f"expected {len(expected)}x{len(expected[0]) if expected else 0}")
             return False
     return True
 
@@ -801,7 +840,12 @@ def try_concepts(patterns, task):
     """
     _ensure_loaded()
     if not _concepts:
-        return None
+        # Check disk one more time in case concepts were just created
+        reload_concepts()
+        if not _concepts:
+            return None
+
+    task_hex = getattr(task, "task_hex", "?")
 
     # Extract structural features via ARCKG comparison
     try:
@@ -815,9 +859,12 @@ def try_concepts(patterns, task):
         }
 
     for concept in _concepts:
+        cid = concept.get("concept_id", "?")
         sig = concept.get("signature", {})
         if not _signature_matches(sig, arckg_features, patterns):
             continue
+
+        print(f"[CONCEPT] {task_hex}: trying concept '{cid}'...")
 
         # Infer parameters
         params = {}
@@ -833,6 +880,10 @@ def try_concepts(patterns, task):
                     if value is not None:
                         params[pname] = value
                         continue
+                    else:
+                        print(f"[CONCEPT] {cid}: param '{pname}' inference '{infer_method}' returned None")
+                else:
+                    print(f"[CONCEPT] {cid}: unknown inference method '{infer_method}' for param '{pname}'")
             if pdef.get("default") is not None:
                 params[pname] = pdef["default"]
                 continue
@@ -840,6 +891,7 @@ def try_concepts(patterns, task):
                 brute_force_params.append((pname, pdef))
                 continue
             all_resolved = False
+            print(f"[CONCEPT] {cid}: param '{pname}' unresolved (no infer method, no default)")
             break
 
         if not all_resolved:
@@ -849,11 +901,13 @@ def try_concepts(patterns, task):
         if brute_force_params:
             resolved = _brute_force_resolve(concept, params, brute_force_params, task)
             if resolved is None:
+                print(f"[CONCEPT] {cid}: brute-force resolution failed")
                 continue
             params.update(resolved)
 
         # Validate: execute concept on all example pairs
-        if _validate_concept(concept, params, task):
+        if _validate_concept(concept, params, task, verbose=True):
+            print(f"[CONCEPT] {cid}: MATCHED task {task_hex} with params {params}")
             return {
                 "type": f"concept:{concept['concept_id']}",
                 "concept_id": concept["concept_id"],

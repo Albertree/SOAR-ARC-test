@@ -6,7 +6,7 @@ if [ -d "/mnt/c" ]; then
 else
     PRE="/c"
 fi
-export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/Sir_K/AppData/Roaming/npm:${PRE}/Users/Sir_K/AppData/Local/Microsoft/WindowsApps:$PATH"
+export PATH="${PRE}/Users/ds-lab/anaconda3:${PRE}/Users/ds-lab/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/ds-lab/AppData/Roaming/npm:${PRE}/Users/ds-lab/AppData/Local/Microsoft/WindowsApps:$PATH"
 
 # ============================================================
 # SOAR-ARC Infinite Loop
@@ -30,6 +30,7 @@ MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
 TASKS_PER_SESSION=20
 MAX_TASKS=1000
+CLAUDE_TIMEOUT=600
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -59,7 +60,7 @@ get_last_session() {
 }
 
 # ============================================================
-# Cleanup: only remove transient caches, preserve learned rules
+# Startup cleanup: only transient caches, NEVER learned rules
 # ============================================================
 find semantic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
 find semantic_memory -type d -empty ! -path 'semantic_memory' -delete 2>/dev/null
@@ -125,8 +126,8 @@ while true; do
         fi
     fi
 
-    # ── 2. Claude Code improves the agent (POLARIS) ─────────
-    log "Claude Code improving agent..."
+    # ── 2. Claude Code improves the agent ────────────────────
+    log "Claude Code improving agent (timeout ${CLAUDE_TIMEOUT}s)..."
 
     PLAYBOOK=$(python -c "
 import sys; sys.path.insert(0, '.')
@@ -140,7 +141,7 @@ else:
 
     REFLECTIONS=$(cat $(ls -t logs/reflections_*.json 2>/dev/null | head -1) 2>/dev/null || echo "none")
 
-    claude -p "$(cat <<PROMPT
+    timeout "$CLAUDE_TIMEOUT" claude -p "$(cat <<PROMPT
 You are session ${SESSION} of the SOAR-ARC improvement loop.
 
 CONTEXT:
@@ -158,53 +159,63 @@ ${REFLECTIONS}
 YOUR TASK THIS SESSION:
 
 Step 1 — FAILURE ANALYSIS
-For each failing task in the learn output:
-  a. Read its JSON from data/ARC_AGI/training/<hex>.json
-  b. Produce a structured record:
-     {
-       "task_hex": "...",
-       "diagnosis": "specific structural gap",
-       "revision": "what new concept/primitive is needed",
-       "prevention": "category of tasks this affects"
-     }
+Pick 1-3 INCORRECT tasks from the learn output above.
+For each, read its JSON from data/ARC_AGI/training/<hex>.json.
 
 Step 2 — STRATEGY SYNTHESIS
 Group failures that share the same comparison topology.
 For each group, propose ONE strategy (max 2 strategies per session).
 
 Step 3 — IMPLEMENTATION
-For each strategy:
-  a. Create a concept JSON in procedural_memory/concepts/<name>.json
-     - Compose primitives from procedural_memory/base_rules/_primitives.py
-     - Use inference methods from procedural_memory/base_rules/_concept_engine.py
-  b. Do NOT modify _primitives.py (frozen). Compose existing primitives in concepts.
-  c. If needed: add new inference methods to _concept_engine.py
+For each strategy, create a concept JSON in procedural_memory/concepts/<name>.json.
 
-Step 4 — VALIDATION
-  a. python run_task.py must output CORRECT
-  b. python run_learn.py --limit ${TASKS_PER_SESSION} --shuffle must show improvement
-  c. python scripts/validate_patch.py must output VALIDATION_PASS
+Available primitives (FROZEN — 24 functions): scale, flip_vertical, flip_horizontal,
+rotate_cw, transpose, gravity, concat_vertical, concat_horizontal, overlay, recolor,
+fill_region, mask_keep, extract_subgrid, extract_column, extract_row, extract_objects,
+make_uniform, place_column, place_row, find_bg_color, grid_dimensions,
+find_separator_lines, count_color, unique_colors
+
+Available inference methods: bg_color, ratio_hw, color_map_from_arckg, non_bg_single,
+column_index_from_arckg, from_examples, separator_color, color_added_in_output,
+source_color_from_arckg, start_color_from_arckg
+
+Concept JSON format:
+{
+  "concept_id": "<name>",
+  "version": 1,
+  "description": "One-line description",
+  "signature": {"grid_size_preserved": true/false},
+  "parameters": {"param": {"type": "int|color|color_map", "infer": "method_name"}},
+  "steps": [{"id": "s1", "primitive": "fn", "args": {"grid": "\$input"}, "output": "result"}],
+  "result": "\$result"
+}
+
+Step 4 — QUICK VALIDATION
+Run: python run_task.py
+Check for [CONCEPT] log lines — they show exactly why a concept failed.
 
 Step 5 — SESSION LOG
-Append results to logs/session_log.md with:
-  - Strategies proposed and implemented
-  - Tasks fixed
-  - Playbook version
+Append results to logs/session_log.md.
 
 CRITICAL RULES:
 - Do NOT create Python rule modules. ALL rules must be concept JSONs.
-- Do NOT modify: data/, agent/cycle.py, agent/wm.py, agent/active_operators.py, agent/rule_engine.py
+- Do NOT modify: data/, agent/cycle.py, agent/wm.py, _primitives.py
 - Do NOT hardcode task-specific colors or positions — use parameterized inference.
 - Each concept must handle a CATEGORY of tasks, not just one.
-- Do NOT modify _primitives.py — the primitive set is frozen at 24 functions.
-- Topology dicts must contain ONLY "COMM" or "DIFF" as values — no concrete values.
+- If a concept fails, READ the [CONCEPT] log lines to understand WHY, then fix it.
 PROMPT
 )" \
         --permission-mode bypassPermissions \
-        --output-format text \
+        --output-format stream-json \
+        --verbose \
         2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
 
-    log "Claude Code finished."
+    CLAUDE_EXIT=$?
+    if [ $CLAUDE_EXIT -eq 124 ]; then
+        log "[!] Claude Code timed out after ${CLAUDE_TIMEOUT}s"
+    else
+        log "Claude Code finished (exit $CLAUDE_EXIT)."
+    fi
 
     # ── 3. Validation + regression check ─────────────────────
     if python scripts/validate_patch.py 2>&1 | tee -a "$PIPELINE_LOG"; then

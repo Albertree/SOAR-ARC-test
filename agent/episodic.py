@@ -22,6 +22,65 @@ EPISODIC_MEMORY_ROOT = "episodic_memory"
 
 
 # ======================================================================
+# Topology extraction and matching (used by chunking + validation)
+# ======================================================================
+
+def extract_topology(comp_result: dict) -> dict:
+    """
+    Extract a COMM/DIFF topology dict from an ARCKG comparison result.
+
+    Args:
+        comp_result: the "result" dict from ARCKG compare(), containing
+                     {"type": "COMM|DIFF", "score": "n/total", "category": {...}}
+
+    Returns:
+        dict mapping each category key to "COMM" or "DIFF", e.g.
+        {"height": "COMM", "width": "COMM", "colors": "DIFF", ...}
+    """
+    if not comp_result or not isinstance(comp_result, dict):
+        return {}
+
+    category = comp_result.get("category", {})
+    if not category:
+        return {}
+
+    topology = {}
+    for key, val in category.items():
+        if isinstance(val, dict):
+            topology[key] = val.get("type", "DIFF")
+        else:
+            topology[key] = "COMM" if val == "COMM" else "DIFF"
+    return topology
+
+
+def topologies_match(topo_a: dict, topo_b: dict) -> bool:
+    """
+    Check if two topology dicts are structurally compatible.
+
+    Two topologies match if every key present in BOTH dicts has the same
+    COMM/DIFF value. Keys present in only one dict are ignored (partial match).
+
+    Args:
+        topo_a: topology dict (e.g. from a chunked rule's condition)
+        topo_b: topology dict (e.g. from a new task's comparison)
+
+    Returns:
+        True if all shared keys agree on COMM vs DIFF.
+    """
+    if not topo_a or not topo_b:
+        return False
+
+    shared_keys = set(topo_a.keys()) & set(topo_b.keys())
+    if not shared_keys:
+        return False
+
+    for key in shared_keys:
+        if topo_a[key] != topo_b[key]:
+            return False
+    return True
+
+
+# ======================================================================
 # Fingerprint computation
 # ======================================================================
 

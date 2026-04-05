@@ -1263,3 +1263,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 0
 - Time: 44s
 - Log: logs/learn_20260404_235622.log
+
+---
+## Learning Loop -- 2026-04-05 00:21
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 44s
+- Log: logs/learn_20260405_002102.log
+
+---
+## Learning Loop -- 2026-04-05 14:18
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 56s
+- Log: logs/learn_20260405_141707.log
