@@ -10,8 +10,76 @@ Pipeline operators (all fire in S2, read/write S1):
   SubmitOperator        -> write prediction to output-link, satisfy goal
 """
 
+from collections import Counter
+from itertools import permutations, product
+
 from agent.operators import Operator
+from agent.memory_router import log_routing
 from ARCKG.comparison import compare as arckg_compare
+
+
+# ======================================================================
+# Shared helpers
+# ======================================================================
+
+def _find_outlined_rectangles(grid, outline_color, bg_color):
+    """Find rectangles outlined with outline_color whose interior is bg_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = [[False] * w for _ in range(h)]
+    rects = []
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == outline_color and not visited[r][c]:
+                # BFS to find connected component of outline_color
+                component = []
+                queue = [(r, c)]
+                visited[r][c] = True
+                while queue:
+                    cr, cc = queue.pop(0)
+                    component.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == outline_color:
+                            visited[nr][nc] = True
+                            queue.append((nr, nc))
+
+                # Bounding box
+                min_r = min(p[0] for p in component)
+                max_r = max(p[0] for p in component)
+                min_c = min(p[1] for p in component)
+                max_c = max(p[1] for p in component)
+
+                if max_r - min_r < 2 or max_c - min_c < 2:
+                    continue
+
+                # Check component matches a perfect rectangle outline
+                expected = set()
+                for rr in range(min_r, max_r + 1):
+                    expected.add((rr, min_c))
+                    expected.add((rr, max_c))
+                for cc in range(min_c, max_c + 1):
+                    expected.add((min_r, cc))
+                    expected.add((max_r, cc))
+
+                if set(component) != expected:
+                    continue
+
+                # Check interior is all bg_color
+                interior_ok = True
+                for rr in range(min_r + 1, max_r):
+                    for cc in range(min_c + 1, max_c):
+                        if grid[rr][cc] != bg_color:
+                            interior_ok = False
+                            break
+                    if not interior_ok:
+                        break
+
+                if interior_ok:
+                    rects.append((min_r, min_c, max_r, max_c))
+
+    return rects
 
 
 # ======================================================================
@@ -54,6 +122,9 @@ class SelectTargetOperator(Operator):
         raise NotImplementedError("SelectTargetOperator.precondition() not implemented.")
 
     def effect(self, wm):
+        level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        log_routing("select_target", level)
+
         task = wm.task
         if task is None:
             return
@@ -105,6 +176,9 @@ class CompareOperator(Operator):
         raise NotImplementedError("CompareOperator.precondition() not implemented.")
 
     def effect(self, wm):
+        level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        log_routing("compare", level)
+
         pending = list(wm.s1.get("pending-comparisons") or [])
         if not pending:
             return
@@ -151,6 +225,9 @@ class ExtractPatternOperator(Operator):
         raise NotImplementedError("ExtractPatternOperator.precondition() not implemented.")
 
     def effect(self, wm):
+        level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        log_routing("extract_pattern", level)
+
         task = wm.task
         if task is None:
             return
@@ -216,6 +293,8 @@ class ExtractPatternOperator(Operator):
                 "output_colors": sorted(output_colors),
                 "top_row": top_row,
                 "top_col": top_col,
+                "max_row": max(r for r, c in positions),
+                "max_col": max(c for r, c in positions),
                 "cell_count": len(group_cells),
             })
 
@@ -272,8 +351,8 @@ class ExtractPatternOperator(Operator):
 class GeneralizeOperator(Operator):
     """
     Reads extracted patterns and attempts to create a transformation rule.
-    Tries multiple strategies in priority order. If no strategy succeeds,
-    falls back to an identity rule so the pipeline can still complete.
+    Delegates to the rule engine which dynamically loads rule modules from
+    procedural_memory/base_rules/. If no rule matches, falls back to identity.
     """
 
     def __init__(self, generalize_fn=None, save_fn=None):
@@ -285,18 +364,38 @@ class GeneralizeOperator(Operator):
         raise NotImplementedError("GeneralizeOperator.precondition() not implemented.")
 
     def effect(self, wm):
+        level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        log_routing("generalize", level)
+
         patterns = wm.s1.get("patterns")
         if not patterns:
             return
 
+        task = wm.task
+        comparisons = wm.s1.get("comparisons", {})
+
+        # Try chunked activation rules first (topology-based shortcut)
         rule = None
+        try:
+            from agent.chunking import try_chunked_rules
+            chunked_hint = try_chunked_rules(comparisons, task, patterns=patterns)
+            if chunked_hint:
+                # Validate the chunked hint against examples
+                concept_id = chunked_hint.get("concept_id", "")
+                from agent.rule_engine import try_all
+                rule = try_all(patterns, task)
+                if rule and rule.get("concept_id") == concept_id:
+                    print(f"[CHUNK] Chunked rule confirmed: {concept_id}")
+                elif rule:
+                    pass  # different concept won, that's fine
+                # If try_all found nothing, try_all already returns None
+        except Exception:
+            pass
 
-        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
-
-        # Strategy 2: simple 1:1 color mapping
+        # Standard concept matching
         if rule is None:
-            rule = self._try_color_mapping(patterns)
+            from agent.rule_engine import try_all
+            rule = try_all(patterns, task)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -304,98 +403,13 @@ class GeneralizeOperator(Operator):
 
         wm.s1["active-rules"] = [rule]
 
-    # ---- strategy: sequential recoloring --------------------------------
-
-    def _try_recolor_sequential(self, patterns):
-        """
-        Detect pattern: all changed-cell groups have one source color,
-        output colors are sequential (1,2,3,...), ordered by position.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
-            return None
-
-        # All pairs must have the same number of change groups
-        group_counts = [a["num_groups"] for a in pair_analyses]
-        if len(set(group_counts)) != 1 or group_counts[0] == 0:
-            return None
-
-        all_source_colors = set()
-
-        for analysis in pair_analyses:
-            for g in analysis["groups"]:
-                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
-                    return None
-                all_source_colors.add(g["input_colors"][0])
-
-            out_colors = sorted(set(g["output_colors"][0] for g in analysis["groups"]))
-            expected = list(range(min(out_colors), min(out_colors) + len(out_colors)))
-            if out_colors != expected:
-                return None
-
-        # Try sorting by different position keys
-        for sort_key in ["top_row", "top_col"]:
-            if self._check_sort_key(pair_analyses, sort_key):
-                start_color = min(
-                    g["output_colors"][0]
-                    for g in pair_analyses[0]["groups"]
-                )
-                return {
-                    "type": "recolor_sequential",
-                    "sort_key": sort_key,
-                    "start_color": start_color,
-                    "source_colors": sorted(all_source_colors),
-                    "confidence": 1.0,
-                }
-
-        return None
-
-    @staticmethod
-    def _check_sort_key(pair_analyses, sort_key):
-        """Verify that sorting groups by sort_key produces sequential output colors."""
-        for analysis in pair_analyses:
-            groups = analysis["groups"]
-            sorted_groups = sorted(groups, key=lambda g: g[sort_key])
-            colors = [g["output_colors"][0] for g in sorted_groups]
-            if colors != list(range(colors[0], colors[0] + len(colors))):
-                return False
-        return True
-
-    # ---- strategy: simple color mapping ---------------------------------
-
-    def _try_color_mapping(self, patterns):
-        """
-        Detect pattern: each input color consistently maps to one output color.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
-            return None
-
-        # Collect all observed color transitions
-        color_map = {}
-        for analysis in pair_analyses:
-            for group in analysis["groups"]:
-                for ic in group["input_colors"]:
-                    for oc in group["output_colors"]:
-                        if ic not in color_map:
-                            color_map[ic] = set()
-                        color_map[ic].add(oc)
-
-        # Each input color must map to exactly one output color
-        simple_map = {}
-        for ic, ocs in color_map.items():
-            if len(ocs) != 1:
-                return None
-            simple_map[ic] = list(ocs)[0]
-
-        if simple_map:
-            return {
-                "type": "color_mapping",
-                "mapping": simple_map,
-                "confidence": 0.8,
-            }
-
-        return None
+        # Chunk the resolution if a non-identity rule was found
+        if rule.get("type", "identity") != "identity" and comparisons:
+            try:
+                from agent.chunking import chunk_resolution_to_rule
+                chunk_resolution_to_rule(comparisons, rule, task.task_hex, patterns=patterns)
+            except Exception:
+                pass
 
 
 # ======================================================================
@@ -426,6 +440,7 @@ class PredictOperator(Operator):
     """
     Reads the best rule from active-rules and applies it to each test
     pair's input grid to produce a predicted output grid.
+    Delegates to the rule engine for rule application.
     """
 
     def __init__(self):
@@ -435,6 +450,9 @@ class PredictOperator(Operator):
         raise NotImplementedError("PredictOperator.precondition() not implemented.")
 
     def effect(self, wm):
+        level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        log_routing("predict", level)
+
         task = wm.task
         active_rules = wm.s1.get("active-rules")
         if not task or not active_rules:
@@ -456,95 +474,14 @@ class PredictOperator(Operator):
 
         wm.s1["predictions"] = predictions
 
-    # ---- rule application dispatchers ------------------------------------
+    # ---- rule application dispatcher ------------------------------------
 
     def _apply_rule(self, rule, input_grid):
         rule_type = rule.get("type")
-        if rule_type == "recolor_sequential":
-            return self._apply_recolor_sequential(rule, input_grid)
-        if rule_type == "color_mapping":
-            return self._apply_color_mapping(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
-        return None
-
-    def _apply_recolor_sequential(self, rule, input_grid):
-        raw = input_grid.raw
-        height = len(raw)
-        width = len(raw[0]) if raw else 0
-        sort_key = rule["sort_key"]
-        start_color = rule["start_color"]
-        source_colors = set(rule.get("source_colors", []))
-
-        # Find target cells
-        target_cells = []
-        for r in range(height):
-            for c in range(width):
-                if raw[r][c] in source_colors:
-                    target_cells.append((r, c))
-
-        if not target_cells:
-            return [row[:] for row in raw]
-
-        # Group into connected components
-        groups = self._group_positions(target_cells)
-
-        # Sort groups by the rule's sort key
-        def _sort_val(group):
-            if sort_key == "top_row":
-                return min(r for r, c in group)
-            if sort_key == "top_col":
-                return min(c for r, c in group)
-            return 0
-
-        sorted_groups = sorted(groups, key=_sort_val)
-
-        # Build output grid
-        output = [row[:] for row in raw]
-        for idx, group in enumerate(sorted_groups):
-            new_color = start_color + idx
-            for r, c in group:
-                output[r][c] = new_color
-
-        return output
-
-    def _apply_color_mapping(self, rule, input_grid):
-        raw = input_grid.raw
-        mapping = rule.get("mapping", {})
-
-        output = []
-        for row in raw:
-            output.append([mapping.get(cell, cell) for cell in row])
-        return output
-
-    # ---- helpers ---------------------------------------------------------
-
-    @staticmethod
-    def _group_positions(positions):
-        """Group (row, col) positions into 4-connected components."""
-        pos_set = set(positions)
-        visited = set()
-        groups = []
-
-        for pos in positions:
-            if pos in visited:
-                continue
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_set:
-                    continue
-                visited.add(p)
-                group.append(p)
-                r, c = p
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (r + dr, c + dc)
-                    if nb in pos_set and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
+        from agent.rule_engine import apply
+        return apply(rule_type, rule, input_grid)
 
 
 # ======================================================================
@@ -564,6 +501,9 @@ class SubmitOperator(Operator):
         raise NotImplementedError("SubmitOperator.precondition() not implemented.")
 
     def effect(self, wm):
+        level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        log_routing("submit", level)
+
         predictions = wm.s1.get("predictions")
         if not predictions:
             return

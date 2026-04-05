@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(git -C C:/Users/ds-lab/Desktop/arc-test-2 show 718385e:procedural_memory/base_rules/_concept_engine.py)",
+      "Bash(git -C C:/Users/ds-lab/Desktop/arc-test-2 show 718385e:procedural_memory/base_rules/_helpers.py)"
+    ]
+  }
+}

@@ -2,12 +2,15 @@
 ActiveSoarAgent — Main SOAR agent with memory-based learning.
 
 Solve flow:
-  1. Load stored rules from procedural_memory
-  2. Try each stored rule against example pairs (fast path)
-  3. If a stored rule works → apply to test input, return
-  4. If none work → run full SOAR pipeline (slow path)
-  5. If pipeline discovers a new rule → save to procedural_memory
+  1. Compute structural fingerprint of the new task
+  2. Search episodic memory for similar past tasks (Case-Based Reasoning)
+  3. If a similar episode is found, try its rule first
+  4. Else try all stored rules from procedural_memory (flat scan)
+  5. If nothing works → run full SOAR pipeline (slow path)
+  6. If pipeline discovers a new rule → save to procedural + episodic memory
 """
+
+import os
 
 from agent.wm import WorkingMemory
 from agent.cycle import run_cycle
@@ -17,20 +20,28 @@ from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
+from agent.episodic import (
+    compute_fingerprint, save_episode, build_structural_key,
+    find_similar_episodes, load_episodes, extract_topology,
+)
+from ARCKG.comparison import compare as arckg_compare
 
 
 class ActiveSoarAgent:
     """
     SOAR agent that accumulates knowledge across tasks.
-    Each solve() call checks stored rules first, then falls back to the pipeline.
-    New rules are saved after successful pipeline discoveries.
+    Each solve() call checks episodic memory first (CBR), then stored rules,
+    then falls back to the pipeline. New rules and episodes are saved after
+    successful pipeline discoveries.
     """
 
     def __init__(self, semantic_memory_root: str = "semantic_memory",
                  procedural_memory_root: str = "procedural_memory",
+                 episodic_memory_root: str = "episodic_memory",
                  max_steps: int = 50):
         self.semantic_memory_root = semantic_memory_root
         self.procedural_memory_root = procedural_memory_root
+        self.episodic_memory_root = episodic_memory_root
         self.max_steps = max_steps
         self._submission_count: int = 0
         self._current_task_hex: str = None
@@ -42,7 +53,11 @@ class ActiveSoarAgent:
     def solve(self, task) -> list:
         """
         Solve one task. Returns list of predicted grids (one per test pair).
-        Tries stored rules first, then full pipeline.
+
+        Retrieval order:
+          1. Episodic CBR — find similar past tasks, try their rules
+          2. Flat procedural scan — try all stored rules
+          3. Full SOAR pipeline — run the strategy waterfall
         """
         if self._current_task_hex != task.task_hex:
             self._current_task_hex = task.task_hex
@@ -56,7 +71,57 @@ class ActiveSoarAgent:
             "rule_source": None,
         }
 
-        # --- Fast path: try stored rules ---
+        # --- Compute structural fingerprint ---
+        try:
+            fingerprint = compute_fingerprint(task)
+        except Exception:
+            fingerprint = {"task_hex": task.task_hex}
+
+        # --- Fast path 1: Episodic CBR (similarity-based retrieval) ---
+        try:
+            # Build topology for structural matching
+            task_topology = None
+            try:
+                for pair in task.example_pairs:
+                    comp = arckg_compare(pair.input_grid, pair.output_grid)
+                    task_topology = extract_topology(comp.get("result", {}))
+                    break
+            except Exception:
+                pass
+
+            similar = find_similar_episodes(
+                fingerprint, topology=task_topology,
+                episodic_memory_root=self.episodic_memory_root,
+                threshold=0.7, max_results=5,
+            )
+            for episode, sim_score in similar:
+                ep_rule_type = episode.get("solved_with_rule", "")
+                ep_task = episode.get("fingerprint", {}).get("task_hex", "?")
+                # Find the rule in procedural memory that matches this episode's rule type + source task
+                stored_rules = load_all_rules(self.procedural_memory_root)
+                for entry in stored_rules:
+                    rule = entry.get("rule", {})
+                    if rule.get("type") == "identity":
+                        continue
+                    if rule.get("type") != ep_rule_type:
+                        continue
+                    if self._rule_matches_examples(rule, task):
+                        predicted = self._apply_rule_to_tests(rule, task)
+                        if predicted:
+                            increment_reuse_count(entry)
+                            self.last_solve_info.update({
+                                "method": "episodic_cbr",
+                                "rule_type": rule.get("type", "unknown"),
+                                "rule_source": entry.get("source_task"),
+                                "cbr_similarity": round(sim_score, 3),
+                                "cbr_matched_task": ep_task,
+                            })
+                            self._submission_count += 1
+                            return predicted
+        except Exception:
+            pass  # episodic retrieval is optional, fall through
+
+        # --- Fast path 2: try all stored rules (existing flat scan) ---
         stored_rules = load_all_rules(self.procedural_memory_root)
         for entry in stored_rules:
             rule = entry.get("rule", {})
@@ -102,12 +167,27 @@ class ActiveSoarAgent:
             "steps": result["steps_taken"],
         })
 
-        # --- Learn: save new rule if pipeline discovered one ---
+        # --- Learn: save new rule + episode if pipeline discovered one ---
         if active_rules and rule_type != "identity":
-            save_rule_to_ltm(
+            rule_path = save_rule_to_ltm(
                 active_rules[0], task.task_hex,
                 self.procedural_memory_root,
             )
+            # Save episode to episodic memory with structural_key
+            try:
+                rule_filename = os.path.basename(rule_path) if rule_path else None
+                sk = build_structural_key(
+                    wm, rule_type,
+                    concept_id=active_rules[0].get("concept_id"),
+                )
+                save_episode(
+                    fingerprint, rule_type,
+                    rule_id=rule_filename,
+                    structural_key=sk,
+                    episodic_memory_root=self.episodic_memory_root,
+                )
+            except Exception:
+                pass  # episode saving is optional
 
         self._submission_count += 1
         return predicted

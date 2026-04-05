@@ -27,9 +27,17 @@ Usage:
 
 from __future__ import annotations
 
+import sys
+import io
 import itertools
 from dataclasses import dataclass
 from typing import Any
+
+# Fix UnicodeEncodeError on Windows with non-UTF-8 locales (e.g., cp949)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 
 # ── ANSI colors ────────────────────────────────────────────────────────── #

@@ -1,7 +1,12 @@
 #!/bin/bash
 
-# Windows PATH fix: ensure node, python, claude are found in Git Bash
-export PATH="/c/Program Files/nodejs:/c/Users/Sir_K/anaconda3:/c/Users/Sir_K/AppData/Roaming/npm:$PATH"
+# Windows PATH fix — detect WSL vs Git Bash
+if [ -d "/mnt/c" ]; then
+    PRE="/mnt/c"
+else
+    PRE="/c"
+fi
+export PATH="${PRE}/Users/ds-lab/anaconda3:${PRE}/Users/ds-lab/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/ds-lab/AppData/Roaming/npm:${PRE}/Users/ds-lab/AppData/Local/Microsoft/WindowsApps:$PATH"
 
 # ============================================================
 # SOAR-ARC Inner Loop Pipeline
@@ -30,10 +35,33 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 mkdir -p "$LOG_DIR"
+mkdir -p "procedural_memory/concepts"
 START_TIME=$(date +%s)
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$PIPELINE_LOG"
+}
+
+# Cross-platform timeout: works on Windows Git Bash, WSL, and Linux
+run_with_timeout() {
+    local secs="$1"; shift
+    "$@" &
+    local pid=$!
+    (
+        sleep "$secs"
+        kill $pid 2>/dev/null
+        sleep 2
+        kill -9 $pid 2>/dev/null
+    ) &
+    local watchdog=$!
+    wait $pid 2>/dev/null
+    local ret=$?
+    kill $watchdog 2>/dev/null
+    wait $watchdog 2>/dev/null
+    if [ $ret -gt 128 ]; then
+        return 124
+    fi
+    return $ret
 }
 
 get_last_session() {
@@ -48,7 +76,7 @@ check_correct() {
     # Check whether run_task.py output contains CORRECT
     # return 0 = CORRECT, 1 = INCORRECT or ERROR
     local output
-    output=$(python run_task.py 2>&1)
+    output=$(python3 run_task.py 2>&1)
     echo "$output"
     if echo "$output" | grep -q "RESULT  : CORRECT"; then
         return 0
@@ -62,7 +90,7 @@ check_correct() {
 # ============================================================
 log "=========================================="
 log "SOAR-ARC Inner Loop Pipeline started"
-log "Goal: python run_task.py → CORRECT"
+log "Goal: python3 run_task.py → CORRECT"
 log "Max sessions: $MAX_SESSIONS"
 log "Max time: 24 hours"
 log "=========================================="
@@ -114,37 +142,57 @@ while true; do
     # --------------------------------------------------------
     # Run Claude Code
     # --------------------------------------------------------
-    log "Running Claude Code..."
+    log "Running Claude Code (timeout 600s)..."
 
-    claude -p "$(cat <<PROMPT
-You are session ${SESSION} of the SOAR-ARC inner loop pipeline.
+    PROMPT_FILE=$(mktemp /tmp/claude_prompt_XXXXXX.txt)
+    cat > "$PROMPT_FILE" <<PROMPT
+You are session ${SESSION} of the SOAR-ARC inner loop.
 
-Step 1: Read PROMPT.md completely — it contains your mission and design principles.
-Step 2: Read logs/session_log.md to see what previous sessions accomplished and where they stopped.
-Step 3: Run python run_task.py and carefully analyze the output and any errors.
-Step 4: Based on the error analysis and the priority list in PROMPT.md, implement or fix ONE operator or rule at a time.
-Step 5: Run python run_task.py again to verify your change made progress.
-Step 6: Repeat steps 4-5 if time allows and you see clear next steps.
-Step 7: Append your session log to logs/session_log.md following the format specified in PROMPT.md.
+Read CLAUDE.md for architecture. Then immediately run: python3 run_task.py
 
-IMPORTANT:
-- Do NOT modify files in data/ or PROMPT.md.
-- Do NOT undo or rewrite work from previous sessions unless it is clearly broken.
-- Build incrementally on what exists.
+If run_task.py crashes with an error:
+  - Read ONLY the file mentioned in the traceback
+  - Fix that specific error
+  - Re-run python3 run_task.py
+  - Repeat until it runs without crashing
+
+If run_task.py runs but outputs INCORRECT:
+  - Read data/ARC_AGI/training/08ed6ac7.json to understand the task
+  - Read agent/active_operators.py (the main edit target)
+  - Add/fix GeneralizeOperator._try_* and PredictOperator._apply_* methods
+  - Re-run python3 run_task.py
+
+Do NOT read more than 3 files before making your first edit.
+Do NOT modify: data/, agent/cycle.py, agent/wm.py
+Target: python3 run_task.py must output RESULT: CORRECT
+
+After changes, verify:
+- python3 run_task.py outputs RESULT: CORRECT
+- Append results to logs/session_log.md
 PROMPT
-)" \
+
+    CLAUDE_OUTPUT_FILE=$(mktemp "${LOG_DIR}/claude_out_XXXXXX.log")
+    run_with_timeout 600 claude -p "$(cat "$PROMPT_FILE")" \
         --permission-mode bypassPermissions \
         --output-format stream-json \
         --verbose \
-        2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_DETAIL_LOG"
+        > "$CLAUDE_OUTPUT_FILE" 2>&1
+    CLAUDE_EXIT=$?
+    cat "$CLAUDE_OUTPUT_FILE" >> "$PIPELINE_LOG"
+    cp "$CLAUDE_OUTPUT_FILE" "$SESSION_DETAIL_LOG"
+    rm -f "$PROMPT_FILE" "$CLAUDE_OUTPUT_FILE"
 
-    log "Claude Code finished."
+    if [ $CLAUDE_EXIT -eq 124 ]; then
+        log "[!] Claude Code timed out after 600s"
+    else
+        log "Claude Code finished (exit $CLAUDE_EXIT)."
+    fi
 
     # --------------------------------------------------------
     # Result evaluation
     # --------------------------------------------------------
     log "Running run_task.py..."
-    RESULT_OUTPUT=$(python run_task.py 2>&1)
+    RESULT_OUTPUT=$(python3 run_task.py 2>&1)
     echo "$RESULT_OUTPUT" | tee -a "$PIPELINE_LOG"
 
     if echo "$RESULT_OUTPUT" | grep -q "RESULT  : CORRECT"; then
