@@ -55,29 +55,25 @@ def extract_topology(comp_result: dict) -> dict:
 
 def topologies_match(topo_a: dict, topo_b: dict) -> bool:
     """
-    Check if two topology dicts are structurally compatible.
-
-    Two topologies match if every key present in BOTH dicts has the same
-    COMM/DIFF value. Keys present in only one dict are ignored (partial match).
-
-    Args:
-        topo_a: topology dict (e.g. from a chunked rule's condition)
-        topo_b: topology dict (e.g. from a new task's comparison)
-
-    Returns:
-        True if all shared keys agree on COMM vs DIFF.
+    Strict structural equality: same field names, same COMM/DIFF values.
     """
     if not topo_a or not topo_b:
         return False
-
-    shared_keys = set(topo_a.keys()) & set(topo_b.keys())
-    if not shared_keys:
+    if set(topo_a.keys()) != set(topo_b.keys()):
         return False
+    return all(topo_a[k] == topo_b[k] for k in topo_a)
 
-    for key in shared_keys:
-        if topo_a[key] != topo_b[key]:
-            return False
-    return True
+
+def topology_similarity(topo_a: dict, topo_b: dict) -> float:
+    """
+    Soft similarity: fraction of fields in the union that agree on COMM/DIFF.
+    Returns 0.0–1.0. Identical topologies score 1.0.
+    """
+    all_keys = set(topo_a.keys()) | set(topo_b.keys())
+    if not all_keys:
+        return 0.0
+    matches = sum(1 for k in all_keys if topo_a.get(k) == topo_b.get(k))
+    return matches / len(all_keys)
 
 
 # ======================================================================
@@ -294,7 +290,58 @@ def _count_objects(raw) -> int:
 # Episode storage
 # ======================================================================
 
+def build_structural_key(wm, rule_type: str, concept_id: str = None) -> dict:
+    """Build structural_key from working memory state after pipeline solve.
+
+    Contains only relational topology (COMM/DIFF strings) — no concrete
+    color values, size integers, or raw grid contents.
+    """
+    comparisons = wm.s1.get("comparisons", {})
+
+    # Extract topology from first comparison
+    # WM stores: comparisons[key] = {"spec": ..., "result": <full compare output>}
+    # Full compare output = {"id": ..., "result": {"type": ..., "category": ...}}
+    topology = {}
+    score_num, score_den = 0, 0
+    for _key, comp in comparisons.items():
+        full_compare = comp.get("result", {})
+        inner_result = full_compare.get("result", {})
+        topology = extract_topology(inner_result)
+        score_str = inner_result.get("score", "0/0")
+        parts = score_str.split("/")
+        if len(parts) == 2:
+            try:
+                score_num = int(parts[0])
+                score_den = int(parts[1])
+            except ValueError:
+                pass
+        break  # use first comparison
+
+    pairs_processed = len(comparisons)
+
+    return {
+        "comparison_pattern": {
+            "level": "GRID",
+            "topology": topology,
+            "score_numerator": score_num,
+            "score_denominator": score_den,
+        },
+        "impasse_state": {
+            "impasse_at_level": "GRID",
+            "failed_operators": [],
+            "pairs_processed": pairs_processed,
+        },
+        "resolution": {
+            "descent_to": None,
+            "object_topology": None,
+            "dsl_fired": concept_id or rule_type,
+            "dsl_param_source": None,
+        },
+    }
+
+
 def save_episode(fingerprint: dict, rule_type: str, rule_id: str = None,
+                 structural_key: dict = None,
                  episodic_memory_root: str = EPISODIC_MEMORY_ROOT) -> str:
     """Save a solved task's fingerprint + rule reference to episodic_memory/."""
     os.makedirs(episodic_memory_root, exist_ok=True)
@@ -320,6 +367,7 @@ def save_episode(fingerprint: dict, rule_type: str, rule_id: str = None,
     episode = {
         "id": next_id,
         "fingerprint": fingerprint,
+        "structural_key": structural_key,
         "solved_with_rule": rule_type,
         "rule_id": rule_id,
         "created_at": datetime.now().isoformat(),
@@ -426,21 +474,59 @@ def fingerprint_similarity(a: dict, b: dict) -> float:
     return score / max(total, 1.0)
 
 
-def find_similar_episodes(fingerprint: dict, episodic_memory_root: str = EPISODIC_MEMORY_ROOT,
+def find_similar_episodes(fingerprint: dict, topology: dict = None,
+                          episodic_memory_root: str = EPISODIC_MEMORY_ROOT,
                           threshold: float = 0.7, max_results: int = 5) -> list:
     """
-    Find episodes with similar fingerprints. Returns list of
-    (episode, similarity_score) tuples, sorted by score descending.
+    Find episodes similar to the current task using 3-tier lookup:
+      Tier 1: exact topology match (structural_key)
+      Tier 2: partial topology match (topology_similarity > 0.5)
+      Tier 3: fingerprint fallback (original behavior)
+    Returns list of (episode, similarity_score) tuples.
     """
     episodes = load_episodes(episodic_memory_root)
     if not episodes:
         return []
 
+    task_hex = fingerprint.get("task_hex")
+
+    # Tier 1: exact topology match
+    if topology:
+        exact = []
+        for ep in episodes:
+            if ep.get("fingerprint", {}).get("task_hex") == task_hex:
+                continue
+            sk = ep.get("structural_key") or {}
+            ep_topo = sk.get("comparison_pattern", {}).get("topology", {})
+            if ep_topo and topologies_match(topology, ep_topo):
+                exact.append((ep, 1.0))
+        if exact:
+            exact.sort(key=lambda x: x[0].get("structural_key", {})
+                       .get("comparison_pattern", {})
+                       .get("score_denominator", 0), reverse=True)
+            return exact[:max_results]
+
+    # Tier 2: partial topology match
+    if topology:
+        partial = []
+        for ep in episodes:
+            if ep.get("fingerprint", {}).get("task_hex") == task_hex:
+                continue
+            sk = ep.get("structural_key") or {}
+            ep_topo = sk.get("comparison_pattern", {}).get("topology", {})
+            if ep_topo:
+                sim = topology_similarity(topology, ep_topo)
+                if sim > 0.5:
+                    partial.append((ep, sim))
+        if partial:
+            partial.sort(key=lambda x: x[1], reverse=True)
+            return partial[:max_results]
+
+    # Tier 3: fingerprint fallback (handles pre-structural_key episodes)
     scored = []
     for ep in episodes:
         ep_fp = ep.get("fingerprint", {})
-        # Skip same task
-        if ep_fp.get("task_hex") == fingerprint.get("task_hex"):
+        if ep_fp.get("task_hex") == task_hex:
             continue
         sim = fingerprint_similarity(fingerprint, ep_fp)
         if sim >= threshold:

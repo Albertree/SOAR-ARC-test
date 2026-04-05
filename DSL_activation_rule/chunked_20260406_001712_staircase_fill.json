@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_001712_staircase_fill",
+  "source": "chunked",
+  "source_tasks": [
+    "bbc9ae5d"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": "DIFF",
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "staircase_fill",
+    "param_source": "no_params"
+  }
+}

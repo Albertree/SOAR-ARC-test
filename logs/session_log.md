@@ -1,5 +1,24 @@
 
 ---
+## Session 39 (Claude) -- 2026-04-05
+
+### Changes
+- Restored concept `reverse_concentric_rings` (solves 85c4e7cd) — concept JSON was lost when concepts dir was emptied
+- Restored concept `separator_axis_zone_fill` (solves 332202d5) — concept JSON was lost
+- Restored concept `fill_quadrants_from_corners` (solves e9ac8c9e) — concept JSON was lost
+- Restored concept `fill_bordered_rectangles_by_size` (solves c0f76784) — concept JSON was lost
+- Fixed `fill_bordered_rectangles_by_size` primitive: changed fill color from relative ranking to absolute formula (border_color + interior_side_length) so it works consistently when not all rectangle sizes are present
+
+### Regression
+- 08ed6ac7: CORRECT
+- 85c4e7cd: CORRECT
+- 332202d5: CORRECT
+- e9ac8c9e: CORRECT
+- c0f76784: CORRECT
+
+### Prior session: 5/20 (25.0%) — restored 4 concepts, expect ~9/20 (45%)
+
+---
 ## Learning Loop -- 2026-04-05 23:50
 
 - Split: training, Tasks: 20
@@ -1788,3 +1807,43 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 1
 - Time: 154s
 - Log: logs/learn_20260405_233743.log
+
+---
+## Learning Loop -- 2026-04-05 23:47
+
+- Split: training, Tasks: 20
+- Correct: 5 / 20 (25.0%)
+- Rules: 5 -> 7 (+2 learned)
+- Stored rule hits: 3
+- Time: 110s
+- Log: logs/learn_20260405_234512.log
+
+---
+## Learning Loop -- 2026-04-06 00:08
+
+- Split: training, Tasks: 10
+- Correct: 3 / 10 (30.0%)
+- Rules: 8 -> 10 (+2 learned)
+- Stored rule hits: 1
+- Time: 45s
+- Log: logs/learn_20260406_000755.log
+
+---
+## Learning Loop -- 2026-04-06 00:10
+
+- Split: training, Tasks: 10
+- Correct: 3 / 10 (30.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 3
+- Time: 39s
+- Log: logs/learn_20260406_000941.log
+
+---
+## Learning Loop -- 2026-04-06 00:11
+
+- Split: training, Tasks: 10
+- Correct: 3 / 10 (30.0%)
+- Rules: 0 -> 3 (+3 learned)
+- Stored rule hits: 0
+- Time: 41s
+- Log: logs/learn_20260406_001043.log

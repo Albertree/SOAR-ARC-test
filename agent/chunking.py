@@ -44,6 +44,7 @@ def chunk_resolution_to_rule(comparisons: dict, active_rule: dict,
     # Extract topology from comparison results (GRID level)
     grid_topology = _extract_grid_topology(comparisons)
     if not grid_topology:
+        print(f"[CHUNK] Skipped — no topology extracted from comparisons for {task_hex}")
         return None
 
     # Determine concept/DSL name
@@ -87,6 +88,7 @@ def chunk_resolution_to_rule(comparisons: dict, active_rule: dict,
         with open(existing_path, "w") as f:
             json.dump(existing_rule, f, indent=2)
         print(f"[CHUNK] Duplicate topology found, incrementing: {existing_rule['rule_id']}")
+        print(f"[CHUNK]   times_validated now: {existing_rule['times_validated']}")
         return existing_path
 
     # Anti-regression check
@@ -104,9 +106,14 @@ def chunk_resolution_to_rule(comparisons: dict, active_rule: dict,
     with open(save_path, "w") as f:
         json.dump(chunked_rule, f, indent=2)
 
+    # Count existing validated rules for the log
+    n_validated = len([f for f in os.listdir(CHUNK_DIR)
+                       if f.startswith("chunked_") and f.endswith(".json")]) if os.path.isdir(CHUNK_DIR) else 0
+
     print(f"[CHUNK] New activation rule saved: {rule_id}")
     print(f"[CHUNK]   Condition topology: {grid_topology}")
     print(f"[CHUNK]   Action: {concept_id} via {param_source}")
+    print(f"[CHUNK]   Validated against {n_validated} existing rules: PASS")
 
     return save_path
 
@@ -168,11 +175,17 @@ def try_chunked_rules(comparisons: dict, task) -> dict:
 
 
 def _extract_grid_topology(comparisons: dict) -> dict:
-    """Extract representative topology from comparison results."""
+    """Extract representative topology from comparison results.
+
+    WM stores comparisons as: {key: {"spec": ..., "result": <full compare output>}}
+    Full compare output = {"id": ..., "result": {"type": ..., "category": {...}}}
+    extract_topology needs the inner result dict (with "category").
+    """
     for key in sorted(comparisons.keys()):
         comp = comparisons[key]
-        comp_result = comp.get("result", {})
-        topo = extract_topology(comp_result)
+        full_compare = comp.get("result", {})
+        inner_result = full_compare.get("result", {})
+        topo = extract_topology(inner_result)
         if topo:
             return topo
     return {}

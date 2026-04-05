@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_001642_keep_center_column",
+  "source": "chunked",
+  "source_tasks": [
+    "d23f8c26"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": "DIFF",
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "keep_center_column",
+    "param_source": "inferred(col_index)"
+  }
+}

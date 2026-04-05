@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_001641_separator_axis_zone_fill",
+  "source": "chunked",
+  "source_tasks": [
+    "332202d5"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": "DIFF",
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "separator_axis_zone_fill",
+    "param_source": "inferred(bg)"
+  }
+}

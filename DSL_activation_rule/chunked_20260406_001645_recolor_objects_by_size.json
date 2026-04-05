@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_001645_recolor_objects_by_size",
+  "source": "chunked",
+  "source_tasks": [
+    "6e82a1ae"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": "DIFF",
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "recolor_objects_by_size",
+    "param_source": "inferred(bg)"
+  }
+}

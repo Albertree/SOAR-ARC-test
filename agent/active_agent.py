@@ -21,9 +21,10 @@ from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
 from agent.episodic import (
-    compute_fingerprint, save_episode,
-    find_similar_episodes, load_episodes,
+    compute_fingerprint, save_episode, build_structural_key,
+    find_similar_episodes, load_episodes, extract_topology,
 )
+from ARCKG.comparison import compare as arckg_compare
 
 
 class ActiveSoarAgent:
@@ -78,8 +79,19 @@ class ActiveSoarAgent:
 
         # --- Fast path 1: Episodic CBR (similarity-based retrieval) ---
         try:
+            # Build topology for structural matching
+            task_topology = None
+            try:
+                for pair in task.example_pairs:
+                    comp = arckg_compare(pair.input_grid, pair.output_grid)
+                    task_topology = extract_topology(comp.get("result", {}))
+                    break
+            except Exception:
+                pass
+
             similar = find_similar_episodes(
-                fingerprint, self.episodic_memory_root,
+                fingerprint, topology=task_topology,
+                episodic_memory_root=self.episodic_memory_root,
                 threshold=0.7, max_results=5,
             )
             for episode, sim_score in similar:
@@ -161,12 +173,17 @@ class ActiveSoarAgent:
                 active_rules[0], task.task_hex,
                 self.procedural_memory_root,
             )
-            # Save episode to episodic memory
+            # Save episode to episodic memory with structural_key
             try:
                 rule_filename = os.path.basename(rule_path) if rule_path else None
+                sk = build_structural_key(
+                    wm, rule_type,
+                    concept_id=active_rules[0].get("concept_id"),
+                )
                 save_episode(
                     fingerprint, rule_type,
                     rule_id=rule_filename,
+                    structural_key=sk,
                     episodic_memory_root=self.episodic_memory_root,
                 )
             except Exception:

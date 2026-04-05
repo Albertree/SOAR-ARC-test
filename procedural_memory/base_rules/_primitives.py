@@ -726,20 +726,12 @@ def fill_bordered_rectangles_by_size(grid, border_color=5, bg=0):
             seen.add(key)
             unique_rects.append(rect)
 
-    # Rank by interior area (ascending)
-    unique_rects.sort(key=lambda x: x[4] * x[5])
-    area_to_color = {}
-    next_color = 6
-    for rect in unique_rects:
-        area = rect[4] * rect[5]
-        if area not in area_to_color:
-            area_to_color[area] = next_color
-            next_color += 1
-
-    # Fill interiors
+    # Fill interiors: color = border_color + interior_side_length
+    # For square interiors: side = int(sqrt(area)); for non-square: use max(int_h, int_w)
+    import math
     for top, left, rh, rw, int_h, int_w in unique_rects:
-        area = int_h * int_w
-        fill_color = area_to_color[area]
+        side = max(int_h, int_w)
+        fill_color = border_color + side
         for rr in range(top + 1, top + rh - 1):
             for cc in range(left + 1, left + rw - 1):
                 output[rr][cc] = fill_color
