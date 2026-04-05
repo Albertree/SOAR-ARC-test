@@ -1592,3 +1592,257 @@ def arrow_border_project(grid, bg=0):
         output[h - 1][w - 1] = 0
 
     return output
+
+
+def scattered_pixel_diamond(grid, bg=7):
+    """Count two non-bg colors scattered on the grid. Build a rectangle
+    (height=smaller_count, width=larger_count) in the bottom-left corner
+    of the output. The rectangle is filled with color 2, with an hourglass/
+    diamond pattern of color 4.
+
+    Output grid is square, side = max(input_H, input_W) rounded up to even.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Count non-bg colors
+    counts = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                counts[v] = counts.get(v, 0) + 1
+
+    colors = sorted(counts.keys())
+    if len(colors) != 2:
+        return [row[:] for row in grid]
+
+    c1, c2 = counts[colors[0]], counts[colors[1]]
+    rect_h = min(c1, c2)
+    rect_w = max(c1, c2)
+
+    # Output grid: square, rounded up to even
+    side = max(h, w)
+    if side % 2 == 1:
+        side += 1
+
+    output = [[bg] * side for _ in range(side)]
+
+    # Rectangle at bottom-left
+    rect_top = side - rect_h
+
+    # Fill rectangle with color 2
+    for r in range(rect_top, side):
+        for c in range(rect_w):
+            output[r][c] = 2
+
+    # Draw diamond/hourglass of color 4
+    even_w = (rect_w % 2 == 0)
+    if even_w:
+        n_max = rect_w // 2 - 1  # rows from pinch to reach edges
+        pinch_height_candidate = 2
+    else:
+        n_max = rect_w // 2
+        pinch_height_candidate = 1
+
+    pinch_height = min(pinch_height_candidate, max(1, rect_h - n_max))
+
+    pinch_start = rect_h - pinch_height - n_max  # row within rectangle
+    if pinch_start < 0:
+        pinch_start = 0
+
+    center_l = rect_w // 2 - 1 if even_w else rect_w // 2
+    center_r = rect_w // 2 if even_w else rect_w // 2
+
+    for local_r in range(rect_h):
+        abs_r = rect_top + local_r
+        if local_r < pinch_start:
+            # Above pinch: expanding upward
+            d = pinch_start - local_r
+            left_4 = center_l - d
+            right_4 = center_r + d
+        elif local_r < pinch_start + pinch_height:
+            # Pinch row(s)
+            left_4 = center_l
+            right_4 = center_r
+        else:
+            # Below pinch: expanding downward
+            d = local_r - (pinch_start + pinch_height - 1)
+            left_4 = center_l - d
+            right_4 = center_r + d
+
+        if 0 <= left_4 < rect_w:
+            output[abs_r][left_4] = 4
+        if 0 <= right_4 < rect_w and right_4 != left_4:
+            output[abs_r][right_4] = 4
+
+    return output
+
+
+def _extract_objects_by_color(grid, bg=0):
+    """Find connected components where BFS only follows same-color neighbors."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = set()
+    objects = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            color = grid[r][c]
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == color:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            min_r = min(p[0] for p in comp)
+            min_c = min(p[1] for p in comp)
+            max_r = max(p[0] for p in comp)
+            max_c = max(p[1] for p in comp)
+            objects.append({
+                "positions": comp,
+                "color": color,
+                "bbox": (min_r, min_c, max_r - min_r + 1, max_c - min_c + 1),
+                "size": len(comp),
+            })
+    return objects
+
+
+def middle_object_pass_through(grid, bg=7):
+    """Three objects on a common axis. The middle object passes through
+    the rectangular outer object (the one with strictly larger cross-dimension).
+    That outer object splits in half with a gap, and the middle object
+    appears on the far side.
+
+    The non-rectangular (or non-target) outer object stays unchanged.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find objects by color (same-color connected components)
+    objs = _extract_objects_by_color(grid, bg=bg)
+    if len(objs) != 3:
+        return [row[:] for row in grid]
+
+    # Each object: compute bounding box center
+    for obj in objs:
+        t, l, oh, ow = obj["bbox"]
+        obj["center_r"] = t + oh / 2
+        obj["center_c"] = l + ow / 2
+        # Check if it's a filled rectangle
+        obj["is_rect"] = (obj["size"] == oh * ow)
+
+    # Determine axis: vertical or horizontal stacking
+    centers_r = [o["center_r"] for o in objs]
+    centers_c = [o["center_c"] for o in objs]
+    spread_r = max(centers_r) - min(centers_r)
+    spread_c = max(centers_c) - min(centers_c)
+
+    if spread_r >= spread_c:
+        # Vertical stacking (objects differ mainly in row)
+        axis = "vertical"
+        objs.sort(key=lambda o: o["center_r"])
+        cross_dim = lambda o: o["bbox"][3]  # width
+    else:
+        # Horizontal stacking
+        axis = "horizontal"
+        objs.sort(key=lambda o: o["center_c"])
+        cross_dim = lambda o: o["bbox"][2]  # height
+
+    A, B, C = objs[0], objs[1], objs[2]
+
+    # B is the middle object
+    b_cross = cross_dim(B)
+
+    # Determine target: the outer object that can accommodate B (cross > B's cross)
+    a_can = cross_dim(A) > b_cross
+    c_can = cross_dim(C) > b_cross
+
+    if a_can and c_can:
+        # Both can accommodate - pick the one that's rectangular
+        if A["is_rect"] and not C["is_rect"]:
+            target, stay = A, C
+            direction = -1
+        elif C["is_rect"] and not A["is_rect"]:
+            target, stay = C, A
+            direction = 1
+        else:
+            # Both rectangular - pick the one with larger cross dimension
+            if cross_dim(C) >= cross_dim(A):
+                target, stay = C, A
+                direction = 1
+            else:
+                target, stay = A, C
+                direction = -1
+    elif a_can:
+        target, stay = A, C
+        direction = -1
+    elif c_can:
+        target, stay = C, A
+        direction = 1
+    else:
+        return [row[:] for row in grid]
+
+    # Build output
+    output = [[bg] * w for _ in range(h)]
+
+    # Place the staying object unchanged
+    for r, c in stay["positions"]:
+        output[r][c] = stay["color"]
+
+    # Split the target and place B
+    t_top, t_left, t_h, t_w = target["bbox"]
+    b_top, b_left, b_h, b_w = B["bbox"]
+
+    if axis == "vertical":
+        # Target splits horizontally: left half shifts left 1, right half shifts right 1
+        half_w = t_w // 2
+
+        for r, c in target["positions"]:
+            rel_c = c - t_left
+            if rel_c < half_w:
+                new_c = c - 1  # shift left by 1
+            else:
+                new_c = c + 1  # shift right by 1
+            if 0 <= new_c < w:
+                output[r][new_c] = target["color"]
+
+        # Place B: vertical stacking
+        if direction == -1:
+            b_new_top = t_top - b_h  # above target (outside)
+        else:
+            b_new_top = t_top + t_h - b_h  # bottom of target (inside gap)
+
+        for r, c in B["positions"]:
+            new_r = b_new_top + (r - b_top)
+            if 0 <= new_r < h and 0 <= c < w:
+                output[new_r][c] = B["color"]
+
+    else:
+        # Horizontal axis: top half shifts up 1, bottom half shifts down 1
+        half_h = t_h // 2
+
+        for r, c in target["positions"]:
+            rel_r = r - t_top
+            if rel_r < half_h:
+                new_r = r - 1  # shift up by 1
+            else:
+                new_r = r + 1  # shift down by 1
+            if 0 <= new_r < h:
+                output[new_r][c] = target["color"]
+
+        # Place B: horizontal stacking — B goes to target's column range
+        b_new_left = t_left + t_w - b_w
+
+        for r, c in B["positions"]:
+            new_c = b_new_left + (c - b_left)
+            if 0 <= r < h and 0 <= new_c < w:
+                output[r][new_c] = B["color"]
+
+    return output

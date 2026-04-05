@@ -1,5 +1,22 @@
 
 ---
+## Session 43 (Claude) -- 2026-04-06
+
+### Changes
+- New helper `_extract_objects_by_color` in `_primitives.py` — same-color connected component detection (unlike `extract_objects` which groups all non-bg neighbors)
+- New primitive `scattered_pixel_diamond` in `_primitives.py` — counts two non-bg colors, builds a rectangle (min_count × max_count) in the bottom-left of the output filled with color 2, with an hourglass/diamond pattern of color 4
+- New concept `scattered_pixel_diamond.json` (solves 878187ab)
+- New primitive `middle_object_pass_through` in `_primitives.py` — finds 3 objects on a common axis, passes the middle object through the rectangular outer one (which splits), other stays unchanged
+- New concept `middle_object_pass_through.json` (solves 9f669b64)
+
+### Regression
+- 08ed6ac7: CORRECT
+- 878187ab: CORRECT
+- 9f669b64: CORRECT
+
+### Prior session: 17/20 (85.0%) — added 2 new concepts, expect ~19/20 (95%)
+
+---
 ## Session 42 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2009,3 +2026,33 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 9
 - Time: 5126s
 - Log: logs/learn_20260405_234722.log
+
+---
+## Learning Loop -- 2026-04-06 01:35
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 20 -> 22 (+2 learned)
+- Stored rule hits: 15
+- Time: 48s
+- Log: logs/learn_20260406_013435.log
+
+---
+## Learning Loop -- 2026-04-06 01:46
+
+- Split: training, Tasks: 10
+- Correct: 8 / 10 (80.0%)
+- Rules: 22 -> 22 (+0 learned)
+- Stored rule hits: 8
+- Time: 19s
+- Log: logs/learn_20260406_014615.log
+
+---
+## Learning Loop -- 2026-04-06 01:48
+
+- Split: training, Tasks: 10
+- Correct: 8 / 10 (80.0%)
+- Rules: 22 -> 22 (+0 learned)
+- Stored rule hits: 8
+- Time: 19s
+- Log: logs/learn_20260406_014743.log

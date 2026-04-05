@@ -1,8 +1,8 @@
 {
-  "rule_id": "chunked_20260406_013231_block_grid_gravity",
+  "rule_id": "chunked_20260406_015139_scattered_pixel_diamond",
   "source": "chunked",
   "source_tasks": [
-    "afe3afe9"
+    "878187ab"
   ],
   "times_validated": 2,
   "times_failed": 0,
@@ -11,11 +11,11 @@
     "topology": {
       "color": "DIFF",
       "contents": "DIFF",
-      "size": "DIFF"
+      "size": "COMM"
     }
   },
   "action": {
-    "concept": "block_grid_gravity",
-    "param_source": "no_params"
+    "concept": "scattered_pixel_diamond",
+    "param_source": "inferred(bg)"
   }
 }
