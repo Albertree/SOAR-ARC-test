@@ -651,3 +651,37 @@ def unique_colors(grid, exclude_bg=True):
             if c != bg:
                 colors.add(c)
     return sorted(colors)
+
+
+def self_tile(grid, bg=0):
+    """Kronecker-style self-tiling: replace each non-bg cell with the whole grid,
+    each bg cell with an all-bg block of the same size.
+    Output size = (H*H) x (W*W)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [[bg] * (w * w) for _ in range(h * h)]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                for gr in range(h):
+                    for gc in range(w):
+                        output[r * h + gr][c * w + gc] = grid[gr][gc]
+    return output
+
+
+def tile_alternating_flip(grid, reps_h, reps_w):
+    """Tile grid in a reps_h x reps_w arrangement. Odd block-rows are horizontally flipped."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = []
+    for br in range(reps_h):
+        use_flipped = (br % 2 == 1)
+        for r in range(h):
+            row = []
+            for bc in range(reps_w):
+                if use_flipped:
+                    row.extend(grid[r][::-1])
+                else:
+                    row.extend(grid[r][:])
+            output.append(row)
+    return output

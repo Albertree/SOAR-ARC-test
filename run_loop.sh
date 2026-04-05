@@ -159,7 +159,8 @@ while true; do
     log "Claude Code improving agent (timeout ${CLAUDE_TIMEOUT}s)..."
 
     CLAUDE_OUT="${LOG_DIR}/claude_latest.log"
-    claude -p "$(cat PROMPT.md)
+    run_with_timeout "$CLAUDE_TIMEOUT" \
+      claude -p "$(cat PROMPT.md)
 
 The learn output from this session was:
 ${LEARN_OUTPUT: -3000}
@@ -170,14 +171,21 @@ Write new concept JSONs in procedural_memory/concepts/
 Run python run_task.py to verify regression passes.
 " \
       --permission-mode bypassPermissions \
-      --output-format stream-text \
-      --max-turns 30 \
+      --output-format text \
       --verbose \
-      2>&1 | tee "$CLAUDE_OUT" | tee -a "$PIPELINE_LOG"
-    CLAUDE_EXIT=${PIPESTATUS[0]}
+      > "$CLAUDE_OUT" 2>&1
+    CLAUDE_EXIT=$?
 
+    echo "--- Claude output (last 30 lines) ---"
+    tail -30 "$CLAUDE_OUT"
+    echo "---"
+    cat "$CLAUDE_OUT" >> "$PIPELINE_LOG"
     cp "$CLAUDE_OUT" "$SESSION_LOG"
-    log "Claude Code finished (exit $CLAUDE_EXIT)."
+    if [ $CLAUDE_EXIT -eq 124 ]; then
+        log "[!] Claude Code timed out after ${CLAUDE_TIMEOUT}s"
+    else
+        log "Claude Code finished (exit $CLAUDE_EXIT)."
+    fi
 
     # ── 3. Validation + regression check ─────────────────────
     if python scripts/validate_patch.py 2>&1 | tee -a "$PIPELINE_LOG"; then

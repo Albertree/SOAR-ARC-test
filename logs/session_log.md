@@ -1649,3 +1649,63 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 9
 - Time: 112s
 - Log: logs/learn_20260405_210546.log
+
+---
+## Learning Loop -- 2026-04-05 21:38
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 104s
+- Log: logs/learn_20260405_213700.log
+
+---
+## Learning Loop -- 2026-04-05 21:49
+
+- Split: training, Tasks: 1000
+- Correct: 5 / 1000 (0.5%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 2
+- Time: 7696s
+- Log: logs/learn_20260405_194136.log
+
+---
+## Learning Loop -- 2026-04-05 21:49
+
+- Split: training, Tasks: 1000
+- Correct: 5 / 1000 (0.5%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 5
+- Time: 6621s
+- Log: logs/learn_20260405_195931.log
+
+---
+## Learning Loop -- 2026-04-05 22:13
+
+- Split: training, Tasks: 1000
+- Correct: 5 / 1000 (0.5%)
+- Rules: 3 -> 7 (+4 learned)
+- Stored rule hits: 4
+- Time: 6836s
+- Log: logs/learn_20260405_201957.log
+
+---
+## Learning Loop -- 2026-04-05 22:13
+
+- Split: training, Tasks: 1000
+- Correct: 11 / 1000 (1.1%)
+- Rules: 8 -> 7 (+-1 learned)
+- Stored rule hits: 8
+- Time: 6213s
+- Log: logs/learn_20260405_203021.log
+
+---
+## Learning Loop -- 2026-04-05 22:56
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 60s
+- Log: logs/learn_20260405_225503.log
