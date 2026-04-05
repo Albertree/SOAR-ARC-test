@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_034002_scale_2x",
+  "source": "chunked",
+  "source_tasks": [
+    "c59eb873"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "scattered",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "scale_2x",
+    "param_source": "inferred(factor)"
+  }
+}

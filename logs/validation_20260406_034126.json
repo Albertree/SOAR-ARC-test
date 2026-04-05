@@ -1,0 +1,46 @@
+{
+  "timestamp": "20260406_034126",
+  "rules_checked": 3,
+  "rule_results": [
+    {
+      "rule_id": "chunked_20260406_034002_scale_2x",
+      "concept": "scale_2x",
+      "stage1_results": [
+        {
+          "task_hex": "c59eb873",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_034003_vertical_mirror_concat",
+      "concept": "vertical_mirror_concat",
+      "stage1_results": [
+        {
+          "task_hex": "8be77c9e",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_034120_keep_column",
+      "concept": "keep_column",
+      "stage1_results": [
+        {
+          "task_hex": "d23f8c26",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    }
+  ],
+  "overall": "STAGE1_FAIL"
+}

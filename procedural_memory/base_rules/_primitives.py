@@ -188,6 +188,14 @@ def mask_keep(grid, keep_positions, bg=0):
 # CONSTRUCTION primitives
 # ============================================================
 
+def isolate_middle_column(grid, bg=0):
+    """Keep only the middle column (width // 2), fill rest with bg."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    mid = w // 2
+    return [[grid[r][c] if c == mid else bg for c in range(w)] for r in range(h)]
+
+
 def make_uniform(height, width, color):
     """Create a solid-color grid."""
     return [[color] * width for _ in range(height)]

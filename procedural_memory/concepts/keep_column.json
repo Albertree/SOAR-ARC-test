@@ -1,0 +1,19 @@
+{
+  "concept_id": "keep_column",
+  "version": 1,
+  "description": "Keep only the middle column, zero everything else",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "isolate_middle_column", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
