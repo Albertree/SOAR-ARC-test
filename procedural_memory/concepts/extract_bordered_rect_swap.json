@@ -1,0 +1,24 @@
+{
+  "concept_id": "extract_bordered_rect_swap",
+  "version": 1,
+  "description": "Extract bordered rectangle from background and swap border/interior colors",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "extract_bordered_rect_swap",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

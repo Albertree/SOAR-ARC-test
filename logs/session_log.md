@@ -1,5 +1,22 @@
 
 ---
+## Session 48 (Claude) -- 2026-04-06
+
+### Changes
+- Added 2 new primitives to `_primitives.py`:
+  - `extract_bordered_rect_swap`: extracts bordered rectangle from bg, swaps border/interior colors
+  - `denoise_rectangles`: removes noise pixels, keeps only cells belonging to a 2x2 solid fg block
+- Created 2 new concept JSONs:
+  - `extract_bordered_rect_swap.json` (solves b94a9452)
+  - `denoise_rectangles.json` (solves 7f4411dc)
+
+### Results
+- Previous session: 27/40 (67.5%)
+- New tasks solved: b94a9452, 7f4411dc (+2)
+- Regression gate (08ed6ac7): CORRECT
+- Total concepts: 30
+
+---
 ## Session 47 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2181,3 +2198,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 20
 - Time: 92s
 - Log: logs/learn_20260406_025251.log
+
+---
+## Learning Loop -- 2026-04-06 03:02
+
+- Split: training, Tasks: 40
+- Correct: 27 / 40 (67.5%)
+- Rules: 25 -> 28 (+3 learned)
+- Stored rule hits: 24
+- Time: 119s
+- Log: logs/learn_20260406_030059.log

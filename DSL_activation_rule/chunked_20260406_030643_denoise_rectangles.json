@@ -1,10 +1,10 @@
 {
-  "rule_id": "chunked_20260406_025855_extend_diagonal_arms",
+  "rule_id": "chunked_20260406_030643_denoise_rectangles",
   "source": "chunked",
   "source_tasks": [
-    "7ddcd7ec"
+    "7f4411dc"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "extend_diagonal_arms",
+    "concept": "denoise_rectangles",
     "param_source": "inferred(bg)"
   }
 }

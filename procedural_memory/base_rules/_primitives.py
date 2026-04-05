@@ -2334,3 +2334,104 @@ def fill_enclosed_rectangles(grid, border_color=2, fill_color=1, bg=0):
                                     output[rr][cc] = fill_color
 
     return output
+
+
+def extract_bordered_rect_swap(grid, bg=0):
+    """Extract the non-bg bordered rectangle and swap border/interior colors.
+
+    Finds a rectangle on a bg grid that has an outer border of one color
+    and an interior of another color. Extracts just the rectangle and swaps
+    the two colors (border becomes interior, interior becomes border).
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find bounding box of all non-bg cells
+    min_r, max_r, min_c, max_c = h, -1, w, -1
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                min_r = min(min_r, r)
+                max_r = max(max_r, r)
+                min_c = min(min_c, c)
+                max_c = max(max_c, c)
+
+    if max_r < 0:
+        return grid
+
+    # Extract the sub-rectangle
+    sub = [row[min_c:max_c + 1] for row in grid[min_r:max_r + 1]]
+    sh = len(sub)
+    sw = len(sub[0])
+
+    # Identify the two non-bg colors
+    colors = set()
+    for r in range(sh):
+        for c in range(sw):
+            if sub[r][c] != bg:
+                colors.add(sub[r][c])
+
+    if len(colors) != 2:
+        return sub  # fallback
+
+    # Border color is the one on the edge of the sub-rectangle
+    border_color = sub[0][0]
+    inner_color = (colors - {border_color}).pop()
+
+    # Swap colors
+    out = []
+    for r in range(sh):
+        row = []
+        for c in range(sw):
+            v = sub[r][c]
+            if v == border_color:
+                row.append(inner_color)
+            elif v == inner_color:
+                row.append(border_color)
+            else:
+                row.append(v)
+        out.append(row)
+    return out
+
+
+def denoise_rectangles(grid, bg=0):
+    """Remove isolated noise pixels and keep only solid rectangular blocks.
+
+    A pixel is kept only if it belongs to at least one 2x2 all-foreground
+    sub-rectangle. This removes isolated noise pixels and single-pixel
+    protrusions from rectangles.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return grid
+
+    # Find non-bg color (assume single non-bg color)
+    fg = None
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                fg = grid[r][c]
+                break
+        if fg is not None:
+            break
+    if fg is None:
+        return grid
+
+    # Mark cells that belong to at least one 2x2 all-fg block
+    keep = [[False] * w for _ in range(h)]
+    for r in range(h - 1):
+        for c in range(w - 1):
+            if (grid[r][c] == fg and grid[r][c + 1] == fg and
+                    grid[r + 1][c] == fg and grid[r + 1][c + 1] == fg):
+                keep[r][c] = True
+                keep[r][c + 1] = True
+                keep[r + 1][c] = True
+                keep[r + 1][c + 1] = True
+
+    output = [[bg] * w for _ in range(h)]
+    for r in range(h):
+        for c in range(w):
+            if keep[r][c]:
+                output[r][c] = fg
+    return output
