@@ -2,9 +2,10 @@
   "rule_id": "chunked_20260406_035730_rank_recolor_objects",
   "source": "chunked",
   "source_tasks": [
-    "6e82a1ae"
+    "6e82a1ae",
+    "e8593010"
   ],
-  "times_validated": 2,
+  "times_validated": 3,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
