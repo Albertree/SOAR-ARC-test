@@ -249,6 +249,50 @@ The concept must:
   - Not hardcode specific color values or grid dimensions
   - Have a signature that correctly describes what it requires
 
+STEP 4b — CLASSIFY AND LOG WHAT YOU WROTE
+After writing the concept, before testing it, write one entry
+to logs/concept_origin_log.md in this exact format:
+
+---
+## <hex> — <concept_name> — Session ${SESSION}
+**Classification:** GENERALIZED | NEW
+
+If GENERALIZED:
+**Parent concept:** <name of the existing concept this was derived from>
+**What matched:** <what the parent concept got right on this task —
+  be specific: 'the column-wise change pattern matched', 'the object
+  detection fired correctly', '90% of cells were correct'>
+**What was wrong:** <what the parent got wrong — be specific:
+  'start_color was inferred as 2 but should be 1',
+  'boundary stopped at row 4 but should continue to row 8',
+  'sep_color inference returned None so the concept never fired'>
+**What changed:** <exactly what you modified — parameter inference
+  method, primitive logic, boundary condition, fallback chain>
+**Generalization type:** PARAM_SUBSTITUTION | INFERENCE_FALLBACK |
+  BOUNDARY_ADJUSTMENT | STRUCTURAL_EXTENSION | OTHER
+**Could system do this automatically:** YES | NO | MAYBE
+  YES = the change was a simple parameter shift or fallback that
+        a rule-based system could detect and apply
+  NO = the change required understanding the transformation
+       semantics in a way that requires language reasoning
+  MAYBE = borderline — the pattern is detectable but not obviously
+
+If NEW:
+**Why no existing concept applies:** <which concepts were tried,
+  why the closest one was not generalizable — what structural
+  property of this task is not covered by any existing concept>
+**New primitive needed:** YES | NO
+  If YES: what does the new primitive compute that no existing
+  one can express?
+**Category:** <one phrase describing the transformation category,
+  e.g. 'self-referential tiling', 'gravity with obstacles',
+  'color rank assignment'>
+---
+
+This log entry is mandatory. Do not skip it even if you are
+short on time. It takes 2 minutes and produces data that will
+be used to decide whether the system can automate this step.
+
 STEP 5 — TEST
 Run: python run_task.py --task <hex>
 If RESULT: CORRECT — done for this task, move to next.

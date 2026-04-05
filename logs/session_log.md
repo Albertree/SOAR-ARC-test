@@ -1,5 +1,24 @@
 
 ---
+## Session 49 (Claude) -- 2026-04-06
+
+### Changes
+- Added 3 new primitives to `_primitives.py`:
+  - `rotation_tile_4x4`: tiles a grid into 4x4 arrangement with 2x2 macro-blocks of R180/R90/R270/orig
+  - `color_remap_from_keys`: extracts pattern rectangle and remaps colors using scattered 2-cell key pairs
+  - `mark_square_frame_corners`: finds square frame objects and places marker color at corner extensions
+- Created 3 new concept JSONs:
+  - `rotation_tile_4x4.json` (solves cf5fd0ad)
+  - `color_remap_from_keys.json` (solves e9b4f6fc)
+  - `mark_square_frame_corners.json` (solves 14b8e18c)
+
+### Results
+- Previous session: 29/40 (72.5%)
+- New tasks solved: cf5fd0ad, e9b4f6fc, 14b8e18c (+3)
+- Regression gate (08ed6ac7): CORRECT
+- Total concepts: 33
+
+---
 ## Session 48 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2208,3 +2227,33 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 24
 - Time: 119s
 - Log: logs/learn_20260406_030059.log
+
+---
+## Learning Loop -- 2026-04-06 03:10
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 28 -> 30 (+2 learned)
+- Stored rule hits: 27
+- Time: 118s
+- Log: logs/learn_20260406_030833.log
+
+---
+## Learning Loop -- 2026-04-06 03:27
+
+- Split: training, Tasks: 1000
+- Correct: 25 / 1000 (2.5%)
+- Rules: 25 -> 31 (+6 learned)
+- Stored rule hits: 24
+- Time: 3955s
+- Log: logs/learn_20260406_022157.log
+
+---
+## Learning Loop -- 2026-04-06 03:27
+
+- Split: training, Tasks: 1000
+- Correct: 25 / 1000 (2.5%)
+- Rules: 25 -> 31 (+6 learned)
+- Stored rule hits: 24
+- Time: 3629s
+- Log: logs/learn_20260406_022722.log

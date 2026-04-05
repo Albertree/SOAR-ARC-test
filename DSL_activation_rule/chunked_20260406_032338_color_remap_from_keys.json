@@ -1,10 +1,10 @@
 {
-  "rule_id": "chunked_20260406_030518_extract_bordered_rect_swap",
+  "rule_id": "chunked_20260406_032338_color_remap_from_keys",
   "source": "chunked",
   "source_tasks": [
-    "b94a9452"
+    "e9b4f6fc"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "extract_bordered_rect_swap",
+    "concept": "color_remap_from_keys",
     "param_source": "inferred(bg)"
   }
 }

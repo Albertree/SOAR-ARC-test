@@ -2435,3 +2435,202 @@ def denoise_rectangles(grid, bg=0):
             if keep[r][c]:
                 output[r][c] = fg
     return output
+
+
+# ============================================================
+# ROTATION TILE 4x4 (2x2 macro-blocks, each doubled)
+# ============================================================
+
+def rotation_tile_4x4(grid):
+    """Tile a grid into a 4x4 arrangement using four rotations.
+
+    The 12x12 output (from 3x3 input) is a 2x2 macro-grid of rotation
+    quadrants, each quadrant tiled 2x2 with the same rotation:
+
+        TL: R180   TR: R90CW
+        BL: R270   BR: original
+    """
+    r90 = rotate_cw(grid, 1)
+    r180 = rotate_cw(grid, 2)
+    r270 = rotate_cw(grid, 3)
+    orig = [row[:] for row in grid]
+
+    def tile2x2(g):
+        top = concat_horizontal(g, [r[:] for r in g])
+        bot = concat_horizontal([r[:] for r in g], [r[:] for r in g])
+        return concat_vertical(top, bot)
+
+    tl = tile2x2(r180)
+    tr = tile2x2(r90)
+    bl = tile2x2(r270)
+    br = tile2x2(orig)
+
+    top = concat_horizontal(tl, tr)
+    bottom = concat_horizontal(bl, br)
+    return concat_vertical(top, bottom)
+
+
+# ============================================================
+# COLOR REMAP FROM KEY PAIRS
+# ============================================================
+
+def color_remap_from_keys(grid, bg=0):
+    """Find a pattern rectangle and scattered 2-cell color key pairs.
+
+    Each horizontal key pair (a, b) defines a mapping b -> a.
+    The pattern rectangle is extracted and remapped accordingly.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find connected components of non-bg cells using flood fill
+    visited = [[False] * w for _ in range(h)]
+    components = []
+
+    def flood(r, c):
+        stack = [(r, c)]
+        cells = []
+        while stack:
+            cr, cc = stack.pop()
+            if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                continue
+            if visited[cr][cc] or grid[cr][cc] == bg:
+                continue
+            visited[cr][cc] = True
+            cells.append((cr, cc))
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                stack.append((cr + dr, cc + dc))
+        return cells
+
+    for r in range(h):
+        for c in range(w):
+            if not visited[r][c] and grid[r][c] != bg:
+                cells = flood(r, c)
+                if cells:
+                    components.append(cells)
+
+    # Separate key pairs (exactly 2 cells, horizontal, different colors)
+    # from the pattern (largest component)
+    key_pairs = []
+    pattern_comp = None
+    max_size = 0
+
+    for comp in components:
+        if len(comp) == 2:
+            (r1, c1), (r2, c2) = comp
+            # Horizontal adjacency
+            if r1 == r2 and abs(c1 - c2) == 1:
+                a = grid[r1][min(c1, c2)]
+                b = grid[r1][max(c1, c2)]
+                if a != b:
+                    key_pairs.append((a, b))
+                    continue
+        if len(comp) > max_size:
+            max_size = len(comp)
+            pattern_comp = comp
+
+    if pattern_comp is None:
+        return grid
+
+    # Build color mapping: each pair (a, b) means b -> a
+    mapping = {}
+    for a, b in key_pairs:
+        mapping[b] = a
+
+    # Extract bounding box of pattern
+    min_r = min(r for r, c in pattern_comp)
+    max_r = max(r for r, c in pattern_comp)
+    min_c = min(c for r, c in pattern_comp)
+    max_c = max(c for r, c in pattern_comp)
+
+    sub = []
+    for r in range(min_r, max_r + 1):
+        row = []
+        for c in range(min_c, max_c + 1):
+            v = grid[r][c]
+            row.append(mapping.get(v, v))
+        sub.append(row)
+
+    return sub
+
+
+# ============================================================
+# MARK SQUARE FRAME CORNERS
+# ============================================================
+
+def mark_square_frame_corners(grid, marker_color=2, bg=7):
+    """Find square rectangular frames and mark their corners.
+
+    A square frame is a connected component whose bounding box is square
+    (h == w, h >= 2), and whose cells exactly match the perimeter of that
+    bounding box.
+
+    For each qualifying frame with bounding box (r1,c1)-(r2,c2), place
+    marker_color at the 8 corner extension positions:
+      (r1-1,c1), (r1-1,c2), (r1,c1-1), (r1,c2+1),
+      (r2,c1-1), (r2,c2+1), (r2+1,c1), (r2+1,c2)
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find connected components
+    visited = [[False] * w for _ in range(h)]
+    components = []
+
+    def flood(r, c, color):
+        stack = [(r, c)]
+        cells = set()
+        while stack:
+            cr, cc = stack.pop()
+            if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                continue
+            if visited[cr][cc] or grid[cr][cc] != color:
+                continue
+            visited[cr][cc] = True
+            cells.add((cr, cc))
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                stack.append((cr + dr, cc + dc))
+        return cells
+
+    for r in range(h):
+        for c in range(w):
+            if not visited[r][c] and grid[r][c] != bg:
+                cells = flood(r, c, grid[r][c])
+                if cells:
+                    components.append(cells)
+
+    for cells in components:
+        min_r = min(r for r, c in cells)
+        max_r = max(r for r, c in cells)
+        min_c = min(c for r, c in cells)
+        max_c = max(c for r, c in cells)
+        bh = max_r - min_r + 1
+        bw = max_c - min_c + 1
+
+        # Must be square and at least 2x2
+        if bh != bw or bh < 2:
+            continue
+
+        # Check cells match the perimeter of the bounding box
+        perimeter = set()
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if r == min_r or r == max_r or c == min_c or c == max_c:
+                    perimeter.add((r, c))
+
+        if cells != perimeter:
+            continue
+
+        # Place markers at the 8 corner extension positions
+        markers = [
+            (min_r - 1, min_c), (min_r - 1, max_c),
+            (min_r, min_c - 1), (min_r, max_c + 1),
+            (max_r, min_c - 1), (max_r, max_c + 1),
+            (max_r + 1, min_c), (max_r + 1, max_c),
+        ]
+        for mr, mc in markers:
+            if 0 <= mr < h and 0 <= mc < w:
+                output[mr][mc] = marker_color
+
+    return output

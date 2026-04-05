@@ -1,0 +1,24 @@
+{
+  "concept_id": "color_remap_from_keys",
+  "version": 1,
+  "description": "Extract a pattern rectangle and remap its colors using scattered 2-cell key pairs where (a,b) means b->a",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "color_remap_from_keys",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
