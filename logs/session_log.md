@@ -1918,3 +1918,58 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 9
 - Time: 82s
 - Log: logs/learn_20260406_003035.log
+
+---
+## Learning Loop -- 2026-04-06 00:43
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 15 -> 16 (+1 learned)
+- Stored rule hits: 12
+- Time: 86s
+- Log: logs/learn_20260406_004140.log
+
+---
+## Learning Loop -- 2026-04-06 00:47
+
+- Split: training, Tasks: 1000
+- Correct: 14 / 1000 (1.4%)
+- Rules: 10 -> 16 (+6 learned)
+- Stored rule hits: 5
+- Time: 6701s
+- Log: logs/learn_20260405_225613.log
+
+---
+## Learning Loop -- 2026-04-06 00:47
+
+- Split: training, Tasks: 1000
+- Correct: 14 / 1000 (1.4%)
+- Rules: 11 -> 16 (+5 learned)
+- Stored rule hits: 11
+- Time: 6028s
+- Log: logs/learn_20260405_230726.log
+
+---
+## Learning Loop -- 2026-04-06 00:48
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 13
+- Time: 61s
+- Log: logs/learn_20260406_004659.log
+
+---
+## Claude Code Session -- 2026-04-06 01:10
+
+- Previous: 13/20 (65.0%)
+- Analyzed 7 failing tasks: 878187ab, 0e206a2e, 825aa9e9, 1c56ad9f, 9f669b64, afe3afe9, 13f06aa5
+- Solved 2 tasks:
+  1. **1c56ad9f** — zigzag horizontal shearing of grid structures
+     - New primitive: `zigzag_shear(grid, bg)` — auto-detects phase from bbox height
+     - New concept: `zigzag_shear_grid`
+  2. **825aa9e9** — gravity of content objects toward border structure
+     - New primitive: `gravity_toward_border(grid, bg)` — rigid body drop with gap rule
+     - New concept: `gravity_toward_border`
+- Also improved `_concept_engine.py` brute-force to support explicit `candidates` lists
+- Regression gate (08ed6ac7): CORRECT

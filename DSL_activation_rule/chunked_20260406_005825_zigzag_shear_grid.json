@@ -1,21 +1,21 @@
 {
-  "rule_id": "chunked_20260406_004033_quadrant_shape_swap",
+  "rule_id": "chunked_20260406_005825_zigzag_shear_grid",
   "source": "chunked",
   "source_tasks": [
-    "5a719d11"
+    "1c56ad9f"
   ],
   "times_validated": 2,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": "DIFF",
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "quadrant_shape_swap",
-    "param_source": "inferred(sep_color)"
+    "concept": "zigzag_shear_grid",
+    "param_source": "inferred(bg)"
   }
 }

@@ -64,6 +64,35 @@ def topologies_match(topo_a: dict, topo_b: dict) -> bool:
     return all(topo_a[k] == topo_b[k] for k in topo_a)
 
 
+def topologies_match_with_vars(pattern: dict, concrete: dict) -> bool:
+    """Match a pattern topology (may contain ?var_N / ?hedge_N) against concrete.
+
+    Variable fields (?var_N) match any COMM/DIFF value.
+    Hedge fields (?hedge_N) are ignored in matching.
+    Non-variable fields must match exactly.
+    """
+    if not pattern or not concrete:
+        return False
+    # Non-hedge keys in pattern must exist in concrete
+    pattern_keys = {k for k in pattern if not str(k).startswith("?")}
+    concrete_keys = set(concrete.keys())
+    if pattern_keys != concrete_keys:
+        return False
+    for k in pattern_keys:
+        pv = pattern[k]
+        cv = concrete.get(k)
+        if cv is None:
+            return False
+        if isinstance(pv, str) and pv.startswith("?"):
+            continue  # variable matches any value
+        if isinstance(pv, dict) and isinstance(cv, dict):
+            if not topologies_match_with_vars(pv, cv):
+                return False
+        elif pv != cv:
+            return False
+    return True
+
+
 def topology_similarity(topo_a: dict, topo_b: dict) -> float:
     """
     Soft similarity: fraction of fields in the union that agree on COMM/DIFF.

@@ -910,6 +910,10 @@ def _brute_force_resolve(concept, known_params, unresolved, task):
     # Generate candidates per param
     param_candidates = {}
     for pname, pdef in unresolved:
+        # Explicit candidates override type-based defaults
+        if "candidates" in pdef:
+            param_candidates[pname] = pdef["candidates"]
+            continue
         ptype = pdef.get("type", "int")
         if ptype == "color":
             param_candidates[pname] = list(range(10))

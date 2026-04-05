@@ -1124,3 +1124,212 @@ def quadrant_shape_swap(grid, sep_color=0):
                     output[rr][cc] = bg1
 
     return output
+
+
+def gravity_toward_border(grid, bg=7):
+    """Drop connected components of content color toward the border structure.
+
+    Auto-detects border and content colors from the grid:
+    - bg is provided (background)
+    - There should be exactly 2 other colors: border and content
+    - The border color has cells forming the largest connected component
+      that touches grid edges; content is the other color
+
+    Content components are rigid bodies that fall toward the nearest border
+    surface. Components closer to the border drop first; already-placed
+    components act as obstacles.
+
+    Gap rule: if the section height (free vertical space) >= 4, leave a gap of 1
+    between the object and the border/obstacle. Otherwise gap = 0.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    bg_color = bg
+
+    # Find non-bg colors
+    non_bg = set()
+    for row in grid:
+        for v in row:
+            if v != bg_color:
+                non_bg.add(v)
+
+    if len(non_bg) != 2:
+        return [row[:] for row in grid]
+
+    # Determine border vs content: the border touches more distinct grid sides
+    def _edge_sides(color):
+        """Count how many distinct grid sides (top, bottom, left, right) this color touches."""
+        sides = set()
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] == color:
+                    if r == 0:
+                        sides.add("top")
+                    if r == h - 1:
+                        sides.add("bottom")
+                    if c == 0:
+                        sides.add("left")
+                    if c == w - 1:
+                        sides.add("right")
+        return len(sides)
+
+    colors = list(non_bg)
+    s0 = _edge_sides(colors[0])
+    s1 = _edge_sides(colors[1])
+
+    if s0 > s1:
+        border_color = colors[0]
+        content_color = colors[1]
+    elif s1 > s0:
+        border_color = colors[1]
+        content_color = colors[0]
+    else:
+        # Tie-break: border has more total cells
+        c0 = sum(1 for row in grid for v in row if v == colors[0])
+        c1 = sum(1 for row in grid for v in row if v == colors[1])
+        if c0 >= c1:
+            border_color = colors[0]
+            content_color = colors[1]
+        else:
+            border_color = colors[1]
+            content_color = colors[0]
+
+    # Build obstacle map (border cells are obstacles)
+    obstacle = [[False] * w for _ in range(h)]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == border_color:
+                obstacle[r][c] = True
+
+    # Find connected components of content_color
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == content_color and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited:
+                            if grid[nr][nc] == content_color:
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                components.append(comp)
+
+    # Sort components by max row (closest to bottom/border first)
+    components.sort(key=lambda comp: -max(r for r, c in comp))
+
+    # Build output starting with bg + border
+    output = [[bg_color] * w for _ in range(h)]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == border_color:
+                output[r][c] = border_color
+
+    # Drop each component
+    for comp in components:
+        min_r = min(r for r, c in comp)
+        max_r = max(r for r, c in comp)
+        cols_used = set(c for r, c in comp)
+
+        # Find effective floor: for each column the component uses,
+        # find the first obstacle row below max_r
+        effective_floor = h  # default: grid bottom
+        for c in cols_used:
+            for r in range(max_r + 1, h):
+                if obstacle[r][c]:
+                    effective_floor = min(effective_floor, r)
+                    break
+
+        # Find effective ceiling: for each column, first obstacle above min_r
+        effective_ceiling = 0
+        for c in cols_used:
+            for r in range(min_r - 1, -1, -1):
+                if obstacle[r][c]:
+                    effective_ceiling = max(effective_ceiling, r + 1)
+                    break
+
+        section_height = effective_floor - effective_ceiling
+        gap = 1 if section_height >= 4 else 0
+
+        # Calculate drop distance
+        new_bottom = effective_floor - 1 - gap
+        drop = new_bottom - max_r
+
+        if drop < 0:
+            drop = 0  # can't move up
+
+        # Place component at new position and update obstacles
+        for r, c in comp:
+            new_r = r + drop
+            if 0 <= new_r < h:
+                output[new_r][c] = content_color
+                obstacle[new_r][c] = True  # acts as obstacle for next components
+
+    return output
+
+
+def zigzag_shear(grid, bg=0):
+    """Apply a zigzag horizontal shear to a grid structure.
+
+    Finds the bounding box of non-bg pixels. For each row within the bbox,
+    applies a horizontal shift following a period-4 zigzag pattern.
+
+    The phase is auto-computed from the bounding box height:
+      phase = (bbox_height + 1) % 4
+
+    The shift sequence (indexed by row offset from bbox top) cycles:
+        phase 0: [ 0, -1,  0, +1]
+        phase 1: [+1,  0, -1,  0]
+        phase 2: [ 0, +1,  0, -1]
+        phase 3: [-1,  0, +1,  0]
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Find bounding box of non-bg pixels
+    min_r, max_r = h, -1
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                min_r = min(min_r, r)
+                max_r = max(max_r, r)
+
+    if max_r < 0:
+        return [row[:] for row in grid]
+
+    bbox_height = max_r - min_r + 1
+    phase = (bbox_height + 1) % 4
+
+    # Define the 4 shift patterns
+    patterns = [
+        [0, -1, 0, 1],   # phase 0
+        [1, 0, -1, 0],   # phase 1
+        [0, 1, 0, -1],   # phase 2
+        [-1, 0, 1, 0],   # phase 3
+    ]
+    pat = patterns[phase]
+
+    output = [[bg] * w for _ in range(h)]
+    for r in range(h):
+        if r < min_r or r > max_r:
+            output[r] = grid[r][:]
+            continue
+        offset = r - min_r
+        shift = pat[offset % 4]
+        for c in range(w):
+            if grid[r][c] != bg:
+                nc = c + shift
+                if 0 <= nc < w:
+                    output[r][nc] = grid[r][c]
+    return output

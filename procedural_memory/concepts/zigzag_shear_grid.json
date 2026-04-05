@@ -1,0 +1,16 @@
+{
+  "concept_id": "zigzag_shear_grid",
+  "version": 2,
+  "description": "Apply zigzag horizontal shearing to a rectangular grid pattern with auto-detected period-4 alternation",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "zigzag_shear", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

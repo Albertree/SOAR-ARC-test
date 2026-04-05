@@ -15,7 +15,7 @@ import json
 import os
 from datetime import datetime
 
-from agent.episodic import extract_topology, topologies_match
+from agent.episodic import extract_topology, topologies_match, topologies_match_with_vars
 
 CHUNK_DIR = "DSL_activation_rule"
 REJECTED_DIR = os.path.join(CHUNK_DIR, "rejected")
@@ -156,7 +156,13 @@ def try_chunked_rules(comparisons: dict, task) -> dict:
         if not cond_topo:
             continue
 
-        if topologies_match(grid_topology, cond_topo):
+        # Use variable-aware matching for merged rules, strict for chunked
+        source = rule.get("source", "chunked")
+        if source == "merged":
+            matches = topologies_match_with_vars(cond_topo, grid_topology)
+        else:
+            matches = topologies_match(grid_topology, cond_topo)
+        if matches:
             concept_id = rule.get("action", {}).get("concept", "")
             if concept_id:
                 source = rule.get("source", "chunked")

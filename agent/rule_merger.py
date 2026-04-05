@@ -21,6 +21,103 @@ CHUNK_DIR = "DSL_activation_rule"
 SUPERSEDED_DIR = os.path.join(CHUNK_DIR, "superseded")
 
 
+# ======================================================================
+# Term-graph anti-unification (Paper 4 adapted for COMM/DIFF trees)
+# ======================================================================
+
+def topology_au(t1: dict, t2: dict) -> dict | None:
+    """Anti-unify two topology dicts using term-graph AU.
+
+    Returns the most specific generalization that subsumes both inputs.
+    Agreed fields keep their COMM/DIFF value. Disagreeing sub-fields
+    get variable names (?var_N). Extra fields in one side get hedge
+    variables (?hedge_N).
+
+    Returns None if the SMT constraint fails: different top-level
+    field names or different top-level COMM/DIFF string values.
+    """
+    if not t1 or not t2:
+        return None
+
+    # SMT constraint: same top-level field names
+    if set(t1.keys()) != set(t2.keys()):
+        return None
+
+    # SMT constraint: top-level flat string values must agree
+    for k in t1:
+        v1, v2 = t1[k], t2[k]
+        if isinstance(v1, str) and isinstance(v2, str) and v1 != v2:
+            return None
+
+    state = {"var_counter": 0, "solved": {}}
+    result = {}
+    for k in sorted(t1.keys()):
+        result[k] = _au_nodes(t1[k], t2[k], state)
+    return result
+
+
+def _au_nodes(n1, n2, state):
+    """Anti-unify two topology nodes (strings or nested dicts).
+
+    Rules applied in priority order:
+      STEP:   same label, same children → recurse
+      STEP-C: same label COMM, different children → intersection + hedges
+      SOLVE:  different labels → introduce variable
+    Coreference: same (n1, n2) pair always maps to same variable via state['solved'].
+    """
+    # Both are strings (leaf nodes)
+    if isinstance(n1, str) and isinstance(n2, str):
+        if n1 == n2:
+            return n1  # STEP: identical → keep
+        # SOLVE: disagreement → variable (with coreference)
+        pair_key = (n1, n2)
+        if pair_key in state["solved"]:
+            return state["solved"][pair_key]
+        state["var_counter"] += 1
+        var = f"?var_{state['var_counter']}"
+        state["solved"][pair_key] = var
+        return var
+
+    # Both are dicts (internal nodes with sub-structure)
+    if isinstance(n1, dict) and isinstance(n2, dict):
+        label1 = n1.get("type", "")
+        label2 = n2.get("type", "")
+
+        result = {}
+        if "type" in n1 or "type" in n2:
+            result["type"] = _au_nodes(label1, label2, state)
+
+        children1 = {k: v for k, v in n1.items() if k != "type"}
+        children2 = {k: v for k, v in n2.items() if k != "type"}
+
+        common = set(children1.keys()) & set(children2.keys())
+        only1 = set(children1.keys()) - common
+        only2 = set(children2.keys()) - common
+
+        # STEP: recurse on shared children
+        for k in sorted(common):
+            result[k] = _au_nodes(children1[k], children2[k], state)
+
+        # STEP-C: hedge variables for non-shared children
+        for k in sorted(only1):
+            state["var_counter"] += 1
+            result[k] = f"?hedge_{state['var_counter']}"
+        for k in sorted(only2):
+            state["var_counter"] += 1
+            result[k] = f"?hedge_{state['var_counter']}"
+
+        return result
+
+    # Mixed types (one string, one dict) → SOLVE
+    pair_key = (str(n1), str(n2))
+    if pair_key in state["solved"]:
+        return state["solved"][pair_key]
+    state["var_counter"] += 1
+    var = f"?var_{state['var_counter']}"
+    state["solved"][pair_key] = var
+    return var
+
+
 def run_merge_pass(chunk_dir=CHUNK_DIR):
     """
     Main entry point. Groups chunked rules by (topology, concept),
@@ -119,8 +216,17 @@ def _merge_group(rules):
     Topology and concept are identical (grouping invariant).
     Merge source_tasks, sum counters, generalize param_source.
     """
-    # These are identical across the group (grouping invariant)
-    condition = rules[0].get("condition", {})
+    # Anti-unify condition topologies across all rules in group
+    base_topo = rules[0].get("condition", {}).get("topology", {})
+    for r in rules[1:]:
+        other_topo = r.get("condition", {}).get("topology", {})
+        merged_topo = topology_au(base_topo, other_topo)
+        if merged_topo is not None:
+            base_topo = merged_topo
+    condition = {
+        "level": rules[0].get("condition", {}).get("level", "GRID"),
+        "topology": base_topo,
+    }
     concept = rules[0].get("action", {}).get("concept", "")
 
     # Combine source_tasks (deduplicated, order preserved)
