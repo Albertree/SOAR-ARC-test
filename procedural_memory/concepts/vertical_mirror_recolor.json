@@ -1,0 +1,28 @@
+{
+  "concept_id": "vertical_mirror_recolor",
+  "version": 1,
+  "description": "Recolor cells of fg_color to new_color when their horizontal mirror across the vertical center axis is also fg_color",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "fg_color": {"type": "color", "infer": "non_bg_single"},
+    "new_color": {"type": "color", "infer": "color_added_in_output"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "vertical_mirror_recolor",
+      "args": {
+        "grid": "$input",
+        "fg_color": "$fg_color",
+        "new_color": "$new_color",
+        "bg": "$bg"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

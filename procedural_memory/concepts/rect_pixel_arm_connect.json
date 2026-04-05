@@ -1,0 +1,21 @@
+{
+  "concept_id": "rect_pixel_arm_connect",
+  "version": 1,
+  "description": "Connect scattered single pixels to their nearest rectangle via tapered arm with cross at pixel",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "rect_pixel_arm_connect",
+      "args": {
+        "grid": "$input"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

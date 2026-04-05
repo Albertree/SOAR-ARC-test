@@ -3147,3 +3147,174 @@ def separator_zone_gravity(grid):
             out[i + 1][j + 1] = interior[i][j]
 
     return out
+
+
+def vertical_mirror_recolor(grid, fg_color, new_color, bg=0):
+    """Recolor cells whose horizontal mirror across the vertical center axis is the same color.
+
+    For each cell (r, c) with value fg_color: if grid[r][W-1-c] is also fg_color,
+    set both to new_color. Otherwise leave as fg_color.
+    Grid size is preserved; only fg_color cells are affected.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == fg_color:
+                mc = w - 1 - c
+                if grid[r][mc] == fg_color:
+                    output[r][c] = new_color
+    return output
+
+
+def rect_pixel_arm_connect(grid, bg=None):
+    """Connect scattered single pixels to their nearest rectangle of the same color.
+
+    For each non-bg color: find the large solid rectangle and isolated single pixels.
+    For each pixel, draw a tapered arm from the rectangle face toward the pixel:
+      - 3-wide at the rectangle face (+-1 perpendicular to the connection direction)
+      - 1-wide line in between
+      - Cross at the pixel (center removed, 4 cardinal neighbors colored)
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if bg is None:
+        bg = find_bg_color(grid)
+    output = [row[:] for row in grid]
+
+    # Find all non-bg colors
+    colors = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                colors.add(grid[r][c])
+
+    for color in colors:
+        # Find connected components of this color
+        visited = set()
+        components = []
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] == color and (r, c) not in visited:
+                    comp = []
+                    queue = [(r, c)]
+                    visited.add((r, c))
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == color:
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                    components.append(comp)
+
+        if not components:
+            continue
+
+        # Identify the rectangle (largest component) and single pixels
+        rect_comp = max(components, key=len)
+        rect_set = set(rect_comp)
+        pixels = [comp[0] for comp in components if len(comp) == 1]
+
+        if len(rect_comp) < 2 or not pixels:
+            continue
+
+        # Get rectangle bounding box
+        min_r = min(p[0] for p in rect_comp)
+        max_r = max(p[0] for p in rect_comp)
+        min_c = min(p[1] for p in rect_comp)
+        max_c = max(p[1] for p in rect_comp)
+
+        def _draw_cross(pr, pc):
+            output[pr][pc] = bg
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = pr + dr, pc + dc
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = color
+
+        for pr, pc in pixels:
+            in_row_range = min_r <= pr <= max_r
+            in_col_range = min_c <= pc <= max_c
+
+            if in_row_range and pc > max_c:
+                face_c = max_c + 1
+                for tr in [pr - 1, pr, pr + 1]:
+                    if 0 <= tr < h:
+                        output[tr][face_c] = color
+                for tc in range(face_c + 1, pc):
+                    output[pr][tc] = color
+                _draw_cross(pr, pc)
+            elif in_row_range and pc < min_c:
+                face_c = min_c - 1
+                for tr in [pr - 1, pr, pr + 1]:
+                    if 0 <= tr < h:
+                        output[tr][face_c] = color
+                for tc in range(pc + 1, face_c):
+                    output[pr][tc] = color
+                _draw_cross(pr, pc)
+            elif in_col_range and pr > max_r:
+                face_r = max_r + 1
+                for tc in [pc - 1, pc, pc + 1]:
+                    if 0 <= tc < w:
+                        output[face_r][tc] = color
+                for tr in range(face_r + 1, pr):
+                    output[tr][pc] = color
+                _draw_cross(pr, pc)
+            elif in_col_range and pr < min_r:
+                face_r = min_r - 1
+                for tc in [pc - 1, pc, pc + 1]:
+                    if 0 <= tc < w:
+                        output[face_r][tc] = color
+                for tr in range(pr + 1, face_r):
+                    output[tr][pc] = color
+                _draw_cross(pr, pc)
+            else:
+                # Diagonal — find nearest face
+                dists = []
+                if pr < min_r:
+                    dists.append(("above", min_r - pr))
+                if pr > max_r:
+                    dists.append(("below", pr - max_r))
+                if pc < min_c:
+                    dists.append(("left", min_c - pc))
+                if pc > max_c:
+                    dists.append(("right", pc - max_c))
+                if not dists:
+                    continue
+                direction = min(dists, key=lambda x: x[1])[0]
+                if direction == "right":
+                    face_c = max_c + 1
+                    for tr in [pr - 1, pr, pr + 1]:
+                        if 0 <= tr < h:
+                            output[tr][face_c] = color
+                    for tc in range(face_c + 1, pc):
+                        output[pr][tc] = color
+                    _draw_cross(pr, pc)
+                elif direction == "left":
+                    face_c = min_c - 1
+                    for tr in [pr - 1, pr, pr + 1]:
+                        if 0 <= tr < h:
+                            output[tr][face_c] = color
+                    for tc in range(pc + 1, face_c):
+                        output[pr][tc] = color
+                    _draw_cross(pr, pc)
+                elif direction == "below":
+                    face_r = max_r + 1
+                    for tc in [pc - 1, pc, pc + 1]:
+                        if 0 <= tc < w:
+                            output[face_r][tc] = color
+                    for tr in range(face_r + 1, pr):
+                        output[tr][pc] = color
+                    _draw_cross(pr, pc)
+                elif direction == "above":
+                    face_r = min_r - 1
+                    for tc in [pc - 1, pc, pc + 1]:
+                        if 0 <= tc < w:
+                            output[face_r][tc] = color
+                    for tr in range(pr + 1, face_r):
+                        output[tr][pc] = color
+                    _draw_cross(pr, pc)
+
+    return output
