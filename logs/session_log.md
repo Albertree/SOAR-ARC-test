@@ -1,5 +1,17 @@
 
 ---
+## Session 52 (Claude) -- 2026-04-06
+
+### Results
+- **40/40 (100.0%)** -- perfect score, no failing tasks
+- Rules: 43 -> 45 (+2 learned)
+- Reused: 38 times (stored rule hit)
+- Discovered: 2 new rules from pipeline
+- Regression gate: all passing
+
+No changes needed -- all tasks solved.
+
+---
 ## Session 51 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2432,3 +2444,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 38
 - Time: 155s
 - Log: logs/learn_20260406_053424.log
+
+---
+## Learning Loop -- 2026-04-06 05:55
+
+- Split: training, Tasks: 1000
+- Correct: 50 / 1000 (5.0%)
+- Rules: 38 -> 43 (+5 learned)
+- Stored rule hits: 48
+- Time: 4001s
+- Log: logs/learn_20260406_044826.log
+
+---
+## Learning Loop -- 2026-04-06 05:57
+
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 43 -> 45 (+2 learned)
+- Stored rule hits: 38
+- Time: 132s
+- Log: logs/learn_20260406_055509.log
