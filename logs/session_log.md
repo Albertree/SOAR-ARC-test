@@ -1,5 +1,16 @@
 
 ---
+## Session 45 (Claude) -- 2026-04-06
+
+### Results
+- **20/20 (100%)** — perfect run, no failing tasks
+- All 19 stored rules reused successfully, 1 new rule discovered (reassemble_template_at_markers from Session 44)
+- Regression: 08ed6ac7 CORRECT
+
+### Notes
+- No changes needed this session — all tasks solved via memory hits or pipeline discovery
+
+---
 ## Session 44 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2079,3 +2090,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 17
 - Time: 57s
 - Log: logs/learn_20260406_020519.log
+
+---
+## Learning Loop -- 2026-04-06 02:18
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 24 -> 25 (+1 learned)
+- Stored rule hits: 19
+- Time: 43s
+- Log: logs/learn_20260406_021808.log
