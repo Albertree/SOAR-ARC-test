@@ -1,5 +1,21 @@
 
 ---
+## Session 42 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive `arrow_border_project` in `_primitives.py` — finds arrow-shaped objects with marker cells, projects marker colors to grid borders with dotted trails every 2 cells, fills border edges, and marks corner intersections as 0
+- New concept `arrow_border_project.json` (solves 13f06aa5)
+- New primitive `block_grid_gravity` in `_primitives.py` — parses 30x30 grids containing 7x7 grids of 3x3 hollow blocks with a separator edge, compresses block presence into a small output using gravity (direction determined by separator position rotated 90° CW)
+- New concept `block_grid_gravity.json` (solves afe3afe9)
+
+### Regression
+- 08ed6ac7: CORRECT
+- 13f06aa5: CORRECT
+- afe3afe9: CORRECT
+
+### Prior session: 15/20 (75.0%) — added 2 new concepts, expect ~17/20 (85%)
+
+---
 ## Session 41 (Claude) -- 2026-04-06
 
 ### Changes
@@ -1973,3 +1989,23 @@ Three architectural features added to the SOAR pipeline:
      - New concept: `gravity_toward_border`
 - Also improved `_concept_engine.py` brute-force to support explicit `candidates` lists
 - Regression gate (08ed6ac7): CORRECT
+
+---
+## Learning Loop -- 2026-04-06 01:11
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 18 -> 20 (+2 learned)
+- Stored rule hits: 13
+- Time: 54s
+- Log: logs/learn_20260406_011040.log
+
+---
+## Learning Loop -- 2026-04-06 01:12
+
+- Split: training, Tasks: 1000
+- Correct: 10 / 1000 (1.0%)
+- Rules: 7 -> 20 (+13 learned)
+- Stored rule hits: 9
+- Time: 5126s
+- Log: logs/learn_20260405_234722.log

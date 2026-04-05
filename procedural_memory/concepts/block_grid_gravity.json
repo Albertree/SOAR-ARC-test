@@ -1,0 +1,17 @@
+{
+  "concept_id": "block_grid_gravity",
+  "version": 1,
+  "description": "Compress 30x30 grid of 3x3 hollow blocks into small output using gravity from separator edge",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "block_grid_gravity", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

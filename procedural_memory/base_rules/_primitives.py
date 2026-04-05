@@ -1333,3 +1333,262 @@ def zigzag_shear(grid, bg=0):
                 if 0 <= nc < w:
                     output[r][nc] = grid[r][c]
     return output
+
+
+def block_grid_gravity(grid):
+    """Compress a 30x30 block-pattern grid into a small output via gravity.
+
+    The input has:
+    - A separator line (full row or column of uniform non-0 non-8 color) on one edge
+    - A 7x7 grid of block positions, each block is a 3x3 hollow square
+    - Blocks are colored (various) or template (color 8)
+
+    Algorithm:
+    1. Find separator edge and determine gravity direction (CW rotation)
+    2. Build 7x7 block grid (color at each position, 0 if absent)
+    3. Remove the all-zero row/column (gap between sections)
+    4. For each line perpendicular to separator:
+       - 8-blocks anchor toward gravity side, colored blocks opposite, 0 fills rest
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator: full-width row or full-height column of uniform non-0, non-8 color
+    sep_side = None  # "top", "bottom", "left", "right"
+
+    # Check rows
+    for r in [0, h - 1]:
+        vals = set(grid[r])
+        if len(vals) == 1 and vals.pop() not in (0, 8):
+            sep_side = "top" if r == 0 else "bottom"
+            break
+
+    if sep_side is None:
+        # Check columns
+        for c in [0, w - 1]:
+            vals = set(grid[r][c] for r in range(h))
+            if len(vals) == 1 and vals.pop() not in (0, 8):
+                sep_side = "left" if c == 0 else "right"
+                break
+
+    if sep_side is None:
+        return [row[:] for row in grid]
+
+    # Determine block grid offsets
+    # Separator side gets offset 2 (skip separator + gap row/col)
+    # Other sides get offset 1 (skip gap)
+    row_start = 2 if sep_side == "top" else (1 if sep_side != "bottom" else 1)
+    col_start = 2 if sep_side == "left" else (1 if sep_side != "right" else 1)
+
+    # For bottom/right separator, the last block positions need to fit
+    # Block at position i: rows row_start + 4*i to row_start + 4*i + 2
+    # We need 7 positions: row_start + 4*6 + 2 < h (or w)
+
+    # Build 7x7 block grid
+    block_grid = [[0] * 7 for _ in range(7)]
+    for br in range(7):
+        for bc in range(7):
+            pr = row_start + 4 * br  # physical row of block top-left
+            pc = col_start + 4 * bc  # physical col of block top-left
+            if 0 <= pr < h and 0 <= pc < w:
+                block_grid[br][bc] = grid[pr][pc]
+
+    # Find and remove the all-zero row and/or column
+    # Remove zero rows
+    filtered_rows = [row for row in block_grid if any(v != 0 for v in row)]
+    # Remove zero columns
+    if filtered_rows:
+        n_cols = len(filtered_rows[0])
+        keep_cols = [c for c in range(n_cols)
+                     if any(filtered_rows[r][c] != 0 for r in range(len(filtered_rows)))]
+        result_grid = [[filtered_rows[r][c] for c in keep_cols]
+                       for r in range(len(filtered_rows))]
+    else:
+        return [[0]]
+
+    out_h = len(result_grid)
+    out_w = len(result_grid[0]) if result_grid else 0
+
+    # Determine gravity direction and processing dimension
+    # Top → Right, Right → Down, Bottom → Left, Left → Up
+    if sep_side in ("top", "bottom"):
+        # Process per-row
+        gravity_right = (sep_side == "top")
+        output = [[0] * out_w for _ in range(out_h)]
+        for r in range(out_h):
+            eights = []
+            colored = []
+            for c in range(out_w):
+                v = result_grid[r][c]
+                if v == 8:
+                    eights.append(v)
+                elif v != 0:
+                    colored.append(v)
+            combined = colored + eights if gravity_right else eights + colored
+            total = len(combined)
+            if gravity_right:
+                # Right-aligned
+                start = out_w - total
+                for i, v in enumerate(combined):
+                    output[r][start + i] = v
+            else:
+                # Left-aligned
+                for i, v in enumerate(combined):
+                    output[r][i] = v
+    else:
+        # Process per-column (left/right separator)
+        gravity_up = (sep_side == "left")
+        output = [[0] * out_w for _ in range(out_h)]
+        for c in range(out_w):
+            eights = []
+            colored = []
+            for r in range(out_h):
+                v = result_grid[r][c]
+                if v == 8:
+                    eights.append(v)
+                elif v != 0:
+                    colored.append(v)
+            combined = eights + colored if gravity_up else colored + eights
+            total = len(combined)
+            if gravity_up:
+                # Top-aligned
+                for i, v in enumerate(combined):
+                    output[i][c] = v
+            else:
+                # Bottom-aligned
+                start = out_h - total
+                for i, v in enumerate(combined):
+                    output[start + i][c] = v
+
+    return output
+
+
+def arrow_border_project(grid, bg=0):
+    """Find arrow-shaped objects and project their marker colors to grid borders.
+
+    Each arrow is a connected component of non-bg cells containing exactly two
+    colors: the 'body' color (majority) and a single 'marker' cell.
+    The marker's position relative to the body's center-of-mass determines
+    the projection direction (up/down/left/right).
+
+    The marker color fills the nearest border edge in that direction.
+    A dotted trail of marker color is drawn every 2 cells from marker to border.
+    Where two filled border edges meet at a corner, that corner becomes 0.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find connected components of non-bg cells
+    visited = set()
+    arrows = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+
+            if len(comp) < 3:
+                continue
+
+            # Identify colors in this component
+            color_cells = {}
+            for pr, pc in comp:
+                v = grid[pr][pc]
+                color_cells.setdefault(v, []).append((pr, pc))
+
+            if len(color_cells) != 2:
+                continue
+
+            # Body color = more cells; marker color = exactly 1 cell
+            colors_sorted = sorted(color_cells.items(), key=lambda x: len(x[1]))
+            marker_color, marker_cells = colors_sorted[0]
+            body_color, body_cells = colors_sorted[1]
+
+            if len(marker_cells) != 1:
+                continue
+
+            mr, mc = marker_cells[0]
+
+            # Center of mass of body cells
+            center_r = sum(p[0] for p in body_cells) / len(body_cells)
+            center_c = sum(p[1] for p in body_cells) / len(body_cells)
+
+            # Direction: marker offset from body center
+            dr = mr - center_r
+            dc = mc - center_c
+
+            if abs(dr) > abs(dc):
+                direction = "up" if dr < 0 else "down"
+            else:
+                direction = "left" if dc < 0 else "right"
+
+            arrows.append((marker_color, (mr, mc), direction))
+
+    if not arrows:
+        return output
+
+    # Project each arrow's marker to its border
+    border_edges = {}
+    for marker_color, (mr, mc), direction in arrows:
+        border_edges[direction] = marker_color
+
+        # Draw dotted trail every 2 cells from marker toward border
+        if direction == "up":
+            r = mr - 2
+            while r >= 0:
+                output[r][mc] = marker_color
+                r -= 2
+        elif direction == "down":
+            r = mr + 2
+            while r < h:
+                output[r][mc] = marker_color
+                r += 2
+        elif direction == "left":
+            c = mc - 2
+            while c >= 0:
+                output[mr][c] = marker_color
+                c -= 2
+        elif direction == "right":
+            c = mc + 2
+            while c < w:
+                output[mr][c] = marker_color
+                c += 2
+
+    # Fill border edges
+    for direction, marker_color in border_edges.items():
+        if direction == "up":
+            for c in range(w):
+                output[0][c] = marker_color
+        elif direction == "down":
+            for c in range(w):
+                output[h - 1][c] = marker_color
+        elif direction == "left":
+            for r in range(h):
+                output[r][0] = marker_color
+        elif direction == "right":
+            for r in range(h):
+                output[r][w - 1] = marker_color
+
+    # Corners where two edges meet become 0
+    filled_dirs = set(border_edges.keys())
+    if "up" in filled_dirs and "left" in filled_dirs:
+        output[0][0] = 0
+    if "up" in filled_dirs and "right" in filled_dirs:
+        output[0][w - 1] = 0
+    if "down" in filled_dirs and "left" in filled_dirs:
+        output[h - 1][0] = 0
+    if "down" in filled_dirs and "right" in filled_dirs:
+        output[h - 1][w - 1] = 0
+
+    return output

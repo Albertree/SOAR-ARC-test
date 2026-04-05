@@ -1,0 +1,18 @@
+{
+  "concept_id": "arrow_border_project",
+  "version": 1,
+  "description": "Arrow shapes with marker cells project marker colors to grid borders with dotted trails",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "find_bg_color", "args": {"grid": "$input"}, "output": "bg"},
+    {"id": "s2", "primitive": "arrow_border_project", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
