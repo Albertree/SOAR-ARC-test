@@ -1,5 +1,22 @@
 
 ---
+## Session 50 (Claude) -- 2026-04-06
+
+### Changes
+- Added 2 new primitives to `_primitives.py`:
+  - `border_interior_fill`: classifies connected components of a target color as border-touching or interior, recolors each accordingly
+  - `most_common_cross_arm_color`: finds cross patterns (center=4, uniform cardinal arms), returns 1x1 grid with the most frequent arm color
+- Created 2 new concept JSONs:
+  - `border_interior_fill.json` (solves 84db8fc4)
+  - `most_common_cross_arm.json` (solves 642d658d)
+
+### Results
+- Previous session: 32/40 (80.0%)
+- New tasks solved: 84db8fc4, 642d658d (+2)
+- Regression gate (08ed6ac7): CORRECT
+- Total concepts: 35
+
+---
 ## Session 49 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2257,3 +2274,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 24
 - Time: 3629s
 - Log: logs/learn_20260406_022722.log
+
+---
+## Learning Loop -- 2026-04-06 03:43
+
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%)
+- Rules: 31 -> 34 (+3 learned)
+- Stored rule hits: 29
+- Time: 103s
+- Log: logs/learn_20260406_034155.log
+
+---
+## Learning Loop -- 2026-04-06 04:14
+
+- Split: training, Tasks: 1000
+- Correct: 36 / 1000 (3.6%)
+- Rules: 30 -> 34 (+4 learned)
+- Stored rule hits: 37
+- Time: 3855s
+- Log: logs/learn_20260406_031039.log

@@ -2634,3 +2634,64 @@ def mark_square_frame_corners(grid, marker_color=2, bg=7):
                 output[mr][mc] = marker_color
 
     return output
+
+
+def border_interior_fill(grid, target_color, border_color, interior_color):
+    """Classify connected components of target_color cells (4-connected).
+    Components touching the grid border are recolored to border_color.
+    Components not touching the border are recolored to interior_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    result = [row[:] for row in grid]
+    visited = set()
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == target_color and (r, c) not in visited:
+                comp = []
+                touches_border = False
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    if cr == 0 or cr == h - 1 or cc == 0 or cc == w - 1:
+                        touches_border = True
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == target_color:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                fill = border_color if touches_border else interior_color
+                for cr, cc in comp:
+                    result[cr][cc] = fill
+
+    return result
+
+
+def most_common_cross_arm_color(grid, center_color=4):
+    """Find all cross patterns where center_color is at the center and all 4
+    cardinal neighbors share the same color (different from center_color).
+    Returns a 1x1 grid containing the arm color that appears most often."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    arm_colors = []
+
+    for r in range(1, h - 1):
+        for c in range(1, w - 1):
+            if grid[r][c] == center_color:
+                up = grid[r - 1][c]
+                down = grid[r + 1][c]
+                left = grid[r][c - 1]
+                right = grid[r][c + 1]
+                if up == down == left == right and up != center_color:
+                    arm_colors.append(up)
+
+    if not arm_colors:
+        return [[0]]
+
+    counts = {}
+    for ac in arm_colors:
+        counts[ac] = counts.get(ac, 0) + 1
+    best = max(counts, key=counts.get)
+    return [[best]]

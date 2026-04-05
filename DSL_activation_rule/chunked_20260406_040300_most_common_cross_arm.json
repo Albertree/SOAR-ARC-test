@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260406_032336_rotation_tile_4x4",
+  "rule_id": "chunked_20260406_040300_most_common_cross_arm",
   "source": "chunked",
   "source_tasks": [
-    "cf5fd0ad"
+    "642d658d"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "multi_group",
-        "change_scope": "subset",
+        "change_pattern": "column_wise",
+        "change_scope": "all_cells",
         "num_groups_consistent": true,
-        "group_anchors_consistent": false
+        "group_anchors_consistent": true
       },
       "size": "DIFF"
     }
   },
   "action": {
-    "concept": "rotation_tile_4x4",
+    "concept": "most_common_cross_arm",
     "param_source": "no_params"
   }
 }
