@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_061308_invert_binary_tile_2x2",
+  "source": "chunked",
+  "source_tasks": [
+    "48131b3c"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "single_group",
+        "change_scope": "all_cells",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "invert_binary_tile_2x2",
+    "param_source": "no_params"
+  }
+}

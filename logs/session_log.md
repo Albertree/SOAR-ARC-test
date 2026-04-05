@@ -1,5 +1,42 @@
 
 ---
+## Session 53 (Claude) -- 2026-04-06
+
+### Analysis
+
+Picked 3 failing tasks from 80-task run (41/80 = 51.2%):
+
+1. **62c24649** — Mirror input horizontally and vertically to create 2x2 symmetric output
+2. **48131b3c** — Invert binary grid (swap 0 and non-zero color), then tile 2x2
+3. **e7a25a18** — Extract bordered rectangle with 2x2 color quadrant pattern, expand quadrants to fill interior
+
+### Changes
+
+1. **New primitive: `invert_binary`** in `_primitives.py`
+   - Swaps bg (0) and the single non-bg color in a binary grid
+
+2. **New primitive: `expand_quadrants_in_border`** in `_primitives.py`
+   - Finds bordered rectangle, detects 2x2 color arrangement inside, scales quadrants to fill interior
+
+3. **New concept: `mirror_symmetric_tile.json`**
+   - Composes flip_horizontal + concat_horizontal + flip_vertical + concat_vertical
+   - Zero parameters, uses existing primitives
+
+4. **New concept: `invert_binary_tile_2x2.json`**
+   - Uses new invert_binary primitive, then tiles 2x2 via concat
+   - Zero parameters
+
+5. **New concept: `expand_quadrants_in_border.json`**
+   - Uses new expand_quadrants_in_border primitive
+   - Signature: color_preserved=null (color 0 disappears in output)
+
+### Results
+
+- Previous: 41/80 (51.2%)
+- New tasks solved: 62c24649, 48131b3c, e7a25a18
+- Regression gate (08ed6ac7): CORRECT
+
+---
 ## Session 52 (Claude) -- 2026-04-06
 
 ### Results
@@ -2464,3 +2501,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 38
 - Time: 132s
 - Log: logs/learn_20260406_055509.log
+
+---
+## Learning Loop -- 2026-04-06 06:04
+
+- Split: training, Tasks: 80
+- Correct: 41 / 80 (51.2%)
+- Rules: 45 -> 45 (+0 learned)
+- Stored rule hits: 41
+- Time: 246s
+- Log: logs/learn_20260406_060017.log

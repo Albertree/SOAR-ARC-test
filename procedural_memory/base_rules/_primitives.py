@@ -3318,3 +3318,106 @@ def rect_pixel_arm_connect(grid, bg=None):
                     _draw_cross(pr, pc)
 
     return output
+
+
+# ============================================================
+# INVERT BINARY
+# ============================================================
+
+def invert_binary(grid, bg=0):
+    """Invert a binary grid: swap bg and the single non-bg color."""
+    non_bg = None
+    for row in grid:
+        for c in row:
+            if c != bg:
+                non_bg = c
+                break
+        if non_bg is not None:
+            break
+    if non_bg is None:
+        return [row[:] for row in grid]
+    return [[non_bg if c == bg else bg for c in row] for row in grid]
+
+
+# ============================================================
+# EXPAND QUADRANTS IN BORDER
+# ============================================================
+
+def expand_quadrants_in_border(grid, bg=0):
+    """Find bordered rectangle, extract 2x2 color quadrant pattern, scale to fill interior.
+
+    Detects a rectangle outlined by a single border color. Inside, finds a 2x2
+    arrangement of colored blocks (4 distinct colors in quadrants). Outputs the
+    bordered rectangle with each quadrant color expanded to fill its quarter of
+    the interior.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find bounding box of all non-bg cells (the bordered rectangle)
+    min_r, max_r, min_c, max_c = h, -1, w, -1
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                min_r = min(min_r, r)
+                max_r = max(max_r, r)
+                min_c = min(min_c, c)
+                max_c = max(max_c, c)
+
+    if max_r < 0:
+        return [row[:] for row in grid]
+
+    border_color = grid[min_r][min_c]
+
+    # Interior region (inside border)
+    int_top, int_bot = min_r + 1, max_r - 1
+    int_left, int_right = min_c + 1, max_c - 1
+    int_h = int_bot - int_top + 1
+    int_w = int_right - int_left + 1
+
+    if int_h <= 0 or int_w <= 0:
+        return [row[:] for row in grid]
+
+    # Find non-bg cells inside the border (the color pattern)
+    pat_cells = []
+    for r in range(int_top, int_bot + 1):
+        for c in range(int_left, int_right + 1):
+            if grid[r][c] != bg:
+                pat_cells.append((r, c, grid[r][c]))
+
+    if not pat_cells:
+        return [row[:] for row in grid]
+
+    pat_min_r = min(p[0] for p in pat_cells)
+    pat_max_r = max(p[0] for p in pat_cells)
+    pat_min_c = min(p[1] for p in pat_cells)
+    pat_max_c = max(p[1] for p in pat_cells)
+
+    pat_h = pat_max_r - pat_min_r + 1
+    pat_w = pat_max_c - pat_min_c + 1
+
+    half_ph = pat_h // 2
+    half_pw = pat_w // 2
+
+    # Read quadrant colors from the top-left cell of each quadrant
+    tl = grid[pat_min_r][pat_min_c]
+    tr = grid[pat_min_r][pat_min_c + half_pw]
+    bl = grid[pat_min_r + half_ph][pat_min_c]
+    br = grid[pat_min_r + half_ph][pat_min_c + half_pw]
+
+    # Build output: border + scaled quadrants
+    out_h = int_h + 2
+    out_w = int_w + 2
+    output = [[border_color] * out_w for _ in range(out_h)]
+
+    half_h = int_h // 2
+    half_w = int_w // 2
+
+    for r in range(int_h):
+        for c in range(int_w):
+            qr = 0 if r < half_h else 1
+            qc = 0 if c < half_w else 1
+            color = [[tl, tr], [bl, br]][qr][qc]
+            output[r + 1][c + 1] = color
+
+    return output
