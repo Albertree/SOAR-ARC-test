@@ -1,0 +1,17 @@
+{
+  "concept_id": "larger_hollow_rect_color",
+  "version": 1,
+  "description": "Find two hollow rectangles, return 2x2 filled with the color of the larger one",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "larger_hollow_rect_color", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

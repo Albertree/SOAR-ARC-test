@@ -1,5 +1,28 @@
 
 ---
+## Session 54 (Claude) -- 2026-04-06
+
+### Analysis
+
+Picked 3 failing tasks from Session 53 (45/80, 56.2%):
+
+| Task | Pattern | Solution |
+|------|---------|----------|
+| 332efdb3 | All-zero grid → checkerboard (1 where row or col is even) | New primitive `checkerboard_grid` + concept |
+| 99b1bc43 | Two grids split by separator row; XOR → color 3 where exactly one half is non-zero | New primitive `grid_xor_by_separator` + concept |
+| 445eab21 | Two hollow rectangles; output 2x2 filled with color of the one with larger interior | New primitive `larger_hollow_rect_color` + concept |
+
+### Changes
+- Added 3 primitives to `_primitives.py`: `checkerboard_grid`, `grid_xor_by_separator`, `larger_hollow_rect_color`
+- Created 3 concept JSONs: `checkerboard_grid.json`, `grid_xor_by_separator.json`, `larger_hollow_rect_color.json`
+
+### Verification
+- 332efdb3: CORRECT
+- 99b1bc43: CORRECT
+- 445eab21: CORRECT
+- 08ed6ac7 (regression gate): CORRECT
+
+---
 ## Session 53 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2511,3 +2534,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 41
 - Time: 246s
 - Log: logs/learn_20260406_060017.log
+
+---
+## Learning Loop -- 2026-04-06 06:39
+
+- Split: training, Tasks: 1000
+- Correct: 52 / 1000 (5.2%)
+- Rules: 41 -> 45 (+4 learned)
+- Stored rule hits: 53
+- Time: 4603s
+- Log: logs/learn_20260406_052222.log
+
+---
+## Learning Loop -- 2026-04-06 06:42
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)
+- Rules: 45 -> 48 (+3 learned)
+- Stored rule hits: 42
+- Time: 285s
+- Log: logs/learn_20260406_063753.log

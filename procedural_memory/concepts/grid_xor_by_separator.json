@@ -1,0 +1,17 @@
+{
+  "concept_id": "grid_xor_by_separator",
+  "version": 1,
+  "description": "Split grid by separator row, output marks where exactly one half is non-zero",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "grid_xor_by_separator", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

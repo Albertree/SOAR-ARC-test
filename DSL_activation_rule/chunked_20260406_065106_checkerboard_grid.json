@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260406_061308_invert_binary_tile_2x2",
+  "rule_id": "chunked_20260406_065106_checkerboard_grid",
   "source": "chunked",
   "source_tasks": [
-    "48131b3c"
+    "332efdb3"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
         "change_pattern": "single_group",
@@ -17,11 +17,11 @@
         "num_groups_consistent": true,
         "group_anchors_consistent": true
       },
-      "size": "DIFF"
+      "size": "COMM"
     }
   },
   "action": {
-    "concept": "invert_binary_tile_2x2",
+    "concept": "checkerboard_grid",
     "param_source": "no_params"
   }
 }

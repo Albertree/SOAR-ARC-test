@@ -3421,3 +3421,114 @@ def expand_quadrants_in_border(grid, bg=0):
             output[r + 1][c + 1] = color
 
     return output
+
+
+# ============================================================
+# CHECKERBOARD GRID
+# ============================================================
+
+def checkerboard_grid(grid, fill_color=1, bg=0):
+    """Generate a checkerboard pattern: fill_color where row or col is even, bg where both odd.
+
+    Input grid dimensions are preserved. Cell (r,c) gets fill_color if r%2==0 or c%2==0.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    return [[fill_color if r % 2 == 0 or c % 2 == 0 else bg for c in range(w)] for r in range(h)]
+
+
+# ============================================================
+# GRID XOR BY SEPARATOR ROW
+# ============================================================
+
+def grid_xor_by_separator(grid, output_color=3, bg=0):
+    """Split grid by a solid-color separator row, XOR the two halves.
+
+    Finds the separator row (all same non-bg color). Top and bottom halves
+    are compared cell by cell. Output gets output_color where exactly one
+    half is non-zero, bg where both or neither are non-zero.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator row
+    sep_row = None
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            sep_row = r
+            break
+
+    if sep_row is None:
+        return [row[:] for row in grid]
+
+    top = grid[:sep_row]
+    bottom = grid[sep_row + 1:]
+
+    rows = min(len(top), len(bottom))
+    cols = min(w, len(top[0]) if top else 0, len(bottom[0]) if bottom else 0)
+
+    result = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            t_nz = top[r][c] != 0
+            b_nz = bottom[r][c] != 0
+            row.append(output_color if t_nz != b_nz else bg)
+        result.append(row)
+
+    return result
+
+
+# ============================================================
+# LARGER HOLLOW RECT COLOR
+# ============================================================
+
+def larger_hollow_rect_color(grid, bg=0):
+    """Find two hollow rectangles, return 2x2 grid filled with the color of the larger one.
+
+    Detects rectangular borders (single-color frames with interior). Returns
+    a 2x2 uniform grid filled with the border color of the rectangle that has
+    the larger interior area.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find connected components of non-bg cells by color
+    visited = [[False] * w for _ in range(h)]
+    rects = []
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg and not visited[r][c]:
+                color = grid[r][c]
+                # BFS to find all cells of this color component
+                stack = [(r, c)]
+                cells = []
+                while stack:
+                    cr, cc = stack.pop()
+                    if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[cr][cc] or grid[cr][cc] != color:
+                        continue
+                    visited[cr][cc] = True
+                    cells.append((cr, cc))
+                    stack.extend([(cr-1, cc), (cr+1, cc), (cr, cc-1), (cr, cc+1)])
+
+                if cells:
+                    min_r = min(p[0] for p in cells)
+                    max_r = max(p[0] for p in cells)
+                    min_c = min(p[1] for p in cells)
+                    max_c = max(p[1] for p in cells)
+                    int_h = max_r - min_r - 1
+                    int_w = max_c - min_c - 1
+                    interior = int_h * int_w if int_h > 0 and int_w > 0 else 0
+                    rects.append((interior, color))
+
+    if not rects:
+        return [[bg, bg], [bg, bg]]
+
+    rects.sort(key=lambda x: x[0], reverse=True)
+    winner = rects[0][1]
+
+    return [[winner, winner], [winner, winner]]
