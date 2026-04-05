@@ -1,0 +1,194 @@
+{
+  "timestamp": "20260406_082512",
+  "rules_checked": 14,
+  "rule_results": [
+    {
+      "rule_id": "chunked_20260406_034002_scale_2x",
+      "concept": "scale_2x",
+      "stage1_results": [
+        {
+          "task_hex": "c59eb873",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_034003_vertical_mirror_concat",
+      "concept": "vertical_mirror_concat",
+      "stage1_results": [
+        {
+          "task_hex": "8be77c9e",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_034120_keep_column",
+      "concept": "keep_column",
+      "stage1_results": [
+        {
+          "task_hex": "d23f8c26",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_035059_rank_recolor_columns",
+      "concept": "rank_recolor_columns",
+      "stage1_results": [
+        {
+          "task_hex": "08ed6ac7",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_035730_rank_recolor_objects",
+      "concept": "rank_recolor_objects",
+      "stage1_results": [
+        {
+          "task_hex": "6e82a1ae",
+          "result": "fail",
+          "task_topology": {}
+        },
+        {
+          "task_hex": "e8593010",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_035732_fill_rect_interiors_by_size",
+      "concept": "fill_rect_interiors_by_size",
+      "stage1_results": [
+        {
+          "task_hex": "c0f76784",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_035916_reverse_rings",
+      "concept": "reverse_rings",
+      "stage1_results": [
+        {
+          "task_hex": "85c4e7cd",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_040414_staircase_from_row",
+      "concept": "staircase_from_row",
+      "stage1_results": [
+        {
+          "task_hex": "bbc9ae5d",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_040547_fill_quadrants_from_corners",
+      "concept": "fill_quadrants_from_corners",
+      "stage1_results": [
+        {
+          "task_hex": "e9ac8c9e",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_050450_fill_cross_grid_sections",
+      "concept": "fill_cross_grid_sections",
+      "stage1_results": [
+        {
+          "task_hex": "332202d5",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_052813_connect_diamonds",
+      "concept": "connect_diamonds",
+      "stage1_results": [
+        {
+          "task_hex": "60a26a3e",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_063210_separator_reflect_trails",
+      "concept": "separator_reflect_trails",
+      "stage1_results": [
+        {
+          "task_hex": "c9680e90",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_063258_connect_waypoints",
+      "concept": "connect_waypoints",
+      "stage1_results": [
+        {
+          "task_hex": "e5790162",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    },
+    {
+      "rule_id": "chunked_20260406_063429_rank_recolor_objects",
+      "concept": "rank_recolor_objects",
+      "stage1_results": [
+        {
+          "task_hex": "b230c067",
+          "result": "fail",
+          "task_topology": {}
+        }
+      ],
+      "stage2_results": [],
+      "result": "STAGE1_FAIL"
+    }
+  ],
+  "overall": "STAGE1_FAIL"
+}
