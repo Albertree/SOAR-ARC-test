@@ -1,0 +1,25 @@
+{
+  "concept_id": "fill_nonzero_columns_tile2x2",
+  "version": 1,
+  "description": "Fill bg cells in columns with content using color 8, then tile 2x2",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": [2, 2],
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "fill_color": {"type": "int", "default": 8},
+    "bg": {"type": "int", "default": 0}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "fill_nonzero_columns_tile2x2",
+      "args": {"grid": "$input", "fill_color": "$fill_color", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

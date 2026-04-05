@@ -1,5 +1,28 @@
 
 ---
+## Session 56 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 3 failing tasks from session 55 (50/80 = 62.5%):
+- **506d28a5**: OR overlay — split grid by separator row, OR both halves into color 3
+- **f5b8619d**: Column fill + tile — fill bg cells in columns containing content with 8, tile 2x2
+- **72207abc**: Expanding gap sequence — place colors cyclically at triangular number positions
+
+### Changes
+1. **New primitive**: `grid_or_by_separator` — like `grid_xor_by_separator` but uses OR logic; improved separator detection to handle uniform data rows
+2. **New primitive**: `fill_nonzero_columns_tile2x2` — fills empty cells in active columns with color 8, tiles result 2x2
+3. **New primitive**: `expanding_gap_sequence` — reads non-zero colors from active row, places them cyclically at positions 0, 1, 3, 6, 10, 15, ...
+4. **New concept**: `grid_or_by_separator.json`
+5. **New concept**: `fill_nonzero_columns_tile2x2.json`
+6. **New concept**: `expanding_gap_sequence.json`
+
+### Verification
+- `506d28a5`: CORRECT
+- `f5b8619d`: CORRECT
+- `72207abc`: CORRECT
+- `08ed6ac7`: CORRECT (regression gate)
+
+---
 ## Session 55 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2594,3 +2617,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 55
 - Time: 5106s
 - Log: logs/learn_20260406_060435.log
+
+---
+## Learning Loop -- 2026-04-06 08:05
+
+- Split: training, Tasks: 80
+- Correct: 50 / 80 (62.5%)
+- Rules: 51 -> 53 (+2 learned)
+- Stored rule hits: 48
+- Time: 496s
+- Log: logs/learn_20260406_075719.log
+
+---
+## Learning Loop -- 2026-04-06 08:23
+
+- Split: training, Tasks: 1000
+- Correct: 59 / 1000 (5.9%)
+- Rules: 48 -> 53 (+5 learned)
+- Stored rule hits: 60
+- Time: 6046s
+- Log: logs/learn_20260406_064248.log

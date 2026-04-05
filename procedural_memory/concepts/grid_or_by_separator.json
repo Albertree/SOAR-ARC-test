@@ -1,0 +1,25 @@
+{
+  "concept_id": "grid_or_by_separator",
+  "version": 1,
+  "description": "Split grid by separator row, OR both halves into a single color",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "output_color": {"type": "int", "default": 3},
+    "bg": {"type": "int", "default": 0}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "grid_or_by_separator",
+      "args": {"grid": "$input", "output_color": "$output_color", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

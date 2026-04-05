@@ -3478,6 +3478,168 @@ def grid_xor_by_separator(grid, output_color=3, bg=0):
 
 
 # ============================================================
+# GRID OR BY SEPARATOR
+# ============================================================
+
+def grid_or_by_separator(grid, output_color=3, bg=0):
+    """Split grid by a solid-color separator row, OR the two halves.
+
+    Finds the separator row (all same non-bg color, splits grid into equal
+    halves). Output gets output_color where at least one half is non-zero,
+    bg where both are zero.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find candidate separator rows: uniform non-bg rows
+    candidates = []
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            candidates.append(r)
+
+    # Prefer the row that splits the grid into two equal halves
+    sep_row = None
+    for r in candidates:
+        if r == h - r - 1:
+            sep_row = r
+            break
+
+    # Fallback: use candidate whose color appears only in that row
+    if sep_row is None:
+        for r in candidates:
+            sep_color = grid[r][0]
+            found_elsewhere = False
+            for r2 in range(h):
+                if r2 == r:
+                    continue
+                if sep_color in grid[r2]:
+                    found_elsewhere = True
+                    break
+            if not found_elsewhere:
+                sep_row = r
+                break
+
+    if sep_row is None and candidates:
+        sep_row = candidates[0]
+
+    if sep_row is None:
+        return [row[:] for row in grid]
+
+    top = grid[:sep_row]
+    bottom = grid[sep_row + 1:]
+
+    rows = min(len(top), len(bottom))
+    cols = min(w, len(top[0]) if top else 0, len(bottom[0]) if bottom else 0)
+
+    result = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            t_nz = top[r][c] != 0
+            b_nz = bottom[r][c] != 0
+            row.append(output_color if (t_nz or b_nz) else bg)
+        result.append(row)
+
+    return result
+
+
+# ============================================================
+# FILL NONZERO COLUMNS AND TILE
+# ============================================================
+
+def fill_nonzero_columns_tile2x2(grid, fill_color=8, bg=0):
+    """Fill bg cells in columns containing non-bg cells, then tile 2x2.
+
+    For each column, if any cell is non-bg, replace all bg cells in that
+    column with fill_color. Then tile the result in a 2x2 grid.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Determine which columns have non-bg cells
+    col_has_content = [False] * w
+    for c in range(w):
+        for r in range(h):
+            if grid[r][c] != bg:
+                col_has_content[c] = True
+                break
+
+    # Build filled grid
+    filled = []
+    for r in range(h):
+        row = []
+        for c in range(w):
+            if grid[r][c] != bg:
+                row.append(grid[r][c])
+            elif col_has_content[c]:
+                row.append(fill_color)
+            else:
+                row.append(bg)
+        filled.append(row)
+
+    # Tile 2x2
+    result = []
+    for _ in range(2):
+        for r in range(h):
+            row = filled[r][:] + filled[r][:]
+            result.append(row)
+
+    return result
+
+
+# ============================================================
+# EXPANDING GAP SEQUENCE
+# ============================================================
+
+def expanding_gap_sequence(grid, bg=0):
+    """Place colors cyclically along the middle row with increasing gaps.
+
+    Reads non-zero colors from the active row (the row with content).
+    Then places them cyclically at positions with gaps 1, 2, 3, 4, ...
+    filling the row to the grid width. Grid size is preserved.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the active row
+    active_row = None
+    for r in range(h):
+        if any(grid[r][c] != bg for c in range(w)):
+            active_row = r
+            break
+
+    if active_row is None:
+        return [row[:] for row in grid]
+
+    # Extract all non-zero colors from the active row in order
+    colors = []
+    for c in range(w):
+        if grid[active_row][c] != bg:
+            colors.append(grid[active_row][c])
+
+    if not colors:
+        return [row[:] for row in grid]
+
+    # Place colors at triangular number positions: 0, 1, 3, 6, 10, 15, ...
+    # Gap between consecutive placements increases: 1, 2, 3, 4, 5, ...
+    out_row = [bg] * w
+    pos = 0
+    ci = 0
+    gap = 1
+    while pos < w:
+        out_row[pos] = colors[ci % len(colors)]
+        ci += 1
+        pos += gap
+        gap += 1
+
+    # Build result grid
+    result = [row[:] for row in grid]
+    result[active_row] = out_row
+    return result
+
+
+# ============================================================
 # LARGER HOLLOW RECT COLOR
 # ============================================================
 

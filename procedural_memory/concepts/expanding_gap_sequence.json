@@ -1,0 +1,24 @@
+{
+  "concept_id": "expanding_gap_sequence",
+  "version": 1,
+  "description": "Place colors cyclically along a row with increasing gaps (1,2,3,...)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "default": 0}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "expanding_gap_sequence",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
