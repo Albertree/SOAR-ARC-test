@@ -879,3 +879,13 @@
 - Discovered: 2 new rules from pipeline
 - Time: 169s
 - Log: logs/learn_20260330_114411.log
+
+---
+## Learning Loop -- 2026-04-05 18:51
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 0 -> 20 (+20 learned)
+- Stored rule hits: 0
+- Time: 48s
+- Log: logs/learn_20260405_185030.log
