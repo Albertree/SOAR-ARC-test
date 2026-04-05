@@ -1438,3 +1438,23 @@ Three architectural features added to the SOAR pipeline:
 - 1e0a9b12: CORRECT (gravity down)
 - bbc9ae5d: CORRECT (staircase grow)
 - 08ed6ac7: CORRECT (regression gate)
+
+---
+## Learning Loop -- 2026-04-05 19:24
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 1 -> 20 (+19 learned)
+- Stored rule hits: 1
+- Time: 52s
+- Log: logs/learn_20260405_192353.log
+
+---
+## Learning Loop -- 2026-04-05 19:24
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 5 -> 20 (+15 learned)
+- Stored rule hits: 20
+- Time: 50s
+- Log: logs/learn_20260405_192404.log
