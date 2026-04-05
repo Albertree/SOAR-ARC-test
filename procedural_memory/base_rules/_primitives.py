@@ -863,3 +863,155 @@ def tile_alternating_flip(grid, reps_h, reps_w):
                     row.extend(grid[r][:])
             output.append(row)
     return output
+
+
+# ============================================================
+# CONNECT ALIGNED DIAMONDS
+# ============================================================
+
+def connect_aligned_diamonds(grid, bg=0):
+    """Find 3x3 diamond shapes and connect axis-aligned pairs with bridges.
+
+    A diamond centered at (r,c) has pixels at (r-1,c), (r,c-1), (r,c+1), (r+1,c)
+    with (r,c)==bg (hollow center). All four tips share the same non-bg color.
+
+    Aligned pair sharing center row → horizontal bridge (color 1) between tips.
+    Aligned pair sharing center col → vertical bridge (color 1) between tips.
+    """
+    import copy
+    out = copy.deepcopy(grid)
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    BRIDGE = 1
+
+    # Detect diamond centers
+    centers = []
+    for r in range(1, H - 1):
+        for c in range(1, W - 1):
+            if grid[r][c] != bg:
+                continue
+            top = grid[r - 1][c]
+            bot = grid[r + 1][c]
+            left = grid[r][c - 1]
+            right = grid[r][c + 1]
+            if top != bg and top == bot == left == right:
+                centers.append((r, c))
+
+    # Group by row and column for nearest-neighbor connections
+    from collections import defaultdict
+    by_row = defaultdict(list)
+    by_col = defaultdict(list)
+    for r, c in centers:
+        by_row[r].append(c)
+        by_col[c].append(r)
+
+    # Connect consecutive horizontally aligned pairs
+    for r, cols in by_row.items():
+        cols.sort()
+        for k in range(len(cols) - 1):
+            left_c, right_c = cols[k], cols[k + 1]
+            for cc in range(left_c + 2, right_c - 1):
+                if out[r][cc] == bg:
+                    out[r][cc] = BRIDGE
+
+    # Connect consecutive vertically aligned pairs
+    for c, rows in by_col.items():
+        rows.sort()
+        for k in range(len(rows) - 1):
+            top_r, bot_r = rows[k], rows[k + 1]
+            for rr in range(top_r + 2, bot_r - 1):
+                if out[rr][c] == bg:
+                    out[rr][c] = BRIDGE
+
+    return out
+
+
+# ============================================================
+# L-PATH CHAIN (source -> targets with directional turns)
+# ============================================================
+
+def l_path_chain(grid, source_color=3, cw_color=6, ccw_color=8):
+    """Draw L-shaped path chains from a source pixel through target pixels.
+
+    Starting at the source_color pixel, direction = RIGHT.
+    Move in current direction, painting source_color.
+    Stop one cell before a target (cw_color or ccw_color).
+    - cw_color (6): turn clockwise  (right->down->left->up)
+    - ccw_color (8): turn counterclockwise (right->up->left->down)
+    If no target ahead in current direction, paint to grid edge.
+    """
+    import copy
+    out = copy.deepcopy(grid)
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+
+    DIRS = [(0, 1), (1, 0), (0, -1), (-1, 0)]  # RIGHT, DOWN, LEFT, UP
+
+    # Find source
+    sr, sc = None, None
+    for r in range(H):
+        for c in range(W):
+            if grid[r][c] == source_color:
+                sr, sc = r, c
+                break
+        if sr is not None:
+            break
+    if sr is None:
+        return out
+
+    # Collect target positions
+    targets = set()
+    for r in range(H):
+        for c in range(W):
+            if grid[r][c] in (cw_color, ccw_color):
+                targets.add((r, c))
+
+    cur_r, cur_c = sr, sc
+    d_idx = 0  # start RIGHT
+
+    visited_targets = set()
+    max_iterations = H * W * 4
+
+    for _ in range(max_iterations):
+        dr, dc = DIRS[d_idx]
+
+        # Scan ahead for nearest target in this direction
+        hit_target = None
+        steps = 0
+        nr, nc = cur_r + dr, cur_c + dc
+        while 0 <= nr < H and 0 <= nc < W:
+            steps += 1
+            if (nr, nc) in targets and (nr, nc) not in visited_targets:
+                hit_target = (nr, nc)
+                break
+            nr += dr
+            nc += dc
+
+        if hit_target is not None:
+            tr, tc = hit_target
+            # Paint from current position (exclusive) to one cell before target
+            pr, pc = cur_r, cur_c
+            for _ in range(steps - 1):
+                pr += dr
+                pc += dc
+                if out[pr][pc] == 0:
+                    out[pr][pc] = source_color
+            cur_r, cur_c = pr, pc
+
+            visited_targets.add(hit_target)
+            target_color = grid[tr][tc]
+            if target_color == cw_color:
+                d_idx = (d_idx + 1) % 4  # clockwise
+            else:
+                d_idx = (d_idx - 1) % 4  # counterclockwise
+        else:
+            # No target ahead — paint to grid edge
+            pr, pc = cur_r + dr, cur_c + dc
+            while 0 <= pr < H and 0 <= pc < W:
+                if out[pr][pc] == 0:
+                    out[pr][pc] = source_color
+                pr += dr
+                pc += dc
+            break
+
+    return out

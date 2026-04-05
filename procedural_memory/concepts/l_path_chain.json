@@ -1,0 +1,21 @@
+{
+  "concept_id": "l_path_chain",
+  "version": 1,
+  "description": "Draw L-shaped path from source(3) through targets: 6=clockwise turn, 8=counterclockwise turn",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "source_color": {"type": "color", "default": 3},
+    "cw_color": {"type": "color", "default": 6},
+    "ccw_color": {"type": "color", "default": 8}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "l_path_chain", "args": {"grid": "$input", "source_color": "$source_color", "cw_color": "$cw_color", "ccw_color": "$ccw_color"}, "output": "result"}
+  ],
+  "result": "$result"
+}

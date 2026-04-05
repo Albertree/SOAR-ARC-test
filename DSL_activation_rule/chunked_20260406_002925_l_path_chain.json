@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_002925_l_path_chain",
+  "source": "chunked",
+  "source_tasks": [
+    "e5790162"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": "DIFF",
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "l_path_chain",
+    "param_source": "inferred(ccw_color), inferred(cw_color), inferred(source_color)"
+  }
+}

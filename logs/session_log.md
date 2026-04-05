@@ -1,5 +1,21 @@
 
 ---
+## Session 40 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive `connect_aligned_diamonds` in `_primitives.py` — detects hollow 3x3 diamond shapes, connects axis-aligned nearest-neighbor pairs with blue (1) bridges
+- New primitive `l_path_chain` in `_primitives.py` — draws L-shaped paths from source (3) through targets: 6 = clockwise turn, 8 = counterclockwise turn, continues to edge after last target
+- New concept `connect_aligned_diamonds.json` (solves 60a26a3e)
+- New concept `l_path_chain.json` (solves e5790162)
+
+### Regression
+- 08ed6ac7: CORRECT
+- 60a26a3e: CORRECT
+- e5790162: CORRECT
+
+### Prior session: 9/20 (45.0%) — added 2 new concepts, expect ~11/20 (55%)
+
+---
 ## Session 39 (Claude) -- 2026-04-05
 
 ### Changes
@@ -1847,3 +1863,33 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 0
 - Time: 41s
 - Log: logs/learn_20260406_001043.log
+
+---
+## Learning Loop -- 2026-04-06 00:17
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 4 -> 10 (+6 learned)
+- Stored rule hits: 3
+- Time: 98s
+- Log: logs/learn_20260406_001553.log
+
+---
+## Learning Loop -- 2026-04-06 00:19
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 103s
+- Log: logs/learn_20260406_001733.log
+
+---
+## Learning Loop -- 2026-04-06 00:19
+
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 98s
+- Log: logs/learn_20260406_001748.log
