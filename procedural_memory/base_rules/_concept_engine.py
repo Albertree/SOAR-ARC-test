@@ -552,11 +552,12 @@ def _infer_color_added_in_output(task, arckg_features, patterns):
 @_register_infer("separator_color")
 def _infer_separator_color(task, arckg_features, patterns):
     """Find the color that forms full-width rows and/or full-height columns (separator lines).
-    Must be consistent across all pairs."""
+    Must be consistent across all pairs. Excludes the background color."""
     sep = None
     for pair in task.example_pairs:
         g = pair.input_grid.raw
-        seps = P.find_separator_lines(g, bg=-999)  # don't exclude any color as bg
+        bg = P.find_bg_color(g)
+        seps = P.find_separator_lines(g, bg=bg)
         colors = set()
         for _, c in seps.get("rows", []):
             colors.add(c)
@@ -704,6 +705,191 @@ def _infer_section_hole_mapping(task, arckg_features, patterns):
             mapping[key] = color
 
     return mapping if mapping else None
+
+
+@_register_infer("marker_down_color")
+def _infer_marker_down_color(task, arckg_features, patterns):
+    """For trace_marker_path: find the color whose markers cause downward turns.
+
+    Heuristic: among non-bg, non-start colors, the one that in the output
+    has path_color cells extending BELOW it on the same column.
+    If the path goes down after a marker, that marker's color = down_color.
+    """
+    bg_color = None
+    start_color = None
+    for pair in task.example_pairs:
+        bg = P.find_bg_color(pair.input_grid.raw)
+        if bg_color is None:
+            bg_color = bg
+        # Find start: leftmost non-bg
+        for r, row in enumerate(pair.input_grid.raw):
+            for c, v in enumerate(row):
+                if v != bg:
+                    if start_color is None:
+                        start_color = v
+                    break
+            if start_color is not None:
+                break
+
+    if bg_color is None or start_color is None:
+        return None
+
+    # Collect candidate marker colors
+    candidates = set()
+    for pair in task.example_pairs:
+        for row in pair.input_grid.raw:
+            for v in row:
+                if v not in (bg_color, start_color):
+                    candidates.add(v)
+
+    if len(candidates) != 2:
+        return None
+
+    # Check which candidate has path extending downward in the output
+    for pair in task.example_pairs:
+        g_out = pair.output_grid.raw
+        g_in = pair.input_grid.raw
+        h = len(g_out)
+        w = len(g_out[0]) if g_out else 0
+        for cand in list(candidates):
+            for r in range(h):
+                for c in range(w):
+                    if g_in[r][c] == cand:
+                        # Check if path_color (= start_color) is below this marker
+                        if r + 1 < h and g_out[r + 1][c] == start_color:
+                            return cand
+    return None
+
+
+@_register_infer("marker_up_color")
+def _infer_marker_up_color(task, arckg_features, patterns):
+    """For trace_marker_path: the other non-bg, non-start color (not down_color)."""
+    bg_color = None
+    start_color = None
+    for pair in task.example_pairs:
+        bg = P.find_bg_color(pair.input_grid.raw)
+        if bg_color is None:
+            bg_color = bg
+        for r, row in enumerate(pair.input_grid.raw):
+            for c, v in enumerate(row):
+                if v != bg:
+                    if start_color is None:
+                        start_color = v
+                    break
+            if start_color is not None:
+                break
+
+    if bg_color is None or start_color is None:
+        return None
+
+    candidates = set()
+    for pair in task.example_pairs:
+        for row in pair.input_grid.raw:
+            for v in row:
+                if v not in (bg_color, start_color):
+                    candidates.add(v)
+
+    if len(candidates) != 2:
+        return None
+
+    down = _INFER_METHODS["marker_down_color"](task, arckg_features, patterns)
+    if down is None:
+        return None
+    candidates.discard(down)
+    return candidates.pop() if len(candidates) == 1 else None
+
+
+@_register_infer("trail_color_removed")
+def _infer_trail_color_removed(task, arckg_features, patterns):
+    """Find the non-bg color present below separator in input but absent in output.
+    This is the 'trail' color for mirror_trail_across_separator."""
+    for pair in task.example_pairs:
+        g_in = pair.input_grid.raw
+        g_out = pair.output_grid.raw
+        bg = P.find_bg_color(g_in)
+        h = len(g_in)
+        w = len(g_in[0]) if g_in else 0
+        sep_row = None
+        sep_color = None
+        for r in range(h):
+            vals = set(g_in[r])
+            if len(vals) == 1 and vals.pop() != bg:
+                sep_row = r
+                sep_color = g_in[r][0]
+                break
+        if sep_row is None:
+            return None
+        below_in = set()
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if g_in[r][c] not in (bg, sep_color):
+                    below_in.add(g_in[r][c])
+        below_out = set()
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if g_out[r][c] not in (bg, sep_color):
+                    below_out.add(g_out[r][c])
+        removed = below_in - below_out
+        if len(removed) == 1:
+            return removed.pop()
+    return None
+
+
+@_register_infer("primary_below_sep")
+def _infer_primary_below_sep(task, arckg_features, patterns):
+    """Find the non-bg color below separator that persists in output (not trail)."""
+    trail = _INFER_METHODS["trail_color_removed"](task, arckg_features, patterns)
+    if trail is None:
+        return None
+    for pair in task.example_pairs:
+        g_in = pair.input_grid.raw
+        bg = P.find_bg_color(g_in)
+        h = len(g_in)
+        w = len(g_in[0]) if g_in else 0
+        sep_row = None
+        sep_color = None
+        for r in range(h):
+            vals = set(g_in[r])
+            if len(vals) == 1 and vals.pop() != bg:
+                sep_row = r
+                sep_color = g_in[r][0]
+                break
+        if sep_row is None:
+            return None
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                v = g_in[r][c]
+                if v not in (bg, sep_color, trail):
+                    return v
+    return None
+
+
+@_register_infer("primary_above_sep")
+def _infer_primary_above_sep(task, arckg_features, patterns):
+    """Find the single non-bg color above the separator line."""
+    for pair in task.example_pairs:
+        g_in = pair.input_grid.raw
+        bg = P.find_bg_color(g_in)
+        h = len(g_in)
+        w = len(g_in[0]) if g_in else 0
+        sep_row = None
+        sep_color = None
+        for r in range(h):
+            vals = set(g_in[r])
+            if len(vals) == 1 and vals.pop() != bg:
+                sep_row = r
+                sep_color = g_in[r][0]
+                break
+        if sep_row is None:
+            return None
+        above = set()
+        for r in range(0, sep_row):
+            for c in range(w):
+                if g_in[r][c] not in (bg, sep_color):
+                    above.add(g_in[r][c])
+        if len(above) == 1:
+            return above.pop()
+    return None
 
 
 @_register_infer("from_examples")

@@ -1,0 +1,34 @@
+{
+  "concept_id": "trace_marker_path",
+  "version": 1,
+  "description": "Trace an L-shaped path from a start pixel through direction markers (one means turn down, another means turn up)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "start_color": {"type": "color", "infer": "path_start_color"},
+    "down_color": {"type": "color", "infer": "marker_down_color"},
+    "up_color": {"type": "color", "infer": "marker_up_color"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "trace_marker_path",
+      "args": {
+        "grid": "$input",
+        "start_color": "$start_color",
+        "down_color": "$down_color",
+        "up_color": "$up_color",
+        "path_color": "$start_color",
+        "bg": "$bg"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

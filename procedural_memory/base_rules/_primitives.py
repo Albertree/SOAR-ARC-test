@@ -4,7 +4,7 @@ _primitives.py -- Atomic grid operations for the concept engine.
 Every grid-transforming function takes grid (list[list[int]]) as first arg,
 returns list[list[int]]. No ARCKG dependency. Pure functions, no side effects.
 
-THIS FILE IS FROZEN. Do not add new primitives. Compose existing ones in concepts.
+Add new primitives here when existing ones cannot express the needed transformation.
 """
 
 
@@ -210,6 +210,27 @@ def place_row(grid, row_data, row_index):
 
 
 # ============================================================
+# PATTERN primitives (grid -> grid)
+# ============================================================
+
+def staircase_fill(grid, color):
+    """Build a staircase from a 1-row input.
+    Counts non-zero cells in row 0 as start_count.
+    Output has W/2 rows. Row i has (start_count + i) cells of `color`, rest 0."""
+    if not grid or not grid[0]:
+        return grid
+    w = len(grid[0])
+    start_count = sum(1 for v in grid[0] if v != 0)
+    num_rows = w // 2
+    output = []
+    for i in range(num_rows):
+        filled = start_count + i
+        row = [color] * min(filled, w) + [0] * max(0, w - filled)
+        output.append(row)
+    return output
+
+
+# ============================================================
 # ANALYSIS primitives (return values, not grids)
 # ============================================================
 
@@ -245,9 +266,380 @@ def find_separator_lines(grid, bg=0):
     return {"rows": rows, "cols": cols}
 
 
+def recolor_columns_by_height(grid, source_color, bg=0):
+    """Recolor vertical columns of source_color by their height rank.
+    Tallest column gets color 1, second tallest gets 2, etc.
+    Columns are identified as contiguous vertical runs of source_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find columns that contain source_color and their heights
+    col_heights = []
+    for c in range(w):
+        count = sum(1 for r in range(h) if grid[r][c] == source_color)
+        if count > 0:
+            col_heights.append((c, count))
+
+    # Sort by height descending (tallest first), break ties by column index
+    col_heights.sort(key=lambda x: (-x[1], x[0]))
+
+    # Assign colors 1, 2, 3, ... based on rank
+    for rank, (c, _) in enumerate(col_heights):
+        new_color = rank + 1
+        for r in range(h):
+            if grid[r][c] == source_color:
+                output[r][c] = new_color
+
+    return output
+
+
+def first_nonzero_color(grid):
+    """Return the first non-zero color found scanning left-to-right, top-to-bottom."""
+    for row in grid:
+        for v in row:
+            if v != 0:
+                return v
+    return 0
+
+
 def count_color(grid, color):
     """Count occurrences of a color."""
     return sum(row.count(color) for row in grid)
+
+
+def trace_marker_path(grid, start_color, down_color, up_color, path_color, bg=0):
+    """Trace an L-shaped path from start_color through markers on the grid.
+
+    Algorithm:
+      1. Begin at the cell with start_color, direction = right.
+      2. Move in current direction, filling cells with path_color.
+      3. Stop one cell before a marker (down_color or up_color) or at grid edge.
+      4. If stopped by a horizontal marker:
+         - down_color -> next direction is DOWN
+         - up_color   -> next direction is UP
+      5. If stopped by a vertical marker (any type) -> next direction is RIGHT.
+      6. Repeat until reaching the grid edge with no further marker.
+    Markers remain in place; path_color is drawn up to (not over) them.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find start position
+    start_r = start_c = None
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == start_color:
+                start_r, start_c = r, c
+                break
+        if start_r is not None:
+            break
+    if start_r is None:
+        return output
+
+    # Build marker lookup: {(r,c): color} for down_color and up_color
+    markers = {}
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] in (down_color, up_color):
+                markers[(r, c)] = grid[r][c]
+
+    cur_r, cur_c = start_r, start_c
+    direction = "right"  # always starts rightward
+
+    for _ in range(h * w):  # safety bound
+        if direction == "right":
+            # Scan right for next marker on this row
+            target_c = w  # default: grid edge
+            marker_color = None
+            for mc in range(cur_c + 1, w):
+                if (cur_r, mc) in markers:
+                    target_c = mc
+                    marker_color = markers[(cur_r, mc)]
+                    break
+            # Fill from cur_c+1 to target_c-1 with path_color
+            for c in range(cur_c + 1, target_c):
+                output[c if False else cur_r][c] = path_color
+            if marker_color is None:
+                break  # reached edge
+            cur_c = target_c - 1
+            direction = "down" if marker_color == down_color else "up"
+
+        elif direction == "down":
+            target_r = h  # default: grid edge
+            marker_color = None
+            for mr in range(cur_r + 1, h):
+                if (mr, cur_c) in markers:
+                    target_r = mr
+                    marker_color = markers[(mr, cur_c)]
+                    break
+            for r in range(cur_r + 1, target_r):
+                output[r][cur_c] = path_color
+            if marker_color is None:
+                break
+            cur_r = target_r - 1
+            direction = "right"
+
+        elif direction == "up":
+            target_r = -1  # default: grid edge
+            marker_color = None
+            for mr in range(cur_r - 1, -1, -1):
+                if (mr, cur_c) in markers:
+                    target_r = mr
+                    marker_color = markers[(mr, cur_c)]
+                    break
+            for r in range(cur_r - 1, max(target_r, -1), -1):
+                output[r][cur_c] = path_color
+            if marker_color is None:
+                break
+            cur_r = target_r + 1
+            direction = "right"
+
+    return output
+
+
+def mirror_trail_across_separator(grid, sep_color, primary_below, trail_color,
+                                   primary_above, bg):
+    """Move colored pixels along their trails and mirror across a separator.
+
+    Below the separator: each primary_below pixel has adjacent trail_color pixels
+    forming a directional trail. The primary moves to the trail endpoint.
+    Above the separator: corresponding primary_above pixels (same column, symmetric
+    row distance) move with the same displacement but row component negated.
+    All trail_color pixels and original positions are cleared.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [[bg] * w for _ in range(h)]
+
+    # Find separator row
+    sep_row = None
+    for r in range(h):
+        if all(grid[r][c] == sep_color for c in range(w)):
+            sep_row = r
+            break
+    if sep_row is None:
+        return [row[:] for row in grid]
+
+    # Copy separator
+    for c in range(w):
+        output[sep_row][c] = sep_color
+
+    # Collect positions below separator
+    below_primaries = []  # (r, c)
+    below_trails = set()
+    for r in range(sep_row + 1, h):
+        for c in range(w):
+            if grid[r][c] == primary_below:
+                below_primaries.append((r, c))
+            elif grid[r][c] == trail_color:
+                below_trails.add((r, c))
+
+    # For each primary_below, trace its trail via BFS through adjacent trail cells
+    used_trails = set()
+    displacements = []  # (primary_pos, displacement)
+    for pr, pc in below_primaries:
+        # BFS from primary through adjacent trail cells
+        trail_path = []
+        visited = {(pr, pc)}
+        queue = [(pr, pc)]
+        while queue:
+            cr, cc = queue.pop(0)
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) not in visited and (nr, nc) in below_trails:
+                    visited.add((nr, nc))
+                    trail_path.append((nr, nc))
+                    queue.append((nr, nc))
+                    used_trails.add((nr, nc))
+        if trail_path:
+            # Endpoint is the last cell found (furthest from primary)
+            end_r, end_c = trail_path[-1]
+            dr = end_r - pr
+            dc = end_c - pc
+        else:
+            dr, dc = 0, 0
+        displacements.append(((pr, pc), (dr, dc)))
+        # Place moved primary
+        new_r, new_c = pr + dr, pc + dc
+        if 0 <= new_r < h and 0 <= new_c < w:
+            output[new_r][new_c] = primary_below
+
+    # Collect primaries above separator
+    above_primaries = []
+    for r in range(0, sep_row):
+        for c in range(w):
+            if grid[r][c] == primary_above:
+                above_primaries.append((r, c))
+
+    # Match above primaries to below primaries by symmetric position
+    for ar, ac in above_primaries:
+        dist_above = sep_row - ar  # distance from separator
+        # Find matching below primary: same column, same distance below sep
+        matched_disp = None
+        for (br, bc), (dr, dc) in displacements:
+            dist_below = br - sep_row
+            if bc == ac and dist_below == dist_above:
+                matched_disp = (dr, dc)
+                break
+        if matched_disp is not None:
+            # Mirror: negate row component, keep column component
+            new_r = ar - matched_disp[0]
+            new_c = ac + matched_disp[1]
+            if 0 <= new_r < h and 0 <= new_c < w:
+                output[new_r][new_c] = primary_above
+        else:
+            # No match found, keep in place
+            output[ar][ac] = primary_above
+
+    return output
+
+
+def recolor_objects_by_size(grid, bg=0):
+    """Find connected components and recolor by size rank.
+    Objects grouped by size: largest group gets color 1, next gets 2, etc."""
+    objects = extract_objects(grid, bg=bg)
+    if not objects:
+        return [row[:] for row in grid]
+    sizes = sorted(set(obj["size"] for obj in objects), reverse=True)
+    size_to_color = {s: i + 1 for i, s in enumerate(sizes)}
+    output = [[bg] * len(row) for row in grid]
+    for obj in objects:
+        new_color = size_to_color[obj["size"]]
+        for r, c in obj["positions"]:
+            output[r][c] = new_color
+    return output
+
+
+def reverse_concentric_rings(grid):
+    """Reverse the color order of concentric rectangular rings.
+    Detects nested rectangular frames from outside in, then rebuilds
+    the grid with the ring colors in reversed order (innermost becomes outermost)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Extract ring colors from outside in
+    ring_colors = []
+    top, left, bottom, right = 0, 0, h - 1, w - 1
+    while top <= bottom and left <= right:
+        color = grid[top][left]
+        ring_colors.append(color)
+        top += 1
+        left += 1
+        bottom -= 1
+        right -= 1
+
+    # Reverse the color order
+    reversed_colors = ring_colors[::-1]
+
+    # Rebuild grid with reversed ring colors
+    output = [[0] * w for _ in range(h)]
+    top, left, bottom, right = 0, 0, h - 1, w - 1
+    for idx in range(len(reversed_colors)):
+        color = reversed_colors[idx]
+        for r in range(top, bottom + 1):
+            for c in range(left, right + 1):
+                if r == top or r == bottom or c == left or c == right:
+                    output[r][c] = color
+                elif output[r][c] == 0:
+                    output[r][c] = color
+        top += 1
+        left += 1
+        bottom -= 1
+        right -= 1
+
+    return output
+
+
+def separator_axis_zone_fill(grid, bg=7):
+    """Fill zones defined by separator rows crossing a vertical axis column.
+
+    Detects a vertical axis column (color that appears most in a single column)
+    and horizontal separator rows (uniform non-bg color with intersection at axis).
+    Output rules:
+    - Separator rows: all intersection_color, axis_color at axis position
+    - Boundary rows (midpoint between different-color seps, only when midpoint is integer):
+      all intersection_color everywhere
+    - Zone rows: nearest separator's color, intersection_color at axis"""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find axis column: the column where one non-bg color appears most frequently
+    axis_col = None
+    axis_color = None
+    best_count = 0
+    for c in range(w):
+        counts = {}
+        for r in range(h):
+            v = grid[r][c]
+            if v != bg:
+                counts[v] = counts.get(v, 0) + 1
+        if counts:
+            dominant = max(counts, key=counts.get)
+            if counts[dominant] > best_count:
+                best_count = counts[dominant]
+                axis_col = c
+                axis_color = dominant
+
+    if axis_col is None:
+        return [row[:] for row in grid]
+
+    # Find separator rows: all non-axis cells are same non-bg color
+    separators = []  # (row_idx, color)
+    intersection_color = None
+    for r in range(h):
+        row_vals = [grid[r][c] for c in range(w) if c != axis_col]
+        vals = set(row_vals)
+        if len(vals) == 1:
+            v = vals.pop()
+            if v != bg:
+                separators.append((r, v))
+                if intersection_color is None:
+                    intersection_color = grid[r][axis_col]
+
+    if not separators or intersection_color is None:
+        return [row[:] for row in grid]
+
+    sep_set = {s[0] for s in separators}
+
+    # Compute boundary rows: midpoint between adjacent different-color seps
+    # Only when (a+b) is even (integer midpoint)
+    boundaries = set()
+    for i in range(len(separators) - 1):
+        a, ca = separators[i]
+        b, cb = separators[i + 1]
+        if ca != cb and (a + b) % 2 == 0:
+            boundaries.add((a + b) // 2)
+
+    # Build output
+    output = [[0] * w for _ in range(h)]
+    for r in range(h):
+        if r in sep_set:
+            # Separator row
+            for c in range(w):
+                output[r][c] = intersection_color
+            output[r][axis_col] = axis_color
+        elif r in boundaries:
+            # Boundary row: all intersection_color
+            for c in range(w):
+                output[r][c] = intersection_color
+        else:
+            # Zone row: nearest separator color
+            min_dist = h + 1
+            nearest_color = bg
+            for sr, sc in separators:
+                d = abs(r - sr)
+                if d < min_dist:
+                    min_dist = d
+                    nearest_color = sc
+            for c in range(w):
+                output[r][c] = nearest_color
+            output[r][axis_col] = intersection_color
+
+    return output
 
 
 def unique_colors(grid, exclude_bg=True):

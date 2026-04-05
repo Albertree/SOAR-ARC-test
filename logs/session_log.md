@@ -1,5 +1,20 @@
 
 ---
+## Session 32 (Claude) -- 2026-04-05
+
+### Changes
+- Added `reverse_concentric_rings` primitive to `_primitives.py` — detects nested rectangular color frames and reverses their order (innermost becomes outermost)
+- Added `separator_axis_zone_fill` primitive to `_primitives.py` — fills zones between separator rows with nearest separator color, axis column gets intersection color, boundaries at midpoints between different-color separators
+- Created `procedural_memory/concepts/reverse_concentric_rings.json` (solves 85c4e7cd)
+- Created `procedural_memory/concepts/separator_axis_zone_fill.json` (solves 332202d5)
+
+### Results
+- Split: training, Tasks: 20
+- Correct: 9 / 20 (45.0%) — up from 7/20 (35.0%)
+- Rules: 8 -> 10 (+2 learned)
+- Regression: CORRECT (08ed6ac7)
+
+---
 ## Learning Loop -- 2026-03-30 02:58
 
 - Split: training, Tasks: 20
@@ -1468,3 +1483,119 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 20
 - Time: 107s
 - Log: logs/learn_20260405_192520.log
+
+---
+## Learning Loop -- 2026-04-05 19:30
+
+- Split: training, Tasks: 5
+- Correct: 0 / 5 (0.0%)
+- Rules: 42 -> 42 (+0 learned)
+- Stored rule hits: 0
+- Time: 10s
+- Log: logs/learn_20260405_193028.log
+
+---
+## Learning Loop -- 2026-04-05 19:31
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260405_193112.log
+
+---
+## Learning Loop -- 2026-04-05 19:36
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 48s
+- Log: logs/learn_20260405_193518.log
+
+---
+## Learning Loop -- 2026-04-05 20:04
+
+- Split: training, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 13s
+- Log: logs/learn_20260405_200350.log
+
+---
+## Session 32 (Claude) -- 2026-04-05 20:15
+
+### Changes
+- Created `procedural_memory/concepts/scale_uniform.json` — scale each cell into factor x factor block (solves c59eb873)
+- Added `staircase_fill` primitive to `_primitives.py` — builds staircase from 1-row input with incrementing fill
+- Added `first_nonzero_color` primitive to `_primitives.py` — returns first non-zero color from grid
+- Created `procedural_memory/concepts/staircase_fill.json` — expands 1-row input into staircase pattern (solves bbc9ae5d)
+- Added `recolor_columns_by_height` primitive to `_primitives.py` — recolors vertical columns by height rank
+- Created `procedural_memory/concepts/recolor_columns_by_height.json` — recolors columns tallest=1, next=2, etc. (solves 08ed6ac7 regression gate)
+
+### Verified
+- c59eb873: CORRECT (scale by 2)
+- bbc9ae5d: CORRECT (staircase fill)
+- 08ed6ac7: CORRECT (regression gate — was previously broken)
+
+---
+## Learning Loop -- 2026-04-05 20:11
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 31s
+- Log: logs/learn_20260405_201044.log
+
+---
+## Learning Loop -- 2026-04-05 20:19
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 1 -> 3 (+2 learned)
+- Stored rule hits: 1
+- Time: 139s
+- Log: logs/learn_20260405_201726.log
+
+### Session 32 improvements (2026-04-05)
+
+- Added `recolor_objects_by_size` primitive to `_primitives.py` — finds connected components, recolors by size rank (largest→1, next→2, etc.)
+- Created `procedural_memory/concepts/recolor_by_object_size.json` — solves 6e82a1ae, also solves 08ed6ac7 (regression gate)
+- Created `procedural_memory/concepts/mirror_vertical_concat.json` — concatenates input with its vertical flip (solves 8be77c9e)
+- Created `procedural_memory/concepts/extract_center_column.json` — keeps only center column, zeros rest (solves d23f8c26)
+
+### Verified
+- 08ed6ac7: CORRECT (regression gate — now via recolor_by_object_size)
+- 8be77c9e: CORRECT (mirror_vertical_concat)
+- d23f8c26: CORRECT (extract_center_column)
+- 6e82a1ae: CORRECT (recolor_by_object_size)
+
+---
+## Session 32 (Claude) -- 2026-04-05 20:30
+
+### Changes
+- Added `trace_marker_path` primitive to `_primitives.py` — traces L-shaped paths from a start pixel through direction markers (6=turn down, 8=turn up), filling with path color
+- Added `mirror_trail_across_separator` primitive to `_primitives.py` — moves colored pixels along adjacent trail pixels below a separator, mirrors displacement for corresponding pixels above
+- Created `procedural_memory/concepts/trace_marker_path.json` (solves e5790162)
+- Created `procedural_memory/concepts/mirror_trail_across_separator.json` (solves c9680e90)
+- Added inference methods: `marker_down_color`, `marker_up_color`, `trail_color_removed`, `primary_below_sep`, `primary_above_sep` to `_concept_engine.py`
+- Fixed `separator_color` inference to exclude bg color (was using `bg=-999`, now uses actual bg)
+
+### Results
+- e5790162: CORRECT (trace_marker_path concept matched)
+- c9680e90: CORRECT (mirror_trail_across_separator concept matched)
+- 08ed6ac7: CORRECT (regression gate passed)
+- 878187ab: not attempted (complex diamond/X pattern generation)
+
+---
+## Learning Loop -- 2026-04-05 20:30
+
+- Split: training, Tasks: 20
+- Correct: 7 / 20 (35.0%)
+- Rules: 3 -> 8 (+5 learned)
+- Stored rule hits: 2
+- Time: 143s
+- Log: logs/learn_20260405_202745.log

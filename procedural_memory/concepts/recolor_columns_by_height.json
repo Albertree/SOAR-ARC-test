@@ -1,0 +1,20 @@
+{
+  "concept_id": "recolor_columns_by_height",
+  "version": 1,
+  "description": "Recolor vertical columns by their height rank (tallest=1, next=2, ...)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "source_color": {"type": "color", "infer": "non_bg_single"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "find_bg_color", "args": {"grid": "$input"}, "output": "bg"},
+    {"id": "s2", "primitive": "recolor_columns_by_height", "args": {"grid": "$input", "source_color": "$source_color", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

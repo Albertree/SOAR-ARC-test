@@ -1,4 +1,6 @@
 #!/bin/bash
+# Force unbuffered Python output
+export PYTHONUNBUFFERED=1
 
 # Windows PATH fix — detect WSL vs Git Bash
 if [ -d "/mnt/c" ]; then
@@ -85,10 +87,12 @@ get_last_session() {
 
 # ============================================================
 # Startup cleanup: only transient caches, NEVER learned rules
+# Runs in background to avoid blocking on slow Windows I/O
 # ============================================================
-find semantic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find semantic_memory -type d -empty ! -path 'semantic_memory' -delete 2>/dev/null
-find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
+(
+    rm -rf semantic_memory/N_T* 2>/dev/null
+    rm -rf agent/__pycache__ procedural_memory/__pycache__ procedural_memory/base_rules/__pycache__ ARCKG/__pycache__ managers/__pycache__ 2>/dev/null
+) &
 
 SESSION=$(get_last_session)
 
@@ -120,8 +124,9 @@ while true; do
 
     # ── 1. Agent solves tasks, accumulates memory ────────────
     log "Agent solving $TASKS_PER_SESSION tasks..."
-    LEARN_OUTPUT=$(python run_learn.py --limit "$TASKS_PER_SESSION" --shuffle 2>&1)
-    echo "$LEARN_OUTPUT" | tee -a "$PIPELINE_LOG"
+    LEARN_LOG="${LOG_DIR}/learn_latest.log"
+    python run_learn.py --limit "$TASKS_PER_SESSION" --shuffle 2>&1 | tee "$LEARN_LOG" | tee -a "$PIPELINE_LOG"
+    LEARN_OUTPUT=$(cat "$LEARN_LOG")
 
     SCORE_LINE=$(echo "$LEARN_OUTPUT" | grep "Correct:" | tail -1)
     RULES_LINE=$(echo "$LEARN_OUTPUT" | grep "Rules:" | tail -1)
@@ -153,6 +158,7 @@ while true; do
     # ── 2. Claude Code improves the agent ────────────────────
     log "Claude Code improving agent (timeout ${CLAUDE_TIMEOUT}s)..."
 
+    CLAUDE_OUT="${LOG_DIR}/claude_latest.log"
     claude -p "$(cat PROMPT.md)
 
 The learn output from this session was:
@@ -165,9 +171,12 @@ Run python run_task.py to verify regression passes.
 " \
       --permission-mode bypassPermissions \
       --output-format text \
-      2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
+      > "$CLAUDE_OUT" 2>&1
+    CLAUDE_EXIT=$?
 
-    log "Claude Code finished (exit $?)."
+    cat "$CLAUDE_OUT" >> "$PIPELINE_LOG"
+    cp "$CLAUDE_OUT" "$SESSION_LOG"
+    log "Claude Code finished (exit $CLAUDE_EXIT)."
 
     # ── 3. Validation + regression check ─────────────────────
     if python scripts/validate_patch.py 2>&1 | tee -a "$PIPELINE_LOG"; then
