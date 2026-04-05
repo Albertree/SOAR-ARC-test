@@ -1,5 +1,19 @@
 
 ---
+## Session 35 (Claude) -- 2026-04-05
+
+### Changes
+- Recreated `procedural_memory/concepts/recolor_columns_by_height.json` (was deleted; fixes regression gate 08ed6ac7)
+- Created `procedural_memory/concepts/scale_uniform.json` — uniform integer scaling (e.g., 2x2 per cell); solves c59eb873
+- Created `procedural_memory/concepts/staircase_fill.json` — builds staircase from 1-row input, each row adds one more colored cell; solves bbc9ae5d
+
+### Results
+- Prior session: 0/20 (0.0%) — concepts dir was empty (all deleted)
+- New concepts: 3 (1 restored, 2 new)
+- Tasks verified: c59eb873 CORRECT, bbc9ae5d CORRECT
+- Regression: CORRECT (08ed6ac7)
+
+---
 ## Session 32 (Claude) -- 2026-04-05
 
 ### Changes
@@ -1719,3 +1733,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 9
 - Time: 65s
 - Log: logs/learn_20260405_230611.log
+
+---
+## Learning Loop -- 2026-04-05 23:18
+
+- Split: training, Tasks: 20
+- Correct: 10 / 20 (50.0%)
+- Rules: 11 -> 12 (+1 learned)
+- Stored rule hits: 9
+- Time: 67s
+- Log: logs/learn_20260405_231725.log
+
+---
+## Learning Loop -- 2026-04-05 23:32
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 155s
+- Log: logs/learn_20260405_233008.log

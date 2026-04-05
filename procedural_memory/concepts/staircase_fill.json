@@ -1,13 +1,10 @@
 {
   "concept_id": "staircase_fill",
-  "version": 2,
-  "description": "Expand a 1-row input into a staircase pattern with incrementing fill per row",
+  "version": 1,
+  "description": "Build a staircase from a 1-row input, each row adds one more colored cell",
   "signature": {
     "grid_size_preserved": false,
-    "size_ratio": null,
-    "color_preserved": null,
-    "requires_content_diff": false,
-    "input_constraints": []
+    "requires_content_diff": true
   },
   "parameters": {},
   "steps": [

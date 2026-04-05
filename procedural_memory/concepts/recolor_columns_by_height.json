@@ -1,13 +1,10 @@
 {
   "concept_id": "recolor_columns_by_height",
   "version": 1,
-  "description": "Recolor vertical columns by their height rank (tallest=1, next=2, ...)",
+  "description": "Recolor vertical columns of a single color by their height rank",
   "signature": {
     "grid_size_preserved": true,
-    "size_ratio": null,
-    "color_preserved": false,
-    "requires_content_diff": true,
-    "input_constraints": []
+    "requires_content_diff": true
   },
   "parameters": {
     "source_color": {"type": "color", "infer": "non_bg_single"}
