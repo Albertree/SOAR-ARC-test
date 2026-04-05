@@ -267,3 +267,37 @@ def unique_colors(grid, exclude_bg=True):
             if c != bg:
                 colors.add(c)
     return sorted(colors)
+
+
+def reverse_rings(grid):
+    """Reverse the color order of concentric rectangular rings.
+    Ring 0 is the outermost border, ring 1 is the next inner ring, etc.
+    The color at ring d swaps with the color at ring (max_d - d)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    max_d = min(h, w) // 2
+    # Collect the color at each ring depth
+    ring_colors = {}
+    for d in range(max_d + 1):
+        # Sample a cell at this ring depth
+        ring_colors[d] = grid[d][d]
+    # Build reverse mapping
+    mapping = {}
+    for d in range(max_d + 1):
+        rev_d = max_d - d
+        if ring_colors[d] != ring_colors[rev_d]:
+            mapping[ring_colors[d]] = ring_colors[rev_d]
+    # Apply mapping
+    return [[mapping.get(cell, cell) for cell in row] for row in grid]
+
+
+def staircase(grid, color, start_count, width):
+    """Build a staircase grid: each row i has (start_count + i) cells of `color`
+    from the left, rest are 0. Number of rows = width // 2."""
+    num_rows = width // 2
+    output = []
+    for i in range(num_rows):
+        count = start_count + i
+        row = [color] * min(count, width) + [0] * max(0, width - count)
+        output.append(row)
+    return output
