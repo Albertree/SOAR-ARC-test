@@ -641,18 +641,28 @@ def connect_diamonds(grid, line_color=1, bg=0):
 
     output = [row[:] for row in grid]
 
-    # Connect horizontally aligned centers
-    for i in range(len(centers)):
-        for j in range(i + 1, len(centers)):
-            r1, c1 = centers[i]
-            r2, c2 = centers[j]
-            if r1 == r2:
-                lo, hi = min(c1, c2), max(c1, c2)
-                for c in range(lo + 2, hi - 1):
-                    output[r1][c] = line_color
-            elif c1 == c2:
-                lo, hi = min(r1, r2), max(r1, r2)
-                for r in range(lo + 2, hi - 1):
-                    output[r][c1] = line_color
+    # Group by row and column, then connect only adjacent pairs
+    from collections import defaultdict
+    row_groups = defaultdict(list)
+    col_groups = defaultdict(list)
+    for r, c in centers:
+        row_groups[r].append(c)
+        col_groups[c].append(r)
+
+    # Connect horizontally adjacent centers on same row
+    for r, cols in row_groups.items():
+        cols.sort()
+        for k in range(len(cols) - 1):
+            lo, hi = cols[k], cols[k + 1]
+            for c in range(lo + 2, hi - 1):
+                output[r][c] = line_color
+
+    # Connect vertically adjacent centers on same column
+    for c, rows in col_groups.items():
+        rows.sort()
+        for k in range(len(rows) - 1):
+            lo, hi = rows[k], rows[k + 1]
+            for r in range(lo + 2, hi - 1):
+                output[r][c] = line_color
 
     return output
