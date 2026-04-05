@@ -1846,3 +1846,169 @@ def middle_object_pass_through(grid, bg=7):
                 output[r][new_c] = B["color"]
 
     return output
+
+
+# ============================================================
+# REASSEMBLE TEMPLATE AT SCATTERED MARKERS
+# ============================================================
+
+def reassemble_template_at_markers(grid, bg=0):
+    """Find template shapes and scattered marker groups, place each template
+    (rotated/reflected) at the matching scattered marker positions.
+
+    Templates: connected multi-color shapes with a dominant body color and
+    minority marker colors at distinct positions.
+    Scattered groups: sets of isolated single pixels whose colors together
+    match a template's marker color set.
+
+    For each scattered group, try all 8 rigid transformations (4 rotations x
+    2 reflections) to find one that maps the template's marker positions to
+    the scattered pixel positions. Place the transformed template and clear
+    the original.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # --- Find connected components (4-connected) ---
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc, grid[cr][cc]))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            components.append(comp)
+
+    # --- Classify: templates (multi-cell) vs isolated pixels (single-cell) ---
+    templates = []
+    isolated = []
+    for comp in components:
+        if len(comp) == 1:
+            isolated.append((comp[0][0], comp[0][1], comp[0][2]))
+        else:
+            templates.append(comp)
+
+    if not templates or not isolated:
+        return [row[:] for row in grid]
+
+    # --- Analyze each template ---
+    template_info = []
+    for comp in templates:
+        color_counts = {}
+        for r, c, color in comp:
+            color_counts[color] = color_counts.get(color, 0) + 1
+        body_color = max(color_counts, key=color_counts.get)
+        markers = {}
+        for r, c, color in comp:
+            if color != body_color:
+                markers[color] = (r, c)
+        template_info.append({
+            'body_color': body_color,
+            'markers': markers,
+            'all_cells': comp,
+        })
+
+    # --- Determine marker color set ---
+    marker_colors = set()
+    for t in template_info:
+        marker_colors.update(t['markers'].keys())
+    marker_colors = sorted(marker_colors)
+
+    # --- Group isolated pixels into scattered marker groups ---
+    by_color = {}
+    for r, c, color in isolated:
+        if color in marker_colors:
+            by_color.setdefault(color, []).append((r, c))
+
+    first_color = marker_colors[0]
+    first_pixels = by_color.get(first_color, [])
+    remaining = {c: list(positions) for c, positions in by_color.items()}
+
+    scattered_groups = []
+    for r0, c0 in first_pixels:
+        group = {first_color: (r0, c0)}
+        remaining[first_color].remove((r0, c0))
+        for mc in marker_colors:
+            if mc == first_color:
+                continue
+            best = None
+            best_dist = float('inf')
+            for r1, c1 in remaining.get(mc, []):
+                d = abs(r1 - r0) + abs(c1 - c0)
+                if d < best_dist:
+                    best_dist = d
+                    best = (r1, c1)
+            if best:
+                group[mc] = best
+                remaining[mc].remove(best)
+        if len(group) == len(marker_colors):
+            scattered_groups.append(group)
+
+    # --- 8 rigid transformations ---
+    def _apply_xform(dr, dc, idx):
+        if idx == 0: return (dr, dc)
+        if idx == 1: return (dc, -dr)       # 90 CW
+        if idx == 2: return (-dr, -dc)      # 180
+        if idx == 3: return (-dc, dr)       # 90 CCW
+        if idx == 4: return (dr, -dc)       # horiz flip
+        if idx == 5: return (-dr, dc)       # vert flip
+        if idx == 6: return (dc, dr)        # transpose
+        if idx == 7: return (-dc, -dr)      # anti-transpose
+        return (dr, dc)
+
+    # --- Match each scattered group to a template ---
+    output = [[bg] * w for _ in range(h)]
+    used_templates = set()
+
+    for group in scattered_groups:
+        for ti, tinfo in enumerate(template_info):
+            if ti in used_templates:
+                continue
+            if set(tinfo['markers'].keys()) != set(group.keys()):
+                continue
+
+            ref_color = marker_colors[0]
+            ref_r, ref_c = tinfo['markers'][ref_color]
+            rel_markers = {color: (r - ref_r, c - ref_c)
+                           for color, (r, c) in tinfo['markers'].items()}
+            rel_cells = [(r - ref_r, c - ref_c, color)
+                         for r, c, color in tinfo['all_cells']]
+
+            found = False
+            for t_idx in range(8):
+                t_ref = _apply_xform(*rel_markers[ref_color], t_idx)
+                off_r = group[ref_color][0] - t_ref[0]
+                off_c = group[ref_color][1] - t_ref[1]
+
+                match = True
+                for color in group:
+                    t_pos = _apply_xform(*rel_markers[color], t_idx)
+                    if (off_r + t_pos[0], off_c + t_pos[1]) != group[color]:
+                        match = False
+                        break
+
+                if match:
+                    for dr, dc, color in rel_cells:
+                        tdr, tdc = _apply_xform(dr, dc, t_idx)
+                        nr = off_r + tdr
+                        nc = off_c + tdc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = color
+                    used_templates.add(ti)
+                    found = True
+                    break
+
+            if found:
+                break
+
+    return output

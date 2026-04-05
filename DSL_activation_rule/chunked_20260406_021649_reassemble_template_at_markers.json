@@ -1,21 +1,21 @@
 {
-  "rule_id": "chunked_20260406_015139_scattered_pixel_diamond",
+  "rule_id": "chunked_20260406_021649_reassemble_template_at_markers",
   "source": "chunked",
   "source_tasks": [
-    "878187ab"
+    "0e206a2e"
   ],
-  "times_validated": 3,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": "DIFF",
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "scattered_pixel_diamond",
+    "concept": "reassemble_template_at_markers",
     "param_source": "inferred(bg)"
   }
 }

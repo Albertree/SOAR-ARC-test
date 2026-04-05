@@ -1,5 +1,18 @@
 
 ---
+## Session 44 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive `reassemble_template_at_markers` in `_primitives.py` — finds connected template shapes (body color + marker colors) and isolated scattered marker pixels, matches templates to marker groups via all 8 rigid transformations (rotations + reflections), places transformed templates at marker positions
+- New concept `reassemble_template_at_markers.json` (solves 0e206a2e)
+
+### Regression
+- 08ed6ac7: CORRECT
+- 0e206a2e: CORRECT
+
+### Prior session: 19/20 (95.0%) — added 1 new concept, expect ~20/20 (100%)
+
+---
 ## Session 43 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2056,3 +2069,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 8
 - Time: 19s
 - Log: logs/learn_20260406_014743.log
+
+---
+## Learning Loop -- 2026-04-06 02:06
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 22 -> 24 (+2 learned)
+- Stored rule hits: 17
+- Time: 57s
+- Log: logs/learn_20260406_020519.log

@@ -1,0 +1,19 @@
+{
+  "concept_id": "reassemble_template_at_markers",
+  "version": 1,
+  "description": "Move template shapes to scattered marker positions via rotation/reflection alignment",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "reassemble_template_at_markers", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
