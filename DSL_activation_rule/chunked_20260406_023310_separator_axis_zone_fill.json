@@ -1,5 +1,5 @@
 {
-  "rule_id": "chunked_20260406_001641_separator_axis_zone_fill",
+  "rule_id": "chunked_20260406_023310_separator_axis_zone_fill",
   "source": "chunked",
   "source_tasks": [
     "332202d5"
@@ -10,7 +10,13 @@
     "level": "GRID",
     "topology": {
       "color": "DIFF",
-      "contents": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "single_group",
+        "change_scope": "all_cells",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
       "size": "COMM"
     }
   },

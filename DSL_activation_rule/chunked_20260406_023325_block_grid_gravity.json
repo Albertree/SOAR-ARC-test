@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_023325_block_grid_gravity",
+  "source": "chunked",
+  "source_tasks": [
+    "afe3afe9"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "single_group",
+        "change_scope": "single_object",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "block_grid_gravity",
+    "param_source": "no_params"
+  }
+}

@@ -32,7 +32,7 @@ MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
 TASKS_PER_SESSION=20
 MAX_TASKS=1000
-CLAUDE_TIMEOUT=1800
+CLAUDE_TIMEOUT=600
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -156,23 +156,138 @@ while true; do
     fi
 
     # ── 2. Claude Code improves the agent ────────────────────
-    log "Claude Code improving agent (timeout ${CLAUDE_TIMEOUT}s)..."
+    log "Claude Code improving agent (timeout 600s)..."
+
+    # Select 3 most informative failing tasks:
+    # Priority: tasks where a concept fired and produced wrong output
+    # (validation failed) over tasks where all inference returned None.
+    # These are closer to being solved and give better signal.
+    FOCUS_TASKS=$(python -c "
+import re, sys
+
+log = open('logs/learn_latest.log').read()
+
+# Find all task lines with FAIL
+fail_lines = re.findall(r'\[.*?\] (\w+)\s+FAIL', log)
+
+# For each failing task, check if it had a validation failure
+# (concept fired but was wrong) vs all-None failures
+partial_match = []
+no_match = []
+
+for hex_id in fail_lines:
+    task_block = re.search(
+        rf'\[.*?\] {hex_id}.*?(?=\[ *\d+/\d+\]|\Z)',
+        log, re.DOTALL
+    )
+    if task_block:
+        block = task_block.group()
+        if 'validation failed' in block:
+            partial_match.append(hex_id)
+        else:
+            no_match.append(hex_id)
+
+# Prefer partial matches, deduplicate, take top 3
+candidates = list(dict.fromkeys(partial_match + no_match))[:3]
+print(' '.join(candidates))
+" 2>/dev/null)
+
+    if [ -z "$FOCUS_TASKS" ]; then
+        FOCUS_TASKS=$(grep "FAIL" logs/learn_latest.log | head -3 | grep -oP '\] \K\w+(?=\s+FAIL)')
+    fi
 
     CLAUDE_OUT="${LOG_DIR}/claude_latest.log"
-    run_with_timeout "$CLAUDE_TIMEOUT" \
-      claude -p "$(cat PROMPT.md)
+    run_with_timeout 600 \
+      claude -p "
+You are doing one focused task: write concepts that solve specific
+failing ARC tasks. You have 10 minutes. Do not explore beyond
+what is needed for these tasks.
 
-The learn output from this session was:
-${LEARN_OUTPUT: -3000}
+Read CLAUDE.md before starting to understand the architecture.
 
-Pick 2-3 failing tasks from the log above.
-Read their JSON from data/ARC_AGI/training/<hex>.json
-Write new concept JSONs in procedural_memory/concepts/
-Run python run_task.py to verify regression passes.
+YOUR ONLY FOCUS THIS SESSION: $FOCUS_TASKS
+
+For each task hex above, do exactly these steps in order:
+
+STEP 1 — UNDERSTAND THE TASK
+Read data/ARC_AGI/training/<hex>.json.
+Look at the input and output grids for each example pair.
+In one sentence, describe what transformation is happening.
+Do not proceed to Step 2 until you can state the transformation
+clearly in one sentence.
+
+STEP 2 — UNDERSTAND WHY IT FAILED
+From the learn log below, find the failure lines for this task.
+There are two types of failures:
+  Type A — 'validation failed on pair N — cell (r,c): predicted X, expected Y'
+    This means a concept fired but produced wrong output.
+    The concept structure is close. The problem is either:
+      - wrong parameter inference, or
+      - the primitive logic does not handle this variant
+  Type B — 'param inference returned None'
+    This means the concept could not detect a required feature.
+    The task may genuinely not have that feature, or
+    the inference method is too strict.
+Identify which type of failure each concept had.
+The most useful failures are Type A — focus on those first.
+
+STEP 3 — CHECK EXISTING PRIMITIVES
+Read procedural_memory/base_rules/_primitives.py.
+Read procedural_memory/base_rules/_concept_engine.py.
+Check if any existing primitive can produce the transformation
+you described in Step 1, possibly with different parameters.
+If yes: write a new concept JSON that uses that primitive.
+If no: write a new primitive AND a new concept JSON.
+
+STEP 4 — WRITE THE CONCEPT
+The concept JSON goes in procedural_memory/concepts/.
+The concept must:
+  - Work on BOTH example pairs in the task, not just one
+  - Use only inference methods that exist in _concept_engine.py
+  - Use only primitives that exist in _primitives.py
+    (or ones you just added in this session)
+  - Not hardcode specific color values or grid dimensions
+  - Have a signature that correctly describes what it requires
+
+STEP 5 — TEST
+Run: python run_task.py --task <hex>
+If RESULT: CORRECT — done for this task, move to next.
+If RESULT: INCORRECT — read the output carefully.
+  If the error is a wrong cell value: the primitive logic
+  or parameter inference is wrong. Fix it.
+  If the error is a size mismatch: the primitive output
+  dimensions are wrong. Fix it.
+  Retry once. If still wrong after one retry: stop for
+  this task, document why, move to next task.
+Do not retry more than once per task.
+
+STEP 6 — REGRESSION
+After finishing all tasks (or attempting all):
+Run: python run_task.py
+This must output RESULT: CORRECT.
+If it does not: find what broke and fix it before stopping.
+
+CONSTRAINTS — read these before writing anything:
+  - Do NOT modify: data/, agent/cycle.py, agent/wm.py,
+    agent/active_operators.py, agent/rule_engine.py
+  - Do NOT modify existing concept JSONs
+  - Do NOT look at other failing tasks beyond: $FOCUS_TASKS
+  - Do NOT write more than one new primitive per task
+  - Do NOT spend more than 3 minutes on any single task
+  - If a task requires understanding more than one new
+    primitive to solve: skip it and move to the next
+
+OUTPUT when finished:
+For each task attempted, write one line:
+  <hex>: SOLVED / FAILED (<reason>)
+Then write: python run_task.py → RESULT: CORRECT/INCORRECT
+
+LEARN LOG (last 2000 chars for context):
+${LEARN_OUTPUT: -2000}
 " \
       --permission-mode bypassPermissions \
       --output-format text \
-      --verbose \
+      --max-turns 20 \
       > "$CLAUDE_OUT" 2>&1
     CLAUDE_EXIT=$?
 
@@ -182,7 +297,7 @@ Run python run_task.py to verify regression passes.
     cat "$CLAUDE_OUT" >> "$PIPELINE_LOG"
     cp "$CLAUDE_OUT" "$SESSION_LOG"
     if [ $CLAUDE_EXIT -eq 124 ]; then
-        log "[!] Claude Code timed out after ${CLAUDE_TIMEOUT}s"
+        log "[!] Claude Code timed out after 600s"
     else
         log "Claude Code finished (exit $CLAUDE_EXIT)."
     fi

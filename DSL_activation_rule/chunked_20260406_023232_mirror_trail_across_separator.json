@@ -1,5 +1,5 @@
 {
-  "rule_id": "chunked_20260406_004023_mirror_trail_across_separator",
+  "rule_id": "chunked_20260406_023232_mirror_trail_across_separator",
   "source": "chunked",
   "source_tasks": [
     "c9680e90"
@@ -10,7 +10,13 @@
     "level": "GRID",
     "topology": {
       "color": "DIFF",
-      "contents": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
       "size": "COMM"
     }
   },

@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_023304_mirror_vertical_concat",
+  "source": "chunked",
+  "source_tasks": [
+    "8be77c9e"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "column_wise",
+        "change_scope": "subset",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "mirror_vertical_concat",
+    "param_source": "no_params"
+  }
+}

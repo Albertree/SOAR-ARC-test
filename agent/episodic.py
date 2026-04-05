@@ -25,17 +25,19 @@ EPISODIC_MEMORY_ROOT = "episodic_memory"
 # Topology extraction and matching (used by chunking + validation)
 # ======================================================================
 
-def extract_topology(comp_result: dict) -> dict:
+def extract_topology(comp_result: dict, patterns: dict = None) -> dict:
     """
     Extract a COMM/DIFF topology dict from an ARCKG comparison result.
 
     Args:
         comp_result: the "result" dict from ARCKG compare(), containing
                      {"type": "COMM|DIFF", "score": "n/total", "category": {...}}
+        patterns: optional wm.s1["patterns"] data from ExtractPatternOperator.
+                  When provided and contents is DIFF, enriches with sub-fields.
 
     Returns:
-        dict mapping each category key to "COMM" or "DIFF", e.g.
-        {"height": "COMM", "width": "COMM", "colors": "DIFF", ...}
+        dict mapping each category key to "COMM" or "DIFF" (flat fields)
+        or to a nested dict with sub-structure (enriched contents field).
     """
     if not comp_result or not isinstance(comp_result, dict):
         return {}
@@ -50,7 +52,124 @@ def extract_topology(comp_result: dict) -> dict:
             topology[key] = val.get("type", "DIFF")
         else:
             topology[key] = "COMM" if val == "COMM" else "DIFF"
+
+    # Enrich contents with pattern-derived sub-fields
+    if topology.get("contents") == "DIFF" and patterns:
+        topology["contents"] = _enrich_contents_topology(patterns)
+
     return topology
+
+
+def _enrich_contents_topology(patterns: dict) -> dict:
+    """Derive rich sub-structure for the contents DIFF field from pattern data."""
+    pair_analyses = patterns.get("pair_analyses", [])
+    if not pair_analyses:
+        return {"type": "DIFF"}
+
+    change_pattern = _detect_change_pattern(pair_analyses)
+    change_scope = _detect_change_scope(pair_analyses)
+
+    group_counts = [a.get("num_groups", 0) for a in pair_analyses]
+    num_groups_consistent = len(set(group_counts)) <= 1
+
+    group_anchors_consistent = _detect_group_anchors_consistent(pair_analyses)
+
+    return {
+        "type": "DIFF",
+        "change_pattern": change_pattern,
+        "change_scope": change_scope,
+        "num_groups_consistent": num_groups_consistent,
+        "group_anchors_consistent": group_anchors_consistent,
+    }
+
+
+def _detect_change_pattern(pair_analyses: list) -> str:
+    """Detect spatial pattern of changes. Priority: column_wise > row_wise > single_group > multi_group > scattered."""
+    if not pair_analyses:
+        return "scattered"
+
+    all_column = True
+    all_row = True
+    all_single = True
+    all_multi = True
+
+    for pa in pair_analyses:
+        groups = pa.get("groups", [])
+        n = pa.get("num_groups", len(groups))
+
+        if n != 1:
+            all_single = False
+        if n <= 1:
+            all_multi = False
+
+        for g in groups:
+            cc = g.get("cell_count", 0)
+            if cc <= 1:
+                continue  # single cell is trivially both column and row
+            min_col = g.get("min_col", g.get("top_col", 0))
+            max_col = g.get("max_col", min_col)
+            min_row = g.get("min_row", g.get("top_row", 0))
+            max_row = g.get("max_row", min_row)
+
+            # Column-wise: all cells share one column AND contiguous vertical strip
+            if min_col != max_col or cc != (max_row - min_row + 1):
+                all_column = False
+            # Row-wise: all cells share one row AND contiguous horizontal strip
+            if min_row != max_row or cc != (max_col - min_col + 1):
+                all_row = False
+
+    if all_column:
+        return "column_wise"
+    if all_row:
+        return "row_wise"
+    if all_single:
+        return "single_group"
+    if all_multi:
+        return "multi_group"
+    return "scattered"
+
+
+def _detect_change_scope(pair_analyses: list) -> str:
+    """Detect scope of changes: all_cells, single_object, or subset."""
+    if not pair_analyses:
+        return "subset"
+
+    for pa in pair_analyses:
+        total = pa.get("total_changes", 0)
+        groups = pa.get("groups", [])
+        n_groups = pa.get("num_groups", len(groups))
+
+        # Estimate grid area from bounding box of all changed cells
+        if groups:
+            max_r = max(g.get("max_row", g.get("top_row", 0)) for g in groups)
+            max_c = max(g.get("max_col", g.get("top_col", 0)) for g in groups)
+            estimated_area = (max_r + 1) * (max_c + 1)
+            if estimated_area > 0 and total > 0.8 * estimated_area:
+                continue  # this pair looks like all_cells, check others
+            elif n_groups == 1:
+                return "single_object"
+            else:
+                return "subset"
+        else:
+            return "subset"
+
+    return "all_cells"
+
+
+def _detect_group_anchors_consistent(pair_analyses: list) -> bool:
+    """Check if group anchor positions (top_row, top_col) are the same across all pairs."""
+    if len(pair_analyses) < 2:
+        return True
+
+    anchor_sets = []
+    for pa in pair_analyses:
+        anchors = frozenset(
+            (g.get("top_row", 0), g.get("top_col", 0))
+            for g in pa.get("groups", [])
+        )
+        anchor_sets.append(anchors)
+
+    return all(s == anchor_sets[0] for s in anchor_sets[1:])
 
 
 def topologies_match(topo_a: dict, topo_b: dict) -> bool:
@@ -335,7 +454,8 @@ def build_structural_key(wm, rule_type: str, concept_id: str = None) -> dict:
     for _key, comp in comparisons.items():
         full_compare = comp.get("result", {})
         inner_result = full_compare.get("result", {})
-        topology = extract_topology(inner_result)
+        wm_patterns = wm.s1.get("patterns")
+        topology = extract_topology(inner_result, patterns=wm_patterns)
         score_str = inner_result.get("score", "0/0")
         parts = score_str.split("/")
         if len(parts) == 2:

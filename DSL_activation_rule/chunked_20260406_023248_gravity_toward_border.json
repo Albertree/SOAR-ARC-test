@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_023248_gravity_toward_border",
+  "source": "chunked",
+  "source_tasks": [
+    "825aa9e9"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "gravity_toward_border",
+    "param_source": "inferred(bg)"
+  }
+}

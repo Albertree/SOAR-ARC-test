@@ -1,16 +1,22 @@
 {
-  "rule_id": "chunked_20260406_004033_quadrant_shape_swap",
+  "rule_id": "chunked_20260406_023343_quadrant_shape_swap",
   "source": "chunked",
   "source_tasks": [
     "5a719d11"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
       "color": "DIFF",
-      "contents": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
       "size": "COMM"
     }
   },

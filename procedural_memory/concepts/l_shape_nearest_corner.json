@@ -1,0 +1,24 @@
+{
+  "concept_id": "l_shape_nearest_corner",
+  "version": 1,
+  "description": "Each non-bg pixel extends an L-shape toward its nearest grid corner",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "l_shape_nearest_corner",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

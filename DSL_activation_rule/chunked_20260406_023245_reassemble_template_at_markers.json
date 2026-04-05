@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_023245_reassemble_template_at_markers",
+  "source": "chunked",
+  "source_tasks": [
+    "0e206a2e"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "reassemble_template_at_markers",
+    "param_source": "inferred(bg)"
+  }
+}

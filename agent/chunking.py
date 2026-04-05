@@ -22,7 +22,7 @@ REJECTED_DIR = os.path.join(CHUNK_DIR, "rejected")
 
 
 def chunk_resolution_to_rule(comparisons: dict, active_rule: dict,
-                             task_hex: str) -> str:
+                             task_hex: str, patterns: dict = None) -> str:
     """
     Create a chunked activation rule from resolved impasse.
 
@@ -42,7 +42,7 @@ def chunk_resolution_to_rule(comparisons: dict, active_rule: dict,
         return None  # don't chunk identity rules
 
     # Extract topology from comparison results (GRID level)
-    grid_topology = _extract_grid_topology(comparisons)
+    grid_topology = _extract_grid_topology(comparisons, patterns=patterns)
     if not grid_topology:
         print(f"[CHUNK] Skipped — no topology extracted from comparisons for {task_hex}")
         return None
@@ -118,7 +118,7 @@ def chunk_resolution_to_rule(comparisons: dict, active_rule: dict,
     return save_path
 
 
-def try_chunked_rules(comparisons: dict, task) -> dict:
+def try_chunked_rules(comparisons: dict, task, patterns: dict = None) -> dict:
     """
     Try to match chunked activation rules against current task's topology.
 
@@ -131,7 +131,7 @@ def try_chunked_rules(comparisons: dict, task) -> dict:
         return None
 
     # Extract current task's topology
-    grid_topology = _extract_grid_topology(comparisons)
+    grid_topology = _extract_grid_topology(comparisons, patterns=patterns)
     if not grid_topology:
         return None
 
@@ -180,18 +180,19 @@ def try_chunked_rules(comparisons: dict, task) -> dict:
     return None
 
 
-def _extract_grid_topology(comparisons: dict) -> dict:
+def _extract_grid_topology(comparisons: dict, patterns: dict = None) -> dict:
     """Extract representative topology from comparison results.
 
     WM stores comparisons as: {key: {"spec": ..., "result": <full compare output>}}
     Full compare output = {"id": ..., "result": {"type": ..., "category": {...}}}
     extract_topology needs the inner result dict (with "category").
+    When patterns is provided, contents DIFF is enriched with sub-structure.
     """
     for key in sorted(comparisons.keys()):
         comp = comparisons[key]
         full_compare = comp.get("result", {})
         inner_result = full_compare.get("result", {})
-        topo = extract_topology(inner_result)
+        topo = extract_topology(inner_result, patterns=patterns)
         if topo:
             return topo
     return {}

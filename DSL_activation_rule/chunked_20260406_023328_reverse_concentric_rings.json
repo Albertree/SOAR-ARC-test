@@ -1,5 +1,5 @@
 {
-  "rule_id": "chunked_20260406_001703_reverse_concentric_rings",
+  "rule_id": "chunked_20260406_023328_reverse_concentric_rings",
   "source": "chunked",
   "source_tasks": [
     "85c4e7cd"
@@ -10,7 +10,13 @@
     "level": "GRID",
     "topology": {
       "color": "COMM",
-      "contents": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "scattered",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
       "size": "COMM"
     }
   },

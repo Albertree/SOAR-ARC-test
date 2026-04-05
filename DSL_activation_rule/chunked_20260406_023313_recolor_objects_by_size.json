@@ -1,5 +1,5 @@
 {
-  "rule_id": "chunked_20260406_001645_recolor_objects_by_size",
+  "rule_id": "chunked_20260406_023313_recolor_objects_by_size",
   "source": "chunked",
   "source_tasks": [
     "6e82a1ae"
@@ -10,7 +10,13 @@
     "level": "GRID",
     "topology": {
       "color": "DIFF",
-      "contents": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
       "size": "COMM"
     }
   },

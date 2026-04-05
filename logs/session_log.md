@@ -1,5 +1,27 @@
 
 ---
+## Session 46 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive `l_shape_nearest_corner` in `_primitives.py` — each non-bg pixel extends an L-shape toward its nearest grid corner
+- New concept `l_shape_nearest_corner.json` (solves 705a3229)
+- New primitive `rotation_tile_2x2` in `_primitives.py` — tiles a grid into 2x2 arrangement of rotated copies (identity, 90CCW, 180, 90CW)
+- New concept `rotation_tile_2x2.json` (solves ed98d772)
+- New primitive `diagonal_project_2x2` in `_primitives.py` — projects 2x2 block colors diagonally to adjacent corner rectangles
+- New concept `diagonal_project_2x2.json` (solves 93b581b8)
+- New primitive `tile_pattern_upward` in `_primitives.py` — tiles bottom pattern upward cyclically to fill blank rows
+- New concept `tile_pattern_upward.json` (solves 9b30e358)
+
+### Regression
+- 08ed6ac7: CORRECT
+- 705a3229: CORRECT
+- ed98d772: CORRECT
+- 93b581b8: CORRECT
+- 9b30e358: CORRECT
+
+### Prior session: 20/40 (50.0%) — added 4 new concepts, expect ~24/40 (60%)
+
+---
 ## Session 45 (Claude) -- 2026-04-06
 
 ### Results
@@ -2100,3 +2122,33 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 19
 - Time: 43s
 - Log: logs/learn_20260406_021808.log
+
+---
+## Learning Loop -- 2026-04-06 02:21
+
+- Split: training, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 25 -> 25 (+0 learned)
+- Stored rule hits: 20
+- Time: 103s
+- Log: logs/learn_20260406_022005.log
+
+---
+## Learning Loop -- 2026-04-06 02:32
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 25 -> 25 (+0 learned)
+- Stored rule hits: 20
+- Time: 69s
+- Log: logs/learn_20260406_023113.log
+
+---
+## Learning Loop -- 2026-04-06 02:33
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 0 -> 20 (+20 learned)
+- Stored rule hits: 0
+- Time: 72s
+- Log: logs/learn_20260406_023231.log

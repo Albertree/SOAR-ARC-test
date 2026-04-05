@@ -2012,3 +2012,189 @@ def reassemble_template_at_markers(grid, bg=0):
                 break
 
     return output
+
+
+# ============================================================
+# L-SHAPE TOWARD NEAREST CORNER
+# ============================================================
+
+def l_shape_nearest_corner(grid, bg=0):
+    """For each non-bg pixel, draw an L-shape extending to its nearest grid corner.
+
+    The pixel extends a line toward the nearest corner in both the row and
+    column direction, forming an L. The pixel's color is used for the lines.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find all non-bg pixels
+    pixels = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                pixels.append((r, c, grid[r][c]))
+
+    for r, c, color in pixels:
+        # Distances to each corner
+        corners = {
+            "tl": r + c,
+            "tr": r + (w - 1 - c),
+            "bl": (h - 1 - r) + c,
+            "br": (h - 1 - r) + (w - 1 - c),
+        }
+        nearest = min(corners, key=corners.get)
+
+        # Determine row and col directions
+        if nearest in ("tl", "tr"):
+            row_range = range(0, r)  # extend upward
+        else:
+            row_range = range(r + 1, h)  # extend downward
+
+        if nearest in ("tl", "bl"):
+            col_range = range(0, c)  # extend left
+        else:
+            col_range = range(c + 1, w)  # extend right
+
+        # Draw vertical line
+        for row_idx in row_range:
+            output[row_idx][c] = color
+        # Draw horizontal line
+        for col_idx in col_range:
+            output[r][col_idx] = color
+
+    return output
+
+
+# ============================================================
+# ROTATION TILING (2x2 of rotations)
+# ============================================================
+
+def rotation_tile_2x2(grid):
+    """Tile a grid into a 2x2 arrangement of rotated copies.
+
+    Layout:
+      top-left:     original
+      top-right:    rotate 90 CCW (= rotate 270 CW)
+      bottom-left:  rotate 180
+      bottom-right: rotate 90 CW
+    """
+    identity = [row[:] for row in grid]
+    rot90cw = rotate_cw(grid, 1)
+    rot180 = rotate_cw(grid, 2)
+    rot90ccw = rotate_cw(grid, 3)
+
+    top = concat_horizontal(identity, rot90ccw)
+    bottom = concat_horizontal(rot180, rot90cw)
+    return concat_vertical(top, bottom)
+
+
+# ============================================================
+# DIAGONAL COLOR PROJECTION FROM 2x2 BLOCK
+# ============================================================
+
+def diagonal_project_2x2(grid, bg=0):
+    """Find a 2x2 block of non-bg cells. Project each cell's color diagonally
+    to a mirrored rectangle adjacent to the block (at most 2x2, clamped to space).
+
+    TL cell color -> bottom-right adjacent block
+    TR cell color -> bottom-left adjacent block
+    BL cell color -> top-right adjacent block
+    BR cell color -> top-left adjacent block
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find the 2x2 block
+    block_r, block_c = None, None
+    for r in range(h - 1):
+        for c in range(w - 1):
+            if (grid[r][c] != bg and grid[r][c + 1] != bg and
+                    grid[r + 1][c] != bg and grid[r + 1][c + 1] != bg):
+                block_r, block_c = r, c
+                break
+        if block_r is not None:
+            break
+
+    if block_r is None:
+        return grid
+
+    tl = grid[block_r][block_c]
+    tr = grid[block_r][block_c + 1]
+    bl = grid[block_r + 1][block_c]
+    br = grid[block_r + 1][block_c + 1]
+
+    space_above = block_r
+    space_below = h - block_r - 2
+    space_left = block_c
+    space_right = w - block_c - 2
+
+    # Top-left: rows above, cols left -> fill with BR, size min(above,2) x min(left,2)
+    sr, sc = min(space_above, 2), min(space_left, 2)
+    for r in range(block_r - sr, block_r):
+        for c in range(block_c - sc, block_c):
+            output[r][c] = br
+
+    # Top-right: rows above, cols right -> fill with BL
+    sr, sc = min(space_above, 2), min(space_right, 2)
+    for r in range(block_r - sr, block_r):
+        for c in range(block_c + 2, block_c + 2 + sc):
+            output[r][c] = bl
+
+    # Bottom-left: rows below, cols left -> fill with TR
+    sr, sc = min(space_below, 2), min(space_left, 2)
+    for r in range(block_r + 2, block_r + 2 + sr):
+        for c in range(block_c - sc, block_c):
+            output[r][c] = tr
+
+    # Bottom-right: rows below, cols right -> fill with TL
+    sr, sc = min(space_below, 2), min(space_right, 2)
+    for r in range(block_r + 2, block_r + 2 + sr):
+        for c in range(block_c + 2, block_c + 2 + sc):
+            output[r][c] = tl
+
+    return output
+
+
+# ============================================================
+# TILE PATTERN UPWARD
+# ============================================================
+
+def tile_pattern_upward(grid):
+    """Find the non-bg pattern at the bottom of the grid, tile it upward cyclically.
+
+    The background color is auto-detected as the most frequent color.
+    The pattern is the contiguous block of rows at the bottom that contain non-bg cells.
+    Empty rows above are filled by tiling the pattern cyclically from the bottom.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+
+    # Find where the pattern starts (first non-uniform-bg row from bottom)
+    pattern_start = h
+    for r in range(h - 1, -1, -1):
+        if any(grid[r][c] != bg for c in range(w)):
+            pattern_start = r
+        else:
+            break
+
+    if pattern_start >= h:
+        return [row[:] for row in grid]
+
+    pattern = [grid[r][:] for r in range(pattern_start, h)]
+    pat_h = len(pattern)
+
+    output = [row[:] for row in grid]
+
+    # Fill rows above pattern_start by tiling cyclically
+    empty_rows = pattern_start
+    for i in range(empty_rows):
+        # Which pattern row? Tile from bottom: row (empty_rows - 1) maps to pattern row (pat_h - 1)
+        # row i from top -> distance from pattern_start = pattern_start - 1 - i
+        # pattern index = (pat_h - 1 - (pattern_start - 1 - i)) % pat_h
+        pat_idx = (pat_h - (pattern_start - i) % pat_h) % pat_h
+        output[i] = pattern[pat_idx][:]
+
+    return output

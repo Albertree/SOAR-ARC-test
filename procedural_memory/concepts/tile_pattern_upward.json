@@ -1,0 +1,22 @@
+{
+  "concept_id": "tile_pattern_upward",
+  "version": 1,
+  "description": "Tile a bottom pattern upward cyclically to fill blank rows above",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": true,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "tile_pattern_upward",
+      "args": {"grid": "$input"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

@@ -1,5 +1,5 @@
 {
-  "rule_id": "chunked_20260406_001712_staircase_fill",
+  "rule_id": "chunked_20260406_023334_staircase_fill",
   "source": "chunked",
   "source_tasks": [
     "bbc9ae5d"
@@ -10,7 +10,13 @@
     "level": "GRID",
     "topology": {
       "color": "COMM",
-      "contents": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "column_wise",
+        "change_scope": "subset",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
       "size": "DIFF"
     }
   },

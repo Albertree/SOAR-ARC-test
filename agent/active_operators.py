@@ -293,6 +293,8 @@ class ExtractPatternOperator(Operator):
                 "output_colors": sorted(output_colors),
                 "top_row": top_row,
                 "top_col": top_col,
+                "max_row": max(r for r, c in positions),
+                "max_col": max(c for r, c in positions),
                 "cell_count": len(group_cells),
             })
 
@@ -376,7 +378,7 @@ class GeneralizeOperator(Operator):
         rule = None
         try:
             from agent.chunking import try_chunked_rules
-            chunked_hint = try_chunked_rules(comparisons, task)
+            chunked_hint = try_chunked_rules(comparisons, task, patterns=patterns)
             if chunked_hint:
                 # Validate the chunked hint against examples
                 concept_id = chunked_hint.get("concept_id", "")
@@ -405,7 +407,7 @@ class GeneralizeOperator(Operator):
         if rule.get("type", "identity") != "identity" and comparisons:
             try:
                 from agent.chunking import chunk_resolution_to_rule
-                chunk_resolution_to_rule(comparisons, rule, task.task_hex)
+                chunk_resolution_to_rule(comparisons, rule, task.task_hex, patterns=patterns)
             except Exception:
                 pass
 
