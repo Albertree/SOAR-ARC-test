@@ -1,0 +1,19 @@
+{
+  "concept_id": "fill_cross_grid_sections",
+  "version": 1,
+  "description": "Fill sections between colored rows in a grid with vertical column and horizontal color bands",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "fill_cross_grid_sections", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

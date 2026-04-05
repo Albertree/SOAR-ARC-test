@@ -518,3 +518,141 @@ def fill_rect_interiors_by_size(grid, border_color, bg=0):
         rank += 1
         i = j
     return output
+
+
+def fill_cross_grid_sections(grid, bg=7):
+    """Grid has a vertical column of one color and horizontal colored rows.
+    Intersections have a marker color. Fill each section between colored rows:
+    upper half gets upper row's color, lower half gets lower row's color.
+    Odd-gap midpoint rows become all-intersection-color.
+    Colored rows become all-intersection-color with column color at intersection."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find vertical column: column where most cells are one non-bg color
+    col_idx = None
+    col_color = None
+    for c in range(w):
+        counts = {}
+        for r in range(h):
+            v = grid[r][c]
+            if v != bg:
+                counts[v] = counts.get(v, 0) + 1
+        if counts:
+            main = max(counts, key=counts.get)
+            if counts[main] >= h // 2:
+                col_idx = c
+                col_color = main
+                break
+
+    if col_idx is None:
+        return None
+
+    # Find horizontal colored rows (full-width non-bg rows)
+    intersection_color = None
+    colored_rows = []
+    for r in range(h):
+        row_vals = [grid[r][c] for c in range(w) if c != col_idx]
+        unique = set(row_vals)
+        if len(unique) == 1:
+            color = row_vals[0]
+            if color != bg:
+                colored_rows.append((r, color))
+                if intersection_color is None:
+                    intersection_color = grid[r][col_idx]
+
+    if not colored_rows or intersection_color is None:
+        return None
+
+    # Assign colors to each row
+    row_info = {}  # r -> ('colored_row'|'fill'|'midpoint', color)
+
+    for r, color in colored_rows:
+        row_info[r] = ('colored_row', color)
+
+    # Above first colored row
+    for r in range(0, colored_rows[0][0]):
+        row_info[r] = ('fill', colored_rows[0][1])
+
+    # Below last colored row
+    for r in range(colored_rows[-1][0] + 1, h):
+        row_info[r] = ('fill', colored_rows[-1][1])
+
+    # Between adjacent colored rows
+    for i in range(len(colored_rows) - 1):
+        r1, c1 = colored_rows[i]
+        r2, c2 = colored_rows[i + 1]
+        gap_start = r1 + 1
+        gap_end = r2 - 1
+        n = gap_end - gap_start + 1
+        if n <= 0:
+            continue
+        if c1 == c2:
+            for r in range(gap_start, gap_end + 1):
+                row_info[r] = ('fill', c1)
+        else:
+            half = n // 2
+            for r in range(gap_start, gap_start + half):
+                row_info[r] = ('fill', c1)
+            for r in range(gap_end - half + 1, gap_end + 1):
+                row_info[r] = ('fill', c2)
+            if n % 2 == 1:
+                row_info[gap_start + half] = ('midpoint', None)
+
+    # Build output
+    output = [[bg] * w for _ in range(h)]
+    for r in range(h):
+        info = row_info.get(r)
+        if info is None:
+            output[r] = grid[r][:]
+            continue
+        kind, color = info
+        if kind == 'colored_row':
+            for c in range(w):
+                output[r][c] = intersection_color
+            output[r][col_idx] = col_color
+        elif kind == 'fill':
+            for c in range(w):
+                output[r][c] = color
+            output[r][col_idx] = intersection_color
+        elif kind == 'midpoint':
+            for c in range(w):
+                output[r][c] = intersection_color
+    return output
+
+
+def connect_diamonds(grid, line_color=1, bg=0):
+    """Find diamond shapes (3x3 cross of a color) and connect pairs that share
+    the same row or column center with a line of line_color between them."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find diamond centers: (r,c) where top/left/right/bottom are non-bg, center is bg
+    centers = []
+    for r in range(1, h - 1):
+        for c in range(1, w - 1):
+            top = grid[r - 1][c]
+            left = grid[r][c - 1]
+            right = grid[r][c + 1]
+            bottom = grid[r + 1][c]
+            center = grid[r][c]
+            if (center == bg and top != bg and top == left == right == bottom):
+                centers.append((r, c))
+
+    output = [row[:] for row in grid]
+
+    # Connect horizontally aligned centers
+    for i in range(len(centers)):
+        for j in range(i + 1, len(centers)):
+            r1, c1 = centers[i]
+            r2, c2 = centers[j]
+            if r1 == r2:
+                lo, hi = min(c1, c2), max(c1, c2)
+                for c in range(lo + 2, hi - 1):
+                    output[r1][c] = line_color
+            elif c1 == c2:
+                lo, hi = min(r1, r2), max(r1, r2)
+                for r in range(lo + 2, hi - 1):
+                    output[r][c1] = line_color
+
+    return output

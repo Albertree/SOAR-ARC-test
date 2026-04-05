@@ -1,0 +1,20 @@
+{
+  "concept_id": "connect_diamonds",
+  "version": 1,
+  "description": "Connect aligned diamond shapes (3x3 cross patterns) with horizontal or vertical lines",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "line_color": {"type": "color", "infer": "from_examples"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "connect_diamonds", "args": {"grid": "$input", "line_color": "$line_color", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
