@@ -2294,3 +2294,44 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 37
 - Time: 3855s
 - Log: logs/learn_20260406_031039.log
+
+---
+## Learning Loop -- 2026-04-06 04:17
+
+- Split: training, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 34 -> 36 (+2 learned)
+- Stored rule hits: 32
+- Time: 118s
+- Log: logs/learn_20260406_041535.log
+
+---
+## Session 51 (Claude) -- 2026-04-06
+
+### Changes
+
+1. **New primitive: `compress_grid_intersections`** (`_primitives.py`)
+   - Detects separator-grid patterns (rows/cols with no bg cells)
+   - Extracts colored intersections from separator grid
+   - Compresses NxN bounding box to (N-1)x(N-1) via agreement regions
+   - Solves task `7837ac64`
+
+2. **New concept: `compress_grid_intersections.json`**
+   - Signature: size not preserved, content diff required
+   - Single-step concept using the new primitive
+
+3. **New primitive: `denoise_swap_sections`** (`_primitives.py`)
+   - Detects sections separated by 0-rows/cols (handles 5-noise on separators)
+   - Identifies pattern template from clean sections with 2+ colors
+   - Swaps: sections where all non-5 cells are minority color get the pattern; others become solid base color
+   - Solves task `6350f1f4`
+
+4. **New concept: `denoise_swap_sections.json`**
+   - Signature: size preserved, content diff required
+   - Zero-parameter concept (auto-detects everything)
+
+### Results
+
+- Previous: 34/40 (85.0%)
+- New tasks solved: 7837ac64, 6350f1f4
+- Regression gate (08ed6ac7): CORRECT

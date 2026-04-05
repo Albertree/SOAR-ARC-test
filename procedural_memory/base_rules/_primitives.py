@@ -2695,3 +2695,192 @@ def most_common_cross_arm_color(grid, center_color=4):
         counts[ac] = counts.get(ac, 0) + 1
     best = max(counts, key=counts.get)
     return [[best]]
+
+
+def denoise_swap_sections(grid, noise_color=5, sep_val=0):
+    """Denoise a grid divided into sections by separators, then swap pattern/solid.
+
+    The grid is divided into rectangular sections by separator rows/cols.
+    Separators contain only sep_val (0) or noise_color (5).
+    Some section cells are corrupted by noise_color.
+
+    Each section is either a 'pattern' (2+ colors) or 'solid minority' (all minority color).
+    The output swaps them: pattern sections become solid base color,
+    solid minority sections get the pattern template.
+    Separators are restored to all sep_val.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return grid
+
+    # Step 1: Find separator rows and cols (all cells are sep_val or noise_color)
+    sep_rows = [r for r in range(h)
+                if all(grid[r][c] in (sep_val, noise_color) for c in range(w))]
+    sep_cols = [c for c in range(w)
+                if all(grid[r][c] in (sep_val, noise_color) for r in range(h))]
+
+    # Build row/col ranges for sections
+    def make_ranges(seps, total):
+        ranges = []
+        prev = 0
+        for s in seps:
+            if s > prev:
+                ranges.append((prev, s))
+            prev = s + 1
+        if prev < total:
+            ranges.append((prev, total))
+        return ranges
+
+    row_ranges = make_ranges(sep_rows, h)
+    col_ranges = make_ranges(sep_cols, w)
+
+    if not row_ranges or not col_ranges:
+        return grid
+
+    # Step 2: Extract sections and their non-noise color sets
+    sections = {}
+    for ri, (r0, r1) in enumerate(row_ranges):
+        for ci, (c0, c1) in enumerate(col_ranges):
+            cells = []
+            non_noise = set()
+            for r in range(r0, r1):
+                row = []
+                for c in range(c0, c1):
+                    v = grid[r][c]
+                    row.append(v)
+                    if v != noise_color:
+                        non_noise.add(v)
+                cells.append(row)
+            sections[(ri, ci)] = {"cells": cells, "non_noise": non_noise,
+                                  "r0": r0, "r1": r1, "c0": c0, "c1": c1}
+
+    # Step 3: Find the pattern template from a clean section with 2+ non-noise colors
+    template = None
+    for key, sec in sections.items():
+        has_noise = any(cell == noise_color for row in sec["cells"] for cell in row)
+        if not has_noise and len(sec["non_noise"]) >= 2:
+            template = [row[:] for row in sec["cells"]]
+            break
+
+    if template is None:
+        return grid
+
+    # Step 4: Determine base color and minority color
+    color_count = {}
+    for row in template:
+        for v in row:
+            color_count[v] = color_count.get(v, 0) + 1
+    base_color = max(color_count, key=color_count.get)
+    minority_color = min(color_count, key=color_count.get)
+
+    # Step 5: Build output
+    sec_h = len(template)
+    sec_w = len(template[0])
+    pure_section = [[base_color] * sec_w for _ in range(sec_h)]
+
+    output = [[sep_val] * w for _ in range(h)]
+
+    for (ri, ci), sec in sections.items():
+        r0, c0 = sec["r0"], sec["c0"]
+        # If all non-noise cells are minority color -> place pattern
+        if sec["non_noise"] == {minority_color}:
+            fill = template
+        else:
+            fill = pure_section
+        for dr, row in enumerate(fill):
+            for dc, v in enumerate(row):
+                output[r0 + dr][c0 + dc] = v
+
+    return output
+
+
+def compress_grid_intersections(grid, bg=0):
+    """Extract colored intersections from a separator-grid and compress.
+
+    The input is a large grid with regular separator lines forming a grid pattern.
+    Some separator-line intersections have been replaced with non-separator colors.
+    This primitive:
+    1. Detects separator rows/cols (rows/cols with no bg cells)
+    2. Finds the separator color (most frequent in those rows)
+    3. Builds an intersection grid of non-separator colors
+    4. Finds the bounding box of colored intersections
+    5. Compresses NxN -> (N-1)x(N-1) via agreement regions
+       (corners stay, edge pairs and center 2x2 must agree or become 0)
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return grid
+
+    # Step 1: Find separator rows (rows containing no bg cells)
+    sep_rows = []
+    for r in range(h):
+        if all(grid[r][c] != bg for c in range(w)):
+            sep_rows.append(r)
+
+    # Find separator cols (cols containing no bg cells)
+    sep_cols = []
+    for c in range(w):
+        if all(grid[r][c] != bg for r in range(h)):
+            sep_cols.append(c)
+
+    if not sep_rows or not sep_cols:
+        return grid
+
+    # Step 2: Determine separator color (most frequent across sep rows)
+    color_count = {}
+    for r in sep_rows:
+        for c in range(w):
+            v = grid[r][c]
+            color_count[v] = color_count.get(v, 0) + 1
+    sep_color = max(color_count, key=color_count.get)
+
+    # Step 3: Build intersection grid (sep_row x sep_col), replacing sep_color with 0
+    inter = []
+    for r in sep_rows:
+        row = []
+        for c in sep_cols:
+            v = grid[r][c]
+            row.append(0 if v == sep_color else v)
+        inter.append(row)
+
+    # Step 4: Bounding box of non-zero cells
+    min_r = min_c = float('inf')
+    max_r = max_c = -1
+    for r in range(len(inter)):
+        for c in range(len(inter[0])):
+            if inter[r][c] != 0:
+                min_r = min(min_r, r)
+                max_r = max(max_r, r)
+                min_c = min(min_c, c)
+                max_c = max(max_c, c)
+
+    if max_r < 0:
+        return [[0]]
+
+    bbox = [inter[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+    N = len(bbox)
+    M = len(bbox[0])
+
+    # Step 5: Compress by grouping first, middle, last rows/cols
+    def make_groups(size):
+        if size <= 2:
+            return [[i] for i in range(size)]
+        return [[0]] + [list(range(1, size - 1))] + [[size - 1]]
+
+    row_groups = make_groups(N)
+    col_groups = make_groups(M)
+
+    output = []
+    for rg in row_groups:
+        row = []
+        for cg in col_groups:
+            vals = set()
+            for r in rg:
+                for c in cg:
+                    vals.add(bbox[r][c])
+            row.append(vals.pop() if len(vals) == 1 else 0)
+        output.append(row)
+
+    return output

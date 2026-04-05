@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260406_040252_border_interior_fill",
+  "rule_id": "chunked_20260406_044345_denoise_swap_sections",
   "source": "chunked",
   "source_tasks": [
-    "84db8fc4"
+    "6350f1f4"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "multi_group",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "border_interior_fill",
-    "param_source": "inferred(border_color), inferred(interior_color), inferred(target_color)"
+    "concept": "denoise_swap_sections",
+    "param_source": "no_params"
   }
 }
