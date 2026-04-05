@@ -272,23 +272,22 @@ def unique_colors(grid, exclude_bg=True):
 def reverse_rings(grid):
     """Reverse the color order of concentric rectangular rings.
     Ring 0 is the outermost border, ring 1 is the next inner ring, etc.
-    The color at ring d swaps with the color at ring (max_d - d)."""
+    Each cell gets the color from the ring at the opposite depth."""
     h = len(grid)
     w = len(grid[0]) if grid else 0
-    max_d = min(h, w) // 2
+    max_d = (min(h, w) - 1) // 2
     # Collect the color at each ring depth
     ring_colors = {}
     for d in range(max_d + 1):
-        # Sample a cell at this ring depth
         ring_colors[d] = grid[d][d]
-    # Build reverse mapping
-    mapping = {}
-    for d in range(max_d + 1):
-        rev_d = max_d - d
-        if ring_colors[d] != ring_colors[rev_d]:
-            mapping[ring_colors[d]] = ring_colors[rev_d]
-    # Apply mapping
-    return [[mapping.get(cell, cell) for cell in row] for row in grid]
+    # Assign each cell the color from the reversed ring depth
+    output = [row[:] for row in grid]
+    for r in range(h):
+        for c in range(w):
+            d = min(r, c, h - 1 - r, w - 1 - c)
+            rev_d = max_d - d
+            output[r][c] = ring_colors[rev_d]
+    return output
 
 
 def rank_recolor_columns(grid, target_color, bg=0):
@@ -324,4 +323,101 @@ def staircase(grid, color, start_count, width):
         count = start_count + i
         row = [color] * min(count, width) + [0] * max(0, width - count)
         output.append(row)
+    return output
+
+
+def rank_recolor_objects(grid, target_color, bg=0):
+    """Find connected components of target_color. Recolor by size rank.
+    Components with the same size get the same color.
+    Largest -> 1, next size -> 2, etc."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == target_color and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == target_color:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                components.append(comp)
+    # Sort by size descending, then by top-left position for stability
+    components.sort(key=lambda c: (-len(c), min(c)))
+    output = [row[:] for row in grid]
+    rank = 1
+    i = 0
+    while i < len(components):
+        size = len(components[i])
+        j = i
+        while j < len(components) and len(components[j]) == size:
+            for r, c in components[j]:
+                output[r][c] = rank
+            j += 1
+        rank += 1
+        i = j
+    return output
+
+
+def fill_rect_interiors_by_size(grid, border_color, bg=0):
+    """Find rectangles bordered by border_color with bg interiors.
+    Fill interiors by area rank: largest -> 8, next -> 7, next -> 6, etc."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == border_color and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == border_color:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                components.append(comp)
+    rectangles = []
+    for comp in components:
+        rs = [p[0] for p in comp]
+        cs = [p[1] for p in comp]
+        min_r, max_r = min(rs), max(rs)
+        min_c, max_c = min(cs), max(cs)
+        expected_border = set()
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if r == min_r or r == max_r or c == min_c or c == max_c:
+                    expected_border.add((r, c))
+        if set(comp) == expected_border and (max_r - min_r) >= 2 and (max_c - min_c) >= 2:
+            interior = []
+            for r in range(min_r + 1, max_r):
+                for c in range(min_c + 1, max_c):
+                    interior.append((r, c))
+            if interior:
+                rectangles.append((len(interior), interior))
+    rectangles.sort(key=lambda x: -x[0])
+    output = [row[:] for row in grid]
+    rank = 0
+    i = 0
+    while i < len(rectangles):
+        size = rectangles[i][0]
+        j = i
+        while j < len(rectangles) and rectangles[j][0] == size:
+            color = 8 - rank
+            for r, c in rectangles[j][1]:
+                output[r][c] = color
+            j += 1
+        rank += 1
+        i = j
     return output

@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260406_035059_rank_recolor_columns",
+  "rule_id": "chunked_20260406_035916_reverse_rings",
   "source": "chunked",
   "source_tasks": [
-    "08ed6ac7"
+    "85c4e7cd"
   ],
-  "times_validated": 4,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "column_wise",
+        "change_pattern": "scattered",
         "change_scope": "subset",
-        "num_groups_consistent": true,
+        "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "rank_recolor_columns",
-    "param_source": "inferred(bg), inferred(target_color)"
+    "concept": "reverse_rings",
+    "param_source": "no_params"
   }
 }

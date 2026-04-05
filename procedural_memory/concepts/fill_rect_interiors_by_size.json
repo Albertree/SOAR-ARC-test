@@ -1,0 +1,20 @@
+{
+  "concept_id": "fill_rect_interiors_by_size",
+  "version": 1,
+  "description": "Find rectangles bordered by a single non-bg color, fill interiors by area rank (largest=8, next=7, etc.)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "border_color": {"type": "color", "infer": "non_bg_single"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "fill_rect_interiors_by_size", "args": {"grid": "$input", "border_color": "$border_color", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
