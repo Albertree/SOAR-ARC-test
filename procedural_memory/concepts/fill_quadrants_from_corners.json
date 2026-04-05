@@ -1,0 +1,19 @@
+{
+  "concept_id": "fill_quadrants_from_corners",
+  "version": 1,
+  "description": "Replace rectangles of a fill color with quadrants colored by 4 diagonal corner markers",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "fill_color": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "fill_quadrants_from_corners", "args": {"grid": "$input", "fill_color": "$fill_color"}, "output": "result"}
+  ],
+  "result": "$result"
+}

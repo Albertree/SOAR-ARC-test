@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260406_035059_rank_recolor_columns",
+  "rule_id": "chunked_20260406_040414_staircase_from_row",
   "source": "chunked",
   "source_tasks": [
-    "08ed6ac7"
+    "bbc9ae5d"
   ],
-  "times_validated": 7,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "column_wise",
         "change_scope": "subset",
         "num_groups_consistent": true,
-        "group_anchors_consistent": false
+        "group_anchors_consistent": true
       },
-      "size": "COMM"
+      "size": "DIFF"
     }
   },
   "action": {
-    "concept": "rank_recolor_columns",
-    "param_source": "inferred(bg), inferred(target_color)"
+    "concept": "staircase_from_row",
+    "param_source": "no_params"
   }
 }

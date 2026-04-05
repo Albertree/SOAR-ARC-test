@@ -314,6 +314,103 @@ def rank_recolor_columns(grid, target_color, bg=0):
     return output
 
 
+def fill_quadrants_from_corners(grid, fill_color, bg=0):
+    """Find rectangles of fill_color with 4 corner markers at diagonal positions.
+    Replace each rectangle with 4 quadrants colored by the corner markers.
+    Remove the corner markers."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find connected components of fill_color
+    visited = set()
+    rects = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == fill_color and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == fill_color:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                rs = [p[0] for p in comp]
+                cs = [p[1] for p in comp]
+                rects.append((min(rs), min(cs), max(rs), max(cs)))
+
+    for top, left, bottom, right in rects:
+        rh = bottom - top + 1
+        rw = right - left + 1
+        # Find corner markers
+        positions = [
+            (top - 1, left - 1),   # top-left
+            (top - 1, right + 1),  # top-right
+            (bottom + 1, left - 1),  # bottom-left
+            (bottom + 1, right + 1),  # bottom-right
+        ]
+        colors = []
+        for pr, pc in positions:
+            if 0 <= pr < h and 0 <= pc < w and grid[pr][pc] != bg and grid[pr][pc] != fill_color:
+                colors.append(grid[pr][pc])
+            else:
+                colors = []
+                break
+        if len(colors) != 4:
+            continue
+
+        tl_color, tr_color, bl_color, br_color = colors
+        mid_r = top + rh // 2
+        mid_c = left + rw // 2
+
+        for r in range(top, bottom + 1):
+            for c in range(left, right + 1):
+                if r < mid_r and c < mid_c:
+                    output[r][c] = tl_color
+                elif r < mid_r and c >= mid_c:
+                    output[r][c] = tr_color
+                elif r >= mid_r and c < mid_c:
+                    output[r][c] = bl_color
+                else:
+                    output[r][c] = br_color
+
+        # Remove corner markers
+        for pr, pc in positions:
+            output[pr][pc] = bg
+
+    return output
+
+
+def staircase_from_row(grid, bg=0):
+    """Take a 1-row input grid and expand into a staircase.
+    Each row i has (start_count + i) colored cells from the left.
+    Number of rows = width // 2. Color and start_count derived from input."""
+    if len(grid) != 1:
+        return None
+    row = grid[0]
+    width = len(row)
+    color = None
+    start_count = 0
+    for v in row:
+        if v != bg:
+            if color is None:
+                color = v
+            start_count += 1
+    if color is None:
+        return [r[:] for r in grid]
+    num_rows = width // 2
+    output = []
+    for i in range(num_rows):
+        count = start_count + i
+        r = [color] * min(count, width) + [bg] * max(0, width - count)
+        output.append(r)
+    return output
+
+
 def staircase(grid, color, start_count, width):
     """Build a staircase grid: each row i has (start_count + i) cells of `color`
     from the left, rest are 0. Number of rows = width // 2."""
