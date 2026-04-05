@@ -1,5 +1,30 @@
 
 ---
+## Learning Loop -- 2026-04-05 23:50
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 1
+- Time: 154s
+- Log: logs/learn_20260405_233743.log
+
+---
+## Session 38 (Claude) -- 2026-04-05
+
+### Changes
+- New concept: `mirror_vertical_concat` — stack input on top of flip_vertical(input). Solves 8be77c9e.
+- New concept: `recolor_objects_by_size` — recolor connected components by size rank (largest=1, next=2, etc.). Solves 6e82a1ae.
+- New concept: `keep_center_column` — keep only center column (W//2), zero everything else. Solves d23f8c26.
+- New primitive: `keep_densest_column` in `_primitives.py` (unused by current concepts, available for future use).
+
+### Regression
+- 08ed6ac7: CORRECT
+- 8be77c9e: CORRECT
+- 6e82a1ae: CORRECT
+- d23f8c26: CORRECT
+
+---
 ## Session 35 (Claude) -- 2026-04-05
 
 ### Changes
@@ -1753,3 +1778,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 0
 - Time: 155s
 - Log: logs/learn_20260405_233008.log
+
+---
+## Learning Loop -- 2026-04-05 23:40
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 1
+- Time: 154s
+- Log: logs/learn_20260405_233743.log

@@ -1,0 +1,18 @@
+{
+  "concept_id": "recolor_objects_by_size",
+  "version": 1,
+  "description": "Recolor connected components by size rank: largest=1, next=2, etc.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "recolor_objects_by_size", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

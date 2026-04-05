@@ -837,6 +837,24 @@ def fill_quadrants_from_corners(grid, rect_color=5, bg=0):
     return output
 
 
+def keep_densest_column(grid, bg=0):
+    """Keep only the column with the most non-bg cells; zero out all others.
+    Grid size is preserved. Ties broken by leftmost column."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    best_col = 0
+    best_count = -1
+    for c in range(w):
+        count = sum(1 for r in range(h) if grid[r][c] != bg)
+        if count > best_count:
+            best_count = count
+            best_col = c
+    output = [[bg] * w for _ in range(h)]
+    for r in range(h):
+        output[r][best_col] = grid[r][best_col]
+    return output
+
+
 def tile_alternating_flip(grid, reps_h, reps_w):
     """Tile grid in a reps_h x reps_w arrangement. Odd block-rows are horizontally flipped."""
     h = len(grid)
