@@ -1,5 +1,25 @@
 
 ---
+## Session 55 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 3 failing tasks from session 54 (48/80 = 60%):
+- **007bbfb7**: Self-tiling fractal — each non-bg cell becomes a copy of the whole grid
+- **59341089**: Mirror horizontal tile — each row becomes [reversed | original] × 2
+- **bda2d7a6**: Concentric ring color cycling — ring colors shift by 1 position
+
+### Changes
+1. **New concept**: `self_tile_fractal.json` — uses existing `self_tile` primitive with bg=0 default
+2. **New concept**: `mirror_horizontal_tile_4x.json` — composes `flip_horizontal` + `concat_horizontal` × 2
+3. **Fixed primitive**: `reverse_concentric_rings` — was reversing ring colors (wrong), now cyclically rotates unique ring colors by 1 position (correct)
+
+### Verification
+- `007bbfb7`: CORRECT
+- `59341089`: CORRECT
+- `bda2d7a6`: CORRECT
+- `08ed6ac7`: CORRECT (regression gate)
+
+---
 ## Session 54 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2554,3 +2574,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 42
 - Time: 285s
 - Log: logs/learn_20260406_063753.log
+
+---
+## Learning Loop -- 2026-04-06 07:22
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 48 -> 51 (+3 learned)
+- Stored rule hits: 45
+- Time: 335s
+- Log: logs/learn_20260406_071632.log
+
+---
+## Learning Loop -- 2026-04-06 07:29
+
+- Split: training, Tasks: 1000
+- Correct: 54 / 1000 (5.4%)
+- Rules: 45 -> 51 (+6 learned)
+- Stored rule hits: 55
+- Time: 5106s
+- Log: logs/learn_20260406_060435.log

@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260406_065106_checkerboard_grid",
+  "rule_id": "chunked_20260406_073742_reverse_concentric_rings",
   "source": "chunked",
   "source_tasks": [
-    "332efdb3"
+    "bda2d7a6"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "single_group",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "checkerboard_grid",
+    "concept": "reverse_concentric_rings",
     "param_source": "no_params"
   }
 }

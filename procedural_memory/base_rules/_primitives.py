@@ -513,15 +513,17 @@ def recolor_objects_by_size(grid, bg=0):
 
 
 def reverse_concentric_rings(grid):
-    """Reverse the color order of concentric rectangular rings.
-    Detects nested rectangular frames from outside in, then rebuilds
-    the grid with the ring colors in reversed order (innermost becomes outermost)."""
+    """Cycle the colors of concentric rectangular rings.
+    Extracts the unique ring colors from outside-in, then builds a
+    cyclic substitution where each color maps to the previous unique
+    color (with wraparound).  This rotates the ring palette by one
+    position rather than fully reversing it."""
     h = len(grid)
     w = len(grid[0]) if grid else 0
     if h == 0 or w == 0:
         return [row[:] for row in grid]
 
-    # Extract ring colors from outside in
+    # Extract ring colors from outside in (may contain duplicates)
     ring_colors = []
     top, left, bottom, right = 0, 0, h - 1, w - 1
     while top <= bottom and left <= right:
@@ -532,26 +534,21 @@ def reverse_concentric_rings(grid):
         bottom -= 1
         right -= 1
 
-    # Reverse the color order
-    reversed_colors = ring_colors[::-1]
+    # Unique colors preserving outer-to-inner order
+    seen = set()
+    unique = []
+    for c in ring_colors:
+        if c not in seen:
+            seen.add(c)
+            unique.append(c)
 
-    # Rebuild grid with reversed ring colors
-    output = [[0] * w for _ in range(h)]
-    top, left, bottom, right = 0, 0, h - 1, w - 1
-    for idx in range(len(reversed_colors)):
-        color = reversed_colors[idx]
-        for r in range(top, bottom + 1):
-            for c in range(left, right + 1):
-                if r == top or r == bottom or c == left or c == right:
-                    output[r][c] = color
-                elif output[r][c] == 0:
-                    output[r][c] = color
-        top += 1
-        left += 1
-        bottom -= 1
-        right -= 1
+    # Build cyclic mapping: each color -> previous unique color (wrap)
+    mapping = {}
+    for i, c in enumerate(unique):
+        mapping[c] = unique[(i - 1) % len(unique)]
 
-    return output
+    # Apply mapping as a recolor
+    return [[mapping.get(v, v) for v in row] for row in grid]
 
 
 def separator_axis_zone_fill(grid, bg=7):

@@ -1,0 +1,19 @@
+{
+  "concept_id": "self_tile_fractal",
+  "version": 1,
+  "description": "Kronecker self-tiling: each non-bg cell becomes a copy of the whole grid, each bg cell becomes an empty block",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": [3, 3],
+    "color_preserved": true,
+    "requires_content_diff": false,
+    "input_constraints": ["uniform_scale", "integer_ratio"]
+  },
+  "parameters": {
+    "bg": {"type": "color", "default": 0}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "self_tile", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

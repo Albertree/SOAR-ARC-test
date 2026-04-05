@@ -1,19 +1,19 @@
 {
-  "rule_id": "chunked_20260406_065108_grid_xor_by_separator",
+  "rule_id": "chunked_20260406_073738_self_tile_fractal",
   "source": "chunked",
   "source_tasks": [
-    "99b1bc43"
+    "007bbfb7"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "scattered",
-        "change_scope": "subset",
+        "change_scope": "single_object",
         "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "grid_xor_by_separator",
-    "param_source": "no_params"
+    "concept": "self_tile_fractal",
+    "param_source": "inferred(bg)"
   }
 }
