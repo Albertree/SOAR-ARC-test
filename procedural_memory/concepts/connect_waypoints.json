@@ -1,0 +1,19 @@
+{
+  "concept_id": "connect_waypoints",
+  "version": 1,
+  "description": "Draw L-shaped paths of 3s from start to waypoints, 6=clockwise turn, 8=counterclockwise turn",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "connect_waypoints", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

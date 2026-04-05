@@ -666,3 +666,148 @@ def connect_diamonds(grid, line_color=1, bg=0):
                 output[r][c] = line_color
 
     return output
+
+
+def separator_reflect_trails(grid, bg=7):
+    """Reflect colored markers across a horizontal separator row (all 9s).
+    Above separator: color A markers (5). Below: color B markers (2) with 6-trails.
+    Each B marker follows its chain of adjacent 6s to a new position.
+    Each A marker moves to the mirror of the new B position.
+    Clears all other cells to bg."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator row
+    sep = None
+    for r in range(h):
+        if all(grid[r][c] == 9 for c in range(w)):
+            sep = r
+            break
+    if sep is None:
+        return None
+
+    # Find marker and trail positions below separator
+    markers = []  # (r, c) of 2s
+    trails = set()  # (r, c) of 6s
+    for r in range(sep + 1, h):
+        for c in range(w):
+            if grid[r][c] == 2:
+                markers.append((r, c))
+            elif grid[r][c] == 6:
+                trails.add((r, c))
+
+    # For each marker, follow the trail of 6s
+    output = [[bg] * w for _ in range(h)]
+    # Keep separator
+    for c in range(w):
+        output[sep][c] = 9
+
+    for mr, mc in markers:
+        # BFS/DFS along adjacent 6s
+        pos = (mr, mc)
+        visited = {pos}
+        changed = True
+        while changed:
+            changed = False
+            cr, cc = pos
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) in trails and (nr, nc) not in visited:
+                    visited.add((nr, nc))
+                    pos = (nr, nc)
+                    changed = True
+                    break  # follow one step at a time
+
+        # Place 2 at new position
+        new_r, new_c = pos
+        output[new_r][new_c] = 2
+
+        # Mirror position: distance from separator
+        dist = new_r - sep
+        mirror_r = sep - dist
+        if 0 <= mirror_r < h:
+            output[mirror_r][new_c] = 5
+
+    return output
+
+
+def connect_waypoints(grid, bg=0):
+    """Draw L-shaped paths of 3s between waypoints starting from the 3 cell.
+    Waypoint 6 = clockwise turn, waypoint 8 = counterclockwise turn.
+    Path starts going RIGHT from the 3 position."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find start (3) and waypoints (6, 8)
+    start = None
+    waypoints = {}  # (r,c) -> type (6 or 8)
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == 3:
+                start = (r, c)
+            elif grid[r][c] in (6, 8):
+                waypoints[(r, c)] = grid[r][c]
+    if start is None:
+        return None
+
+    output = [row[:] for row in grid]
+    # Clear all 3s initially (will redraw)
+    for r in range(h):
+        for c in range(w):
+            if output[r][c] == 3:
+                output[r][c] = bg
+
+    # Direction vectors: right, down, left, up
+    DIRS = [(0, 1), (1, 0), (0, -1), (-1, 0)]
+    # Clockwise turn: dir_idx -> (dir_idx + 1) % 4
+    # Counterclockwise: dir_idx -> (dir_idx - 1) % 4
+
+    pos = start
+    dir_idx = 0  # start going RIGHT
+    output[pos[0]][pos[1]] = 3
+
+    max_steps = h * w * 4  # safety limit
+    steps = 0
+    while steps < max_steps:
+        steps += 1
+        dr, dc = DIRS[dir_idx]
+
+        # Scan along current direction for a waypoint
+        found_wp = None
+        scan_r, scan_c = pos[0] + dr, pos[1] + dc
+        while 0 <= scan_r < h and 0 <= scan_c < w:
+            if (scan_r, scan_c) in waypoints:
+                found_wp = (scan_r, scan_c)
+                break
+            scan_r += dr
+            scan_c += dc
+
+        if found_wp:
+            wp_r, wp_c = found_wp
+            wp_type = waypoints[found_wp]
+            # Draw 3s from pos+1 to one cell before waypoint
+            cr, cc = pos[0] + dr, pos[1] + dc
+            while (cr, cc) != (wp_r, wp_c):
+                output[cr][cc] = 3
+                cr += dr
+                cc += dc
+            # Turn point is one cell before waypoint
+            turn_r, turn_c = wp_r - dr, wp_c - dc
+            # Update direction
+            if wp_type == 6:
+                dir_idx = (dir_idx + 1) % 4  # clockwise
+            else:
+                dir_idx = (dir_idx - 1) % 4  # counterclockwise
+            pos = (turn_r, turn_c)
+            # Remove used waypoint
+            del waypoints[found_wp]
+        else:
+            # No waypoint found, draw to edge
+            cr, cc = pos[0] + dr, pos[1] + dc
+            while 0 <= cr < h and 0 <= cc < w:
+                output[cr][cc] = 3
+                cr += dr
+                cc += dc
+            break
+
+    return output

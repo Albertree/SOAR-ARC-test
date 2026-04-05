@@ -1,0 +1,19 @@
+{
+  "concept_id": "separator_reflect_trails",
+  "version": 1,
+  "description": "Reflect markers across a horizontal 9-separator, following 6-trails to new positions",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "separator_reflect_trails", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
