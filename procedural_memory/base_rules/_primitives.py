@@ -669,6 +669,174 @@ def self_tile(grid, bg=0):
     return output
 
 
+def fill_bordered_rectangles_by_size(grid, border_color=5, bg=0):
+    """Find rectangles outlined by border_color, fill interiors by size rank.
+
+    Finds all closed rectangles made of border_color. Measures interior area.
+    Ranks by interior area ascending: smallest → color 6, next → 7, next → 8, etc.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find candidate rectangles: look for top-left corners of border_color rectangles
+    rects = []  # (top, left, height, width, interior_h, interior_w)
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != border_color:
+                continue
+            # Try to find a rectangle starting at (r, c)
+            # Find width: contiguous border_color in top row
+            for rw in range(2, w - c + 1):
+                if c + rw - 1 >= w or grid[r][c + rw - 1] != border_color:
+                    break
+                # Check if bottom row exists at some height
+                for rh in range(2, h - r + 1):
+                    br = r + rh - 1
+                    if br >= h:
+                        break
+                    # Verify all 4 borders
+                    # Top row
+                    top_ok = all(grid[r][cc] == border_color for cc in range(c, c + rw))
+                    # Bottom row
+                    bot_ok = all(grid[br][cc] == border_color for cc in range(c, c + rw))
+                    # Left col
+                    left_ok = all(grid[rr][c] == border_color for rr in range(r, br + 1))
+                    # Right col
+                    right_ok = all(grid[rr][c + rw - 1] == border_color for rr in range(r, br + 1))
+                    if top_ok and bot_ok and left_ok and right_ok:
+                        # Check interior is all bg
+                        int_h = rh - 2
+                        int_w = rw - 2
+                        if int_h > 0 and int_w > 0:
+                            interior_ok = all(
+                                grid[rr][cc] == bg
+                                for rr in range(r + 1, br)
+                                for cc in range(c + 1, c + rw - 1)
+                            )
+                            if interior_ok:
+                                rects.append((r, c, rh, rw, int_h, int_w))
+
+    # Deduplicate (same rectangle found from different corners)
+    seen = set()
+    unique_rects = []
+    for rect in rects:
+        key = (rect[0], rect[1], rect[2], rect[3])
+        if key not in seen:
+            seen.add(key)
+            unique_rects.append(rect)
+
+    # Rank by interior area (ascending)
+    unique_rects.sort(key=lambda x: x[4] * x[5])
+    area_to_color = {}
+    next_color = 6
+    for rect in unique_rects:
+        area = rect[4] * rect[5]
+        if area not in area_to_color:
+            area_to_color[area] = next_color
+            next_color += 1
+
+    # Fill interiors
+    for top, left, rh, rw, int_h, int_w in unique_rects:
+        area = int_h * int_w
+        fill_color = area_to_color[area]
+        for rr in range(top + 1, top + rh - 1):
+            for cc in range(left + 1, left + rw - 1):
+                output[rr][cc] = fill_color
+
+    return output
+
+
+def fill_quadrants_from_corners(grid, rect_color=5, bg=0):
+    """Find a rectangle of rect_color with 4 diagonal corner markers.
+
+    Each corner marker is a non-bg, non-rect_color pixel diagonally adjacent
+    to a corner of the rectangle. The rectangle is split into quadrants and
+    each quadrant filled with its nearest corner marker's color.
+    Corner markers are then removed (set to bg).
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find all rect_color positions
+    rect_positions = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == rect_color:
+                rect_positions.add((r, c))
+
+    if not rect_positions:
+        return output
+
+    # Find connected components of rect_color
+    visited = set()
+    components = []
+    for r, c in rect_positions:
+        if (r, c) in visited:
+            continue
+        comp = []
+        queue = [(r, c)]
+        visited.add((r, c))
+        while queue:
+            cr, cc = queue.pop(0)
+            comp.append((cr, cc))
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) in rect_positions and (nr, nc) not in visited:
+                    visited.add((nr, nc))
+                    queue.append((nr, nc))
+        components.append(comp)
+
+    for comp in components:
+        min_r = min(p[0] for p in comp)
+        max_r = max(p[0] for p in comp)
+        min_c = min(p[1] for p in comp)
+        max_c = max(p[1] for p in comp)
+
+        # Look for corner markers diagonally adjacent to bbox corners
+        corners = {}  # 'tl', 'tr', 'bl', 'br' -> color
+        corner_positions = []
+        for label, dr, dc in [
+            ('tl', min_r - 1, min_c - 1),
+            ('tr', min_r - 1, max_c + 1),
+            ('bl', max_r + 1, min_c - 1),
+            ('br', max_r + 1, max_c + 1),
+        ]:
+            if 0 <= dr < h and 0 <= dc < w:
+                v = grid[dr][dc]
+                if v != bg and v != rect_color:
+                    corners[label] = v
+                    corner_positions.append((dr, dc))
+
+        if len(corners) != 4:
+            continue
+
+        # Calculate midpoints for quadrant split
+        rect_h = max_r - min_r + 1
+        rect_w = max_c - min_c + 1
+        mid_r = min_r + rect_h // 2
+        mid_c = min_c + rect_w // 2
+
+        # Fill each cell of the rectangle with its quadrant color
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if r < mid_r and c < mid_c:
+                    output[r][c] = corners['tl']
+                elif r < mid_r and c >= mid_c:
+                    output[r][c] = corners['tr']
+                elif r >= mid_r and c < mid_c:
+                    output[r][c] = corners['bl']
+                else:
+                    output[r][c] = corners['br']
+
+        # Remove corner markers
+        for cr, cc in corner_positions:
+            output[cr][cc] = bg
+
+    return output
+
+
 def tile_alternating_flip(grid, reps_h, reps_w):
     """Tile grid in a reps_h x reps_w arrangement. Odd block-rows are horizontally flipped."""
     h = len(grid)
