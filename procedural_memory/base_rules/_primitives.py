@@ -2198,3 +2198,139 @@ def tile_pattern_upward(grid):
         output[i] = pattern[pat_idx][:]
 
     return output
+
+
+def extend_diagonal_arms(grid, bg=0):
+    """Find a 2x2 block with single-pixel diagonal arms, extend arms to grid edges."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    colors = set()
+    for row in grid:
+        for v in row:
+            if v != bg:
+                colors.add(v)
+
+    for color in colors:
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (grid[r][c] == color and grid[r][c + 1] == color and
+                        grid[r + 1][c] == color and grid[r + 1][c + 1] == color):
+                    arms = []
+                    if r - 1 >= 0 and c - 1 >= 0 and grid[r - 1][c - 1] == color:
+                        arms.append((-1, -1, r - 1, c - 1))
+                    if r - 1 >= 0 and c + 2 < w and grid[r - 1][c + 2] == color:
+                        arms.append((-1, 1, r - 1, c + 2))
+                    if r + 2 < h and c - 1 >= 0 and grid[r + 2][c - 1] == color:
+                        arms.append((1, -1, r + 2, c - 1))
+                    if r + 2 < h and c + 2 < w and grid[r + 2][c + 2] == color:
+                        arms.append((1, 1, r + 2, c + 2))
+
+                    for dr, dc, sr, sc in arms:
+                        nr, nc = sr + dr, sc + dc
+                        while 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = color
+                            nr += dr
+                            nc += dc
+
+    return output
+
+
+def count_inside_bordered_rect(grid, bg=0):
+    """Find rectangle bordered with 1s, count colored pixels inside, return 3x3 grid."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    border_color = 1
+
+    best_rect = None
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != border_color:
+                continue
+            right = c
+            while right < w and grid[r][right] == border_color:
+                right += 1
+            right -= 1
+            if right <= c:
+                continue
+            bottom = r
+            while bottom < h and grid[bottom][c] == border_color:
+                bottom += 1
+            bottom -= 1
+            if bottom <= r:
+                continue
+            rect_w = right - c + 1
+            rect_h = bottom - r + 1
+            if rect_w < 3 or rect_h < 3:
+                continue
+            top_ok = all(grid[r][cc] == border_color for cc in range(c, right + 1))
+            bot_ok = all(grid[bottom][cc] == border_color for cc in range(c, right + 1))
+            left_ok = all(grid[rr][c] == border_color for rr in range(r, bottom + 1))
+            right_ok = all(grid[rr][right] == border_color for rr in range(r, bottom + 1))
+            if top_ok and bot_ok and left_ok and right_ok:
+                area = rect_w * rect_h
+                if best_rect is None or area > best_rect[4]:
+                    best_rect = (r, c, bottom, right, area)
+
+    if best_rect is None:
+        return [[bg] * 3 for _ in range(3)]
+
+    top, left, bottom, right, _ = best_rect
+    inside_color = None
+    count = 0
+    for rr in range(top + 1, bottom):
+        for cc in range(left + 1, right):
+            v = grid[rr][cc]
+            if v != bg and v != border_color:
+                count += 1
+                inside_color = v
+
+    if inside_color is None:
+        inside_color = bg
+
+    result = [[bg] * 3 for _ in range(3)]
+    filled = 0
+    for rr in range(3):
+        for cc in range(3):
+            if filled < count:
+                result[rr][cc] = inside_color
+                filled += 1
+    return result
+
+
+def fill_enclosed_rectangles(grid, border_color=2, fill_color=1, bg=0):
+    """Find all fully enclosed rectangles, fill interior bg-cells with fill_color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    filled_rects = set()
+
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != border_color:
+                continue
+            for right in range(c + 2, w):
+                if grid[r][right] != border_color:
+                    continue
+                if not all(grid[r][cc] == border_color for cc in range(c, right + 1)):
+                    continue
+                for bottom in range(r + 2, h):
+                    if grid[bottom][c] != border_color:
+                        continue
+                    if not all(grid[bottom][cc] == border_color for cc in range(c, right + 1)):
+                        continue
+                    if not all(grid[rr][c] == border_color for rr in range(r, bottom + 1)):
+                        continue
+                    if not all(grid[rr][right] == border_color for rr in range(r, bottom + 1)):
+                        continue
+                    rect_key = (r, c, bottom, right)
+                    if rect_key not in filled_rects:
+                        filled_rects.add(rect_key)
+                        for rr in range(r + 1, bottom):
+                            for cc in range(c + 1, right):
+                                if output[rr][cc] == bg:
+                                    output[rr][cc] = fill_color
+
+    return output

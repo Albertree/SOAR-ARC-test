@@ -1,0 +1,21 @@
+{
+  "rule_id": "chunked_20260406_025434_scale_uniform",
+  "source": "chunked",
+  "source_tasks": [
+    "9172f3a0"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "COMM",
+      "contents": "DIFF",
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "scale_uniform",
+    "param_source": "inferred(factor)"
+  }
+}

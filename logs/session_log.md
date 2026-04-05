@@ -1,5 +1,24 @@
 
 ---
+## Session 47 (Claude) -- 2026-04-06
+
+### Changes
+- Added 3 new primitives to `_primitives.py`:
+  - `extend_diagonal_arms`: extends diagonal single-pixel arms from 2x2 blocks to grid edges
+  - `count_inside_bordered_rect`: counts colored pixels inside a 1-bordered rectangle, outputs 3x3 grid
+  - `fill_enclosed_rectangles`: fills interiors of fully enclosed rectangles with a fill color
+- Created 3 new concept JSONs:
+  - `extend_diagonal_arms.json` (solves 7ddcd7ec)
+  - `count_inside_bordered_rect.json` (solves c8b7cc0f)
+  - `fill_enclosed_rectangles.json` (solves a5313dff)
+
+### Results
+- Previous session: 24/40 (60.0%)
+- New tasks solved: 7ddcd7ec, c8b7cc0f, a5313dff (+3)
+- Regression gate (08ed6ac7): CORRECT
+- Total concepts: 28
+
+---
 ## Session 46 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2152,3 +2171,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 0
 - Time: 72s
 - Log: logs/learn_20260406_023231.log
+
+---
+## Learning Loop -- 2026-04-06 02:54
+
+- Split: training, Tasks: 40
+- Correct: 24 / 40 (60.0%)
+- Rules: 20 -> 24 (+4 learned)
+- Stored rule hits: 20
+- Time: 92s
+- Log: logs/learn_20260406_025251.log

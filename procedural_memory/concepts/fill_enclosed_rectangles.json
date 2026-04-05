@@ -1,0 +1,21 @@
+{
+  "concept_id": "fill_enclosed_rectangles",
+  "version": 1,
+  "description": "Fill interiors of fully enclosed rectangles with a new color",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "border_color": {"type": "color", "infer": "from_examples", "candidates": [1, 2, 3, 4, 5, 6, 7, 8, 9]},
+    "fill_color": {"type": "color", "infer": "color_added_in_output"},
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "fill_enclosed_rectangles", "args": {"grid": "$input", "border_color": "$border_color", "fill_color": "$fill_color", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

@@ -1,0 +1,19 @@
+{
+  "concept_id": "extend_diagonal_arms",
+  "version": 1,
+  "description": "Extend diagonal single-pixel arms from a 2x2 block to the grid edges",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "extend_diagonal_arms", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
