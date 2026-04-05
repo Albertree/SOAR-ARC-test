@@ -18,3 +18,13 @@
 - Stored rule hits: 0
 - Time: 56s
 - Log: logs/learn_20260406_034135.log
+
+---
+## Learning Loop -- 2026-04-06 03:49
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 3
+- Time: 61s
+- Log: logs/learn_20260406_034818.log

@@ -291,6 +291,30 @@ def reverse_rings(grid):
     return [[mapping.get(cell, cell) for cell in row] for row in grid]
 
 
+def rank_recolor_columns(grid, target_color, bg=0):
+    """Recolor columns of `target_color` by rank of their cell count (descending).
+    Tallest column of target_color gets color 1, next gets 2, etc."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Count target_color cells per column
+    col_counts = {}
+    for c in range(w):
+        cnt = sum(1 for r in range(h) if grid[r][c] == target_color)
+        if cnt > 0:
+            col_counts[c] = cnt
+    # Sort by count descending, then by column index for stable ordering
+    ranked = sorted(col_counts.keys(), key=lambda c: (-col_counts[c], c))
+    # Assign colors 1, 2, 3, ...
+    col_to_color = {c: i + 1 for i, c in enumerate(ranked)}
+    # Build output
+    output = [row[:] for row in grid]
+    for c, new_color in col_to_color.items():
+        for r in range(h):
+            if grid[r][c] == target_color:
+                output[r][c] = new_color
+    return output
+
+
 def staircase(grid, color, start_count, width):
     """Build a staircase grid: each row i has (start_count + i) cells of `color`
     from the left, rest are 0. Number of rows = width // 2."""
