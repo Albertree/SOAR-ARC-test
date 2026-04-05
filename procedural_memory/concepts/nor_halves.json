@@ -1,0 +1,19 @@
+{
+  "concept_id": "nor_halves",
+  "version": 1,
+  "description": "Split grid into two halves, output 4 where both halves are 0 (NOR of binary patterns)",
+  "signature": {
+    "grid_size_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "nor_halves",
+      "args": {"grid": "$input"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

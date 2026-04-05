@@ -1,0 +1,19 @@
+{
+  "concept_id": "remove_noise_blocks",
+  "version": 1,
+  "description": "Remove isolated noise pixels, keep only solid rectangular blocks with both H and V neighbors",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "remove_noise_keep_blocks",
+      "args": {"grid": "$input"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

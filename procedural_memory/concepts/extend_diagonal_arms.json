@@ -1,0 +1,19 @@
+{
+  "concept_id": "extend_diagonal_arms",
+  "version": 1,
+  "description": "Find 2x2 block with diagonal single-pixel arms, extend each arm's diagonal to the grid boundary",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "extend_diagonal_arms",
+      "args": {"grid": "$input"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

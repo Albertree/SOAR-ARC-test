@@ -7,8 +7,8 @@ COMM/DIFF structures, infers parameters, and applies primitive compositions.
 
 Claude Code extends the system by adding:
   - New concept JSONs to procedural_memory/concepts/
+  - New primitives to procedural_memory/base_rules/_primitives.py
   - New inference methods to procedural_memory/base_rules/_concept_engine.py
-  NOTE: _primitives.py is FROZEN. Do not add new primitives.
 """
 
 import os

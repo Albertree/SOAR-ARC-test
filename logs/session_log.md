@@ -1283,3 +1283,158 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 0
 - Time: 56s
 - Log: logs/learn_20260405_141707.log
+
+---
+## Learning Loop -- 2026-04-05 16:12
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 46s
+- Log: logs/learn_20260405_161212.log
+
+---
+## Learning Loop -- 2026-04-05 16:32
+
+- Split: training, Tasks: 5
+- Correct: 0 / 5 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 9s
+- Log: logs/learn_20260405_163245.log
+
+---
+## Learning Loop -- 2026-04-05 16:42
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 49s
+- Log: logs/learn_20260405_164132.log
+
+---
+## Learning Loop -- 2026-04-05 16:52
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 51s
+- Log: logs/learn_20260405_165203.log
+
+---
+## Learning Loop -- 2026-04-05 17:02
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 50s
+- Log: logs/learn_20260405_170202.log
+
+---
+## Learning Loop -- 2026-04-05 17:43
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 49s
+- Log: logs/learn_20260405_174249.log
+
+---
+## Learning Loop -- 2026-04-05 18:03
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 44s
+- Log: logs/learn_20260405_180218.log
+
+---
+## Learning Loop -- 2026-04-05 18:12
+
+- Split: training, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260405_181245.log
+
+---
+## Learning Loop -- 2026-04-05 18:17
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260405_181703.log
+
+---
+## Learning Loop -- 2026-04-05 18:22
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 45s
+- Log: logs/learn_20260405_182159.log
+
+---
+## Learning Loop -- 2026-04-05 18:36
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 55s
+- Log: logs/learn_20260405_183553.log
+
+---
+## Learning Loop -- 2026-04-05 18:45
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 51s
+- Log: logs/learn_20260405_184428.log
+
+---
+## Learning Loop -- 2026-04-05 19:12
+
+- Split: training, Tasks: 20
+- Correct: 1 / 20 (5.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 41s
+- Log: logs/learn_20260405_191143.log
+
+---
+## Learning Loop -- 2026-04-05 19:19
+
+- Split: training, Tasks: 20
+- Correct: 1 / 20 (5.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 1
+- Time: 62s
+- Log: logs/learn_20260405_191831.log
+
+---
+## Session (Claude) -- 2026-04-05
+
+### Changes
+- Created `procedural_memory/concepts/color_remap.json` — bijective color remapping using `recolor` + `color_map_from_arckg` (solves 0d3d703e)
+- Created `procedural_memory/concepts/gravity_down.json` — gravity-drop cells to bottom using `gravity` primitive (solves 1e0a9b12)
+- Added `staircase_grow` primitive to `_primitives.py` — grows 1-row prefix into staircase triangle
+- Created `procedural_memory/concepts/staircase_grow.json` — parameterless staircase concept (solves bbc9ae5d)
+
+### Results
+- 0d3d703e: CORRECT (color remap)
+- 1e0a9b12: CORRECT (gravity down)
+- bbc9ae5d: CORRECT (staircase grow)
+- 08ed6ac7: CORRECT (regression gate)

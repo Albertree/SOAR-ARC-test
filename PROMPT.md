@@ -65,7 +65,7 @@ as primitive compositions, create Python modules in `base_rules/<category>/`.
    - Each concept must handle a **category** of tasks, not just one
    - Do NOT hardcode task-specific colors or positions
 5. FALLBACK: Create Python rule modules for complex procedural logic
-6. Do NOT modify `_primitives.py` (frozen). Add inference methods to `_concept_engine.py` as needed.
+6. If no existing primitive fits, add a new one to `_primitives.py`, then create a concept JSON that uses it. Add inference methods to `_concept_engine.py` as needed.
 7. Verify: `python run_task.py` must still output CORRECT
 8. Append session results to `logs/session_log.md`
 

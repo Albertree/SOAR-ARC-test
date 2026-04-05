@@ -1,0 +1,24 @@
+{
+  "concept_id": "scale_uniform",
+  "version": 1,
+  "description": "Scale each cell into NxN block (uniform integer scaling)",
+  "signature": {
+    "grid_size_preserved": false,
+    "input_constraints": ["uniform_scale", "integer_ratio"]
+  },
+  "parameters": {
+    "scale_factor": {
+      "type": "int",
+      "infer": "ratio_hw"
+    }
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "scale",
+      "args": {"grid": "$input", "factor": "$scale_factor"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

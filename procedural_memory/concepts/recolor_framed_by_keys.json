@@ -1,0 +1,21 @@
+{
+  "concept_id": "recolor_framed_by_keys",
+  "version": 1,
+  "description": "Recolor a bordered pattern block using external 2-cell color key pairs as substitution map",
+  "signature": {
+    "grid_size_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "recolor_framed_pattern_by_keys",
+      "args": {"grid": "$input", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

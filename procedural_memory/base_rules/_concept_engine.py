@@ -361,8 +361,13 @@ def _infer_column_index(task, arckg_features, patterns):
 
 @_register_infer("source_color_from_arckg")
 def _infer_source_color(task, arckg_features, patterns):
-    """Find the single input color that maps to MULTIPLE output colors.
-    Uses ARCKG contents DIFF to inspect color transitions."""
+    """Find the source color using a 3-strategy fallback chain.
+
+    1. Original: single color -> multiple outputs via ARCKG DIFF
+    2. Broadened: non-zero input color that changes most often
+    3. Fallback: most common non-zero color in inputs
+    """
+    # --- Strategy 1: Original logic (1 -> many via ARCKG) ---
     transitions = {}  # input_color -> set of output_colors
     for pair in task.example_pairs:
         g0, g1 = pair.input_grid, pair.output_grid
@@ -384,10 +389,36 @@ def _infer_source_color(task, arckg_features, patterns):
                 old, new = grid_in[r][c], grid_out[r][c]
                 if old != new:
                     transitions.setdefault(old, set()).add(new)
-    # Source color maps to multiple outputs (sequential recoloring)
     candidates = [c for c, outs in transitions.items() if len(outs) > 1]
     if len(candidates) == 1:
         return candidates[0]
+
+    # --- Strategy 2: Non-zero input color that changes most ---
+    change_counts = {}
+    for pair in task.example_pairs:
+        g_in = pair.input_grid.raw
+        g_out = pair.output_grid.raw
+        if g_in is None or g_out is None:
+            continue
+        h = min(len(g_in), len(g_out))
+        for r in range(h):
+            w = min(len(g_in[r]), len(g_out[r]))
+            for c in range(w):
+                if g_in[r][c] != g_out[r][c] and g_in[r][c] != 0:
+                    change_counts[g_in[r][c]] = change_counts.get(g_in[r][c], 0) + 1
+    if change_counts:
+        return max(change_counts, key=change_counts.get)
+
+    # --- Strategy 3: Most common non-bg color in inputs ---
+    all_counts = {}
+    for pair in task.example_pairs:
+        bg = P.find_bg_color(pair.input_grid.raw)
+        for row in pair.input_grid.raw:
+            for v in row:
+                if v != bg:
+                    all_counts[v] = all_counts.get(v, 0) + 1
+    if all_counts:
+        return max(all_counts, key=all_counts.get)
     return None
 
 

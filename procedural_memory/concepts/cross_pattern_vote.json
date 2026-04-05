@@ -1,0 +1,19 @@
+{
+  "concept_id": "cross_pattern_vote",
+  "version": 1,
+  "description": "Find cross patterns (center=4, same-color arms), output most frequent arm color as 1x1",
+  "signature": {
+    "grid_size_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "cross_pattern_vote",
+      "args": {"grid": "$input"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

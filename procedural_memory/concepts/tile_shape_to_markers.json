@@ -1,0 +1,22 @@
+{
+  "concept_id": "tile_shape_to_markers",
+  "version": 1,
+  "description": "Tile rectangular shapes toward aligned marker line segments",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "marker_color": {"type": "color", "infer": "from_examples"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "tile_shape_to_markers",
+      "args": {"grid": "$input", "marker_color": "$marker_color", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

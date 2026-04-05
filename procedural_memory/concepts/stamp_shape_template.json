@@ -1,0 +1,26 @@
+{
+  "concept_id": "stamp_shape_template",
+  "version": 1,
+  "description": "Find a colored template shape and stamp all matching groups of a target color with that shape",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "template_color": {"type": "color", "infer": "from_examples"},
+    "target_color": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "stamp_shape_template",
+      "args": {
+        "grid": "$input",
+        "template_color": "$template_color",
+        "target_color": "$target_color"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

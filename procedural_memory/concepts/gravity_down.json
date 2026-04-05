@@ -1,0 +1,23 @@
+{
+  "concept_id": "gravity_down",
+  "version": 1,
+  "description": "Drop all non-background cells to the bottom of their columns (gravity down)",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": true,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "gravity",
+      "args": {"grid": "$input", "direction": "down", "bg": "$bg"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

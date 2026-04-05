@@ -1,0 +1,21 @@
+{
+  "concept_id": "or_halves",
+  "version": 1,
+  "description": "Split grid at separator row, OR two binary halves into result color",
+  "signature": {
+    "grid_size_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "result_color": {"type": "color", "infer": "color_added_in_output"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "or_halves",
+      "args": {"grid": "$input", "result_color": "$result_color"},
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}
