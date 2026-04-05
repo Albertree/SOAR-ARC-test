@@ -170,11 +170,12 @@ Write new concept JSONs in procedural_memory/concepts/
 Run python run_task.py to verify regression passes.
 " \
       --permission-mode bypassPermissions \
-      --output-format text \
-      > "$CLAUDE_OUT" 2>&1
-    CLAUDE_EXIT=$?
+      --output-format stream-text \
+      --max-turns 30 \
+      --verbose \
+      2>&1 | tee "$CLAUDE_OUT" | tee -a "$PIPELINE_LOG"
+    CLAUDE_EXIT=${PIPESTATUS[0]}
 
-    cat "$CLAUDE_OUT" >> "$PIPELINE_LOG"
     cp "$CLAUDE_OUT" "$SESSION_LOG"
     log "Claude Code finished (exit $CLAUDE_EXIT)."
 
