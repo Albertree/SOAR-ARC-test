@@ -2637,3 +2637,28 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 60
 - Time: 6046s
 - Log: logs/learn_20260406_064248.log
+
+---
+## Learning Loop -- 2026-04-06 08:48
+
+- Split: training, Tasks: 80
+- Correct: 53 / 80 (66.2%)
+- Rules: 53 -> 56 (+3 learned)
+- Stored rule hits: 50
+- Time: 434s
+- Log: logs/learn_20260406_084114.log
+
+---
+## Session 56 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive: `dual_mask_intersection` — split grid into two halves, mark positions where both are background. Solves e345f17b.
+- New primitive: `staircase_from_bar` — expand staircase above/below a horizontal bar of color 2. Solves a65b410d.
+- New primitive: `panel_hole_classify` — classify hole positions in 3 separated panels, map each to a color. Solves 995c5fa3.
+- New concepts: `dual_mask_intersection.json`, `staircase_from_bar.json`, `panel_hole_classify.json`
+
+### Regression
+- 08ed6ac7: CORRECT
+- e345f17b: CORRECT
+- a65b410d: CORRECT
+- 995c5fa3: CORRECT

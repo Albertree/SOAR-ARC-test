@@ -4,7 +4,7 @@
   "source_tasks": [
     "f5b8619d"
   ],
-  "times_validated": 1,
+  "times_validated": 2,
   "times_failed": 0,
   "condition": {
     "level": "GRID",

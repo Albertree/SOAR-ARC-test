@@ -3691,3 +3691,132 @@ def larger_hollow_rect_color(grid, bg=0):
     winner = rects[0][1]
 
     return [[winner, winner], [winner, winner]]
+
+
+def dual_mask_intersection(grid, bg=0, mark_color=4):
+    """Split grid vertically into two equal halves.
+    Where both halves have background (0), output mark_color; else bg.
+    Task pattern: left half uses one fg color, right half uses another;
+    output marks positions where both halves are 0 (background)."""
+    h = len(grid)
+    w = len(grid[0])
+    half_w = w // 2
+    out = [[bg] * half_w for _ in range(h)]
+    for r in range(h):
+        for c in range(half_w):
+            left_val = grid[r][c]
+            right_val = grid[r][half_w + c]
+            if left_val == bg and right_val == bg:
+                out[r][c] = mark_color
+    return out
+
+
+def staircase_from_bar(grid, bar_color=2, above_color=3, below_color=1, bg=0):
+    """Find a horizontal bar of bar_color. Extend a staircase upward (above_color)
+    and downward (below_color). Each row above adds 1 to width, each row below
+    subtracts 1, all left-aligned. Continues until width reaches 0 or grid edge."""
+    h = len(grid)
+    w = len(grid[0])
+    # Find the bar row and width
+    bar_row = None
+    bar_width = 0
+    for r in range(h):
+        count = 0
+        for c in range(w):
+            if grid[r][c] == bar_color:
+                count += 1
+            else:
+                break
+        if count > 0 and (bar_row is None or count > bar_width):
+            bar_row = r
+            bar_width = count
+
+    if bar_row is None:
+        return [row[:] for row in grid]
+
+    out = [[bg] * w for _ in range(h)]
+    # Place the bar
+    for c in range(bar_width):
+        out[bar_row][c] = bar_color
+
+    # Above: width increases by 1 per row
+    for step in range(1, bar_row + 1):
+        r = bar_row - step
+        fill_w = min(bar_width + step, w)
+        for c in range(fill_w):
+            out[r][c] = above_color
+
+    # Below: width decreases by 1 per row
+    for step in range(1, h - bar_row):
+        r = bar_row + step
+        fill_w = bar_width - step
+        if fill_w <= 0:
+            break
+        for c in range(fill_w):
+            out[r][c] = below_color
+
+    return out
+
+
+def panel_hole_classify(grid, bg=0, panel_fg=5, sep_color=0):
+    """Three panels separated by single 0-columns. Each panel is 4 wide.
+    Classify hole position in each panel and map to a color.
+    Output is 3xN (N=number of panels) with uniform rows.
+    Hole position mapping:
+      no hole -> 2, center (1,1)-(2,2) -> 8,
+      bottom (2,1)-(3,2) -> 4, side-edges (1,0)(1,3)(2,0)(2,3) -> 3"""
+    h = len(grid)
+    w = len(grid[0])
+
+    # Find panel boundaries by locating separator columns
+    panels = []
+    c = 0
+    while c < w:
+        # Check if this column is a separator (all 0 or sep_color)
+        is_sep = all(grid[r][c] == sep_color for r in range(h))
+        if is_sep:
+            c += 1
+            continue
+        # Start of a panel
+        start = c
+        while c < w and not all(grid[r][c] == sep_color for r in range(h)):
+            c += 1
+        panels.append((start, c))  # (start_col, end_col)
+
+    # Classify each panel
+    colors = []
+    for (start, end) in panels:
+        pw = end - start
+        # Extract panel
+        panel = []
+        for r in range(h):
+            row = []
+            for cc in range(start, end):
+                row.append(grid[r][cc])
+            panel.append(row)
+
+        # Find 0 positions within panel
+        zeros = set()
+        for r in range(h):
+            for cc in range(pw):
+                if panel[r][cc] == bg:
+                    zeros.add((r, cc))
+
+        if len(zeros) == 0:
+            # No hole
+            colors.append(2)
+        elif all((r, cc) in zeros for r, cc in [(1, 1), (1, 2), (2, 1), (2, 2)]):
+            # Center hole
+            colors.append(8)
+        elif all((r, cc) in zeros for r, cc in [(2, 1), (2, 2), (3, 1), (3, 2)]):
+            # Bottom hole
+            colors.append(4)
+        elif all((r, cc) in zeros for r, cc in [(1, 0), (1, pw-1), (2, 0), (2, pw-1)]):
+            # Side edges
+            colors.append(3)
+        else:
+            colors.append(0)
+
+    # Output: 3 rows x 3 cols, each row uniform color
+    n = len(colors)
+    return [[colors[i]] * n for i in range(n)]

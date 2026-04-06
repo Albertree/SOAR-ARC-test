@@ -1,0 +1,17 @@
+{
+  "concept_id": "staircase_from_bar",
+  "version": 1,
+  "description": "Expand staircase pattern above and below a horizontal bar",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "staircase_from_bar", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}
