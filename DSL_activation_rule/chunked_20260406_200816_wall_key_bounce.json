@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260406_023400_recolor_columns_by_height",
+  "rule_id": "chunked_20260406_200816_wall_key_bounce",
   "source": "chunked",
   "source_tasks": [
-    "08ed6ac7"
+    "7d7772cc"
   ],
-  "times_validated": 61,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "column_wise",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "recolor_columns_by_height",
-    "param_source": "inferred(source_color)"
+    "concept": "wall_key_bounce",
+    "param_source": "no_params"
   }
 }

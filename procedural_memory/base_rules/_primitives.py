@@ -5174,6 +5174,255 @@ def sort_frames_and_crosses(grid, bg=0):
     return output
 
 
+def wall_key_bounce(grid, bg=None):
+    """Bounce scattered dots based on comparison with key dots across a wall.
+
+    A solid wall (full row or column of one color) divides the grid into a
+    key region (bordered) and a canvas region. Key dots and scattered dots
+    are at corresponding positions (same row or column). For each scattered
+    dot, compare to the key dot:
+      - Match: move to adjacent cell next to the wall
+      - Mismatch: move to far boundary of the canvas region
+    Original scattered dots are erased. Key region and wall unchanged.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if bg is None:
+        bg = find_bg_color(grid)
+
+    # Detect wall: a full row or column of a single non-bg color
+    wall_row = None
+    wall_col = None
+    wall_color = None
+
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            wall_color = grid[r][0]
+            wall_row = r
+            break
+
+    if wall_row is None:
+        for c in range(w):
+            vals = set(grid[r][c] for r in range(h))
+            if len(vals) == 1 and grid[0][c] != bg:
+                wall_color = grid[0][c]
+                wall_col = c
+                break
+
+    if wall_row is None and wall_col is None:
+        return grid
+
+    output = [row[:] for row in grid]
+
+    if wall_row is not None:
+        # Horizontal wall — find which side is the key (bordered region)
+        # Key side has wall_color border on edges
+        # Check if rows above or below have wall_color borders
+        key_above = False
+        key_below = False
+
+        # Check below: is there a bordered region?
+        if wall_row < h - 1:
+            # Check if bottom region has wall_color on row edges
+            last_row = h - 1
+            if all(grid[last_row][c] == wall_color for c in range(w)):
+                key_below = True
+            elif grid[wall_row + 1][0] == wall_color:
+                key_below = True
+
+        if not key_below and wall_row > 0:
+            first_row = 0
+            if all(grid[first_row][c] == wall_color for c in range(w)):
+                key_above = True
+            elif grid[wall_row - 1][0] == wall_color:
+                key_above = True
+
+        if not key_above and not key_below:
+            # Default: key is the side with wall_color border cells
+            for r in range(wall_row + 1, h):
+                if grid[r][0] == wall_color or grid[r][w - 1] == wall_color:
+                    key_below = True
+                    break
+            if not key_below:
+                key_above = True
+
+        if key_below:
+            # Key region is below, canvas is above
+            # Find key row (first non-wall row in key region with non-bg values)
+            key_row = None
+            for r in range(wall_row + 1, h):
+                for c in range(w):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        key_row = r
+                        break
+                if key_row is not None:
+                    break
+
+            # Find canvas dots (above the wall, non-bg)
+            canvas_top = 0
+            canvas_bot = wall_row - 1
+
+            if key_row is None:
+                return grid
+
+            # Collect key dots at key_row
+            key_dots = {}
+            for c in range(w):
+                if grid[key_row][c] != bg and grid[key_row][c] != wall_color:
+                    key_dots[c] = grid[key_row][c]
+
+            # Find scattered dots in canvas region
+            scattered = {}
+            for r in range(canvas_top, canvas_bot + 1):
+                for c in range(w):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        scattered[c] = (r, grid[r][c])
+
+            # Process each scattered dot
+            for c, (r, color) in scattered.items():
+                output[r][c] = bg  # erase original
+                if c in key_dots and color == key_dots[c]:
+                    # Match: place adjacent to wall
+                    output[canvas_bot][c] = color
+                else:
+                    # Mismatch: place at far boundary
+                    output[canvas_top][c] = color
+        else:
+            # Key region is above, canvas is below
+            key_row = None
+            for r in range(wall_row - 1, -1, -1):
+                for c in range(w):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        key_row = r
+                        break
+                if key_row is not None:
+                    break
+
+            canvas_top = wall_row + 1
+            canvas_bot = h - 1
+
+            if key_row is None:
+                return grid
+
+            key_dots = {}
+            for c in range(w):
+                if grid[key_row][c] != bg and grid[key_row][c] != wall_color:
+                    key_dots[c] = grid[key_row][c]
+
+            scattered = {}
+            for r in range(canvas_top, canvas_bot + 1):
+                for c in range(w):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        scattered[c] = (r, grid[r][c])
+
+            for c, (r, color) in scattered.items():
+                output[r][c] = bg
+                if c in key_dots and color == key_dots[c]:
+                    output[canvas_top][c] = color
+                else:
+                    output[canvas_bot][c] = color
+
+    else:
+        # Vertical wall at wall_col
+        # Find which side is key (bordered region)
+        key_left = False
+        key_right = False
+
+        if wall_col < w - 1:
+            last_col = w - 1
+            if all(grid[r][last_col] == wall_color for r in range(h)):
+                key_right = True
+            elif grid[0][wall_col + 1] == wall_color:
+                key_right = True
+
+        if not key_right and wall_col > 0:
+            first_col = 0
+            if all(grid[r][first_col] == wall_color for r in range(h)):
+                key_left = True
+            elif grid[0][wall_col - 1] == wall_color:
+                key_left = True
+
+        if not key_left and not key_right:
+            for c in range(wall_col + 1, w):
+                if grid[0][c] == wall_color or grid[h - 1][c] == wall_color:
+                    key_right = True
+                    break
+            if not key_right:
+                key_left = True
+
+        if key_left:
+            # Key is left, canvas is right
+            key_col = None
+            for c in range(wall_col - 1, -1, -1):
+                for r in range(h):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        key_col = c
+                        break
+                if key_col is not None:
+                    break
+
+            canvas_left = wall_col + 1
+            canvas_right = w - 1
+
+            if key_col is None:
+                return grid
+
+            key_dots = {}
+            for r in range(h):
+                if grid[r][key_col] != bg and grid[r][key_col] != wall_color:
+                    key_dots[r] = grid[r][key_col]
+
+            scattered = {}
+            for r in range(h):
+                for c in range(canvas_left, canvas_right + 1):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        scattered[r] = (c, grid[r][c])
+
+            for r, (c, color) in scattered.items():
+                output[r][c] = bg
+                if r in key_dots and color == key_dots[r]:
+                    output[r][canvas_left] = color
+                else:
+                    output[r][canvas_right] = color
+        else:
+            # Key is right, canvas is left
+            key_col = None
+            for c in range(wall_col + 1, w):
+                for r in range(h):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        key_col = c
+                        break
+                if key_col is not None:
+                    break
+
+            canvas_left = 0
+            canvas_right = wall_col - 1
+
+            if key_col is None:
+                return grid
+
+            key_dots = {}
+            for r in range(h):
+                if grid[r][key_col] != bg and grid[r][key_col] != wall_color:
+                    key_dots[r] = grid[r][key_col]
+
+            scattered = {}
+            for r in range(h):
+                for c in range(canvas_left, canvas_right + 1):
+                    if grid[r][c] != bg and grid[r][c] != wall_color:
+                        scattered[r] = (c, grid[r][c])
+
+            for r, (c, color) in scattered.items():
+                output[r][c] = bg
+                if r in key_dots and color == key_dots[r]:
+                    output[r][canvas_right] = color
+                else:
+                    output[r][canvas_left] = color
+
+    return output
+
+
 def template_grid_recolor(grid, bg=0):
     """Recolor a grid of identical template shapes using a key matrix.
 

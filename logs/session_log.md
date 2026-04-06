@@ -1,5 +1,23 @@
 
 ---
+## Session 73 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 2 failing tasks from session 72 (72/80 = 90.0%):
+- **7d7772cc**: Wall divides grid into key region and canvas region. Scattered dots in canvas are compared to corresponding key dots. Matching dots move adjacent to wall; mismatching dots move to far boundary of canvas.
+- **ac2e8ecf**: Objects classified as hollow rectangular frames or cross/plus shapes. Frames gravity-sort to top of grid, crosses gravity-sort to bottom, preserving column positions.
+
+### Changes
+1. **New primitive**: `wall_key_bounce` — detects horizontal/vertical wall, identifies key and canvas regions, bounces dots based on match/mismatch with key
+2. **New concept**: `wall_key_bounce.json` (no parameters — bg auto-detected per grid since it varies across pairs)
+3. **New concept**: `sort_frames_and_crosses.json` — uses existing `sort_frames_and_crosses` primitive that was already implemented but had no concept JSON
+
+### Regression
+- 7d7772cc: CORRECT
+- ac2e8ecf: CORRECT
+- 08ed6ac7: CORRECT (regression gate)
+
+---
 ## Session 68 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -3083,3 +3101,13 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 105
 - Time: 5341s
 - Log: logs/learn_20260406_180646.log
+
+---
+## Learning Loop -- 2026-04-06 19:41
+
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%)
+- Rules: 88 -> 88 (+0 learned)
+- Stored rule hits: 72
+- Time: 264s
+- Log: logs/learn_20260406_193734.log
