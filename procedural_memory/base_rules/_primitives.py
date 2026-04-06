@@ -1055,3 +1055,37 @@ def arrow_ray_to_edge(grid):
                 c += 2
 
     return output
+
+
+def zigzag_shear_rect(grid, bg=0):
+    """Find a colored rectangle on bg and apply zigzag shear.
+    Each row shifts horizontally based on distance from the bottom row:
+    shift = {0: 0, 1: -1, 2: 0, 3: +1}[distance_from_bottom % 4]."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find bounding box of all non-bg cells
+    min_r, max_r, min_c, max_c = h, -1, w, -1
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                min_r = min(min_r, r)
+                max_r = max(max_r, r)
+                min_c = min(min_c, c)
+                max_c = max(max_c, c)
+    if max_r < 0:
+        return [row[:] for row in grid]
+    n = max_r - min_r + 1
+    shift_map = {0: 0, 1: -1, 2: 0, 3: +1}
+    output = [[bg] * w for _ in range(h)]
+    for r in range(h):
+        if r < min_r or r > max_r:
+            continue
+        k = r - min_r
+        d = (n - 1) - k
+        shift = shift_map[d % 4]
+        for c in range(w):
+            if grid[r][c] != bg:
+                nc = c + shift
+                if 0 <= nc < w:
+                    output[r][nc] = grid[r][c]
+    return output

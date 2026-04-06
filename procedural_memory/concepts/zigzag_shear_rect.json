@@ -1,0 +1,19 @@
+{
+  "concept_id": "zigzag_shear_rect",
+  "version": 1,
+  "description": "Apply zigzag horizontal shear to a colored rectangle on a bg background",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "zigzag_shear_rect", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
