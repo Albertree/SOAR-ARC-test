@@ -1,0 +1,19 @@
+{
+  "concept_id": "template_grid_recolor",
+  "version": 1,
+  "description": "Grid of identical template shapes recolored using a key matrix where each position maps to a color",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "template_grid_recolor", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

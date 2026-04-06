@@ -5028,3 +5028,259 @@ def separator_grid_reference_fill(grid, bg=0):
                 output[r][c] = color
 
     return output
+
+
+def largest_blob_color_3x3(grid):
+    """Find the largest compact monochromatic blob and return a 3x3 grid of its color.
+
+    Distinguishes signal blobs (compact solid regions of one color) from noise
+    (scattered random cells). Signal colors have most cells in one component;
+    noise colors are scattered across many components.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = [[False] * w for _ in range(h)]
+
+    # Find all connected components grouped by color
+    color_components = {}  # color -> [(size, density), ...]
+    color_total = {}       # color -> total cell count
+    for r in range(h):
+        for c in range(w):
+            color_total[grid[r][c]] = color_total.get(grid[r][c], 0) + 1
+
+    for r in range(h):
+        for c in range(w):
+            if visited[r][c]:
+                continue
+            color = grid[r][c]
+            queue = [(r, c)]
+            visited[r][c] = True
+            cells = []
+            while queue:
+                cr, cc = queue.pop(0)
+                cells.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == color:
+                        visited[nr][nc] = True
+                        queue.append((nr, nc))
+            size = len(cells)
+            min_r = min(p[0] for p in cells)
+            max_r = max(p[0] for p in cells)
+            min_c = min(p[1] for p in cells)
+            max_c = max(p[1] for p in cells)
+            bbox_area = (max_r - min_r + 1) * (max_c - min_c + 1)
+            density = size / bbox_area if bbox_area > 0 else 0
+            color_components.setdefault(color, []).append((size, density))
+
+    # Signal colors: largest component contains >70% of that color's total cells
+    # AND has density > 0.5 within its bounding box
+    candidates = []
+    for color, comps in color_components.items():
+        total = color_total.get(color, 0)
+        if total < 4:
+            continue
+        largest = max(comps, key=lambda x: x[0])
+        concentration = largest[0] / total
+        if concentration > 0.7 and largest[1] > 0.5:
+            candidates.append((color, largest[0], largest[1]))
+
+    if candidates:
+        best = max(candidates, key=lambda x: x[1])
+        return [[best[0]] * 3 for _ in range(3)]
+
+    return [[0] * 3 for _ in range(3)]
+
+
+def sort_frames_and_crosses(grid, bg=0):
+    """Sort objects: frames (hollow rectangles) gravity-up, crosses gravity-down.
+
+    Objects are classified by shape:
+    - Frame: cells form the border of a rectangle (with interior hole)
+    - Cross: plus/cross shape (center + cardinal arms)
+
+    Frames stack from the top, crosses stack from the bottom,
+    both preserving their original column positions.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    objs = _extract_objects_by_color(grid, bg=bg)
+
+    def _classify(obj):
+        positions = set(obj["positions"])
+        bt, bl, bh, bw = obj["bbox"]
+        if bh >= 3 and bw >= 3:
+            perimeter = set()
+            for r in range(bt, bt + bh):
+                for c in range(bl, bl + bw):
+                    if r == bt or r == bt + bh - 1 or c == bl or c == bl + bw - 1:
+                        perimeter.add((r, c))
+            if positions == perimeter:
+                return 'frame'
+        for r, c in positions:
+            arms = sum(1 for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]
+                       if (r + dr, c + dc) in positions)
+            if arms >= 3:
+                return 'cross'
+        return 'cross'
+
+    frames = []
+    crosses = []
+    for obj in objs:
+        if _classify(obj) == 'frame':
+            frames.append(obj)
+        else:
+            crosses.append(obj)
+
+    output = [[bg] * w for _ in range(h)]
+
+    # Track occupied rows per column for stacking
+    col_top = [0] * w    # next available row from top (for frames)
+    col_bot = [h - 1] * w  # next available row from bottom (for crosses)
+
+    # Frames: gravity up, place closest-to-top first
+    frames.sort(key=lambda o: o["bbox"][0])
+    for obj in frames:
+        bt, bl, bh, bw = obj["bbox"]
+        # Find the lowest "next available" row among this object's columns
+        obj_cols = set(c for _, c in obj["positions"])
+        start_row = max(col_top[c] for c in obj_cols)
+        row_offset = start_row - bt
+        for r, c in obj["positions"]:
+            nr = r + row_offset
+            if 0 <= nr < h:
+                output[nr][c] = obj["color"]
+        # Update column occupancy
+        for c in obj_cols:
+            col_top[c] = max(col_top[c], start_row + bh)
+
+    # Crosses: gravity down, place closest-to-bottom first
+    crosses.sort(key=lambda o: -(o["bbox"][0] + o["bbox"][2]))
+    for obj in crosses:
+        bt, bl, bh, bw = obj["bbox"]
+        obj_cols = set(c for _, c in obj["positions"])
+        # Find the highest "next available" row from bottom
+        end_row = min(col_bot[c] for c in obj_cols)
+        # Object bottom edge aligns to end_row
+        row_offset = end_row - (bt + bh - 1)
+        for r, c in obj["positions"]:
+            nr = r + row_offset
+            if 0 <= nr < h:
+                output[nr][c] = obj["color"]
+        for c in obj_cols:
+            col_bot[c] = min(col_bot[c], end_row - bh)
+
+    return output
+
+
+def template_grid_recolor(grid, bg=0):
+    """Recolor a grid of identical template shapes using a key matrix.
+
+    Input contains:
+    1. A regular grid of identical hollow bordered shapes (all same color, e.g. 5)
+    2. A small key matrix of colors (in a separate area)
+
+    Output: each template shape is recolored with the corresponding key color.
+    The key matrix dimensions match the template grid dimensions (rows x cols).
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Step 1: Find template color (the color forming the repeated bordered shapes)
+    color_counts = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_counts[v] = color_counts.get(v, 0) + 1
+
+    if not color_counts:
+        return [row[:] for row in grid]
+
+    # Template color is the most frequent non-bg color
+    template_color = max(color_counts, key=color_counts.get)
+
+    # Step 2: Find template grid layout
+    template_rows = set()
+    template_cols = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == template_color:
+                template_rows.add(r)
+                template_cols.add(c)
+
+    if not template_rows or not template_cols:
+        return [row[:] for row in grid]
+
+    # Find template row groups (consecutive runs of template rows)
+    sorted_rows = sorted(template_rows)
+    row_groups = []
+    group = [sorted_rows[0]]
+    for i in range(1, len(sorted_rows)):
+        if sorted_rows[i] == sorted_rows[i - 1] + 1:
+            group.append(sorted_rows[i])
+        else:
+            row_groups.append(group)
+            group = [sorted_rows[i]]
+    row_groups.append(group)
+
+    # Find template col groups
+    sorted_cols = sorted(template_cols)
+    col_groups = []
+    group = [sorted_cols[0]]
+    for i in range(1, len(sorted_cols)):
+        if sorted_cols[i] == sorted_cols[i - 1] + 1:
+            group.append(sorted_cols[i])
+        else:
+            col_groups.append(group)
+            group = [sorted_cols[i]]
+    col_groups.append(group)
+
+    n_trows = len(row_groups)
+    n_tcols = len(col_groups)
+
+    # Step 3: Find the key matrix
+    # The key is a dense block of non-bg, non-template colors
+    key_cells = []
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg and v != template_color:
+                key_cells.append((r, c, v))
+
+    if not key_cells:
+        return [row[:] for row in grid]
+
+    # Find bounding box of key cells
+    key_min_r = min(kc[0] for kc in key_cells)
+    key_max_r = max(kc[0] for kc in key_cells)
+    key_min_c = min(kc[1] for kc in key_cells)
+    key_max_c = max(kc[1] for kc in key_cells)
+
+    key_h = key_max_r - key_min_r + 1
+    key_w = key_max_c - key_min_c + 1
+
+    # Extract key matrix
+    key_matrix = []
+    for r in range(key_min_r, key_max_r + 1):
+        row = []
+        for c in range(key_min_c, key_max_c + 1):
+            row.append(grid[r][c])
+        key_matrix.append(row)
+
+    # Validate: key dims should match template grid dims
+    if key_h != n_trows or key_w != n_tcols:
+        return [row[:] for row in grid]
+
+    # Step 4: Build output by recoloring each template
+    output = [row[:] for row in grid]
+    for ti, rgroup in enumerate(row_groups):
+        for tj, cgroup in enumerate(col_groups):
+            new_color = key_matrix[ti][tj]
+            for r in rgroup:
+                for c in cgroup:
+                    if output[r][c] == template_color:
+                        output[r][c] = new_color
+
+    return output

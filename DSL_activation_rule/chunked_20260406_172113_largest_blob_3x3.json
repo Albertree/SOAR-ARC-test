@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260406_172113_largest_blob_3x3",
+  "source": "chunked",
+  "source_tasks": [
+    "3194b014"
+  ],
+  "times_validated": 1,
+  "times_failed": 0,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "single_group",
+        "change_scope": "all_cells",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
+      "size": "DIFF"
+    }
+  },
+  "action": {
+    "concept": "largest_blob_3x3",
+    "param_source": "no_params"
+  }
+}
