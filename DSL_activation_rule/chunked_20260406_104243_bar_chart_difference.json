@@ -1,10 +1,10 @@
 {
-  "rule_id": "chunked_20260406_023400_recolor_columns_by_height",
+  "rule_id": "chunked_20260406_104243_bar_chart_difference",
   "source": "chunked",
   "source_tasks": [
-    "08ed6ac7"
+    "37ce87bb"
   ],
-  "times_validated": 38,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
@@ -13,7 +13,7 @@
       "contents": {
         "type": "DIFF",
         "change_pattern": "column_wise",
-        "change_scope": "subset",
+        "change_scope": "single_object",
         "num_groups_consistent": true,
         "group_anchors_consistent": false
       },
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "recolor_columns_by_height",
-    "param_source": "inferred(source_color)"
+    "concept": "bar_chart_difference",
+    "param_source": "inferred(bg)"
   }
 }

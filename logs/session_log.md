@@ -1,5 +1,20 @@
 
 ---
+## Session 59 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive: `overlay_stacked_blocks` — split grid into N equal horizontal blocks (each with a distinct color), overlay with priority 5>4>8>2. Solves 3d31c5b3.
+- New primitive: `bar_chart_difference` — find vertical bars of color 8 and 2 on bg 7, place color 5 bar with height = sum(8) - sum(2). Solves 37ce87bb.
+- New primitive: `hop_box_along_dots` — move a 3x3 bordered box one hop along a trail of dots toward the side with more dots. Solves 5168d44c.
+- New concepts: `overlay_stacked_blocks.json`, `bar_chart_difference.json`, `hop_box_along_dots.json`
+
+### Regression
+- 08ed6ac7: CORRECT
+- 3d31c5b3: CORRECT
+- 37ce87bb: CORRECT
+- 5168d44c: CORRECT
+
+---
 ## Session 58 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2734,3 +2749,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 67
 - Time: 6362s
 - Log: logs/learn_20260406_080550.log
+
+---
+## Learning Loop -- 2026-04-06 10:25
+
+- Split: training, Tasks: 80
+- Correct: 60 / 80 (75.0%)
+- Rules: 61 -> 63 (+2 learned)
+- Stored rule hits: 58
+- Time: 326s
+- Log: logs/learn_20260406_101955.log
+
+---
+## Learning Loop -- 2026-04-06 10:36
+
+- Split: training, Tasks: 1000
+- Correct: 72 / 1000 (7.2%)
+- Rules: 59 -> 63 (+4 learned)
+- Stored rule hits: 74
+- Time: 5403s
+- Log: logs/learn_20260406_090625.log

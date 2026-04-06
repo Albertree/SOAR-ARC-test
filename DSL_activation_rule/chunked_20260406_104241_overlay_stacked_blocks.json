@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260406_101215_separator_grid_max_fill",
+  "rule_id": "chunked_20260406_104241_overlay_stacked_blocks",
   "source": "chunked",
   "source_tasks": [
-    "29623171"
+    "3d31c5b3"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
         "change_pattern": "multi_group",
         "change_scope": "subset",
-        "num_groups_consistent": false,
+        "num_groups_consistent": true,
         "group_anchors_consistent": false
       },
-      "size": "COMM"
+      "size": "DIFF"
     }
   },
   "action": {
-    "concept": "separator_grid_max_fill",
-    "param_source": "inferred(sep_color)"
+    "concept": "overlay_stacked_blocks",
+    "param_source": "no_params"
   }
 }

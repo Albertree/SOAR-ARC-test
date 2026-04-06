@@ -1,0 +1,19 @@
+{
+  "concept_id": "bar_chart_difference",
+  "version": 1,
+  "description": "Find vertical bars of color 8 and 2 on bg 7, place color 5 bar with height = sum(8) - sum(2)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "bar_chart_difference", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

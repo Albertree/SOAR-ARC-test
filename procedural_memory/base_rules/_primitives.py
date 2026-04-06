@@ -3981,3 +3981,247 @@ def connect_dot_pairs(grid, bg=0):
             out[r][col] = color
 
     return out
+
+
+def hop_box_along_dots(grid, bg=0):
+    """Find a 3x3 box (border_color with center dot_color) and a trail of dots.
+    Move the box one hop toward the side with more dots.
+    Tiebreak: prefer right (horizontal) or down (vertical).
+    Returns the modified grid."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the 3x3 box: look for a 3x3 region where edges are one color and center another
+    box_r, box_c = None, None
+    border_color, dot_color = None, None
+    for r in range(h - 2):
+        for c in range(w - 2):
+            center = grid[r + 1][c + 1]
+            if center == bg:
+                continue
+            # Check if all border cells of the 3x3 are the same non-bg, non-center color
+            border_cells = [
+                grid[r][c], grid[r][c + 1], grid[r][c + 2],
+                grid[r + 1][c], grid[r + 1][c + 2],
+                grid[r + 2][c], grid[r + 2][c + 1], grid[r + 2][c + 2],
+            ]
+            if len(set(border_cells)) == 1 and border_cells[0] != bg and border_cells[0] != center:
+                box_r, box_c = r, c
+                border_color = border_cells[0]
+                dot_color = center
+                break
+        if box_r is not None:
+            break
+
+    if box_r is None:
+        return grid
+
+    center_r, center_c = box_r + 1, box_c + 1
+
+    # Find dots along the horizontal or vertical axis through center
+    h_dots_left, h_dots_right = [], []
+    v_dots_up, v_dots_down = [], []
+
+    for c in range(w):
+        if grid[center_r][c] == dot_color and not (box_c <= c <= box_c + 2):
+            if c < box_c:
+                h_dots_left.append(c)
+            elif c > box_c + 2:
+                h_dots_right.append(c)
+
+    for r in range(h):
+        if grid[r][center_c] == dot_color and not (box_r <= r <= box_r + 2):
+            if r < box_r:
+                v_dots_up.append(r)
+            elif r > box_r + 2:
+                v_dots_down.append(r)
+
+    # Determine axis (horizontal or vertical) based on where dots exist
+    h_total = len(h_dots_left) + len(h_dots_right)
+    v_total = len(v_dots_up) + len(v_dots_down)
+
+    if h_total == 0 and v_total == 0:
+        return grid
+
+    output = [row[:] for row in grid]
+
+    if h_total >= v_total:
+        # Horizontal movement
+        if len(h_dots_right) > len(h_dots_left) or (len(h_dots_right) == len(h_dots_left)):
+            # Move right - find nearest dot to the right
+            if h_dots_right:
+                target_c = min(h_dots_right)
+                dc = target_c - center_c
+            else:
+                return grid
+        else:
+            # Move left - find nearest dot to the left
+            if h_dots_left:
+                target_c = max(h_dots_left)
+                dc = target_c - center_c
+            else:
+                return grid
+        dr = 0
+    else:
+        # Vertical movement
+        if len(v_dots_down) > len(v_dots_up) or (len(v_dots_down) == len(v_dots_up)):
+            # Move down
+            if v_dots_down:
+                target_r = min(v_dots_down)
+                dr = target_r - center_r
+            else:
+                return grid
+        else:
+            # Move up
+            if v_dots_up:
+                target_r = max(v_dots_up)
+                dr = target_r - center_r
+            else:
+                return grid
+        dc = 0
+
+    # Clear old box position
+    for r in range(box_r, box_r + 3):
+        for c in range(box_c, box_c + 3):
+            output[r][c] = bg
+
+    # Place dot at old center
+    output[center_r][center_c] = dot_color
+
+    # Place box at new position
+    new_box_r = box_r + dr
+    new_box_c = box_c + dc
+    new_center_r = center_r + dr
+    new_center_c = center_c + dc
+
+    for r in range(new_box_r, new_box_r + 3):
+        for c in range(new_box_c, new_box_c + 3):
+            if 0 <= r < h and 0 <= c < w:
+                output[r][c] = border_color
+    if 0 <= new_center_r < h and 0 <= new_center_c < w:
+        output[new_center_r][new_center_c] = dot_color
+
+    # Clear the dot that was at the new center position (it's now part of the box)
+    # But also clear dots that were covered by the box
+    # The old dot at the new box center is now the center of the box (already set to dot_color)
+
+    return output
+
+
+def overlay_stacked_blocks(grid):
+    """Split grid into N equal horizontal blocks (each block uses one non-zero color).
+    Overlay all blocks with priority order 5 > 4 > 8 > 2 > others.
+    Where all blocks have 0, output 0. Where one block is non-zero, use that color.
+    Where multiple blocks are non-zero, use the higher-priority color.
+    Returns the merged single-block grid."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Detect block count by finding distinct non-zero colors and checking divisibility
+    colors_in_order = []
+    seen = set()
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != 0 and v not in seen:
+                colors_in_order.append(v)
+                seen.add(v)
+
+    n_blocks = len(colors_in_order)
+    if n_blocks == 0 or h % n_blocks != 0:
+        return grid
+
+    block_h = h // n_blocks
+
+    # Priority: 5 > 4 > 8 > 2, then any remaining by descending value
+    priority_order = [5, 4, 8, 2]
+    priority_map = {}
+    rank = 0
+    for c in priority_order:
+        if c in seen:
+            priority_map[c] = rank
+            rank += 1
+    for c in sorted(seen, reverse=True):
+        if c not in priority_map:
+            priority_map[c] = rank
+            rank += 1
+
+    # Build output
+    output = [[0] * w for _ in range(block_h)]
+    for r in range(block_h):
+        for c in range(w):
+            best_color = 0
+            best_priority = float('inf')
+            for b in range(n_blocks):
+                v = grid[b * block_h + r][c]
+                if v != 0 and priority_map.get(v, 999) < best_priority:
+                    best_priority = priority_map[v]
+                    best_color = v
+            output[r][c] = best_color
+
+    return output
+
+
+def bar_chart_difference(grid, bg=7):
+    """On a grid with background `bg`, find vertical bars on every-other column.
+    Bars grow upward from the bottom row. Each bar has a single color (8 or 2).
+    Sum heights of all color-8 bars minus sum of all color-2 bars.
+    Place a new bar of color 5 with that height at the next available column,
+    growing upward from the bottom.
+    Returns the modified grid."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find all bar columns (non-bg vertical runs from the bottom)
+    bars = []  # (col, height, color)
+    max_col = -1
+
+    for c in range(w):
+        # Check if this column has a bottom-aligned bar
+        bar_h = 0
+        bar_color = None
+        for r in range(h - 1, -1, -1):
+            if grid[r][c] != bg:
+                if bar_color is None:
+                    bar_color = grid[r][c]
+                if grid[r][c] == bar_color:
+                    bar_h += 1
+                else:
+                    break
+            else:
+                break
+        if bar_h > 0 and bar_color is not None and bar_color != bg:
+            bars.append((c, bar_h, bar_color))
+            if c > max_col:
+                max_col = c
+
+    if not bars:
+        return grid
+
+    # Compute sum of 8-heights minus sum of 2-heights
+    sum_8 = sum(bh for _, bh, bc in bars if bc == 8)
+    sum_2 = sum(bh for _, bh, bc in bars if bc == 2)
+    new_h = sum_8 - sum_2
+
+    if new_h <= 0:
+        return grid
+
+    # Find the column step (distance between consecutive bar columns)
+    bar_cols = sorted(set(bc for bc, _, _ in bars))
+    if len(bar_cols) >= 2:
+        col_step = bar_cols[1] - bar_cols[0]
+    else:
+        col_step = 2
+
+    # Place new bar at next column
+    new_col = max_col + col_step
+    if new_col >= w:
+        return grid
+
+    for i in range(new_h):
+        r = h - 1 - i
+        if 0 <= r < h:
+            output[r][new_col] = 5
+
+    return output
