@@ -1,5 +1,28 @@
 
 ---
+## Session 63 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 3 failing tasks from session 62 (63/80 = 78.8%):
+- **0692e18c**: Complement self-tiling. 3x3 input → 9x9 output. For each non-bg cell, place the inverted grid (swap color↔0) at that tile position; bg cells → empty blocks.
+- **0962bcdd**: Expand cross pattern into diamond. Each cross (center + 4 orthogonal arms) gets arms extended by 1 and center color placed at diagonal distance-2 corners.
+- **11852cab**: Complete diamond symmetry. A sparse checkerboard-diamond pattern with some missing positions; fill by 4-fold rotational symmetry (90° rotations around center).
+
+### Changes
+1. **New primitive**: `self_tile_complement` — complement self-tiling (invert grid colors, place at non-bg tile positions)
+2. **New primitive**: `expand_cross_diamond` — extend cross arms and add center-color diagonal corners
+3. **New primitive**: `complete_diamond_symmetry` — fill missing diamond positions via 4-fold rotational symmetry
+4. **New concept**: `self_tile_complement.json`
+5. **New concept**: `expand_cross_diamond.json`
+6. **New concept**: `complete_diamond_symmetry.json`
+
+### Regression
+- 0692e18c: CORRECT
+- 0962bcdd: CORRECT
+- 11852cab: CORRECT
+- 08ed6ac7: CORRECT (regression gate)
+
+---
 ## Session 60 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2851,3 +2874,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 82
 - Time: 5120s
 - Log: logs/learn_20260406_110439.log
+
+---
+## Learning Loop -- 2026-04-06 13:05
+
+- Split: training, Tasks: 80
+- Correct: 63 / 80 (78.8%)
+- Rules: 70 -> 70 (+0 learned)
+- Stored rule hits: 63
+- Time: 400s
+- Log: logs/learn_20260406_125915.log
+
+---
+## Learning Loop -- 2026-04-06 13:27
+
+- Split: training, Tasks: 1000
+- Correct: 83 / 1000 (8.3%)
+- Rules: 66 -> 70 (+4 learned)
+- Stored rule hits: 82
+- Time: 6288s
+- Log: logs/learn_20260406_114242.log

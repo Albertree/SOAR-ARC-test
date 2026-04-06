@@ -4293,6 +4293,129 @@ def grid_and_by_separator(grid, output_color=2, bg=0):
 # DECORATE PIXELS BY COLOR
 # ============================================================
 
+def self_tile_complement(grid, bg=0):
+    """Complement self-tiling: for each non-bg cell, place the inverted grid
+    (swap non-bg color with bg) at that tile position. Bg cells become empty blocks.
+    Output size = (H*H) x (W*W)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Find the single non-bg color
+    non_bg = None
+    for row in grid:
+        for c in row:
+            if c != bg:
+                non_bg = c
+                break
+        if non_bg is not None:
+            break
+    if non_bg is None:
+        return [[bg] * (w * w) for _ in range(h * h)]
+    # Build complement: swap bg <-> non_bg
+    complement = [[non_bg if c == bg else bg for c in row] for row in grid]
+    output = [[bg] * (w * w) for _ in range(h * h)]
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                for gr in range(h):
+                    for gc in range(w):
+                        output[r * h + gr][c * w + gc] = complement[gr][gc]
+    return output
+
+
+def expand_cross_diamond(grid, bg=0):
+    """Expand each cross pattern (center + 4 orthogonal arms) into a diamond.
+
+    Finds cross patterns: a center cell with 4 orthogonal neighbors of a different
+    non-bg color. Extends arms by 1 cell and places center color at the 4 diagonal
+    corners at distance 2 from center. Original cross preserved."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    out = [row[:] for row in grid]
+
+    # Find cross centers: non-bg cell with exactly 4 orthogonal neighbors of same other color
+    for r in range(h):
+        for c in range(w):
+            center = grid[r][c]
+            if center == bg:
+                continue
+            # Check 4 orthogonal neighbors
+            arms = []
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < h and 0 <= nc < w and grid[nr][nc] != bg and grid[nr][nc] != center:
+                    arms.append(grid[nr][nc])
+                else:
+                    break
+            else:
+                # All 4 neighbors are non-bg and not center color
+                if len(set(arms)) == 1:
+                    arm_color = arms[0]
+                    # Extend arms by 1 cell
+                    for dr, dc in [(-2, 0), (2, 0), (0, -2), (0, 2)]:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < h and 0 <= nc < w and out[nr][nc] == bg:
+                            out[nr][nc] = arm_color
+                    # Place center color at diagonal corners (distance 2)
+                    for dr, dc in [(-2, -2), (-2, 2), (2, -2), (2, 2)]:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < h and 0 <= nc < w and out[nr][nc] == bg:
+                            out[nr][nc] = center
+                    # Place center color at distance-1 diagonals
+                    for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < h and 0 <= nc < w and out[nr][nc] == bg:
+                            out[nr][nc] = center
+    return out
+
+
+def complete_diamond_symmetry(grid, bg=0):
+    """Complete a diamond/checkerboard pattern by filling missing symmetric positions.
+
+    Finds a sparse diamond-like pattern with alternating colors at even-offset
+    positions. Detects the bounding box and center, then fills missing positions
+    by 4-fold rotational symmetry (90-degree rotations around center)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find all non-bg cells
+    cells = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                cells.append((r, c))
+    if not cells:
+        return [row[:] for row in grid]
+
+    # Find bounding box center
+    min_r = min(r for r, c in cells)
+    max_r = max(r for r, c in cells)
+    min_c = min(c for r, c in cells)
+    max_c = max(c for r, c in cells)
+    center_r = (min_r + max_r) / 2.0
+    center_c = (min_c + max_c) / 2.0
+
+    out = [row[:] for row in grid]
+
+    # For each non-bg cell, apply 4-fold rotational symmetry (90°, 180°, 270°)
+    for r, c in cells:
+        color = grid[r][c]
+        dr = r - center_r
+        dc = c - center_c
+        # 90° CW: (dr, dc) -> (dc, -dr)
+        # 180°:   (dr, dc) -> (-dr, -dc)
+        # 270° CW: (dr, dc) -> (-dc, dr)
+        rotations = [
+            (center_r + dc, center_c - dr),   # 90° CW
+            (center_r - dr, center_c - dc),   # 180°
+            (center_r - dc, center_c + dr),   # 270° CW
+        ]
+        for mr_f, mc_f in rotations:
+            mr, mc = int(round(mr_f)), int(round(mc_f))
+            if 0 <= mr < h and 0 <= mc < w and out[mr][mc] == bg:
+                out[mr][mc] = color
+    return out
+
+
 def decorate_pixels_by_color(grid, bg=0):
     """For each non-bg pixel, add a decoration pattern based on its color.
 

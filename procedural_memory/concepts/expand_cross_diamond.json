@@ -1,0 +1,19 @@
+{
+  "concept_id": "expand_cross_diamond",
+  "version": 1,
+  "description": "Expand each cross pattern (center + 4 arms) into a diamond with extended arms and center color at diagonal corners",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": true,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "color", "default": 0}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "expand_cross_diamond", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
