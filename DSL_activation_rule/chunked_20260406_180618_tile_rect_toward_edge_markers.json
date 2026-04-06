@@ -1,10 +1,10 @@
 {
-  "rule_id": "chunked_20260406_023400_recolor_columns_by_height",
+  "rule_id": "chunked_20260406_180618_tile_rect_toward_edge_markers",
   "source": "chunked",
   "source_tasks": [
-    "08ed6ac7"
+    "c62e2108"
   ],
-  "times_validated": 57,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
@@ -12,16 +12,16 @@
       "color": "DIFF",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "column_wise",
+        "change_pattern": "multi_group",
         "change_scope": "subset",
-        "num_groups_consistent": true,
+        "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "recolor_columns_by_height",
-    "param_source": "inferred(source_color)"
+    "concept": "tile_rect_toward_edge_markers",
+    "param_source": "inferred(bg)"
   }
 }

@@ -5284,3 +5284,224 @@ def template_grid_recolor(grid, bg=0):
                         output[r][c] = new_color
 
     return output
+
+
+def tile_rect_toward_edge_markers(grid, bg=0):
+    """Find hollow/solid colored rectangles and marker lines at grid edges.
+    Tile each rectangle's pattern periodically toward its associated edge markers.
+    The marker color is auto-detected as the non-bg color appearing only on edges."""
+    from collections import deque
+
+    rows = len(grid)
+    cols = len(grid[0]) if rows else 0
+    if rows == 0 or cols == 0:
+        return [r[:] for r in grid]
+
+    # 1. Detect marker color: non-bg color that appears ONLY on border cells
+    border_colors = set()
+    for c in range(cols):
+        if grid[0][c] != bg:
+            border_colors.add(grid[0][c])
+        if grid[rows - 1][c] != bg:
+            border_colors.add(grid[rows - 1][c])
+    for r in range(rows):
+        if grid[r][0] != bg:
+            border_colors.add(grid[r][0])
+        if grid[r][cols - 1] != bg:
+            border_colors.add(grid[r][cols - 1])
+
+    marker_color = None
+    for mc in border_colors:
+        only_edge = True
+        for r in range(1, rows - 1):
+            for c in range(1, cols - 1):
+                if grid[r][c] == mc:
+                    only_edge = False
+                    break
+            if not only_edge:
+                break
+        if only_edge:
+            marker_color = mc
+            break
+
+    if marker_color is None:
+        return [r[:] for r in grid]
+
+    # 2. Find marker segments at each edge
+    def _find_segs(values, mc):
+        segs = []
+        i = 0
+        while i < len(values):
+            if values[i] == mc:
+                start = i
+                while i < len(values) and values[i] == mc:
+                    i += 1
+                segs.append((start, i - 1))
+            else:
+                i += 1
+        return segs
+
+    top_m = _find_segs([grid[0][c] for c in range(cols)], marker_color)
+    bot_m = _find_segs([grid[rows - 1][c] for c in range(cols)], marker_color)
+    left_m = _find_segs([grid[r][0] for r in range(rows)], marker_color)
+    right_m = _find_segs([grid[r][cols - 1] for r in range(rows)], marker_color)
+
+    # 3. Find rectangular blocks (connected components of non-bg, non-marker)
+    visited = [[False] * cols for _ in range(rows)]
+    rects = []
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r][c] != bg and grid[r][c] != marker_color and not visited[r][c]:
+                color = grid[r][c]
+                q = deque([(r, c)])
+                visited[r][c] = True
+                cells = [(r, c)]
+                while q:
+                    cr, cc = q.popleft()
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < rows and 0 <= nc < cols and not visited[nr][nc]:
+                            if grid[nr][nc] == color:
+                                visited[nr][nc] = True
+                                cells.append((nr, nc))
+                                q.append((nr, nc))
+                min_r = min(x[0] for x in cells)
+                max_r = max(x[0] for x in cells)
+                min_c = min(x[1] for x in cells)
+                max_c = max(x[1] for x in cells)
+                pattern = []
+                for pr in range(min_r, max_r + 1):
+                    pattern.append([grid[pr][pc] for pc in range(min_c, max_c + 1)])
+                rects.append({
+                    'top': min_r, 'bottom': max_r,
+                    'left': min_c, 'right': max_c,
+                    'pattern': pattern,
+                    'ph': max_r - min_r + 1,
+                    'pw': max_c - min_c + 1,
+                })
+
+    # 4. Clear markers from result
+    result = [row[:] for row in grid]
+    for r in range(rows):
+        for c in range(cols):
+            if grid[r][c] == marker_color:
+                result[r][c] = bg
+
+    # 5. Match markers to rects and tile
+    for rect in rects:
+        ph, pw = rect['ph'], rect['pw']
+        pat = rect['pattern']
+        rt, rb = rect['top'], rect['bottom']
+        rl, rr = rect['left'], rect['right']
+
+        # Top markers (column span must match rect column span)
+        for ms, me in top_m:
+            if ms == rl and me == rr:
+                for r in range(rt - 1, -1, -1):
+                    pr = ph - 1 - ((rt - 1 - r) % ph)
+                    for c in range(rl, rr + 1):
+                        result[r][c] = pat[pr][c - rl]
+
+        # Bottom markers
+        for ms, me in bot_m:
+            if ms == rl and me == rr:
+                for r in range(rb + 1, rows):
+                    pr = (r - rb - 1) % ph
+                    for c in range(rl, rr + 1):
+                        result[r][c] = pat[pr][c - rl]
+
+        # Left markers (row span must match rect row span)
+        for ms, me in left_m:
+            if ms == rt and me == rb:
+                for c in range(rl - 1, -1, -1):
+                    pc = pw - 1 - ((rl - 1 - c) % pw)
+                    for r in range(rt, rb + 1):
+                        result[r][c] = pat[r - rt][pc]
+
+        # Right markers
+        for ms, me in right_m:
+            if ms == rt and me == rb:
+                for c in range(rr + 1, cols):
+                    pc = (c - rr - 1) % pw
+                    for r in range(rt, rb + 1):
+                        result[r][c] = pat[r - rt][pc]
+
+    return result
+
+
+def corner_blocks_reflect_inward(grid, bg=7):
+    """Find colored rectangular blocks at grid corners.
+    The majority-colored blocks move inward by their block size.
+    Minority-colored blocks stay at their original positions."""
+    rows = len(grid)
+    cols = len(grid[0]) if rows else 0
+    if rows == 0 or cols == 0:
+        return [r[:] for r in grid]
+
+    # Detect corner blocks
+    corners = []  # (name, color, bh, bw, r_start, r_end, c_start, c_end)
+
+    def _detect_corner(start_r, start_c, dr, dc, name):
+        color = grid[start_r][start_c]
+        if color == bg:
+            return
+        bh = 0
+        r = start_r
+        while 0 <= r < rows and grid[r][start_c] == color:
+            bh += 1
+            r += dr
+        bw = 0
+        c = start_c
+        while 0 <= c < cols and grid[start_r][c] == color:
+            bw += 1
+            c += dc
+        r_s = start_r if dr > 0 else start_r - bh + 1
+        c_s = start_c if dc > 0 else start_c - bw + 1
+        corners.append((name, color, bh, bw, r_s, r_s + bh, c_s, c_s + bw))
+
+    _detect_corner(0, 0, 1, 1, 'TL')
+    _detect_corner(0, cols - 1, 1, -1, 'TR')
+    _detect_corner(rows - 1, 0, -1, 1, 'BL')
+    _detect_corner(rows - 1, cols - 1, -1, -1, 'BR')
+
+    if not corners:
+        return [r[:] for r in grid]
+
+    # Count color occurrences
+    color_counts = {}
+    for name, color, bh, bw, rs, re, cs, ce in corners:
+        color_counts[color] = color_counts.get(color, 0) + 1
+
+    majority_color = max(color_counts, key=color_counts.get)
+
+    # Build output
+    result = [[bg] * cols for _ in range(rows)]
+
+    # Place minority blocks at original positions
+    for name, color, bh, bw, rs, re, cs, ce in corners:
+        if color != majority_color:
+            for r in range(rs, re):
+                for c in range(cs, ce):
+                    result[r][c] = color
+
+    # Move majority blocks inward by their block size
+    for name, color, bh, bw, rs, re, cs, ce in corners:
+        if color != majority_color:
+            continue
+        if name == 'TL':
+            nr_s, nc_s = re, ce
+        elif name == 'TR':
+            nr_s, nc_s = re, cs - bw
+        elif name == 'BL':
+            nr_s, nc_s = rs - bh, ce
+        elif name == 'BR':
+            nr_s, nc_s = rs - bh, cs - bw
+        else:
+            continue
+        for r in range(bh):
+            for c in range(bw):
+                rr, cc = nr_s + r, nc_s + c
+                if 0 <= rr < rows and 0 <= cc < cols:
+                    result[rr][cc] = color
+
+    return result

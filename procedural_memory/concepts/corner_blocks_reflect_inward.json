@@ -1,0 +1,19 @@
+{
+  "concept_id": "corner_blocks_reflect_inward",
+  "version": 1,
+  "description": "Move majority-colored corner blocks diagonally inward by their block size; minority stays",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "corner_blocks_reflect_inward", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

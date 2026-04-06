@@ -1,0 +1,19 @@
+{
+  "concept_id": "tile_rect_toward_edge_markers",
+  "version": 1,
+  "description": "Tile hollow/solid rectangles periodically toward marker lines at grid edges",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "bg": {"type": "int", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "tile_rect_toward_edge_markers", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
