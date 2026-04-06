@@ -1,0 +1,17 @@
+{
+  "concept_id": "zigzag_collect_pixels",
+  "version": 1,
+  "description": "Collect scattered non-bg pixels, sort by column, fill 3x3 in snake order",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "zigzag_collect_pixels", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

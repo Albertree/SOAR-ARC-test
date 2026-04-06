@@ -1,19 +1,19 @@
 {
-  "rule_id": "chunked_20260406_085522_panel_hole_classify",
+  "rule_id": "chunked_20260406_092426_zigzag_collect_pixels",
   "source": "chunked",
   "source_tasks": [
-    "995c5fa3"
+    "cdecee7f"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "single_group",
-        "change_scope": "all_cells",
+        "change_scope": "single_object",
         "num_groups_consistent": true,
         "group_anchors_consistent": true
       },
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "panel_hole_classify",
+    "concept": "zigzag_collect_pixels",
     "param_source": "no_params"
   }
 }

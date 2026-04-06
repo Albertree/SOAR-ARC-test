@@ -3820,3 +3820,51 @@ def panel_hole_classify(grid, bg=0, panel_fg=5, sep_color=0):
     # Output: 3 rows x 3 cols, each row uniform color
     n = len(colors)
     return [[colors[i]] * n for i in range(n)]
+
+
+def zigzag_collect_pixels(grid, bg=0):
+    """Collect all non-background pixels from a sparse grid, sort by column
+    position, then fill a 3x3 output in snake/zigzag order (row 0 L->R,
+    row 1 R->L, row 2 L->R).  Remaining cells are bg."""
+    pixels = []
+    h = len(grid)
+    w = len(grid[0]) if h else 0
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                pixels.append((c, grid[r][c]))   # sort key = column
+    pixels.sort(key=lambda t: t[0])
+    values = [v for _, v in pixels]
+
+    out = [[bg] * 3 for _ in range(3)]
+    idx = 0
+    for row in range(3):
+        cols = range(3) if row % 2 == 0 else range(2, -1, -1)
+        for col in cols:
+            if idx < len(values):
+                out[row][col] = values[idx]
+                idx += 1
+    return out
+
+
+def fill_bounding_box_interior(grid, shape_color=8, fill_color=2, bg=0):
+    """Find the bounding box of all cells with shape_color.  Within that
+    bounding box, replace every bg cell with fill_color."""
+    h = len(grid)
+    w = len(grid[0]) if h else 0
+    rmin, rmax, cmin, cmax = h, -1, w, -1
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == shape_color:
+                rmin = min(rmin, r)
+                rmax = max(rmax, r)
+                cmin = min(cmin, c)
+                cmax = max(cmax, c)
+    if rmax < 0:
+        return [row[:] for row in grid]
+    out = [row[:] for row in grid]
+    for r in range(rmin, rmax + 1):
+        for c in range(cmin, cmax + 1):
+            if out[r][c] == bg:
+                out[r][c] = fill_color
+    return out

@@ -1,5 +1,18 @@
 
 ---
+## Session 57 (Claude) -- 2026-04-06
+
+### Changes
+- New primitive: `zigzag_collect_pixels` — collect scattered non-bg pixels, sort by column, fill 3x3 in snake order. Solves cdecee7f.
+- New primitive: `fill_bounding_box_interior` — find bounding box of a shape color, fill interior bg cells with a new color. Solves 6d75e8bb.
+- New concepts: `zigzag_collect_pixels.json`, `fill_bounding_box_interior.json`
+
+### Regression
+- 08ed6ac7: CORRECT
+- cdecee7f: CORRECT
+- 6d75e8bb: CORRECT
+
+---
 ## Session 56 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2662,3 +2675,23 @@ Three architectural features added to the SOAR pipeline:
 - e345f17b: CORRECT
 - a65b410d: CORRECT
 - 995c5fa3: CORRECT
+
+---
+## Learning Loop -- 2026-04-06 09:06
+
+- Split: training, Tasks: 80
+- Correct: 56 / 80 (70.0%)
+- Rules: 56 -> 59 (+3 learned)
+- Stored rule hits: 53
+- Time: 351s
+- Log: logs/learn_20260406_090023.log
+
+---
+## Learning Loop -- 2026-04-06 09:17
+
+- Split: training, Tasks: 1000
+- Correct: 62 / 1000 (6.2%)
+- Rules: 51 -> 59 (+8 learned)
+- Stored rule hits: 64
+- Time: 6913s
+- Log: logs/learn_20260406_072220.log
