@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260406_035059_rank_recolor_columns",
+  "rule_id": "chunked_20260406_132826_zigzag_shear_rect",
   "source": "chunked",
   "source_tasks": [
-    "08ed6ac7"
+    "1c56ad9f"
   ],
-  "times_validated": 59,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "column_wise",
+        "change_pattern": "row_wise",
         "change_scope": "subset",
-        "num_groups_consistent": true,
+        "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "rank_recolor_columns",
-    "param_source": "inferred(bg), inferred(target_color)"
+    "concept": "zigzag_shear_rect",
+    "param_source": "inferred(bg)"
   }
 }
