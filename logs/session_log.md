@@ -1,5 +1,27 @@
 
 ---
+## Session 60 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 3 failing tasks from session 59 (63/80 = 78.8%):
+- **0520fde7**: Grid split by separator column (color 5). Output is the AND of left/right halves — mark with color 2 where both sides have non-bg.
+- **0d3d703e**: Fixed color pair swap: (1↔5), (2↔6), (3↔4), (8↔9). Grid structure preserved, only colors change.
+- **0ca9ddb6**: Decorate isolated pixels — color 1 gets a plus(+) of color 7, color 2 gets an X of color 4. Other colors unchanged.
+
+### Changes
+1. **New primitive**: `grid_and_by_separator` — splits grid by separator row or column, outputs AND of both halves (marks with output_color where both are non-zero).
+2. **New primitive**: `decorate_pixels_by_color` — adds plus/X decorations around pixels based on their color (1→plus/7, 2→X/4).
+3. **New concept**: `grid_and_by_separator.json`
+4. **New concept**: `color_pair_swap.json` — uses existing `recolor` primitive with `color_map_from_arckg` inference.
+5. **New concept**: `decorate_pixels_by_color.json`
+
+### Regression
+- 0520fde7: CORRECT
+- 0d3d703e: CORRECT
+- 0ca9ddb6: CORRECT
+- 08ed6ac7: CORRECT (regression gate)
+
+---
 ## Session 59 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2769,3 +2791,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 74
 - Time: 5403s
 - Log: logs/learn_20260406_090625.log
+
+---
+## Learning Loop -- 2026-04-06 11:04
+
+- Split: training, Tasks: 80
+- Correct: 63 / 80 (78.8%)
+- Rules: 63 -> 66 (+3 learned)
+- Stored rule hits: 60
+- Time: 292s
+- Log: logs/learn_20260406_105937.log
+
+---
+## Learning Loop -- 2026-04-06 11:12
+
+- Split: training, Tasks: 1000
+- Correct: 74 / 1000 (7.4%)
+- Rules: 61 -> 66 (+5 learned)
+- Stored rule hits: 76
+- Time: 5201s
+- Log: logs/learn_20260406_094525.log

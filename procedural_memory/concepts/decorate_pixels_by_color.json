@@ -1,0 +1,17 @@
+{
+  "concept_id": "decorate_pixels_by_color",
+  "version": 1,
+  "description": "Decorate isolated pixels: color 1 gets plus(+) of color 7, color 2 gets X of color 4",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "decorate_pixels_by_color", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

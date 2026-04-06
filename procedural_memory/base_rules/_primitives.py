@@ -4225,3 +4225,110 @@ def bar_chart_difference(grid, bg=7):
             output[r][new_col] = 5
 
     return output
+
+
+# ============================================================
+# GRID AND BY SEPARATOR
+# ============================================================
+
+def grid_and_by_separator(grid, output_color=2, bg=0):
+    """Split grid by a separator (row or column of uniform non-bg color).
+
+    Output marks with output_color where BOTH halves are non-zero (AND).
+    Handles both row separators and column separators.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Try column separator first: a column where all cells are the same non-bg color
+    sep_col = None
+    for c in range(w):
+        vals = set(grid[r][c] for r in range(h))
+        if len(vals) == 1 and list(vals)[0] != bg:
+            sep_col = c
+            break
+
+    if sep_col is not None:
+        left = [row[:sep_col] for row in grid]
+        right = [row[sep_col + 1:] for row in grid]
+        rows = h
+        cols = min(sep_col, w - sep_col - 1)
+        result = []
+        for r in range(rows):
+            row = []
+            for c in range(cols):
+                l_nz = left[r][c] != bg
+                r_nz = right[r][c] != bg
+                row.append(output_color if (l_nz and r_nz) else bg)
+            result.append(row)
+        return result
+
+    # Try row separator
+    sep_row = None
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            sep_row = r
+            break
+
+    if sep_row is not None:
+        top = grid[:sep_row]
+        bottom = grid[sep_row + 1:]
+        rows = min(len(top), len(bottom))
+        cols = w
+        result = []
+        for r in range(rows):
+            row = []
+            for c in range(cols):
+                t_nz = top[r][c] != bg
+                b_nz = bottom[r][c] != bg
+                row.append(output_color if (t_nz and b_nz) else bg)
+            result.append(row)
+        return result
+
+    return [row[:] for row in grid]
+
+
+# ============================================================
+# DECORATE PIXELS BY COLOR
+# ============================================================
+
+def decorate_pixels_by_color(grid, bg=0):
+    """For each non-bg pixel, add a decoration pattern based on its color.
+
+    Color 1 -> plus sign (+) of color 7 in the 4 orthogonal neighbors.
+    Color 2 -> X pattern of color 4 in the 4 diagonal neighbors.
+    Other colors -> left unchanged, no decoration.
+
+    Original pixels are preserved. Decorations only overwrite bg cells.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    out = [row[:] for row in grid]
+
+    # Collect all non-bg pixels and their decorations
+    decorations = []
+    for r in range(h):
+        for c in range(w):
+            val = grid[r][c]
+            if val == bg:
+                continue
+            if val == 1:
+                # Plus pattern with color 7
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < h and 0 <= nc < w:
+                        decorations.append((nr, nc, 7))
+            elif val == 2:
+                # X pattern with color 4
+                for dr, dc in [(-1, -1), (-1, 1), (1, -1), (1, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < h and 0 <= nc < w:
+                        decorations.append((nr, nc, 4))
+
+    # Apply decorations only to bg cells
+    for r, c, color in decorations:
+        if out[r][c] == bg:
+            out[r][c] = color
+
+    return out
