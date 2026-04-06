@@ -1,5 +1,24 @@
 
 ---
+## Session 68 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 2 failing tasks from session 67 (66/80 = 82.5%):
+- **8731374e**: Extract rectangle from noisy grid, find defect pixels inside, extend defect rows/columns into full cross pattern. Rectangle detected via largest connected component of dominant color, with edge-trimming refinement.
+- **09629e4f**: Grid divided by separator lines into NxN cells. One cell has fewer non-zero pixels (reference cell). Color positions within the reference cell determine which grid cell gets uniformly filled with that color.
+
+### Changes
+1. **New primitive**: `rect_defect_cross` — finds rectangle embedded in noise via connected components, identifies defect pixels, fills their entire rows and columns with the defect color
+2. **New primitive**: `separator_grid_reference_fill` — finds reference cell in separator-divided grid, maps color positions to grid cell fills
+3. **New concept**: `rect_defect_cross.json`
+4. **New concept**: `separator_grid_reference_fill.json`
+
+### Regression
+- 8731374e: CORRECT
+- 09629e4f: CORRECT
+- 08ed6ac7: CORRECT (regression gate)
+
+---
 ## Session 63 (Claude) -- 2026-04-06
 
 ### Analysis
@@ -2954,3 +2973,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 64
 - Time: 295s
 - Log: logs/learn_20260406_153024.log
+
+---
+## Learning Loop -- 2026-04-06 16:16
+
+- Split: training, Tasks: 80
+- Correct: 66 / 80 (82.5%)
+- Rules: 82 -> 82 (+0 learned)
+- Stored rule hits: 66
+- Time: 340s
+- Log: logs/learn_20260406_161109.log
+
+---
+## Learning Loop -- 2026-04-06 16:20
+
+- Split: training, Tasks: 1000
+- Correct: 94 / 1000 (9.4%)
+- Rules: 76 -> 82 (+6 learned)
+- Stored rule hits: 93
+- Time: 5103s
+- Log: logs/learn_20260406_145538.log

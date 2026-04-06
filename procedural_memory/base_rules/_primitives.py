@@ -4822,3 +4822,209 @@ def shape_template_recolor(grid, template_color=3, sep_color=5):
                 output[r][c] = new_color
 
     return output
+
+
+def rect_defect_cross(grid, bg=None):
+    """Extract a rectangle of uniform color from a noisy grid, then fill
+    entire rows and columns at defect-pixel positions with the defect color.
+
+    The grid has random noise everywhere except for one axis-aligned rectangle
+    filled mostly with a single dominant color.  A few cells inside the rect
+    hold a different 'defect' color.  The output is the rectangle with every
+    row and column that contained a defect fully filled with the defect color.
+    """
+    from collections import deque
+
+    h, w = len(grid), len(grid[0])
+
+    # Find the rectangle via largest connected component per color.
+    # The rectangle's dominant color forms a large component; noise does not.
+    best = None  # (area, r0, r1, c0, c1, dom_color)
+    for color in range(10):
+        visited = [[False]*w for _ in range(h)]
+        for sr in range(h):
+            for sc in range(w):
+                if grid[sr][sc] != color or visited[sr][sc]:
+                    continue
+                # BFS for connected component
+                queue = deque([(sr, sc)])
+                visited[sr][sc] = True
+                rmin, rmax, cmin, cmax = sr, sr, sc, sc
+                size = 0
+                while queue:
+                    r, c = queue.popleft()
+                    size += 1
+                    rmin = min(rmin, r)
+                    rmax = max(rmax, r)
+                    cmin = min(cmin, c)
+                    cmax = max(cmax, c)
+                    for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                        nr, nc = r+dr, c+dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == color:
+                            visited[nr][nc] = True
+                            queue.append((nr, nc))
+                rh = rmax - rmin + 1
+                rw = cmax - cmin + 1
+                if rh < 3 or rw < 3:
+                    continue
+                area = rh * rw
+                density = size / area
+                if density < 0.7:
+                    continue
+                if best is None or area > best[0]:
+                    best = (area, rmin, rmax, cmin, cmax, color)
+
+    if best is None:
+        return grid
+
+    _, r0, r1, c0, c1, dom_color = best
+
+    # Refine bounding box by trimming edges with low density of dom_color.
+    # Noise pixels adjacent to the rectangle can inflate the bbox by 1-2 cells.
+    def row_density(r):
+        return sum(1 for c in range(c0, c1+1) if grid[r][c] == dom_color) / (c1 - c0 + 1)
+
+    def col_density(c):
+        return sum(1 for r in range(r0, r1+1) if grid[r][c] == dom_color) / (r1 - r0 + 1)
+
+    trim_thresh = 0.7
+    while r0 < r1 and row_density(r0) < trim_thresh:
+        r0 += 1
+    while r1 > r0 and row_density(r1) < trim_thresh:
+        r1 -= 1
+    while c0 < c1 and col_density(c0) < trim_thresh:
+        c0 += 1
+    while c1 > c0 and col_density(c1) < trim_thresh:
+        c1 -= 1
+
+    rh = r1 - r0 + 1
+    rw = c1 - c0 + 1
+
+    # Find defect color and positions
+    defect_color = None
+    defect_rows = set()
+    defect_cols = set()
+    for r in range(r0, r1+1):
+        for c in range(c0, c1+1):
+            v = grid[r][c]
+            if v != dom_color:
+                if defect_color is None:
+                    defect_color = v
+                defect_rows.add(r - r0)
+                defect_cols.add(c - c0)
+
+    if defect_color is None:
+        return [[dom_color]*rw for _ in range(rh)]
+
+    # Fill entire rows and columns at defect positions
+    output = []
+    for r in range(rh):
+        row = []
+        for c in range(rw):
+            if r in defect_rows or c in defect_cols:
+                row.append(defect_color)
+            else:
+                row.append(dom_color)
+        output.append(row)
+
+    return output
+
+
+def separator_grid_reference_fill(grid, bg=0):
+    """Grid divided into NxN cells by separator lines (a single non-bg color).
+    One cell has fewer non-zero non-separator pixels (the reference cell).
+    The positions of colors within that reference cell determine which
+    grid cell gets filled uniformly with that color.
+
+    Steps:
+    1. Find separator rows/cols, extract cells
+    2. Find the reference cell (one with fewest non-zero non-separator pixels)
+    3. Map color positions in reference cell to grid cell indices
+    4. Fill output: separator stays, colored cells get uniform fill, rest are 0
+    """
+    h, w = len(grid), len(grid[0])
+
+    # Find separator color and lines
+    seps = find_separator_lines(grid, bg=bg)
+    sep_rows = [idx for idx, _ in seps.get("rows", [])]
+    sep_cols = [idx for idx, _ in seps.get("cols", [])]
+
+    if not sep_rows or not sep_cols:
+        return grid
+
+    sep_color = seps["rows"][0][1] if seps.get("rows") else seps["cols"][0][1]
+
+    # Extract cell boundaries
+    row_bounds = []
+    prev = 0
+    for sr in sorted(sep_rows):
+        if sr > prev:
+            row_bounds.append((prev, sr))
+        prev = sr + 1
+    if prev < h:
+        row_bounds.append((prev, h))
+
+    col_bounds = []
+    prev = 0
+    for sc in sorted(sep_cols):
+        if sc > prev:
+            col_bounds.append((prev, sc))
+        prev = sc + 1
+    if prev < w:
+        col_bounds.append((prev, w))
+
+    n_rows = len(row_bounds)
+    n_cols = len(col_bounds)
+
+    if n_rows == 0 or n_cols == 0:
+        return grid
+
+    # Extract cell contents (non-bg, non-separator colors)
+    cell_pixel_counts = {}
+    cell_colors = {}  # (gi, gj) -> {color: [(local_r, local_c), ...]}
+    for gi, (r0, r1) in enumerate(row_bounds):
+        for gj, (c0, c1) in enumerate(col_bounds):
+            colors = {}
+            count = 0
+            for r in range(r0, r1):
+                for c in range(c0, c1):
+                    v = grid[r][c]
+                    if v != bg and v != sep_color:
+                        colors.setdefault(v, []).append((r - r0, c - c0))
+                        count += 1
+            cell_colors[(gi, gj)] = colors
+            cell_pixel_counts[(gi, gj)] = count
+
+    # Find reference cell: the one with fewest non-zero pixels
+    ref_cell = min(cell_pixel_counts, key=cell_pixel_counts.get)
+    ref_colors = cell_colors[ref_cell]
+
+    # Map: for each color in reference cell, its position within the cell
+    # maps to a grid cell index
+    color_to_grid_cell = {}
+    for color, positions in ref_colors.items():
+        if len(positions) == 1:
+            lr, lc = positions[0]
+            if lr < n_rows and lc < n_cols:
+                color_to_grid_cell[color] = (lr, lc)
+
+    # Build output
+    output = [[bg]*w for _ in range(h)]
+
+    # Restore separator lines
+    for sr in sep_rows:
+        for c in range(w):
+            output[sr][c] = sep_color
+    for sc in sep_cols:
+        for r in range(h):
+            output[r][sc] = sep_color
+
+    # Fill colored cells
+    for color, (tgi, tgj) in color_to_grid_cell.items():
+        r0, r1 = row_bounds[tgi]
+        c0, c1 = col_bounds[tgj]
+        for r in range(r0, r1):
+            for c in range(c0, c1):
+                output[r][c] = color
+
+    return output
