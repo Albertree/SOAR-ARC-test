@@ -1,0 +1,20 @@
+{
+  "concept_id": "shape_template_recolor",
+  "version": 1,
+  "description": "Match marker-colored shapes to template shapes (above separator) by rotation/reflection-invariant shape comparison, then recolor",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": null,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "template_color": {"type": "int", "infer": "from_examples", "candidates": [1, 2, 3, 4, 5, 6, 7, 8, 9]},
+    "sep_color": {"type": "int", "infer": "from_examples", "candidates": [1, 2, 3, 4, 5, 6, 7, 8, 9]}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "shape_template_recolor", "args": {"grid": "$input", "template_color": "$template_color", "sep_color": "$sep_color"}, "output": "result"}
+  ],
+  "result": "$result"
+}

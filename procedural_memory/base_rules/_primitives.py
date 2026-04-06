@@ -513,26 +513,42 @@ def recolor_objects_by_size(grid, bg=0):
 
 
 def reverse_concentric_rings(grid):
-    """Cycle the colors of concentric rectangular rings.
-    Extracts the unique ring colors from outside-in, then builds a
-    cyclic substitution where each color maps to the previous unique
-    color (with wraparound).  This rotates the ring palette by one
-    position rather than fully reversing it."""
+    """Reverse the color order of concentric rectangular rings.
+    Extracts the ring color at each depth from outside-in, then maps
+    each ring depth to the color of the mirror-opposite depth."""
     h = len(grid)
     w = len(grid[0]) if grid else 0
     if h == 0 or w == 0:
         return [row[:] for row in grid]
 
-    # Extract ring colors from outside in (may contain duplicates)
+    # Extract ring color at each depth from outside in
+    max_depth = min(h, w) // 2 + (min(h, w) % 2)
     ring_colors = []
-    top, left, bottom, right = 0, 0, h - 1, w - 1
-    while top <= bottom and left <= right:
-        color = grid[top][left]
-        ring_colors.append(color)
-        top += 1
-        left += 1
-        bottom -= 1
-        right -= 1
+    for d in range(max_depth):
+        ring_colors.append(grid[d][d])
+
+    # Build reversal mapping: ring at depth d gets color of ring at depth (n-1-d)
+    n = len(ring_colors)
+    mapping = {}
+    for d in range(n):
+        mapping[ring_colors[d]] = ring_colors[n - 1 - d]
+
+    # Apply mapping as a recolor
+    return [[mapping.get(v, v) for v in row] for row in grid]
+
+
+def cycle_concentric_rings(grid):
+    """Cycle the colors of concentric rectangular rings by one position.
+    Each ring's color maps to the previous ring's color (with wraparound)."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    max_depth = min(h, w) // 2 + (min(h, w) % 2)
+    ring_colors = []
+    for d in range(max_depth):
+        ring_colors.append(grid[d][d])
 
     # Unique colors preserving outer-to-inner order
     seen = set()
@@ -547,7 +563,6 @@ def reverse_concentric_rings(grid):
     for i, c in enumerate(unique):
         mapping[c] = unique[(i - 1) % len(unique)]
 
-    # Apply mapping as a recolor
     return [[mapping.get(v, v) for v in row] for row in grid]
 
 
@@ -4688,5 +4703,122 @@ def straighten_parallelogram(grid, bg=0):
                     nc = c + 1
                     if nc < w:
                         output[r][nc] = color
+
+    return output
+
+
+def shape_template_recolor(grid, template_color=3, sep_color=5):
+    """Match colored shapes to templates using rotation/reflection-invariant
+    shape comparison, then recolor template_color objects to matching template color.
+
+    The grid has an L-shaped separator (sep_color) forming a horizontal bar and
+    vertical bar. Template shapes (non-0, non-sep, non-template_color) are in the
+    region bounded by the separator. All template_color objects get matched by
+    canonical shape and recolored.
+    """
+    from collections import deque
+
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h == 0 or w == 0:
+        return [row[:] for row in grid]
+
+    # Find separator lines: row and column with the most sep_color cells
+    row_counts = [(sum(1 for c in range(w) if grid[r][c] == sep_color), r) for r in range(h)]
+    col_counts = [(sum(1 for r in range(h) if grid[r][c] == sep_color), c) for c in range(w)]
+    max_row_count, sep_row = max(row_counts)
+    max_col_count, sep_col = max(col_counts)
+
+    # Need at least 3 sep_color cells to count as a separator
+    if max_row_count < 3:
+        sep_row = None
+    if max_col_count < 3:
+        sep_col = None
+
+    if sep_row is None and sep_col is None:
+        return [row[:] for row in grid]
+
+    # BFS to find connected components of a given color set
+    def find_objects(color_set):
+        visited = [[False] * w for _ in range(h)]
+        objects = []
+        for r in range(h):
+            for c in range(w):
+                if grid[r][c] in color_set and not visited[r][c]:
+                    obj_color = grid[r][c]
+                    cells = []
+                    q = deque([(r, c)])
+                    visited[r][c] = True
+                    while q:
+                        cr, cc = q.popleft()
+                        cells.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc]:
+                                if grid[nr][nc] == obj_color:
+                                    visited[nr][nc] = True
+                                    q.append((nr, nc))
+                    objects.append((obj_color, cells))
+        return objects
+
+    # Canonical shape: normalize positions, generate all 8 dihedral transforms, pick min
+    def canonical(cells):
+        if not cells:
+            return frozenset()
+        min_r = min(r for r, c in cells)
+        min_c = min(c for r, c in cells)
+        pts = [(r - min_r, c - min_c) for r, c in cells]
+
+        def normalize(ps):
+            mr = min(r for r, c in ps)
+            mc = min(c for r, c in ps)
+            return frozenset((r - mr, c - mc) for r, c in ps)
+
+        transforms = []
+        # Identity and rotations
+        cur = pts
+        for _ in range(4):
+            transforms.append(normalize(cur))
+            cur = [(-c, r) for r, c in cur]  # 90° CW
+        # Reflect and rotations
+        cur = [(r, -c) for r, c in pts]
+        for _ in range(4):
+            transforms.append(normalize(cur))
+            cur = [(-c, r) for r, c in cur]
+
+        return min(transforms, key=lambda s: sorted(s))
+
+    # Extract template objects (in the separator-bounded region)
+    template_region_colors = set()
+    all_objects = find_objects(
+        set(range(10)) - {0, sep_color}
+    )
+
+    # Determine which objects are templates (in separator-bounded region)
+    templates = {}  # canonical_shape -> color
+    for obj_color, cells in all_objects:
+        if obj_color == template_color:
+            continue
+        # Check if object is in the template region (above sep_row, left of sep_col)
+        in_template = False
+        if sep_row is not None and sep_col is not None:
+            in_template = all(r < sep_row and c < sep_col for r, c in cells)
+        elif sep_row is not None:
+            in_template = all(r < sep_row for r, c in cells)
+        elif sep_col is not None:
+            in_template = all(c < sep_col for r, c in cells)
+        if in_template:
+            canon = canonical(cells)
+            templates[canon] = obj_color
+
+    # Recolor all template_color objects by matching to templates
+    output = [row[:] for row in grid]
+    target_objects = find_objects({template_color})
+    for _, cells in target_objects:
+        canon = canonical(cells)
+        if canon in templates:
+            new_color = templates[canon]
+            for r, c in cells:
+                output[r][c] = new_color
 
     return output

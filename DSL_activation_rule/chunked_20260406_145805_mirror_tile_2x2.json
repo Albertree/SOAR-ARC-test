@@ -1,10 +1,10 @@
 {
-  "rule_id": "chunked_20260406_023328_reverse_concentric_rings",
+  "rule_id": "chunked_20260406_145805_mirror_tile_2x2",
   "source": "chunked",
   "source_tasks": [
-    "85c4e7cd"
+    "0c786b71"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
@@ -13,15 +13,15 @@
       "contents": {
         "type": "DIFF",
         "change_pattern": "scattered",
-        "change_scope": "subset",
+        "change_scope": "single_object",
         "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
-      "size": "COMM"
+      "size": "DIFF"
     }
   },
   "action": {
-    "concept": "reverse_concentric_rings",
+    "concept": "mirror_tile_2x2",
     "param_source": "no_params"
   }
 }
