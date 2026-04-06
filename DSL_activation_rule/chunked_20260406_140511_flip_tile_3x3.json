@@ -1,10 +1,10 @@
 {
-  "rule_id": "chunked_20260406_133241_expand_cross_diamond",
+  "rule_id": "chunked_20260406_140511_flip_tile_3x3",
   "source": "chunked",
   "source_tasks": [
-    "0962bcdd"
+    "00576224"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
@@ -15,13 +15,13 @@
         "change_pattern": "column_wise",
         "change_scope": "subset",
         "num_groups_consistent": true,
-        "group_anchors_consistent": false
+        "group_anchors_consistent": true
       },
-      "size": "COMM"
+      "size": "DIFF"
     }
   },
   "action": {
-    "concept": "expand_cross_diamond",
-    "param_source": "inferred(bg)"
+    "concept": "flip_tile_3x3",
+    "param_source": "inferred(reps)"
   }
 }

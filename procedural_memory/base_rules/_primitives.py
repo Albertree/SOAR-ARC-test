@@ -4455,3 +4455,145 @@ def decorate_pixels_by_color(grid, bg=0):
             out[r][c] = color
 
     return out
+
+
+def seed_stripe_tile(grid, bg=0):
+    """Two seed pixels define a repeating stripe pattern that tiles across the grid.
+
+    Finds exactly 2 non-bg pixels. Determines orientation:
+    - If |Δcol| < |Δrow|: vertical stripes (columns repeat rightward from first pixel)
+    - If |Δrow| < |Δcol|: horizontal stripes (rows repeat downward from first pixel)
+    - If equal: vertical stripes.
+
+    The two seed positions define the pattern period. Stripes fill entire rows/columns
+    and repeat to the grid edge. Cells before the first seed position stay bg.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the two non-bg pixels
+    pixels = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg:
+                pixels.append((r, c, grid[r][c]))
+    if len(pixels) != 2:
+        return [row[:] for row in grid]
+
+    (r1, c1, color1), (r2, c2, color2) = pixels
+    dr = abs(r2 - r1)
+    dc = abs(c2 - c1)
+
+    output = [[bg] * w for _ in range(h)]
+
+    # Same column or dc > dr → horizontal stripes (fill entire rows)
+    # Same row or dc <= dr → vertical stripes (fill entire columns)
+    if dc == 0 or (dr != 0 and dc > dr):
+        # Horizontal stripes: use row positions, fill entire rows
+        if r1 > r2:
+            r1, r2 = r2, r1
+            color1, color2 = color2, color1
+        period = r2 - r1
+        if period == 0:
+            return [row[:] for row in grid]
+        row = r1
+        idx = 0
+        while row < h:
+            fill_color = color1 if idx % 2 == 0 else color2
+            for c in range(w):
+                output[row][c] = fill_color
+            row += period
+            idx += 1
+    else:
+        # Vertical stripes: use column positions, fill entire columns
+        if c1 > c2:
+            c1, c2 = c2, c1
+            color1, color2 = color2, color1
+        period = c2 - c1
+        if period == 0:
+            return [row[:] for row in grid]
+        col = c1
+        idx = 0
+        while col < w:
+            fill_color = color1 if idx % 2 == 0 else color2
+            for r in range(h):
+                output[r][col] = fill_color
+            col += period
+            idx += 1
+
+    return output
+
+
+def straighten_parallelogram(grid, bg=0):
+    """Reduce the lean of each parallelogram object by 1 step.
+
+    Groups cells by color (not 4-connectivity, since diagonal edges break BFS).
+    For each color group:
+    - The bottom edge is anchored (stays fixed).
+    - All rows except the bottom shift right by 1.
+    - The rightmost pixel of the second-to-last row also stays fixed.
+
+    This effectively "straightens" a leaning parallelogram by reducing
+    its shear by one column.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [[bg] * w for _ in range(h)]
+
+    # Group cells by color
+    color_groups = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_groups.setdefault(v, []).append((r, c))
+
+    for color, positions in color_groups.items():
+        # Group positions by row
+        rows = {}
+        for r, c in positions:
+            rows.setdefault(r, []).append(c)
+        for r in rows:
+            rows[r].sort()
+
+        sorted_rows = sorted(rows.keys())
+        if len(sorted_rows) <= 1:
+            for r, c in positions:
+                output[r][c] = color
+            continue
+
+        bottom_row = sorted_rows[-1]
+        second_last_row = sorted_rows[-2]
+
+        # Check if the object has a lean (top-left is to the left of bottom-left)
+        left_edges = {r: min(cols) for r, cols in rows.items()}
+        top_left = left_edges[sorted_rows[0]]
+        bot_left = left_edges[bottom_row]
+        if top_left >= bot_left:
+            # No lean — just copy
+            for r, c in positions:
+                output[r][c] = color
+            continue
+
+        # Apply: shift each row right by 1, except bottom row
+        for r in sorted_rows:
+            cols = rows[r]
+            if r == bottom_row:
+                for c in cols:
+                    output[r][c] = color
+            elif r == second_last_row:
+                right_max = max(cols)
+                for c in cols:
+                    if c == right_max:
+                        output[r][c] = color
+                    else:
+                        nc = c + 1
+                        if nc < w:
+                            output[r][nc] = color
+            else:
+                for c in cols:
+                    nc = c + 1
+                    if nc < w:
+                        output[r][nc] = color
+
+    return output
