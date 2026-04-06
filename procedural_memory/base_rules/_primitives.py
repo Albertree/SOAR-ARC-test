@@ -906,3 +906,152 @@ def swap_quadrant_shapes(grid, separator=0):
                         output[r][c] = left_bg if (lr, rc) in left_shape else right_bg
 
     return output
+
+
+def arrow_ray_to_edge(grid):
+    """Find arrow/cross-shaped objects with a unique center color.
+    Each object is made of a 'body' color with one cell of a different 'center' color.
+    The shape points in the direction where it has no arm from the center.
+    Fill the edge row/column in that direction with the center color,
+    draw dotted trail every 2 cells from center to edge.
+    Where two edge fills meet at a corner, place 0."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+    output = [row[:] for row in grid]
+
+    # Find connected components of non-bg cells
+    visited = set()
+    objects = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp = []
+            queue = [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] != bg:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            objects.append(comp)
+
+    # For each object, find center color and body color
+    rays = []  # (center_r, center_c, center_color, direction)
+    for comp in objects:
+        color_counts = {}
+        for r, c in comp:
+            v = grid[r][c]
+            color_counts[v] = color_counts.get(v, 0) + 1
+
+        if len(color_counts) < 2:
+            continue
+
+        # Center color appears exactly once
+        center_color = None
+        body_color = None
+        for color, count in color_counts.items():
+            if count == 1:
+                center_color = color
+            else:
+                if body_color is None or count > color_counts.get(body_color, 0):
+                    body_color = color
+
+        if center_color is None or body_color is None:
+            continue
+
+        # Find center position
+        center_r, center_c = None, None
+        for r, c in comp:
+            if grid[r][c] == center_color:
+                center_r, center_c = r, c
+                break
+
+        # Check which directions have body cells extending from center
+        body_positions = [(r, c) for r, c in comp if grid[r][c] == body_color]
+        has_up = any(r < center_r and c == center_c for r, c in body_positions)
+        has_down = any(r > center_r and c == center_c for r, c in body_positions)
+        has_left = any(c < center_c and r == center_r for r, c in body_positions)
+        has_right = any(c > center_c and r == center_r for r, c in body_positions)
+
+        # Direction is where there's NO arm
+        if not has_up and (has_down or has_left or has_right):
+            direction = "up"
+        elif not has_down and (has_up or has_left or has_right):
+            direction = "down"
+        elif not has_left and (has_up or has_down or has_right):
+            direction = "left"
+        elif not has_right and (has_up or has_down or has_left):
+            direction = "right"
+        else:
+            continue
+
+        rays.append((center_r, center_c, center_color, direction))
+
+    # Determine which edges get filled
+    edge_fills = {}
+    for cr, cc, color, direction in rays:
+        if direction == "up":
+            edge_fills["top"] = color
+        elif direction == "down":
+            edge_fills["bottom"] = color
+        elif direction == "left":
+            edge_fills["left"] = color
+        elif direction == "right":
+            edge_fills["right"] = color
+
+    # Fill edges
+    if "top" in edge_fills:
+        for c in range(w):
+            output[0][c] = edge_fills["top"]
+    if "bottom" in edge_fills:
+        for c in range(w):
+            output[h - 1][c] = edge_fills["bottom"]
+    if "left" in edge_fills:
+        for r in range(h):
+            output[r][0] = edge_fills["left"]
+    if "right" in edge_fills:
+        for r in range(h):
+            output[r][w - 1] = edge_fills["right"]
+
+    # Place 0 at corners where two edges meet
+    corners = []
+    if "top" in edge_fills and "left" in edge_fills:
+        corners.append((0, 0))
+    if "top" in edge_fills and "right" in edge_fills:
+        corners.append((0, w - 1))
+    if "bottom" in edge_fills and "left" in edge_fills:
+        corners.append((h - 1, 0))
+    if "bottom" in edge_fills and "right" in edge_fills:
+        corners.append((h - 1, w - 1))
+    for r, c in corners:
+        output[r][c] = 0
+
+    # Draw dotted trails from each center to the edge
+    for cr, cc, color, direction in rays:
+        if direction == "up":
+            r = cr - 2
+            while r > 0:
+                output[r][cc] = color
+                r -= 2
+        elif direction == "down":
+            r = cr + 2
+            while r < h - 1:
+                output[r][cc] = color
+                r += 2
+        elif direction == "left":
+            c = cc - 2
+            while c > 0:
+                output[cr][c] = color
+                c -= 2
+        elif direction == "right":
+            c = cc + 2
+            while c < w - 1:
+                output[cr][c] = color
+                c += 2
+
+    return output
