@@ -1,0 +1,19 @@
+{
+  "concept_id": "swap_quadrant_shapes",
+  "version": 1,
+  "description": "Grid divided by separator into quadrants; left-right pairs swap shapes (different bg) or erase (same bg)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "separator": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "swap_quadrant_shapes", "args": {"grid": "$input", "separator": "$separator"}, "output": "result"}
+  ],
+  "result": "$result"
+}

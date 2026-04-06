@@ -811,3 +811,98 @@ def connect_waypoints(grid, bg=0):
             break
 
     return output
+
+
+def swap_quadrant_shapes(grid, separator=0):
+    """Grid divided into quadrants by separator rows/cols.
+    For each left-right pair of quadrants:
+      - Same bg color: erase both shapes (fill with bg)
+      - Different bg: swap shapes, recoloring each with the other's bg color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator rows and cols
+    sep_rows = [r for r in range(h) if all(grid[r][c] == separator for c in range(w))]
+    sep_cols = [c for c in range(w) if all(grid[r][c] == separator for r in range(h))]
+
+    # Group consecutive separators into bands
+    def group_consecutive(indices):
+        if not indices:
+            return []
+        bands = []
+        start = indices[0]
+        for i in range(1, len(indices)):
+            if indices[i] != indices[i - 1] + 1:
+                bands.append((start, indices[i - 1]))
+                start = indices[i]
+        bands.append((start, indices[-1]))
+        return bands
+
+    row_bands = group_consecutive(sep_rows)
+    col_bands = group_consecutive(sep_cols)
+
+    # Determine quadrant row/col ranges
+    def get_ranges(bands, total):
+        ranges = []
+        prev_end = 0
+        for bs, be in bands:
+            if prev_end < bs:
+                ranges.append((prev_end, bs))
+            prev_end = be + 1
+        if prev_end < total:
+            ranges.append((prev_end, total))
+        return ranges
+
+    quad_rows = get_ranges(row_bands, h)
+    quad_cols = get_ranges(col_bands, w)
+
+    output = [row[:] for row in grid]
+
+    def find_bg(quad):
+        counts = {}
+        for row in quad:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        return max(counts, key=counts.get)
+
+    for qr_start, qr_end in quad_rows:
+        for qi in range(0, len(quad_cols) - 1, 2):
+            lcs, lce = quad_cols[qi]
+            rcs, rce = quad_cols[qi + 1]
+
+            left_q = [grid[r][lcs:lce] for r in range(qr_start, qr_end)]
+            right_q = [grid[r][rcs:rce] for r in range(qr_start, qr_end)]
+
+            left_bg = find_bg(left_q)
+            right_bg = find_bg(right_q)
+            qh = qr_end - qr_start
+
+            if left_bg == right_bg:
+                for r in range(qr_start, qr_end):
+                    for c in range(lcs, lce):
+                        output[r][c] = left_bg
+                    for c in range(rcs, rce):
+                        output[r][c] = right_bg
+            else:
+                lw = lce - lcs
+                rw = rce - rcs
+                left_shape = {}
+                right_shape = {}
+                for lr in range(qh):
+                    for lc in range(lw):
+                        if left_q[lr][lc] != left_bg:
+                            left_shape[(lr, lc)] = True
+                    for rc in range(rw):
+                        if right_q[lr][rc] != right_bg:
+                            right_shape[(lr, rc)] = True
+
+                for r in range(qr_start, qr_end):
+                    lr = r - qr_start
+                    for c in range(lcs, lce):
+                        lc = c - lcs
+                        output[r][c] = right_bg if (lr, lc) in right_shape else left_bg
+                    for c in range(rcs, rce):
+                        rc = c - rcs
+                        output[r][c] = left_bg if (lr, rc) in left_shape else right_bg
+
+    return output
