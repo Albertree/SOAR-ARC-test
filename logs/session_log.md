@@ -418,3 +418,23 @@
 - Stored rule hits: 13
 - Time: 86s
 - Log: logs/learn_20260406_094019.log
+
+---
+## Learning Loop -- 2026-04-06 09:54
+
+- Split: training, Tasks: 20
+- Correct: 14 / 20 (70.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 14
+- Time: 74s
+- Log: logs/learn_20260406_095251.log
+
+---
+## Learning Loop -- 2026-04-06 09:54
+
+- Split: training, Tasks: 1000
+- Correct: 16 / 1000 (1.6%)
+- Rules: 14 -> 16 (+2 learned)
+- Stored rule hits: 17
+- Time: 5954s
+- Log: logs/learn_20260406_081521.log
