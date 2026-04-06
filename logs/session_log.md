@@ -1,5 +1,24 @@
 
 ---
+## Session 58 (Claude) -- 2026-04-06
+
+### Analysis
+Picked 2 failing tasks from session 57 (58/80 = 72.5%):
+- **29623171**: Grid divided by separator lines (color 5) into 3x3 sections. Count non-bg dots per section; fill sections with the max count, clear others.
+- **070dd51e**: Pairs of same-colored pixels on a sparse grid. Connect each pair with a horizontal or vertical line. Vertical lines take priority at intersections.
+
+### Changes
+1. **New primitive**: `separator_grid_max_fill` — finds separator rows/cols, counts content cells per section, fills max-count sections, clears rest.
+2. **New primitive**: `connect_dot_pairs` — groups pixels by color (pairs), draws h/v lines between them, vertical lines overwrite at crossings.
+3. **New concept**: `separator_grid_max_fill.json`
+4. **New concept**: `connect_dot_pairs.json`
+
+### Regression
+- 29623171: CORRECT
+- 070dd51e: CORRECT
+- 08ed6ac7: CORRECT (regression gate)
+
+---
 ## Session 57 (Claude) -- 2026-04-06
 
 ### Changes
@@ -2695,3 +2714,23 @@ Three architectural features added to the SOAR pipeline:
 - Stored rule hits: 64
 - Time: 6913s
 - Log: logs/learn_20260406_072220.log
+
+---
+## Learning Loop -- 2026-04-06 09:45
+
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%)
+- Rules: 59 -> 61 (+2 learned)
+- Stored rule hits: 56
+- Time: 300s
+- Log: logs/learn_20260406_094015.log
+
+---
+## Learning Loop -- 2026-04-06 09:51
+
+- Split: training, Tasks: 1000
+- Correct: 65 / 1000 (6.5%)
+- Rules: 53 -> 61 (+8 learned)
+- Stored rule hits: 67
+- Time: 6362s
+- Log: logs/learn_20260406_080550.log

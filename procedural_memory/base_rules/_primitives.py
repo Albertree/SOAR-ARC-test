@@ -3868,3 +3868,116 @@ def fill_bounding_box_interior(grid, shape_color=8, fill_color=2, bg=0):
             if out[r][c] == bg:
                 out[r][c] = fill_color
     return out
+
+
+def separator_grid_max_fill(grid, sep_color=5, bg=0):
+    """Grid divided by separator lines into rectangular sections.
+    Count non-bg, non-separator cells per section. Sections with the
+    maximum count get filled entirely with the non-bg color found there.
+    All other sections are cleared to bg. Separator lines are preserved."""
+    h = len(grid)
+    w = len(grid[0]) if h else 0
+
+    # Find separator rows and cols
+    sep_rows = set()
+    for r in range(h):
+        if all(grid[r][c] == sep_color for c in range(w)):
+            sep_rows.add(r)
+    sep_cols = set()
+    for c in range(w):
+        if all(grid[r][c] == sep_color for r in range(h)):
+            sep_cols.add(c)
+
+    # Build section ranges
+    def make_ranges(seps, total):
+        seps_sorted = sorted(seps)
+        ranges = []
+        prev = 0
+        for s in seps_sorted:
+            if s > prev:
+                ranges.append((prev, s))
+            prev = s + 1
+        if prev < total:
+            ranges.append((prev, total))
+        return ranges
+
+    row_ranges = make_ranges(sep_rows, h)
+    col_ranges = make_ranges(sep_cols, w)
+
+    # Count non-bg cells per section and find the color
+    sections = []
+    for r0, r1 in row_ranges:
+        for c0, c1 in col_ranges:
+            count = 0
+            color = None
+            for r in range(r0, r1):
+                for c in range(c0, c1):
+                    v = grid[r][c]
+                    if v != bg and v != sep_color:
+                        count += 1
+                        if color is None:
+                            color = v
+            sections.append((r0, r1, c0, c1, count, color))
+
+    max_count = max(s[4] for s in sections) if sections else 0
+
+    # Build output
+    out = [[bg] * w for _ in range(h)]
+    # Restore separators
+    for r in sep_rows:
+        for c in range(w):
+            out[r][c] = sep_color
+    for c in sep_cols:
+        for r in range(h):
+            out[r][c] = sep_color
+    # Fill max sections
+    for r0, r1, c0, c1, count, color in sections:
+        if count == max_count and color is not None:
+            for r in range(r0, r1):
+                for c in range(c0, c1):
+                    out[r][c] = color
+    return out
+
+
+def connect_dot_pairs(grid, bg=0):
+    """Find pairs of same-colored non-bg pixels. Connect each pair with a
+    straight line (horizontal if same row, vertical if same col).
+    At intersections, vertical lines take priority over horizontal."""
+    h = len(grid)
+    w = len(grid[0]) if h else 0
+
+    # Group non-bg pixels by color
+    color_pixels = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_pixels.setdefault(v, []).append((r, c))
+
+    out = [row[:] for row in grid]
+    h_lines = []  # (row, c_min, c_max, color)
+    v_lines = []  # (col, r_min, r_max, color)
+
+    for color, pixels in color_pixels.items():
+        if len(pixels) != 2:
+            continue
+        (r1, c1), (r2, c2) = pixels
+        if r1 == r2:
+            # Horizontal line
+            cmin, cmax = min(c1, c2), max(c1, c2)
+            h_lines.append((r1, cmin, cmax, color))
+        elif c1 == c2:
+            # Vertical line
+            rmin, rmax = min(r1, r2), max(r1, r2)
+            v_lines.append((c1, rmin, rmax, color))
+
+    # Draw horizontal lines first
+    for row, cmin, cmax, color in h_lines:
+        for c in range(cmin, cmax + 1):
+            out[row][c] = color
+    # Draw vertical lines second (overwrite at intersections)
+    for col, rmin, rmax, color in v_lines:
+        for r in range(rmin, rmax + 1):
+            out[r][col] = color
+
+    return out

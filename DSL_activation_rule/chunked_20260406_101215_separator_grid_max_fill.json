@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260406_092429_fill_bounding_box_interior",
+  "rule_id": "chunked_20260406_101215_separator_grid_max_fill",
   "source": "chunked",
   "source_tasks": [
-    "6d75e8bb"
+    "29623171"
   ],
-  "times_validated": 2,
+  "times_validated": 1,
   "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "multi_group",
         "change_scope": "subset",
-        "num_groups_consistent": true,
+        "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "fill_bounding_box_interior",
-    "param_source": "no_params"
+    "concept": "separator_grid_max_fill",
+    "param_source": "inferred(sep_color)"
   }
 }
