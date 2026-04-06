@@ -1,0 +1,29 @@
+{
+  "concept_id": "flood_fill_enclosed",
+  "version": 1,
+  "description": "Fill bg-cells enclosed by boundary color with a fill color using 4-connected flood fill from border",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "boundary_color": {"type": "color", "infer": "non_bg_single"},
+    "fill_color": {"type": "color", "infer": "color_added_in_output"}
+  },
+  "steps": [
+    {
+      "id": "s1",
+      "primitive": "flood_fill_enclosed",
+      "args": {
+        "grid": "$input",
+        "boundary_color": "$boundary_color",
+        "fill_color": "$fill_color"
+      },
+      "output": "result"
+    }
+  ],
+  "result": "$result"
+}

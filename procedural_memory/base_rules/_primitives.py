@@ -4524,6 +4524,99 @@ def seed_stripe_tile(grid, bg=0):
     return output
 
 
+def flood_fill_enclosed(grid, boundary_color, fill_color, bg=0):
+    """Fill enclosed regions: bg-cells not reachable from border via 4-connected bg-path.
+
+    Performs BFS from all border cells through bg-colored cells.
+    Any bg-cell NOT reached is considered enclosed and gets filled with fill_color.
+    Boundary and other non-bg cells remain unchanged.
+    """
+    from collections import deque
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # BFS from all border bg-cells
+    visited = [[False] * w for _ in range(h)]
+    queue = deque()
+    for r in range(h):
+        for c in range(w):
+            if r == 0 or r == h - 1 or c == 0 or c == w - 1:
+                if grid[r][c] == bg and not visited[r][c]:
+                    visited[r][c] = True
+                    queue.append((r, c))
+    while queue:
+        r, c = queue.popleft()
+        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+            nr, nc = r + dr, c + dc
+            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and grid[nr][nc] == bg:
+                visited[nr][nc] = True
+                queue.append((nr, nc))
+
+    # Fill unreached bg-cells
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg and not visited[r][c]:
+                output[r][c] = fill_color
+
+    return output
+
+
+def grid_nor_by_separator(grid, output_color=8, bg=0):
+    """Split grid by separator row, NOR the two halves.
+
+    Output gets output_color where BOTH halves are bg (zero),
+    bg where at least one half is non-zero.
+    """
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find separator row
+    candidates = []
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            candidates.append(r)
+
+    sep_row = None
+    for r in candidates:
+        if r == h - r - 1:
+            sep_row = r
+            break
+    if sep_row is None:
+        for r in candidates:
+            sep_color = grid[r][0]
+            found_elsewhere = False
+            for r2 in range(h):
+                if r2 == r:
+                    continue
+                if sep_color in grid[r2]:
+                    found_elsewhere = True
+                    break
+            if not found_elsewhere:
+                sep_row = r
+                break
+    if sep_row is None and candidates:
+        sep_row = candidates[0]
+    if sep_row is None:
+        return [row[:] for row in grid]
+
+    top = grid[:sep_row]
+    bottom = grid[sep_row + 1:]
+    rows = min(len(top), len(bottom))
+    cols = min(w, len(top[0]) if top else 0, len(bottom[0]) if bottom else 0)
+
+    result = []
+    for r in range(rows):
+        row = []
+        for c in range(cols):
+            t_nz = top[r][c] != 0
+            b_nz = bottom[r][c] != 0
+            row.append(output_color if (not t_nz and not b_nz) else bg)
+        result.append(row)
+    return result
+
+
 def straighten_parallelogram(grid, bg=0):
     """Reduce the lean of each parallelogram object by 1 step.
 
