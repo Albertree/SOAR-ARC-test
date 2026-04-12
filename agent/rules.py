@@ -21,6 +21,7 @@ from agent.active_operators import (
     CompareOperator,
     ExtractPatternOperator,
     GeneralizeOperator,
+    DescendOperator,
     PredictOperator,
     SubmitOperator,
     VerifyOperator,
@@ -164,6 +165,19 @@ class SubmitRule(ProductionRule):
         return SubmitOperator()
 
 
+class DescendRule(ProductionRule):
+    """Proposes descent when ready_for_descent is derived in S2."""
+
+    def __init__(self):
+        super().__init__("rule_descend")
+
+    def condition(self, wm) -> bool:
+        return wm.depth > 0 and wm.active.get("ready_for_descent") is True
+
+    def propose(self, wm):
+        return DescendOperator()
+
+
 class Proposer:
     """
     [SOAR MANDATORY] Engine that iterates registered ProductionRules to collect candidates.
@@ -197,6 +211,7 @@ def build_proposer() -> Proposer:
         CompareRule(),
         ExtractPatternRule(),
         GeneralizeRule(),
+        DescendRule(),
         PredictRule(),
         SubmitRule(),
     ]

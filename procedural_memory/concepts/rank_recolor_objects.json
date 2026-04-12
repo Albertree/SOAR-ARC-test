@@ -1,0 +1,21 @@
+{
+  "concept_id": "rank_recolor_objects",
+  "version": 1,
+  "description": "Find connected components of a single non-bg color and recolor by size rank (largest=1, next=2, etc.)",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": [],
+    "object_count_behavior": "preserve"
+  },
+  "parameters": {
+    "target_color": {"type": "color", "infer": "non_bg_single"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "rank_recolor_objects", "args": {"grid": "$input", "target_color": "$target_color", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

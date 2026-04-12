@@ -29,8 +29,9 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
     Save a learned rule to procedural_memory as a new JSON file.
     Returns the file path of the saved rule, or None for ephemeral rules.
     """
-    # Composition rules are ephemeral — chunking schema doesn't support them yet
-    if rule.get("type", "").startswith("composition:"):
+    # Ephemeral rule types — not generalizable, don't persist
+    if (rule.get("type") in ("constant_output",)
+            or rule.get("type", "").startswith("composition:")):
         return None
 
     os.makedirs(procedural_memory_root, exist_ok=True)

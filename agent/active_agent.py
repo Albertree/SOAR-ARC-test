@@ -38,7 +38,7 @@ class ActiveSoarAgent:
     def __init__(self, semantic_memory_root: str = "semantic_memory",
                  procedural_memory_root: str = "procedural_memory",
                  episodic_memory_root: str = "episodic_memory",
-                 max_steps: int = 50):
+                 max_steps: int = 80):
         self.semantic_memory_root = semantic_memory_root
         self.procedural_memory_root = procedural_memory_root
         self.episodic_memory_root = episodic_memory_root
@@ -145,6 +145,7 @@ class ActiveSoarAgent:
         wm = WorkingMemory()
         reset_wm_snapshot(wm)
         inject_arc_task(task, wm)
+        wm.s1["focus"] = {"level": "GRID", "scope": "within_pair_examples"}
 
         elaborator = build_elaborator()
         proposer = build_proposer()
@@ -175,6 +176,7 @@ class ActiveSoarAgent:
 
         # --- Learn: save new rule + episode if pipeline discovered one ---
         if (active_rules and rule_type != "identity"
+                and rule_type != "constant_output"
                 and not rule_type.startswith("composition:")):
             rule_path = save_rule_to_ltm(
                 active_rules[0], task.task_hex,

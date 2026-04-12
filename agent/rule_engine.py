@@ -28,12 +28,12 @@ def _ensure_loaded():
     _loaded = True
 
 
-def try_all(patterns, task):
+def try_all(patterns, task, focus_level: str = "GRID"):
     """Match concepts against task. Returns first matching rule dict or None."""
     _ensure_loaded()
     try:
         from procedural_memory.base_rules._concept_engine import try_concepts
-        result = try_concepts(patterns, task)
+        result = try_concepts(patterns, task, focus_level=focus_level)
         if result is not None:
             return result
     except Exception:
@@ -44,6 +44,9 @@ def try_all(patterns, task):
 def apply(rule_type, rule, input_grid):
     """Apply a concept rule to input grid. Returns grid (list-of-lists) or None."""
     _ensure_loaded()
+    if rule_type == "constant_output":
+        import copy
+        return copy.deepcopy(rule.get("output_grid"))
     if rule_type.startswith("composition:"):
         try:
             from procedural_memory.base_rules._concept_engine import (

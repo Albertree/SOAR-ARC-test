@@ -126,7 +126,7 @@ def main():
     agent = ActiveSoarAgent(
         semantic_memory_root="semantic_memory",
         procedural_memory_root="procedural_memory",
-        max_steps=50,
+        max_steps=80,
     )
 
     task_hexes = get_task_list(args.split)
@@ -234,6 +234,66 @@ def main():
                     save_wm_snapshot(agent.last_wm, f"logs/wm_snapshots/{task_hex}.json")
                 except Exception:
                     pass
+
+            # ── Episodic solution storage (T-UPDATE-2 + T4.EPISODIC) ─────
+            if is_correct:
+                wm = getattr(agent, "last_wm", None)
+                try:
+                    sol_dir = f"episodic_memory/solutions/{task_hex}"
+                    os.makedirs(sol_dir, exist_ok=True)
+
+                    concept_id = (rule_type.replace("concept:", "")
+                                  if rule_type.startswith("concept:") else None)
+
+                    active_rules = wm.s1.get("active-rules", []) if wm else []
+                    params_inferred = None
+                    composition_info = None
+                    if active_rules:
+                        r0 = active_rules[0]
+                        if r0.get("params"):
+                            params_inferred = r0["params"]
+                        if r0.get("type", "").startswith("composition:"):
+                            composition_info = {
+                                "concept_id_a": r0.get("concept_id_a"),
+                                "concept_id_b": r0.get("concept_id_b"),
+                            }
+
+                    solution = {
+                        "task_hex": task_hex,
+                        "session_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
+                        "solved": True,
+                        "method": method,
+                        "concept_id": concept_id,
+                        "topology": info.get("task_topology_str"),
+                        "params_inferred": params_inferred,
+                        "pairs_validated": len(task.example_pairs),
+                        "composition": composition_info,
+                        "steps_taken": steps,
+                        "time_sec": round(elapsed, 2),
+                    }
+                    with open(f"{sol_dir}/solution.json", "w") as f:
+                        json.dump(solution, f, indent=2)
+
+                    if concept_id:
+                        with open(f"{sol_dir}/rule.json", "w") as f:
+                            json.dump({"concept_id": concept_id, "params": None}, f, indent=2)
+
+                    trace = {
+                        "steps_taken": steps,
+                        "method": method,
+                        "concept_id": concept_id,
+                        "concepts_tried": info.get("concepts_tried", 0),
+                        "cbr_tier": info.get("cbr_tier"),
+                        "impasses_encountered": wm.s1.get("descent_count", 0) if wm else None,
+                        "inter_pair_consistent": (
+                            wm.s1.get("patterns", {}).get("inter_pair_consistent")
+                            if wm else None
+                        ),
+                    }
+                    with open(f"{sol_dir}/trace.json", "w") as f:
+                        json.dump(trace, f, indent=2)
+                except Exception as e:
+                    print(f"[WARN] Could not write episodic record for {task_hex}: {e}")
 
             # ── Verbose: show more detail about what happened ─────
             if verbose:

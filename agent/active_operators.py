@@ -19,6 +19,78 @@ from ARCKG.comparison import compare as arckg_compare
 
 
 # ======================================================================
+# Composition log (T-UPDATE-1)
+# ======================================================================
+
+def _log_composition(rule, task, wm, start_time):
+    """Append entry to episodic_memory/composition_log.jsonl. Non-fatal on failure."""
+    import os, json, time as _time
+    from procedural_memory.base_rules._concept_engine import (
+        _last_failure_diagnostics, _ensure_loaded, _concepts, _execute_concept
+    )
+
+    os.makedirs("episodic_memory", exist_ok=True)
+
+    nm = _last_failure_diagnostics.get("best_near_miss") if _last_failure_diagnostics else None
+    partial_score_before = nm.get("partial_score", 0.0) if nm else 0.0
+
+    intermediate_example = None
+    try:
+        _ensure_loaded()
+        concept_a = next(
+            (c for c in _concepts if c["concept_id"] == rule["concept_id_a"]), None
+        )
+        if concept_a:
+            for pair in task.example_pairs:
+                if pair.input_grid is not None:
+                    intermediate_example = _execute_concept(
+                        concept_a, rule.get("params_a", {}), pair.input_grid.raw
+                    )
+                    break
+    except Exception:
+        pass
+
+    log_path = "episodic_memory/composition_log.jsonl"
+    pair_key = f"{rule['concept_id_a']}+{rule['concept_id_b']}"
+    prior_count = 0
+    if os.path.exists(log_path):
+        try:
+            with open(log_path) as f:
+                for line in f:
+                    try:
+                        e = json.loads(line)
+                        c = e.get("composition", {})
+                        if f"{c.get('concept_id_a')}+{c.get('concept_id_b')}" == pair_key:
+                            prior_count += 1
+                    except (json.JSONDecodeError, KeyError):
+                        continue
+        except IOError:
+            pass
+
+    entry = {
+        "task_hex": task.task_hex,
+        "timestamp": _time.strftime("%Y-%m-%dT%H:%M:%S"),
+        "composition": {
+            "concept_id_a": rule.get("concept_id_a"),
+            "params_a": rule.get("params_a", {}),
+            "concept_id_b": rule.get("concept_id_b"),
+            "params_b": rule.get("params_b", {}),
+        },
+        "topology": wm.s1.get("task_topology_str"),
+        "partial_score_before": partial_score_before,
+        "time_to_find_sec": round(_time.time() - start_time, 3),
+        "intermediate_example": intermediate_example,
+        "formalization_candidate": prior_count >= 4,
+    }
+    with open(log_path, "a") as f:
+        f.write(json.dumps(entry) + "\n")
+
+    if entry["formalization_candidate"]:
+        print(f"[COMPOSE] FORMALIZATION CANDIDATE: {pair_key} appeared "
+              f"{prior_count + 1} times — consider formalizing as a named concept.")
+
+
+# ======================================================================
 # Shared helpers
 # ======================================================================
 
@@ -129,20 +201,32 @@ class SelectTargetOperator(Operator):
         if task is None:
             return
 
+        # G2: Inter-pair check — are all output grids identical across training pairs?
+        output_grids = [
+            pair.output_grid.raw
+            for pair in task.example_pairs
+            if pair.output_grid is not None
+        ]
+        if len(output_grids) >= 2 and all(g == output_grids[0] for g in output_grids[1:]):
+            wm.s1["g2_constant_output"] = True
+            wm.s1["g2_output_grid"] = output_grids[0]
+
+        # G1 agenda: build GRID-level comparison specs
         agenda = []
         pending = []
 
-        for idx, pair in enumerate(task.example_pairs):
-            if pair.input_grid is not None and pair.output_grid is not None:
-                spec = {
-                    "type": "grid",
-                    "pair_idx": idx,
-                    "pair_type": "example",
-                    "id1": pair.input_grid.node_id,
-                    "id2": pair.output_grid.node_id,
-                }
-                agenda.append(spec)
-                pending.append(spec)
+        if level == "GRID":
+            for idx, pair in enumerate(task.example_pairs):
+                if pair.input_grid is not None and pair.output_grid is not None:
+                    spec = {
+                        "type": "grid",
+                        "pair_idx": idx,
+                        "pair_type": "example",
+                        "id1": pair.input_grid.node_id,
+                        "id2": pair.output_grid.node_id,
+                    }
+                    agenda.append(spec)
+                    pending.append(spec)
 
         # Build node lookup so CompareOperator can find ARCKG nodes by ID
         node_lookup = {}
@@ -151,6 +235,46 @@ class SelectTargetOperator(Operator):
                 node_lookup[pair.input_grid.node_id] = pair.input_grid
             if pair.output_grid:
                 node_lookup[pair.output_grid.node_id] = pair.output_grid
+
+        # At OBJECT level: register objects and build object comparison agenda
+        if level == "OBJECT":
+            from ARCKG.object_matcher import match_objects
+
+            for idx, pair in enumerate(task.example_pairs):
+                if pair.input_grid is None or pair.output_grid is None:
+                    continue
+
+                in_objs = pair.input_grid.objects or []
+                out_objs = pair.output_grid.objects or []
+
+                for obj in in_objs + out_objs:
+                    node_lookup[obj.node_id] = obj
+
+                match_result = match_objects(in_objs, out_objs)
+
+                for in_obj, out_obj in match_result["matched"]:
+                    spec = {
+                        "type": "object",
+                        "pair_idx": idx,
+                        "pair_type": "example",
+                        "id1": in_obj.node_id,
+                        "id2": out_obj.node_id,
+                        "match_confidence": match_result["match_confidence"],
+                    }
+                    agenda.append(spec)
+                    pending.append(spec)
+
+                if match_result["added"]:
+                    wm.s1.setdefault("object_additions", []).extend(
+                        {"pair_idx": idx, "node_id": o.node_id}
+                        for o in match_result["added"]
+                    )
+                if match_result["deleted"]:
+                    wm.s1.setdefault("object_deletions", []).extend(
+                        {"pair_idx": idx, "node_id": o.node_id}
+                        for o in match_result["deleted"]
+                    )
+
         wm.node_lookup = node_lookup
 
         wm.s1["comparison-agenda"] = agenda
@@ -248,6 +372,20 @@ class ExtractPatternOperator(Operator):
 
             if g0.height != g1.height or g0.width != g1.width:
                 patterns["grid_size_preserved"] = False
+
+        # Inter-pair consistency: does the transformation look the same across pairs?
+        pair_analyses = patterns.get("pair_analyses", [])
+        if len(pair_analyses) >= 2:
+            pa0 = pair_analyses[0]
+            pa1 = pair_analyses[1]
+            groups_match = pa0.get("num_groups", 0) == pa1.get("num_groups", 0)
+            tc0 = pa0.get("total_changes", 0)
+            tc1 = pa1.get("total_changes", 0)
+            changes_similar = abs(tc0 - tc1) <= max(tc0, tc1, 1) * 0.2
+            patterns["inter_pair_consistent"] = groups_match and changes_similar
+            patterns["inter_pair_group_count_match"] = groups_match
+        else:
+            patterns["inter_pair_consistent"] = None
 
         wm.s1["patterns"] = patterns
 
@@ -394,20 +532,35 @@ class GeneralizeOperator(Operator):
             pass
 
         # Standard concept matching
+        focus_level = (wm.s1.get("focus") or {}).get("level", "GRID")
         if rule is None:
             from agent.rule_engine import try_all
-            rule = try_all(patterns, task)
+            rule = try_all(patterns, task, focus_level=focus_level)
 
         # Try two-step composition before falling back to identity
         if rule is None or rule.get("type") == "identity":
+            import time as _time
+            composition_start_time = _time.time()
             try:
                 from procedural_memory.base_rules._concept_engine import try_two_step_composition
                 comp = try_two_step_composition(patterns, task, time_budget_sec=2.0)
                 if comp is not None:
                     rule = comp
                     print(f"[COMPOSE] Found: {comp['type']}")
+                    try:
+                        _log_composition(comp, task, wm, composition_start_time)
+                    except Exception:
+                        pass
             except Exception:
                 pass
+
+        # G2 fallback: if all outputs are identical and nothing else matched
+        if wm.s1.get("g2_constant_output") and (rule is None or rule.get("type") == "identity"):
+            rule = {
+                "type": "constant_output",
+                "output_grid": wm.s1["g2_output_grid"],
+                "confidence": 1.0,
+            }
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -445,10 +598,7 @@ class GeneralizeOperator(Operator):
 # ======================================================================
 
 class DescendOperator(Operator):
-    """
-    Placeholder: moves focus to a deeper KG level when current-level
-    analysis is insufficient. Not yet needed for the basic pipeline.
-    """
+    """Clears GRID-level state, sets focus to OBJECT for object-level analysis."""
 
     def __init__(self):
         super().__init__("descend")
@@ -457,7 +607,44 @@ class DescendOperator(Operator):
         raise NotImplementedError("DescendOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        raise NotImplementedError("DescendOperator.effect() not implemented.")
+        # Increment counter FIRST — if clearing fails, counter still blocks re-entry
+        wm.s1["descent_count"] = wm.s1.get("descent_count", 0) + 1
+
+        # Record failure type for future type-aware descent
+        failure_type = "unknown"
+        try:
+            from procedural_memory.base_rules._concept_engine import _last_failure_diagnostics
+            nm = (_last_failure_diagnostics.get("best_near_miss")
+                  if _last_failure_diagnostics else None)
+            partial = nm.get("partial_score", 0.0) if nm else 0.0
+            if partial > 0.7:
+                failure_type = "property_value_mismatch"
+            elif partial > 0.4:
+                failure_type = "partial_structural"
+            else:
+                failure_type = "structural"
+        except Exception:
+            pass
+
+        # Clear GRID-level pipeline state
+        for key in ["comparison-agenda", "pending-comparisons", "comparisons",
+                    "patterns", "active-rules", "predictions", "generalize-diagnostics"]:
+            wm.s1.pop(key, None)
+
+        # Clear elaboration flags so pipeline restarts at SelectTarget
+        for key in ["has_pending_comparison", "ready_for_pattern_extraction",
+                    "ready_for_generalization", "ready_for_prediction",
+                    "all_outputs_found", "needs_target_selection"]:
+            wm.active.pop(key, None)
+
+        wm.s1["focus"] = {
+            "level": "OBJECT",
+            "scope": "within_pair_examples",
+            "failure_type": failure_type,
+        }
+
+        print(f"[DESCEND] Grid-level failed (type={failure_type}, "
+              f"depth={wm.s1['descent_count']}) — descending to OBJECT level")
 
 
 # ======================================================================

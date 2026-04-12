@@ -59,7 +59,7 @@ def _ensure_loaded():
 # ARCKG-based structural analysis
 # ======================================================================
 
-def _extract_arckg_features(task):
+def _extract_arckg_features(task, focus_level: str = "GRID"):
     """Extract structural features from ARCKG COMM/DIFF comparison of example pairs.
     Returns a dict of features derived from the relational graph, not raw cells."""
     features = {
@@ -176,6 +176,15 @@ def _extract_arckg_features(task):
     features["colors_added"] = sorted(features["colors_added"])
     features["colors_removed"] = sorted(features["colors_removed"])
     features["diff_fields"] = sorted(features["diff_fields"])
+
+    # Object-count enrichment at OBJECT level (after descent)
+    if focus_level == "OBJECT":
+        for pair in task.example_pairs:
+            if pair.input_grid and pair.output_grid:
+                features.setdefault("object_count_per_pair", []).append((
+                    len(pair.input_grid.objects or []),
+                    len(pair.output_grid.objects or []),
+                ))
 
     return features
 
@@ -550,7 +559,7 @@ def _validate_concept(concept, params, task, verbose=False):
 # Public API
 # ======================================================================
 
-def try_concepts(patterns, task):
+def try_concepts(patterns, task, focus_level: str = "GRID"):
     """Try all concepts against a task. Returns rule dict or None.
 
     Flow:
@@ -564,7 +573,7 @@ def try_concepts(patterns, task):
 
     # Extract structural features via ARCKG comparison
     try:
-        arckg_features = _extract_arckg_features(task)
+        arckg_features = _extract_arckg_features(task, focus_level=focus_level)
     except Exception:
         arckg_features = {
             "size_comm": True, "color_comm": True, "contents_comm": True,

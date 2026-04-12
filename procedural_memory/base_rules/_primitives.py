@@ -463,6 +463,56 @@ def rank_recolor_objects(grid, target_color, bg=0):
     return output
 
 
+def find_non_bg_components_with_size(grid, bg=0):
+    """4-connected BFS component detection for all non-bg cells.
+    Returns list of {"cells": [(r,c),...], "size": int, "color": int}
+    sorted by size descending, then by min(cells) for tie-breaking.
+    Reusable atom: any concept needing component detection uses this."""
+    h, w = len(grid), len(grid[0]) if grid else 0
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == bg or (r, c) in visited:
+                continue
+            comp, queue = [], [(r, c)]
+            visited.add((r, c))
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = cr + dr, cc + dc
+                    if (0 <= nr < h and 0 <= nc < w
+                            and (nr, nc) not in visited
+                            and grid[nr][nc] != bg):
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            components.append({
+                "cells": comp,
+                "size": len(comp),
+                "color": grid[comp[0][0]][comp[0][1]],
+            })
+    components.sort(key=lambda c: (-c["size"], min(c["cells"])))
+    return components
+
+
+def assign_rank_colors(grid, components, bg=0):
+    """Recolor components by size rank (1=largest, 2=next, etc.).
+    Equal-size components get the same rank. Returns new grid."""
+    output = [row[:] for row in grid]
+    rank, i = 1, 0
+    while i < len(components):
+        size = components[i]["size"]
+        j = i
+        while j < len(components) and components[j]["size"] == size:
+            for r, c in components[j]["cells"]:
+                output[r][c] = rank
+            j += 1
+        rank += 1
+        i = j
+    return output
+
+
 def fill_rect_interiors_by_size(grid, border_color, bg=0):
     """Find rectangles bordered by border_color with bg interiors.
     Fill interiors by area rank: largest -> 8, next -> 7, next -> 6, etc."""
