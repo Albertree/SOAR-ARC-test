@@ -27,31 +27,44 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
                      procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
     """
     Save a learned rule to procedural_memory as a new JSON file.
-    Returns the file path of the saved rule.
+    Returns the file path of the saved rule, or None for ephemeral rules.
     """
+    # Composition rules are ephemeral — chunking schema doesn't support them yet
+    if rule.get("type", "").startswith("composition:"):
+        return None
+
     os.makedirs(procedural_memory_root, exist_ok=True)
 
-    # Find next available ID
+    # Concept-type rules: strip concrete params. Re-inferred at reuse time
+    # via try_single_concept. Non-concept rules keep their concrete params.
+    if rule.get("type", "").startswith("concept:"):
+        rule_to_save = {
+            "type": rule["type"],
+            "concept_id": rule.get("concept_id"),
+            "confidence": rule.get("confidence", 1.0),
+        }
+    else:
+        rule_to_save = rule
+
     existing = [
         f for f in os.listdir(procedural_memory_root)
         if f.startswith("rule_") and f.endswith(".json")
     ]
     next_id = len(existing) + 1
 
-    # Don't save duplicate rules (same type + same key params)
     for f in existing:
         try:
             path = os.path.join(procedural_memory_root, f)
             with open(path, "r") as fh:
                 stored = json.load(fh)
-            if _rules_equivalent(stored.get("rule", {}), rule):
+            if _rules_equivalent(stored.get("rule", {}), rule_to_save):
                 return path
         except (json.JSONDecodeError, IOError):
             continue
 
     entry = {
         "id": next_id,
-        "rule": rule,
+        "rule": rule_to_save,
         "source_task": task_hex,
         "created_at": datetime.now().isoformat(),
         "times_reused": 0,
@@ -122,6 +135,15 @@ def _rules_equivalent(a: dict, b: dict) -> bool:
     if a.get("type") != b.get("type"):
         return False
     t = a.get("type")
+    if t and t.startswith("concept:"):
+        a_has_params = bool(a.get("params"))
+        b_has_params = bool(b.get("params"))
+        if a_has_params != b_has_params:
+            return False
+        if not a_has_params and not b_has_params:
+            return a.get("concept_id") == b.get("concept_id")
+        return (a.get("concept_id") == b.get("concept_id")
+                and a.get("params") == b.get("params"))
     if t == "recolor_sequential":
         return (a.get("sort_key") == b.get("sort_key")
                 and a.get("start_color") == b.get("start_color")

@@ -23,24 +23,58 @@ pipeline, and design constraints. CLAUDE.md is the authoritative reference.
 - **Knowledge as relations** -- store why (relations), not how (programs)
 - **Failure is information** -- impasses reveal what knowledge is missing
 - **Memory-based learning** -- the agent reuses rules it discovered earlier
+- **Structure Mapping Theory** -- all matching uses ARCKG COMM/DIFF, not raw cell diffs
+
+## Concept Architecture (PREFERRED)
+
+Concepts are **parameterized JSON definitions** in `procedural_memory/concepts/`.
+Each concept composes primitives from `_primitives.py` with inferred parameters.
+
+```json
+{
+  "concept_id": "<name>",
+  "version": 1,
+  "description": "One-line description",
+  "signature": {"grid_size_preserved": true, "requires_content_diff": true},
+  "parameters": {"param": {"type": "int", "infer": "method_name"}},
+  "steps": [
+    {"id": "s1", "primitive": "fn", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}
+```
+
+Concepts are matched using ARCKG COMM/DIFF structures, parameters inferred
+from relational graphs, and validated by execution against example pairs.
+
+Available primitives: `procedural_memory/base_rules/_primitives.py`
+Available inference methods: `procedural_memory/base_rules/_concept_engine.py`
+
+## Rule Module Architecture (FALLBACK)
+
+For complex procedural logic (pathfinding, simulation) that can't be expressed
+as primitive compositions, create Python modules in `base_rules/<category>/`.
 
 ## What Claude Code Should Do Each Session
 
-1. Read the learning loop output (which tasks passed/failed, what rules exist)
+1. Read the learning loop output (which tasks passed/failed)
 2. Pick failing tasks and read their JSON data
 3. Understand the transformation pattern each task requires
-4. Add generalization strategies to `agent/active_operators.py`:
-   - `GeneralizeOperator._try_*()` -- detect the pattern from extracted diffs
-   - `PredictOperator._apply_*()` -- apply the rule to produce output
-5. Each strategy must handle a **category** of tasks, not a single task
-6. Verify: `python run_task.py` must still output CORRECT
-7. Append session results to `logs/session_log.md`
+4. PREFERRED: Create concept JSONs in `procedural_memory/concepts/`
+   - Compose primitives, use inference methods, parameterize variations
+   - Each concept must handle a **category** of tasks, not just one
+   - Do NOT hardcode task-specific colors or positions
+5. FALLBACK: Create Python rule modules for complex procedural logic
+6. If no existing primitive fits, add a new one to `_primitives.py`, then create a concept JSON that uses it. Add inference methods to `_concept_engine.py` as needed.
+7. Verify: `python run_task.py` must still output CORRECT
+8. Append session results to `logs/session_log.md`
 
 ## Do NOT Modify
 
 - `data/` -- ARC dataset (read-only)
 - `agent/cycle.py` -- SOAR decision cycle
 - `agent/wm.py` -- WorkingMemory
+- `agent/active_operators.py` -- operators (delegates to rule engine)
 
 ## Entry Point
 

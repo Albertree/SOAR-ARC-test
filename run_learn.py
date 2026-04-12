@@ -8,11 +8,13 @@ Usage:
   python run_learn.py --limit 100            # first 100 tasks
   python run_learn.py --log-wm              # show WM logs per task
   python run_learn.py --shuffle              # random task order
+  python run_learn.py --verbose             # detailed per-task trace
 """
 
 import os
 import sys
 import json
+import re
 import time
 import random
 import argparse
@@ -21,6 +23,37 @@ from datetime import datetime
 from managers.arc_manager import ARCManager
 from agent.active_agent import ActiveSoarAgent
 from agent.memory import load_all_rules
+from agent.wm_logger import save_wm_snapshot
+from ARCKG.comparison import clear_comparison_cache
+
+
+# ── ANSI helpers (safe for Windows Git Bash / modern terminals) ────────
+_BOLD  = "\033[1m"
+_DIM   = "\033[2m"
+_GREEN = "\033[32m"
+_RED   = "\033[31m"
+_YELLOW = "\033[33m"
+_CYAN  = "\033[36m"
+_RESET = "\033[0m"
+_BG_GREEN = "\033[42;97m"
+_BG_RED   = "\033[41;97m"
+
+_ANSI_RE = re.compile(r'\033\[[0-9;]*m')
+
+
+def _safe_print(text):
+    """Print with fallback for Windows encoding issues."""
+    try:
+        print(text, flush=True)
+    except UnicodeEncodeError:
+        print(text.encode("ascii", errors="replace").decode("ascii"), flush=True)
+
+
+def _progress_bar(done, total, width=20):
+    if total == 0:
+        return "[" + "?" * width + "]"
+    filled = int(width * done / total)
+    return "[" + "#" * filled + "." * (width - filled) + "]"
 
 
 def parse_args():
@@ -31,6 +64,7 @@ def parse_args():
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
     p.add_argument("--log-wm", action="store_true", help="print WM logs per task")
     p.add_argument("--viz", action="store_true", help="show input/predicted/answer grids")
+    p.add_argument("--verbose", "-v", action="store_true", help="detailed per-task trace")
     return p.parse_args()
 
 
@@ -113,23 +147,35 @@ def main():
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = f"logs/learn_{timestamp}.log"
     log_file = open(log_path, "w")
+    verbose = args.verbose
 
     def log(msg):
+        """Write to log file only (plain text, no ANSI)."""
         line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
-        print(line)
         log_file.write(line + "\n")
+        log_file.flush()
+
+    def display(msg):
+        """Print to terminal (may include ANSI) AND write plain version to log."""
+        _safe_print(msg)
+        # Strip ANSI for log file
+        plain = _ANSI_RE.sub('', msg)
+        log_file.write(plain + "\n")
         log_file.flush()
 
     start_time = time.time()
     initial_rules = len(load_all_rules("procedural_memory"))
 
-    log(f"=== SOAR Learning Loop ===")
-    log(f"Split: {args.split} | Tasks: {total} | Stored rules: {initial_rules}")
-    log(f"Log: {log_path}")
-    log("")
+    display(f"{_CYAN}{'=' * 60}{_RESET}")
+    display(f"{_BOLD}  SOAR Learning Loop{_RESET}")
+    display(f"  Split: {args.split}  |  Tasks: {total}  |  Stored rules: {initial_rules}")
+    display(f"  Log: {_DIM}{log_path}{_RESET}")
+    display(f"{_CYAN}{'=' * 60}{_RESET}")
+    display("")
 
     for idx, task_hex in enumerate(task_hexes):
         task_start = time.time()
+        clear_comparison_cache()
 
         try:
             task = manager.load_task(task_hex)
@@ -144,35 +190,105 @@ def main():
 
             if is_correct:
                 correct_count += 1
-            if method == "stored_rule":
+            if method in ("stored_rule", "episodic_cbr"):
                 stored_rule_hits += 1
             if method == "pipeline" and rule_type != "identity" and rule_type != "none":
                 pipeline_discoveries += 1
 
-            status = "CORRECT" if is_correct else "INCORRECT"
-            method_str = f"stored({info.get('rule_source', '?')})" if method == "stored_rule" else f"pipeline(steps={steps})"
+            # ── Format the per-task line ──────────────────────────
+            if is_correct:
+                status_tag = f"{_BG_GREEN} OK {_RESET}"
+            else:
+                status_tag = f"{_BG_RED} FAIL {_RESET}"
 
-            log(f"[{idx+1}/{total}] {task_hex}: {status}  rule={rule_type}  via={method_str}  ({elapsed:.1f}s)")
+            if method == "episodic_cbr":
+                cbr_task = info.get("cbr_matched_task", "?")[:8]
+                cbr_sim = info.get("cbr_similarity", 0)
+                method_str = f"CBR hit ({cbr_task}, sim={cbr_sim:.2f})"
+            elif method == "stored_rule":
+                method_str = f"memory hit ({info.get('rule_source', '?')[:8]})"
+            else:
+                method_str = f"pipeline ({steps} steps)"
+
+            # Build failure trace suffix for Type A classifier
+            fail_suffix = ""
+            if not is_correct:
+                ft = info.get("failure_trace")
+                if ft and ft.get("best_near_miss"):
+                    nm = ft["best_near_miss"]
+                    score_pct = nm.get("partial_score", 0) * 100
+                    total_cells = nm.get("total_cells", "?")
+                    wrong_cells = nm.get("wrong_cells", "?")
+                    pair_idx = nm.get("pair_index", "?")
+                    cid = nm.get("concept_id", "?")
+                    fail_suffix = f"  validation failed ({wrong_cells}/{total_cells} cells wrong, correct={score_pct:.0f}%, pair {pair_idx}, concept {cid})"
+
+            # Compact per-task line
+            num = f"[{idx+1:>{len(str(total))}}/{total}]"
+            display(f"  {num} {task_hex}  {status_tag}  {rule_type:<22s} {_DIM}{method_str}  {elapsed:.1f}s{_RESET}{fail_suffix}")
+
+            # Save WM snapshot for failed tasks (post-mortem debugging)
+            if not is_correct and getattr(agent, "last_wm", None) is not None:
+                try:
+                    os.makedirs("logs/wm_snapshots", exist_ok=True)
+                    save_wm_snapshot(agent.last_wm, f"logs/wm_snapshots/{task_hex}.json")
+                except Exception:
+                    pass
+
+            # ── Verbose: show more detail about what happened ─────
+            if verbose:
+                n_ex = len(task.example_pairs)
+                n_test = len(task.test_pairs)
+                display(f"         {_DIM}examples={n_ex}  tests={n_test}{_RESET}")
+                if method == "episodic_cbr":
+                    display(f"         {_GREEN}CBR: similar to {info.get('cbr_matched_task', '?')} (sim={info.get('cbr_similarity', 0):.2f}), reused rule{_RESET}")
+                elif method == "stored_rule":
+                    display(f"         {_GREEN}Reused stored rule from task {info.get('rule_source', '?')}{_RESET}")
+                elif method == "pipeline":
+                    if rule_type == "identity":
+                        display(f"         {_RED}No pattern found -- fell back to identity (copy input){_RESET}")
+                    elif rule_type == "color_mapping":
+                        display(f"         {_GREEN}Discovered color_mapping rule{_RESET}")
+                    elif rule_type == "recolor_sequential":
+                        display(f"         {_GREEN}Discovered recolor_sequential rule{_RESET}")
+                    elif rule_type == "none":
+                        display(f"         {_RED}Pipeline produced no rule{_RESET}")
+                    else:
+                        display(f"         {_YELLOW}Discovered rule type: {rule_type}{_RESET}")
 
             if args.viz:
                 _show_viz(task, predicted, is_correct)
 
+            # ── Running tally every 5 tasks ───────────────────────
+            if (idx + 1) % 5 == 0 or idx + 1 == total:
+                current_rules = len(load_all_rules("procedural_memory"))
+                pct = correct_count / (idx + 1) * 100
+                bar = _progress_bar(correct_count, idx + 1, 15)
+                display(f"  {_CYAN}---{_RESET} {bar} {correct_count}/{idx+1} ({pct:.0f}%)  "
+                        f"rules: {initial_rules}->{current_rules}  "
+                        f"reused: {stored_rule_hits}  "
+                        f"discovered: {pipeline_discoveries}")
+
         except Exception as e:
             error_count += 1
-            log(f"[{idx+1}/{total}] {task_hex}: ERROR ({e})")
+            display(f"  [{idx+1}/{total}] {task_hex}  {_BG_RED} ERR {_RESET}  {e}")
 
     elapsed_total = time.time() - start_time
     final_rules = len(load_all_rules("procedural_memory"))
+    pct = correct_count / max(total, 1) * 100
 
-    log("")
-    log("=" * 55)
-    log(f"Tasks:       {total}  ({error_count} errors)")
-    log(f"Correct:     {correct_count} / {total}  ({correct_count/max(total,1)*100:.1f}%)")
-    log(f"Rules:       {initial_rules} -> {final_rules}  (+{final_rules - initial_rules} learned)")
-    log(f"Reused:      {stored_rule_hits} times (stored rule hit)")
-    log(f"Discovered:  {pipeline_discoveries} new rules from pipeline")
-    log(f"Time:        {elapsed_total:.0f}s  ({elapsed_total/max(total,1):.1f}s/task)")
-    log("=" * 55)
+    display("")
+    display(f"{_CYAN}{'=' * 60}{_RESET}")
+    display(f"{_BOLD}  SESSION RESULTS{_RESET}")
+    display(f"{_CYAN}{'=' * 60}{_RESET}")
+    bar = _progress_bar(correct_count, total, 30)
+    display(f"  Tasks:       {total}  ({error_count} errors)")
+    display(f"  Correct:     {correct_count} / {total}  ({pct:.1f}%)  {bar}")
+    display(f"  Rules:       {initial_rules} -> {final_rules}  (+{final_rules - initial_rules} learned)")
+    display(f"  Reused:      {stored_rule_hits} times (stored rule hit)")
+    display(f"  Discovered:  {pipeline_discoveries} new rules from pipeline")
+    display(f"  Time:        {elapsed_total:.0f}s  ({elapsed_total/max(total,1):.1f}s/task)")
+    display(f"{_CYAN}{'=' * 60}{_RESET}")
 
     log_file.close()
 

@@ -325,8 +325,8 @@ class ARCEnvironment:
     def _get_ground_truth(self, test_pair) -> list:
         """Return the ground truth grid of a test pair as list[list[int]]."""
         grid = test_pair.output_grid
-        if hasattr(grid, "view"):
-            return grid.view
+        if hasattr(grid, "raw"):
+            return grid.raw
         return grid
 
     def _time_budget_exceeded(self) -> bool:

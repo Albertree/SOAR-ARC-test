@@ -48,8 +48,9 @@ class Pixel:
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)
         os.makedirs(folder, exist_ok=True)
         path = id_to_json_path(self.node_id, semantic_memory_root)
-        with open(path, "w") as f:
-            json.dump({"id": self.node_id, "result": self.to_json()}, f, indent=2)
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                json.dump({"id": self.node_id, "result": self.to_json()}, f, indent=2)
 
     def __repr__(self) -> str:
         return (f"Pixel(id={self.node_id}, color={self.color}, "

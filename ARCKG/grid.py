@@ -26,6 +26,16 @@ class Grid:
         self.objects: list = []
         self.pixels: list = []   # grid-level Pixel nodes (based on absolute coordinates)
 
+    @classmethod
+    def from_raw(cls, raw: list) -> 'Grid':
+        """Lightweight Grid for composition search — no file I/O, no node_id, no objects."""
+        instance = object.__new__(cls)
+        instance.raw = raw
+        instance.node_id = None
+        instance.objects = []
+        instance.pixels = []
+        return instance
+
     @property
     def contents(self) -> list:
         """Alias for self.raw — used by run_task.py evaluation."""
@@ -93,13 +103,15 @@ class Grid:
           contents : 2D int array
         REF: ARC-solver/ARCKG/grid.py GRID.update_property (line 209-222)
         """
+        if hasattr(self, "_json_cache"):
+            return self._json_cache
         color_dict = {i: False for i in range(10)}
         for row in self.raw:
             for val in row:
                 if 0 <= val <= 9:
                     color_dict[val] = True
 
-        return {
+        result = {
             "size": {
                 "height": self.height,
                 "width": self.width,
@@ -107,14 +119,17 @@ class Grid:
             "color": color_dict,
             "contents": self.raw,
         }
+        self._json_cache = result
+        return result
 
     def save(self, semantic_memory_root: str):
         """Write E_G{g}.json then recursively save all child Objects / Pixels."""
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)
         os.makedirs(folder, exist_ok=True)
         path = id_to_json_path(self.node_id, semantic_memory_root)
-        with open(path, "w") as f:
-            json.dump({"id": self.node_id, "result": self.to_json()}, f, indent=2)
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                json.dump({"id": self.node_id, "result": self.to_json()}, f, indent=2)
 
         for obj in self.objects:
             obj.save(semantic_memory_root)

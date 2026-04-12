@@ -130,6 +130,14 @@ def _compare_dicts(a: dict, b: dict) -> dict:
 
 
 # ---------------------------------------------------------------------------
+_comparison_cache: dict = {}
+
+
+def clear_comparison_cache():
+    """Clear the comparison cache between tasks to prevent memory growth."""
+    _comparison_cache.clear()
+
+
 # Public API
 # ---------------------------------------------------------------------------
 
@@ -149,6 +157,14 @@ def compare(a, b, save: bool = False, semantic_memory_root: str = None) -> dict:
     REF: CLAUDE.md § Knowledge Graph Architecture, § Edge Creation Timing
          ARCKG/memory_paths.py id_pair_to_comparison_path()
     """
+    # Cache lookup for 1st-order node comparisons
+    id_a = getattr(a, "node_id", None)
+    id_b = getattr(b, "node_id", None)
+    if id_a and id_b:
+        cache_key = (min(id_a, id_b), max(id_a, id_b))
+        if cache_key in _comparison_cache:
+            return _comparison_cache[cache_key]
+
     if _is_relation_result(a) and _is_relation_result(b):
         # 2nd-order or higher: compare the result of two compare result dicts
         raw = _compare_dicts(a["result"], b["result"])
@@ -195,5 +211,8 @@ def compare(a, b, save: bool = False, semantic_memory_root: str = None) -> dict:
             os.makedirs(folder, exist_ok=True)
         with open(path, "w") as f:
             json.dump(comparison, f, indent=2)
+
+    if id_a and id_b:
+        _comparison_cache[(min(id_a, id_b), max(id_a, id_b))] = comparison
 
     return comparison

@@ -27,9 +27,17 @@ Usage:
 
 from __future__ import annotations
 
+import sys
+import io
 import itertools
 from dataclasses import dataclass
 from typing import Any
+
+# Fix UnicodeEncodeError on Windows with non-UTF-8 locales (e.g., cp949)
+if hasattr(sys.stdout, 'reconfigure'):
+    sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+if hasattr(sys.stderr, 'reconfigure'):
+    sys.stderr.reconfigure(encoding='utf-8', errors='replace')
 
 
 # ── ANSI colors ────────────────────────────────────────────────────────── #
@@ -490,3 +498,32 @@ def print_wm_triplets(wm, label: str = "", step: int = 0) -> None:
 
     # ── Update snapshot ───────────────────────────────────────────── #
     _prev_snap = curr_snap
+
+
+def save_wm_snapshot(wm, filepath: str) -> None:
+    """Save a JSON snapshot of the current WM state for post-mortem debugging."""
+    import json as _json
+
+    def _ser(obj):
+        if isinstance(obj, (list, dict, str, int, float, bool, type(None))):
+            return obj
+        return repr(obj)
+
+    snapshot = {
+        "s1": {k: _ser(v) for k, v in wm.s1.items()},
+        "substates": [
+            {k: _ser(v) for k, v in sub.items()}
+            for sub in wm._substate_stack
+        ],
+        "wme_count": len(wm.wme_records),
+        "last_10_wmes": [
+            {"identifier": w["identifier"], "attribute": w["attribute"]}
+            for w in wm.wme_records[-10:]
+        ],
+    }
+    import os as _os
+    d = _os.path.dirname(filepath)
+    if d:
+        _os.makedirs(d, exist_ok=True)
+    with open(filepath, "w") as f:
+        _json.dump(snapshot, f, indent=2, default=str)

@@ -115,6 +115,8 @@ class Object:
         size       : {"height": int, "width": int}
         symmetry   : {hori_symm / verti_symm / diag_symm / anti_symm}
         """
+        if hasattr(self, "_json_cache"):
+            return self._json_cache
         h = len(self.colorgrid)
         w = len(self.colorgrid[0]) if self.colorgrid else 0
         row_min, col_min = self.pos
@@ -161,7 +163,7 @@ class Object:
             diag_symm = False
             anti_symm = False
 
-        return {
+        result = {
             "area":       area,
             "color":      color_dict,
             "coordinate": coordinate,
@@ -176,14 +178,17 @@ class Object:
                 "anti_symm":  anti_symm,
             },
         }
+        self._json_cache = result
+        return result
 
     def save(self, semantic_memory_root: str):
         """Write to_json() as E_O{o}.json and save all child Pixels as well."""
         folder = node_id_to_folder_path(self.node_id, semantic_memory_root)
         os.makedirs(folder, exist_ok=True)
         path = id_to_json_path(self.node_id, semantic_memory_root)
-        with open(path, "w") as f:
-            json.dump({"id": self.node_id, "result": self.to_json()}, f, indent=2)
+        if not os.path.exists(path):
+            with open(path, "w") as f:
+                json.dump({"id": self.node_id, "result": self.to_json()}, f, indent=2)
         for pixel in self.pixels:
             pixel.save(semantic_memory_root)
 
