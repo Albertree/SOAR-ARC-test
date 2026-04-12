@@ -1,16 +1,17 @@
 {
   "concept_id": "rotate_90_cw",
-  "version": 1,
-  "description": "Rotate grid 90 degrees clockwise.",
+  "version": 2,
+  "description": "Rotate grid clockwise by 1, 2, or 3 quarter turns.",
   "signature": {
-    "grid_size_preserved": false,
     "color_preserved": true,
     "requires_content_diff": true,
     "object_count_behavior": "preserve"
   },
-  "parameters": {},
+  "parameters": {
+    "times": {"type": "int", "infer": "from_examples"}
+  },
   "steps": [
-    {"id": "s1", "primitive": "rotate_cw", "args": {"grid": "$input", "times": 1}, "output": "result"}
+    {"id": "s1", "primitive": "rotate_cw", "args": {"grid": "$input", "times": "$times"}, "output": "result"}
   ],
   "result": "$result"
 }

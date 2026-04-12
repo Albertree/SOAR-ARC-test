@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260413_060129_color_map",
+  "source": "chunked",
+  "source_tasks": [
+    "0d3d703e"
+  ],
+  "times_validated": 1,
+  "times_failed": 1,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "single_group",
+        "change_scope": "all_cells",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": true
+      },
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "color_map",
+    "param_source": "inferred(mapping)"
+  }
+}

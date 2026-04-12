@@ -137,6 +137,11 @@ while true; do
     log "Running triage (50 tasks)..."
     python scripts/triage.py 50 ${SESSION} 2>&1 | tee -a "$PIPELINE_LOG"
 
+    # ── Concept discovery from solved programs ──────────────
+    log "Running concept discovery..."
+    python scripts/concept_discovery.py 2>&1 | tee -a "$PIPELINE_LOG"
+    python scripts/validate_concepts.py 2>&1 | tee -a "$PIPELINE_LOG"
+
     # ── Auto-grow task pool on 100% score ──────────────────
     CORRECT_N=$(echo "$SCORE_LINE" | grep -oP '\d+(?= /)' || echo "0")
     TOTAL_N=$(echo "$SCORE_LINE" | grep -oP '(?<= / )\d+' || echo "0")
@@ -203,9 +208,9 @@ print(' '.join(candidates))
     CLAUDE_OUT="${LOG_DIR}/claude_latest.log"
     run_with_timeout 600 \
       claude -p "
-You are doing one focused task: write concepts that solve specific
-failing ARC tasks. You have 10 minutes. Do not explore beyond
-what is needed for these tasks.
+Read CLAUDE_BRIEF.md first. It contains everything you need for this session:
+the current solve rate, the highest leverage gap with grid examples, unused
+primitives, and a concept JSON skeleton to complete. You have 10 minutes.
 
 Read CLAUDE.md before starting to understand the architecture.
 

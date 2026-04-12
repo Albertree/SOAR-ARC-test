@@ -15,3085 +15,52 @@
       "id": "E1"
     },
     "focus": {
-      "level": "OBJECT",
-      "scope": "within_pair_examples",
-      "failure_type": "structural"
+      "level": "GRID",
+      "scope": "within_pair_examples"
     },
     "current-task": "470c91de",
-    "second_order_comparison": {
-      "result": {
-        "type": "DIFF",
-        "score": "2/3",
-        "category": {
-          "category": {
-            "type": "DIFF",
-            "score": "1/8",
-            "category": {
-              "area": {
-                "type": "DIFF",
-                "score": "1/3",
-                "category": {
-                  "comp1": {
-                    "type": "DIFF",
-                    "comp1": 20,
-                    "comp2": 25
-                  },
-                  "comp2": {
-                    "type": "DIFF",
-                    "comp1": 20,
-                    "comp2": 25
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "COMM",
-                    "comp2": "COMM"
-                  }
-                }
-              },
-              "color": {
-                "type": "DIFF",
-                "score": "2/3",
-                "category": {
-                  "category": {
-                    "type": "DIFF",
-                    "score": "8/10",
-                    "category": {
-                      "0": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "1": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "2": {
-                        "type": "DIFF",
-                        "score": "1/3",
-                        "category": {
-                          "comp1": {
-                            "type": "DIFF",
-                            "comp1": false,
-                            "comp2": true
-                          },
-                          "comp2": {
-                            "type": "DIFF",
-                            "comp1": false,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "3": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "4": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "5": {
-                        "type": "DIFF",
-                        "score": "1/3",
-                        "category": {
-                          "comp1": {
-                            "type": "DIFF",
-                            "comp1": true,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "DIFF",
-                            "comp1": true,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "6": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "7": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "8": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "9": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "score": {
-                    "type": "COMM",
-                    "comp1": "9/10",
-                    "comp2": "9/10"
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "DIFF",
-                    "comp2": "DIFF"
-                  }
-                }
-              },
-              "coordinate": {
-                "type": "DIFF",
-                "score": "1/3",
-                "category": {
-                  "comp1": {
-                    "type": "DIFF",
-                    "comp1": [
-                      [
-                        6,
-                        1
-                      ],
-                      [
-                        6,
-                        2
-                      ],
-                      [
-                        6,
-                        3
-                      ],
-                      [
-                        6,
-                        4
-                      ],
-                      [
-                        6,
-                        5
-                      ],
-                      [
-                        7,
-                        1
-                      ],
-                      [
-                        7,
-                        2
-                      ],
-                      [
-                        7,
-                        3
-                      ],
-                      [
-                        7,
-                        4
-                      ],
-                      [
-                        7,
-                        5
-                      ],
-                      [
-                        8,
-                        1
-                      ],
-                      [
-                        8,
-                        2
-                      ],
-                      [
-                        8,
-                        3
-                      ],
-                      [
-                        8,
-                        4
-                      ],
-                      [
-                        8,
-                        5
-                      ],
-                      [
-                        9,
-                        1
-                      ],
-                      [
-                        9,
-                        2
-                      ],
-                      [
-                        9,
-                        3
-                      ],
-                      [
-                        9,
-                        4
-                      ],
-                      [
-                        9,
-                        5
-                      ]
-                    ],
-                    "comp2": [
-                      [
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        2
-                      ],
-                      [
-                        1,
-                        3
-                      ],
-                      [
-                        1,
-                        4
-                      ],
-                      [
-                        1,
-                        5
-                      ],
-                      [
-                        2,
-                        1
-                      ],
-                      [
-                        2,
-                        2
-                      ],
-                      [
-                        2,
-                        3
-                      ],
-                      [
-                        2,
-                        4
-                      ],
-                      [
-                        2,
-                        5
-                      ],
-                      [
-                        3,
-                        1
-                      ],
-                      [
-                        3,
-                        2
-                      ],
-                      [
-                        3,
-                        3
-                      ],
-                      [
-                        3,
-                        4
-                      ],
-                      [
-                        3,
-                        5
-                      ],
-                      [
-                        4,
-                        1
-                      ],
-                      [
-                        4,
-                        2
-                      ],
-                      [
-                        4,
-                        3
-                      ],
-                      [
-                        4,
-                        4
-                      ],
-                      [
-                        4,
-                        5
-                      ],
-                      [
-                        5,
-                        1
-                      ],
-                      [
-                        5,
-                        2
-                      ],
-                      [
-                        5,
-                        3
-                      ],
-                      [
-                        5,
-                        4
-                      ],
-                      [
-                        5,
-                        5
-                      ]
-                    ]
-                  },
-                  "comp2": {
-                    "type": "DIFF",
-                    "comp1": [
-                      [
-                        5,
-                        2
-                      ],
-                      [
-                        5,
-                        3
-                      ],
-                      [
-                        5,
-                        4
-                      ],
-                      [
-                        5,
-                        5
-                      ],
-                      [
-                        5,
-                        6
-                      ],
-                      [
-                        6,
-                        2
-                      ],
-                      [
-                        6,
-                        3
-                      ],
-                      [
-                        6,
-                        4
-                      ],
-                      [
-                        6,
-                        5
-                      ],
-                      [
-                        6,
-                        6
-                      ],
-                      [
-                        7,
-                        2
-                      ],
-                      [
-                        7,
-                        3
-                      ],
-                      [
-                        7,
-                        4
-                      ],
-                      [
-                        7,
-                        5
-                      ],
-                      [
-                        7,
-                        6
-                      ],
-                      [
-                        8,
-                        2
-                      ],
-                      [
-                        8,
-                        3
-                      ],
-                      [
-                        8,
-                        4
-                      ],
-                      [
-                        8,
-                        5
-                      ],
-                      [
-                        8,
-                        6
-                      ]
-                    ],
-                    "comp2": [
-                      [
-                        0,
-                        2
-                      ],
-                      [
-                        0,
-                        3
-                      ],
-                      [
-                        0,
-                        4
-                      ],
-                      [
-                        0,
-                        5
-                      ],
-                      [
-                        0,
-                        6
-                      ],
-                      [
-                        1,
-                        2
-                      ],
-                      [
-                        1,
-                        3
-                      ],
-                      [
-                        1,
-                        4
-                      ],
-                      [
-                        1,
-                        5
-                      ],
-                      [
-                        1,
-                        6
-                      ],
-                      [
-                        2,
-                        2
-                      ],
-                      [
-                        2,
-                        3
-                      ],
-                      [
-                        2,
-                        4
-                      ],
-                      [
-                        2,
-                        5
-                      ],
-                      [
-                        2,
-                        6
-                      ],
-                      [
-                        3,
-                        2
-                      ],
-                      [
-                        3,
-                        3
-                      ],
-                      [
-                        3,
-                        4
-                      ],
-                      [
-                        3,
-                        5
-                      ],
-                      [
-                        3,
-                        6
-                      ],
-                      [
-                        4,
-                        2
-                      ],
-                      [
-                        4,
-                        3
-                      ],
-                      [
-                        4,
-                        4
-                      ],
-                      [
-                        4,
-                        5
-                      ],
-                      [
-                        4,
-                        6
-                      ]
-                    ]
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "DIFF",
-                    "comp2": "DIFF"
-                  }
-                }
-              },
-              "method": {
-                "type": "COMM",
-                "score": "3/3",
-                "category": {
-                  "category": {
-                    "type": "COMM",
-                    "score": "3/3",
-                    "category": {
-                      "diagonal": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "univalued": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "without_bg": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "score": {
-                    "type": "COMM",
-                    "comp1": "2/3",
-                    "comp2": "2/3"
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "DIFF",
-                    "comp2": "DIFF"
-                  }
-                }
-              },
-              "position": {
-                "type": "DIFF",
-                "score": "2/3",
-                "category": {
-                  "category": {
-                    "type": "DIFF",
-                    "score": "0/4",
-                    "category": {
-                      "left_bottom": {
-                        "type": "DIFF",
-                        "score": "2/3",
-                        "category": {
-                          "category": {
-                            "type": "DIFF",
-                            "score": "1/2",
-                            "category": {
-                              "col_index": {
-                                "type": "COMM",
-                                "score": "3/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "COMM",
-                                    "comp1": 1,
-                                    "comp2": 1
-                                  },
-                                  "comp2": {
-                                    "type": "COMM",
-                                    "comp1": 2,
-                                    "comp2": 2
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              },
-                              "row_index": {
-                                "type": "DIFF",
-                                "score": "1/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "DIFF",
-                                    "comp1": 9,
-                                    "comp2": 5
-                                  },
-                                  "comp2": {
-                                    "type": "DIFF",
-                                    "comp1": 8,
-                                    "comp2": 4
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          "score": {
-                            "type": "COMM",
-                            "comp1": "0/2",
-                            "comp2": "0/2"
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "left_top": {
-                        "type": "DIFF",
-                        "score": "2/3",
-                        "category": {
-                          "category": {
-                            "type": "DIFF",
-                            "score": "1/2",
-                            "category": {
-                              "col_index": {
-                                "type": "COMM",
-                                "score": "3/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "COMM",
-                                    "comp1": 1,
-                                    "comp2": 1
-                                  },
-                                  "comp2": {
-                                    "type": "COMM",
-                                    "comp1": 2,
-                                    "comp2": 2
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              },
-                              "row_index": {
-                                "type": "DIFF",
-                                "score": "1/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "DIFF",
-                                    "comp1": 6,
-                                    "comp2": 1
-                                  },
-                                  "comp2": {
-                                    "type": "DIFF",
-                                    "comp1": 5,
-                                    "comp2": 0
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          "score": {
-                            "type": "COMM",
-                            "comp1": "0/2",
-                            "comp2": "0/2"
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "right_bottom": {
-                        "type": "DIFF",
-                        "score": "2/3",
-                        "category": {
-                          "category": {
-                            "type": "DIFF",
-                            "score": "1/2",
-                            "category": {
-                              "col_index": {
-                                "type": "COMM",
-                                "score": "3/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "COMM",
-                                    "comp1": 5,
-                                    "comp2": 5
-                                  },
-                                  "comp2": {
-                                    "type": "COMM",
-                                    "comp1": 6,
-                                    "comp2": 6
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              },
-                              "row_index": {
-                                "type": "DIFF",
-                                "score": "1/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "DIFF",
-                                    "comp1": 9,
-                                    "comp2": 5
-                                  },
-                                  "comp2": {
-                                    "type": "DIFF",
-                                    "comp1": 8,
-                                    "comp2": 4
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          "score": {
-                            "type": "COMM",
-                            "comp1": "0/2",
-                            "comp2": "0/2"
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "right_top": {
-                        "type": "DIFF",
-                        "score": "2/3",
-                        "category": {
-                          "category": {
-                            "type": "DIFF",
-                            "score": "1/2",
-                            "category": {
-                              "col_index": {
-                                "type": "COMM",
-                                "score": "3/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "COMM",
-                                    "comp1": 5,
-                                    "comp2": 5
-                                  },
-                                  "comp2": {
-                                    "type": "COMM",
-                                    "comp1": 6,
-                                    "comp2": 6
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              },
-                              "row_index": {
-                                "type": "DIFF",
-                                "score": "1/3",
-                                "category": {
-                                  "comp1": {
-                                    "type": "DIFF",
-                                    "comp1": 6,
-                                    "comp2": 1
-                                  },
-                                  "comp2": {
-                                    "type": "DIFF",
-                                    "comp1": 5,
-                                    "comp2": 0
-                                  },
-                                  "type": {
-                                    "type": "COMM",
-                                    "comp1": "DIFF",
-                                    "comp2": "DIFF"
-                                  }
-                                }
-                              }
-                            }
-                          },
-                          "score": {
-                            "type": "COMM",
-                            "comp1": "0/2",
-                            "comp2": "0/2"
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "score": {
-                    "type": "COMM",
-                    "comp1": "0/4",
-                    "comp2": "0/4"
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "DIFF",
-                    "comp2": "DIFF"
-                  }
-                }
-              },
-              "shape": {
-                "type": "DIFF",
-                "score": "1/3",
-                "category": {
-                  "comp1": {
-                    "type": "DIFF",
-                    "comp1": [
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ]
-                    ],
-                    "comp2": [
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ]
-                    ]
-                  },
-                  "comp2": {
-                    "type": "DIFF",
-                    "comp1": [
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ]
-                    ],
-                    "comp2": [
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ],
-                      [
-                        1,
-                        1,
-                        1,
-                        1,
-                        1
-                      ]
-                    ]
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "COMM",
-                    "comp2": "COMM"
-                  }
-                }
-              },
-              "size": {
-                "type": "DIFF",
-                "score": "2/3",
-                "category": {
-                  "category": {
-                    "type": "DIFF",
-                    "score": "1/2",
-                    "category": {
-                      "height": {
-                        "type": "DIFF",
-                        "score": "1/3",
-                        "category": {
-                          "comp1": {
-                            "type": "DIFF",
-                            "comp1": 4,
-                            "comp2": 5
-                          },
-                          "comp2": {
-                            "type": "DIFF",
-                            "comp1": 4,
-                            "comp2": 5
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "width": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": 5,
-                            "comp2": 5
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": 5,
-                            "comp2": 5
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "score": {
-                    "type": "COMM",
-                    "comp1": "2/2",
-                    "comp2": "2/2"
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "COMM",
-                    "comp2": "COMM"
-                  }
-                }
-              },
-              "symmetry": {
-                "type": "DIFF",
-                "score": "1/3",
-                "category": {
-                  "category": {
-                    "type": "DIFF",
-                    "score": "2/4",
-                    "category": {
-                      "anti_symm": {
-                        "type": "DIFF",
-                        "score": "1/3",
-                        "category": {
-                          "comp1": {
-                            "type": "DIFF",
-                            "comp1": false,
-                            "comp2": true
-                          },
-                          "comp2": {
-                            "type": "DIFF",
-                            "comp1": false,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "COMM",
-                            "comp2": "COMM"
-                          }
-                        }
-                      },
-                      "diag_symm": {
-                        "type": "DIFF",
-                        "score": "1/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "DIFF",
-                            "comp1": false,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "DIFF",
-                            "comp1": "COMM",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "hori_symm": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      },
-                      "verti_symm": {
-                        "type": "COMM",
-                        "score": "3/3",
-                        "category": {
-                          "comp1": {
-                            "type": "COMM",
-                            "comp1": false,
-                            "comp2": false
-                          },
-                          "comp2": {
-                            "type": "COMM",
-                            "comp1": true,
-                            "comp2": true
-                          },
-                          "type": {
-                            "type": "COMM",
-                            "comp1": "DIFF",
-                            "comp2": "DIFF"
-                          }
-                        }
-                      }
-                    }
-                  },
-                  "score": {
-                    "type": "DIFF",
-                    "comp1": "2/4",
-                    "comp2": "1/4"
-                  },
-                  "type": {
-                    "type": "COMM",
-                    "comp1": "DIFF",
-                    "comp2": "DIFF"
-                  }
-                }
-              }
-            }
-          },
-          "score": {
-            "type": "COMM",
-            "comp1": "3/8",
-            "comp2": "3/8"
-          },
-          "type": {
-            "type": "COMM",
-            "comp1": "DIFF",
-            "comp2": "DIFF"
-          }
-        }
-      },
-      "comm_fields": [
-        "score",
-        "type"
-      ],
-      "content_comm_fields": {
-        "inner_comm_fields": [
-          "method"
-        ],
-        "inner_diff_fields": [
-          "area",
-          "color",
-          "coordinate",
-          "position",
-          "shape",
-          "size",
-          "symmetry"
-        ],
-        "inner_score": "1/8"
-      },
-      "score": "2/3",
-      "full_category": {
-        "category": {
-          "type": "DIFF",
-          "score": "1/8",
-          "category": {
-            "area": {
-              "type": "DIFF",
-              "score": "1/3",
-              "category": {
-                "comp1": {
-                  "type": "DIFF",
-                  "comp1": 20,
-                  "comp2": 25
-                },
-                "comp2": {
-                  "type": "DIFF",
-                  "comp1": 20,
-                  "comp2": 25
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "COMM",
-                  "comp2": "COMM"
-                }
-              }
-            },
-            "color": {
-              "type": "DIFF",
-              "score": "2/3",
-              "category": {
-                "category": {
-                  "type": "DIFF",
-                  "score": "8/10",
-                  "category": {
-                    "0": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "1": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "2": {
-                      "type": "DIFF",
-                      "score": "1/3",
-                      "category": {
-                        "comp1": {
-                          "type": "DIFF",
-                          "comp1": false,
-                          "comp2": true
-                        },
-                        "comp2": {
-                          "type": "DIFF",
-                          "comp1": false,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "3": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "4": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "5": {
-                      "type": "DIFF",
-                      "score": "1/3",
-                      "category": {
-                        "comp1": {
-                          "type": "DIFF",
-                          "comp1": true,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "DIFF",
-                          "comp1": true,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "6": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "7": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "8": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "9": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    }
-                  }
-                },
-                "score": {
-                  "type": "COMM",
-                  "comp1": "9/10",
-                  "comp2": "9/10"
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "DIFF",
-                  "comp2": "DIFF"
-                }
-              }
-            },
-            "coordinate": {
-              "type": "DIFF",
-              "score": "1/3",
-              "category": {
-                "comp1": {
-                  "type": "DIFF",
-                  "comp1": [
-                    [
-                      6,
-                      1
-                    ],
-                    [
-                      6,
-                      2
-                    ],
-                    [
-                      6,
-                      3
-                    ],
-                    [
-                      6,
-                      4
-                    ],
-                    [
-                      6,
-                      5
-                    ],
-                    [
-                      7,
-                      1
-                    ],
-                    [
-                      7,
-                      2
-                    ],
-                    [
-                      7,
-                      3
-                    ],
-                    [
-                      7,
-                      4
-                    ],
-                    [
-                      7,
-                      5
-                    ],
-                    [
-                      8,
-                      1
-                    ],
-                    [
-                      8,
-                      2
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      4
-                    ],
-                    [
-                      8,
-                      5
-                    ],
-                    [
-                      9,
-                      1
-                    ],
-                    [
-                      9,
-                      2
-                    ],
-                    [
-                      9,
-                      3
-                    ],
-                    [
-                      9,
-                      4
-                    ],
-                    [
-                      9,
-                      5
-                    ]
-                  ],
-                  "comp2": [
-                    [
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      2
-                    ],
-                    [
-                      1,
-                      3
-                    ],
-                    [
-                      1,
-                      4
-                    ],
-                    [
-                      1,
-                      5
-                    ],
-                    [
-                      2,
-                      1
-                    ],
-                    [
-                      2,
-                      2
-                    ],
-                    [
-                      2,
-                      3
-                    ],
-                    [
-                      2,
-                      4
-                    ],
-                    [
-                      2,
-                      5
-                    ],
-                    [
-                      3,
-                      1
-                    ],
-                    [
-                      3,
-                      2
-                    ],
-                    [
-                      3,
-                      3
-                    ],
-                    [
-                      3,
-                      4
-                    ],
-                    [
-                      3,
-                      5
-                    ],
-                    [
-                      4,
-                      1
-                    ],
-                    [
-                      4,
-                      2
-                    ],
-                    [
-                      4,
-                      3
-                    ],
-                    [
-                      4,
-                      4
-                    ],
-                    [
-                      4,
-                      5
-                    ],
-                    [
-                      5,
-                      1
-                    ],
-                    [
-                      5,
-                      2
-                    ],
-                    [
-                      5,
-                      3
-                    ],
-                    [
-                      5,
-                      4
-                    ],
-                    [
-                      5,
-                      5
-                    ]
-                  ]
-                },
-                "comp2": {
-                  "type": "DIFF",
-                  "comp1": [
-                    [
-                      5,
-                      2
-                    ],
-                    [
-                      5,
-                      3
-                    ],
-                    [
-                      5,
-                      4
-                    ],
-                    [
-                      5,
-                      5
-                    ],
-                    [
-                      5,
-                      6
-                    ],
-                    [
-                      6,
-                      2
-                    ],
-                    [
-                      6,
-                      3
-                    ],
-                    [
-                      6,
-                      4
-                    ],
-                    [
-                      6,
-                      5
-                    ],
-                    [
-                      6,
-                      6
-                    ],
-                    [
-                      7,
-                      2
-                    ],
-                    [
-                      7,
-                      3
-                    ],
-                    [
-                      7,
-                      4
-                    ],
-                    [
-                      7,
-                      5
-                    ],
-                    [
-                      7,
-                      6
-                    ],
-                    [
-                      8,
-                      2
-                    ],
-                    [
-                      8,
-                      3
-                    ],
-                    [
-                      8,
-                      4
-                    ],
-                    [
-                      8,
-                      5
-                    ],
-                    [
-                      8,
-                      6
-                    ]
-                  ],
-                  "comp2": [
-                    [
-                      0,
-                      2
-                    ],
-                    [
-                      0,
-                      3
-                    ],
-                    [
-                      0,
-                      4
-                    ],
-                    [
-                      0,
-                      5
-                    ],
-                    [
-                      0,
-                      6
-                    ],
-                    [
-                      1,
-                      2
-                    ],
-                    [
-                      1,
-                      3
-                    ],
-                    [
-                      1,
-                      4
-                    ],
-                    [
-                      1,
-                      5
-                    ],
-                    [
-                      1,
-                      6
-                    ],
-                    [
-                      2,
-                      2
-                    ],
-                    [
-                      2,
-                      3
-                    ],
-                    [
-                      2,
-                      4
-                    ],
-                    [
-                      2,
-                      5
-                    ],
-                    [
-                      2,
-                      6
-                    ],
-                    [
-                      3,
-                      2
-                    ],
-                    [
-                      3,
-                      3
-                    ],
-                    [
-                      3,
-                      4
-                    ],
-                    [
-                      3,
-                      5
-                    ],
-                    [
-                      3,
-                      6
-                    ],
-                    [
-                      4,
-                      2
-                    ],
-                    [
-                      4,
-                      3
-                    ],
-                    [
-                      4,
-                      4
-                    ],
-                    [
-                      4,
-                      5
-                    ],
-                    [
-                      4,
-                      6
-                    ]
-                  ]
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "DIFF",
-                  "comp2": "DIFF"
-                }
-              }
-            },
-            "method": {
-              "type": "COMM",
-              "score": "3/3",
-              "category": {
-                "category": {
-                  "type": "COMM",
-                  "score": "3/3",
-                  "category": {
-                    "diagonal": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "univalued": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "without_bg": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    }
-                  }
-                },
-                "score": {
-                  "type": "COMM",
-                  "comp1": "2/3",
-                  "comp2": "2/3"
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "DIFF",
-                  "comp2": "DIFF"
-                }
-              }
-            },
-            "position": {
-              "type": "DIFF",
-              "score": "2/3",
-              "category": {
-                "category": {
-                  "type": "DIFF",
-                  "score": "0/4",
-                  "category": {
-                    "left_bottom": {
-                      "type": "DIFF",
-                      "score": "2/3",
-                      "category": {
-                        "category": {
-                          "type": "DIFF",
-                          "score": "1/2",
-                          "category": {
-                            "col_index": {
-                              "type": "COMM",
-                              "score": "3/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "COMM",
-                                  "comp1": 1,
-                                  "comp2": 1
-                                },
-                                "comp2": {
-                                  "type": "COMM",
-                                  "comp1": 2,
-                                  "comp2": 2
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            },
-                            "row_index": {
-                              "type": "DIFF",
-                              "score": "1/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "DIFF",
-                                  "comp1": 9,
-                                  "comp2": 5
-                                },
-                                "comp2": {
-                                  "type": "DIFF",
-                                  "comp1": 8,
-                                  "comp2": 4
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "score": {
-                          "type": "COMM",
-                          "comp1": "0/2",
-                          "comp2": "0/2"
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "left_top": {
-                      "type": "DIFF",
-                      "score": "2/3",
-                      "category": {
-                        "category": {
-                          "type": "DIFF",
-                          "score": "1/2",
-                          "category": {
-                            "col_index": {
-                              "type": "COMM",
-                              "score": "3/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "COMM",
-                                  "comp1": 1,
-                                  "comp2": 1
-                                },
-                                "comp2": {
-                                  "type": "COMM",
-                                  "comp1": 2,
-                                  "comp2": 2
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            },
-                            "row_index": {
-                              "type": "DIFF",
-                              "score": "1/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "DIFF",
-                                  "comp1": 6,
-                                  "comp2": 1
-                                },
-                                "comp2": {
-                                  "type": "DIFF",
-                                  "comp1": 5,
-                                  "comp2": 0
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "score": {
-                          "type": "COMM",
-                          "comp1": "0/2",
-                          "comp2": "0/2"
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "right_bottom": {
-                      "type": "DIFF",
-                      "score": "2/3",
-                      "category": {
-                        "category": {
-                          "type": "DIFF",
-                          "score": "1/2",
-                          "category": {
-                            "col_index": {
-                              "type": "COMM",
-                              "score": "3/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "COMM",
-                                  "comp1": 5,
-                                  "comp2": 5
-                                },
-                                "comp2": {
-                                  "type": "COMM",
-                                  "comp1": 6,
-                                  "comp2": 6
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            },
-                            "row_index": {
-                              "type": "DIFF",
-                              "score": "1/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "DIFF",
-                                  "comp1": 9,
-                                  "comp2": 5
-                                },
-                                "comp2": {
-                                  "type": "DIFF",
-                                  "comp1": 8,
-                                  "comp2": 4
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "score": {
-                          "type": "COMM",
-                          "comp1": "0/2",
-                          "comp2": "0/2"
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "right_top": {
-                      "type": "DIFF",
-                      "score": "2/3",
-                      "category": {
-                        "category": {
-                          "type": "DIFF",
-                          "score": "1/2",
-                          "category": {
-                            "col_index": {
-                              "type": "COMM",
-                              "score": "3/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "COMM",
-                                  "comp1": 5,
-                                  "comp2": 5
-                                },
-                                "comp2": {
-                                  "type": "COMM",
-                                  "comp1": 6,
-                                  "comp2": 6
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            },
-                            "row_index": {
-                              "type": "DIFF",
-                              "score": "1/3",
-                              "category": {
-                                "comp1": {
-                                  "type": "DIFF",
-                                  "comp1": 6,
-                                  "comp2": 1
-                                },
-                                "comp2": {
-                                  "type": "DIFF",
-                                  "comp1": 5,
-                                  "comp2": 0
-                                },
-                                "type": {
-                                  "type": "COMM",
-                                  "comp1": "DIFF",
-                                  "comp2": "DIFF"
-                                }
-                              }
-                            }
-                          }
-                        },
-                        "score": {
-                          "type": "COMM",
-                          "comp1": "0/2",
-                          "comp2": "0/2"
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    }
-                  }
-                },
-                "score": {
-                  "type": "COMM",
-                  "comp1": "0/4",
-                  "comp2": "0/4"
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "DIFF",
-                  "comp2": "DIFF"
-                }
-              }
-            },
-            "shape": {
-              "type": "DIFF",
-              "score": "1/3",
-              "category": {
-                "comp1": {
-                  "type": "DIFF",
-                  "comp1": [
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ]
-                  ],
-                  "comp2": [
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ]
-                  ]
-                },
-                "comp2": {
-                  "type": "DIFF",
-                  "comp1": [
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ]
-                  ],
-                  "comp2": [
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ],
-                    [
-                      1,
-                      1,
-                      1,
-                      1,
-                      1
-                    ]
-                  ]
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "COMM",
-                  "comp2": "COMM"
-                }
-              }
-            },
-            "size": {
-              "type": "DIFF",
-              "score": "2/3",
-              "category": {
-                "category": {
-                  "type": "DIFF",
-                  "score": "1/2",
-                  "category": {
-                    "height": {
-                      "type": "DIFF",
-                      "score": "1/3",
-                      "category": {
-                        "comp1": {
-                          "type": "DIFF",
-                          "comp1": 4,
-                          "comp2": 5
-                        },
-                        "comp2": {
-                          "type": "DIFF",
-                          "comp1": 4,
-                          "comp2": 5
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "width": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": 5,
-                          "comp2": 5
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": 5,
-                          "comp2": 5
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    }
-                  }
-                },
-                "score": {
-                  "type": "COMM",
-                  "comp1": "2/2",
-                  "comp2": "2/2"
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "COMM",
-                  "comp2": "COMM"
-                }
-              }
-            },
-            "symmetry": {
-              "type": "DIFF",
-              "score": "1/3",
-              "category": {
-                "category": {
-                  "type": "DIFF",
-                  "score": "2/4",
-                  "category": {
-                    "anti_symm": {
-                      "type": "DIFF",
-                      "score": "1/3",
-                      "category": {
-                        "comp1": {
-                          "type": "DIFF",
-                          "comp1": false,
-                          "comp2": true
-                        },
-                        "comp2": {
-                          "type": "DIFF",
-                          "comp1": false,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "COMM",
-                          "comp2": "COMM"
-                        }
-                      }
-                    },
-                    "diag_symm": {
-                      "type": "DIFF",
-                      "score": "1/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "DIFF",
-                          "comp1": false,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "DIFF",
-                          "comp1": "COMM",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "hori_symm": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    },
-                    "verti_symm": {
-                      "type": "COMM",
-                      "score": "3/3",
-                      "category": {
-                        "comp1": {
-                          "type": "COMM",
-                          "comp1": false,
-                          "comp2": false
-                        },
-                        "comp2": {
-                          "type": "COMM",
-                          "comp1": true,
-                          "comp2": true
-                        },
-                        "type": {
-                          "type": "COMM",
-                          "comp1": "DIFF",
-                          "comp2": "DIFF"
-                        }
-                      }
-                    }
-                  }
-                },
-                "score": {
-                  "type": "DIFF",
-                  "comp1": "2/4",
-                  "comp2": "1/4"
-                },
-                "type": {
-                  "type": "COMM",
-                  "comp1": "DIFF",
-                  "comp2": "DIFF"
-                }
-              }
-            }
-          }
-        },
-        "score": {
-          "type": "COMM",
-          "comp1": "3/8",
-          "comp2": "3/8"
-        },
-        "type": {
-          "type": "COMM",
-          "comp1": "DIFF",
-          "comp2": "DIFF"
-        }
-      }
-    },
-    "au_pattern": {
-      "type": "DIFF",
-      "score": "3/8",
-      "category": {
-        "area": {
-          "type": "?var_1"
-        },
-        "color": {
-          "type": "?var_2"
-        },
-        "coordinate": {
-          "type": "DIFF",
-          "comp1": "?var_3",
-          "comp2": "?var_4"
-        },
-        "method": {
-          "type": "?var_5"
-        },
-        "position": {
-          "type": "DIFF",
-          "category": {
-            "left_bottom": {
-              "type": "DIFF",
-              "category": {
-                "col_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_6",
-                  "comp2": "?var_7"
-                },
-                "row_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_8",
-                  "comp2": "?var_9"
-                }
-              },
-              "score": "0/2"
-            },
-            "left_top": {
-              "type": "DIFF",
-              "category": {
-                "col_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_10",
-                  "comp2": "?var_11"
-                },
-                "row_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_12",
-                  "comp2": "?var_13"
-                }
-              },
-              "score": "0/2"
-            },
-            "right_bottom": {
-              "type": "DIFF",
-              "category": {
-                "col_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_14",
-                  "comp2": "?var_15"
-                },
-                "row_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_16",
-                  "comp2": "?var_17"
-                }
-              },
-              "score": "0/2"
-            },
-            "right_top": {
-              "type": "DIFF",
-              "category": {
-                "col_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_18",
-                  "comp2": "?var_19"
-                },
-                "row_index": {
-                  "type": "DIFF",
-                  "comp1": "?var_20",
-                  "comp2": "?var_21"
-                }
-              },
-              "score": "0/2"
-            }
-          },
-          "score": "0/4"
-        },
-        "shape": {
-          "type": "?var_22"
-        },
-        "size": {
-          "type": "COMM",
-          "category": {
-            "height": {
-              "type": "COMM",
-              "comp1": "?var_23",
-              "comp2": "?var_24"
-            },
-            "width": {
-              "type": "COMM",
-              "comp1": "?var_25",
-              "comp2": "?var_26"
-            }
-          },
-          "score": "2/2"
-        },
-        "symmetry": {
-          "type": "DIFF",
-          "category": {
-            "anti_symm": {
-              "type": "COMM",
-              "comp1": "?var_27",
-              "comp2": "?var_28"
-            },
-            "diag_symm": {
-              "type": "?var_29"
-            },
-            "hori_symm": {
-              "type": "DIFF",
-              "comp1": false,
-              "comp2": true
-            },
-            "verti_symm": {
-              "type": "DIFF",
-              "comp1": false,
-              "comp2": true
-            }
-          }
-        }
-      }
-    },
-    "au_invariants": {
-      "top_level": {
-        "coordinate": "DIFF",
-        "position": "DIFF",
-        "size": "COMM",
-        "symmetry": "DIFF"
-      },
-      "variable_count": 29,
-      "sub_fields": {
-        "position": {
-          "score": "0/4"
-        },
-        "size": {
-          "score": "2/2"
-        },
-        "symmetry": {
-          "hori_symm": "DIFF",
-          "verti_symm": "DIFF"
-        }
-      },
-      "comm_fields": [
-        "size"
-      ],
-      "diff_fields": [
-        "coordinate",
-        "position",
-        "symmetry"
-      ]
-    },
-    "concepts-tried-count": 0,
-    "descent_count": 1,
-    "object_deletions": [
-      {
-        "pair_idx": 0,
-        "node_id": "T470c91de.P0.G0.O0"
-      },
-      {
-        "pair_idx": 0,
-        "node_id": "T470c91de.P0.G0.O1"
-      },
-      {
-        "pair_idx": 0,
-        "node_id": "T470c91de.P0.G0.O2"
-      },
-      {
-        "pair_idx": 0,
-        "node_id": "T470c91de.P0.G0.O3"
-      },
-      {
-        "pair_idx": 0,
-        "node_id": "T470c91de.P0.G0.O4"
-      },
-      {
-        "pair_idx": 0,
-        "node_id": "T470c91de.P0.G0.O5"
-      },
-      {
-        "pair_idx": 1,
-        "node_id": "T470c91de.P1.G0.O0"
-      },
-      {
-        "pair_idx": 1,
-        "node_id": "T470c91de.P1.G0.O1"
-      },
-      {
-        "pair_idx": 1,
-        "node_id": "T470c91de.P1.G0.O2"
-      },
-      {
-        "pair_idx": 1,
-        "node_id": "T470c91de.P1.G0.O3"
-      },
-      {
-        "pair_idx": 2,
-        "node_id": "T470c91de.P2.G0.O0"
-      },
-      {
-        "pair_idx": 2,
-        "node_id": "T470c91de.P2.G0.O1"
-      },
-      {
-        "pair_idx": 2,
-        "node_id": "T470c91de.P2.G0.O2"
-      },
-      {
-        "pair_idx": 2,
-        "node_id": "T470c91de.P2.G0.O5"
-      }
-    ],
     "comparison-agenda": [
       {
-        "type": "object",
+        "type": "grid",
         "pair_idx": 0,
         "pair_type": "example",
-        "id1": "T470c91de.P0.G0.O9",
-        "id2": "T470c91de.P0.G1.O3",
-        "match_confidence": 0.6559999999999999
+        "id1": "T470c91de.P0.G0",
+        "id2": "T470c91de.P0.G1"
       },
       {
-        "type": "object",
-        "pair_idx": 0,
-        "pair_type": "example",
-        "id1": "T470c91de.P0.G0.O10",
-        "id2": "T470c91de.P0.G1.O4",
-        "match_confidence": 0.6559999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 0,
-        "pair_type": "example",
-        "id1": "T470c91de.P0.G0.O6",
-        "id2": "T470c91de.P0.G1.O1",
-        "match_confidence": 0.6559999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 0,
-        "pair_type": "example",
-        "id1": "T470c91de.P0.G0.O7",
-        "id2": "T470c91de.P0.G1.O0",
-        "match_confidence": 0.6559999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 0,
-        "pair_type": "example",
-        "id1": "T470c91de.P0.G0.O8",
-        "id2": "T470c91de.P0.G1.O2",
-        "match_confidence": 0.6559999999999999
-      },
-      {
-        "type": "object",
+        "type": "grid",
         "pair_idx": 1,
         "pair_type": "example",
-        "id1": "T470c91de.P1.G0.O6",
-        "id2": "T470c91de.P1.G1.O2",
-        "match_confidence": 0.69
+        "id1": "T470c91de.P1.G0",
+        "id2": "T470c91de.P1.G1"
       },
       {
-        "type": "object",
-        "pair_idx": 1,
-        "pair_type": "example",
-        "id1": "T470c91de.P1.G0.O7",
-        "id2": "T470c91de.P1.G1.O3",
-        "match_confidence": 0.69
-      },
-      {
-        "type": "object",
-        "pair_idx": 1,
-        "pair_type": "example",
-        "id1": "T470c91de.P1.G0.O4",
-        "id2": "T470c91de.P1.G1.O0",
-        "match_confidence": 0.69
-      },
-      {
-        "type": "object",
-        "pair_idx": 1,
-        "pair_type": "example",
-        "id1": "T470c91de.P1.G0.O5",
-        "id2": "T470c91de.P1.G1.O1",
-        "match_confidence": 0.69
-      },
-      {
-        "type": "object",
+        "type": "grid",
         "pair_idx": 2,
         "pair_type": "example",
-        "id1": "T470c91de.P2.G0.O8",
-        "id2": "T470c91de.P2.G1.O4",
-        "match_confidence": 0.5949999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 2,
-        "pair_type": "example",
-        "id1": "T470c91de.P2.G0.O9",
-        "id2": "T470c91de.P2.G1.O5",
-        "match_confidence": 0.5949999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 2,
-        "pair_type": "example",
-        "id1": "T470c91de.P2.G0.O7",
-        "id2": "T470c91de.P2.G1.O3",
-        "match_confidence": 0.5949999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 2,
-        "pair_type": "example",
-        "id1": "T470c91de.P2.G0.O6",
-        "id2": "T470c91de.P2.G1.O2",
-        "match_confidence": 0.5949999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 2,
-        "pair_type": "example",
-        "id1": "T470c91de.P2.G0.O3",
-        "id2": "T470c91de.P2.G1.O1",
-        "match_confidence": 0.5949999999999999
-      },
-      {
-        "type": "object",
-        "pair_idx": 2,
-        "pair_type": "example",
-        "id1": "T470c91de.P2.G0.O4",
-        "id2": "T470c91de.P2.G1.O0",
-        "match_confidence": 0.5949999999999999
+        "id1": "T470c91de.P2.G0",
+        "id2": "T470c91de.P2.G1"
       }
     ],
     "pending-comparisons": [],
     "comparisons": {
-      "object_0": {
+      "grid_0": {
         "spec": {
-          "type": "object",
+          "type": "grid",
           "pair_idx": 0,
           "pair_type": "example",
-          "id1": "T470c91de.P0.G0.O8",
-          "id2": "T470c91de.P0.G1.O2",
-          "match_confidence": 0.6559999999999999
+          "id1": "T470c91de.P0.G0",
+          "id2": "T470c91de.P0.G1"
         },
         "result": {
           "id": {
-            "id1": "T470c91de.P0.G0.O8",
-            "id2": "T470c91de.P0.G1.O2"
+            "id1": "T470c91de.P0.G0",
+            "id2": "T470c91de.P0.G1"
           },
           "result": {
             "type": "DIFF",
-            "score": "3/8",
+            "score": "1/3",
             "category": {
-              "area": {
-                "type": "COMM",
-                "comp1": 20,
-                "comp2": 20
-              },
               "color": {
                 "type": "DIFF",
                 "score": "9/10",
@@ -3105,8 +72,8 @@
                   },
                   "1": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   },
                   "2": {
                     "type": "COMM",
@@ -3135,8 +102,8 @@
                   },
                   "7": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   },
                   "8": {
                     "type": "DIFF",
@@ -3145,329 +112,255 @@
                   },
                   "9": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
-                  }
-                }
-              },
-              "coordinate": {
-                "type": "DIFF",
-                "comp1": [
-                  [
-                    6,
-                    1
-                  ],
-                  [
-                    6,
-                    2
-                  ],
-                  [
-                    6,
-                    3
-                  ],
-                  [
-                    6,
-                    4
-                  ],
-                  [
-                    6,
-                    5
-                  ],
-                  [
-                    7,
-                    1
-                  ],
-                  [
-                    7,
-                    2
-                  ],
-                  [
-                    7,
-                    3
-                  ],
-                  [
-                    7,
-                    4
-                  ],
-                  [
-                    7,
-                    5
-                  ],
-                  [
-                    8,
-                    1
-                  ],
-                  [
-                    8,
-                    2
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    4
-                  ],
-                  [
-                    8,
-                    5
-                  ],
-                  [
-                    9,
-                    1
-                  ],
-                  [
-                    9,
-                    2
-                  ],
-                  [
-                    9,
-                    3
-                  ],
-                  [
-                    9,
-                    4
-                  ],
-                  [
-                    9,
-                    5
-                  ]
-                ],
-                "comp2": [
-                  [
-                    5,
-                    2
-                  ],
-                  [
-                    5,
-                    3
-                  ],
-                  [
-                    5,
-                    4
-                  ],
-                  [
-                    5,
-                    5
-                  ],
-                  [
-                    5,
-                    6
-                  ],
-                  [
-                    6,
-                    2
-                  ],
-                  [
-                    6,
-                    3
-                  ],
-                  [
-                    6,
-                    4
-                  ],
-                  [
-                    6,
-                    5
-                  ],
-                  [
-                    6,
-                    6
-                  ],
-                  [
-                    7,
-                    2
-                  ],
-                  [
-                    7,
-                    3
-                  ],
-                  [
-                    7,
-                    4
-                  ],
-                  [
-                    7,
-                    5
-                  ],
-                  [
-                    7,
-                    6
-                  ],
-                  [
-                    8,
-                    2
-                  ],
-                  [
-                    8,
-                    3
-                  ],
-                  [
-                    8,
-                    4
-                  ],
-                  [
-                    8,
-                    5
-                  ],
-                  [
-                    8,
-                    6
-                  ]
-                ]
-              },
-              "method": {
-                "type": "DIFF",
-                "score": "2/3",
-                "category": {
-                  "diagonal": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  },
-                  "univalued": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "without_bg": {
-                    "type": "COMM",
                     "comp1": true,
                     "comp2": true
                   }
                 }
               },
-              "position": {
+              "contents": {
                 "type": "DIFF",
-                "score": "0/4",
-                "category": {
-                  "left_bottom": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 1,
-                        "comp2": 2
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 9,
-                        "comp2": 8
-                      }
-                    }
-                  },
-                  "left_top": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 1,
-                        "comp2": 2
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 6,
-                        "comp2": 5
-                      }
-                    }
-                  },
-                  "right_bottom": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 5,
-                        "comp2": 6
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 9,
-                        "comp2": 8
-                      }
-                    }
-                  },
-                  "right_top": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 5,
-                        "comp2": 6
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 6,
-                        "comp2": 5
-                      }
-                    }
-                  }
-                }
-              },
-              "shape": {
-                "type": "COMM",
                 "comp1": [
                   [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
+                    9,
+                    9,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
+                    9,
+                    8,
+                    7,
+                    7,
+                    7,
+                    8,
                     1,
                     1,
-                    1,
-                    1,
-                    1
+                    7,
+                    7
                   ],
                   [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
                     1,
                     1,
                     1,
-                    1,
-                    1
+                    7,
+                    7
                   ],
                   [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
                     1,
                     1,
                     1,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
                     1,
-                    1
+                    1,
+                    1,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    8,
+                    7,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7,
+                    7
                   ]
                 ],
                 "comp2": [
                   [
+                    7,
+                    7,
+                    7,
+                    7,
                     1,
                     1,
                     1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7
                   ],
                   [
+                    7,
+                    9,
+                    9,
+                    7,
                     1,
                     1,
                     1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7
                   ],
                   [
+                    7,
+                    9,
+                    9,
+                    7,
                     1,
                     1,
                     1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7
                   ],
                   [
+                    7,
+                    7,
+                    7,
+                    7,
                     1,
                     1,
                     1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    5,
+                    5,
+                    5,
+                    5,
+                    5,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ]
                 ]
               },
@@ -3477,39 +370,13 @@
                 "category": {
                   "height": {
                     "type": "COMM",
-                    "comp1": 4,
-                    "comp2": 4
+                    "comp1": 10,
+                    "comp2": 10
                   },
                   "width": {
                     "type": "COMM",
-                    "comp1": 5,
-                    "comp2": 5
-                  }
-                }
-              },
-              "symmetry": {
-                "type": "DIFF",
-                "score": "2/4",
-                "category": {
-                  "anti_symm": {
-                    "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
-                  },
-                  "diag_symm": {
-                    "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
-                  },
-                  "hori_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "verti_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
+                    "comp1": 10,
+                    "comp2": 10
                   }
                 }
               }
@@ -3517,29 +384,23 @@
           }
         }
       },
-      "object_1": {
+      "grid_1": {
         "spec": {
-          "type": "object",
+          "type": "grid",
           "pair_idx": 1,
           "pair_type": "example",
-          "id1": "T470c91de.P1.G0.O5",
-          "id2": "T470c91de.P1.G1.O1",
-          "match_confidence": 0.69
+          "id1": "T470c91de.P1.G0",
+          "id2": "T470c91de.P1.G1"
         },
         "result": {
           "id": {
-            "id1": "T470c91de.P1.G0.O5",
-            "id2": "T470c91de.P1.G1.O1"
+            "id1": "T470c91de.P1.G0",
+            "id2": "T470c91de.P1.G1"
           },
           "result": {
             "type": "DIFF",
-            "score": "3/8",
+            "score": "1/3",
             "category": {
-              "area": {
-                "type": "COMM",
-                "comp1": 25,
-                "comp2": 25
-              },
               "color": {
                 "type": "DIFF",
                 "score": "9/10",
@@ -3576,13 +437,13 @@
                   },
                   "6": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   },
                   "7": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   },
                   "8": {
                     "type": "DIFF",
@@ -3596,378 +457,250 @@
                   }
                 }
               },
-              "coordinate": {
+              "contents": {
                 "type": "DIFF",
                 "comp1": [
                   [
-                    1,
-                    1
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    1,
-                    2
-                  ],
-                  [
-                    1,
-                    3
-                  ],
-                  [
-                    1,
-                    4
-                  ],
-                  [
-                    1,
-                    5
-                  ],
-                  [
+                    7,
                     2,
-                    1
-                  ],
-                  [
                     2,
-                    2
-                  ],
-                  [
                     2,
-                    3
-                  ],
-                  [
                     2,
-                    4
+                    8,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
+                    7,
                     2,
-                    5
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    1
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    2
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    3
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    4
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    5
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    8,
+                    6,
+                    6,
+                    6,
+                    7
                   ],
                   [
-                    4,
-                    1
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    6,
+                    6,
+                    6,
+                    6,
+                    7
                   ],
                   [
-                    4,
-                    2
-                  ],
-                  [
-                    4,
-                    3
-                  ],
-                  [
-                    4,
-                    4
-                  ],
-                  [
-                    4,
-                    5
-                  ],
-                  [
-                    5,
-                    1
-                  ],
-                  [
-                    5,
-                    2
-                  ],
-                  [
-                    5,
-                    3
-                  ],
-                  [
-                    5,
-                    4
-                  ],
-                  [
-                    5,
-                    5
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ]
                 ],
                 "comp2": [
                   [
-                    0,
-                    2
-                  ],
-                  [
-                    0,
-                    3
-                  ],
-                  [
-                    0,
-                    4
-                  ],
-                  [
-                    0,
-                    5
-                  ],
-                  [
-                    0,
-                    6
-                  ],
-                  [
-                    1,
-                    2
-                  ],
-                  [
-                    1,
-                    3
-                  ],
-                  [
-                    1,
-                    4
-                  ],
-                  [
-                    1,
-                    5
-                  ],
-                  [
-                    1,
-                    6
-                  ],
-                  [
+                    7,
+                    7,
                     2,
-                    2
-                  ],
-                  [
                     2,
-                    3
-                  ],
-                  [
                     2,
-                    4
-                  ],
-                  [
                     2,
-                    5
-                  ],
-                  [
                     2,
-                    6
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    2
+                    7,
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    3
+                    7,
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    4
+                    7,
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    5
+                    7,
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    3,
-                    6
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    4,
-                    2
+                    7,
+                    7,
+                    7,
+                    7,
+                    6,
+                    6,
+                    6,
+                    6,
+                    7,
+                    7
                   ],
                   [
-                    4,
-                    3
+                    7,
+                    7,
+                    7,
+                    7,
+                    6,
+                    6,
+                    6,
+                    6,
+                    7,
+                    7
                   ],
                   [
-                    4,
-                    4
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
-                    4,
-                    5
-                  ],
-                  [
-                    4,
-                    6
-                  ]
-                ]
-              },
-              "method": {
-                "type": "DIFF",
-                "score": "2/3",
-                "category": {
-                  "diagonal": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  },
-                  "univalued": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "without_bg": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  }
-                }
-              },
-              "position": {
-                "type": "DIFF",
-                "score": "0/4",
-                "category": {
-                  "left_bottom": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 1,
-                        "comp2": 2
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 5,
-                        "comp2": 4
-                      }
-                    }
-                  },
-                  "left_top": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 1,
-                        "comp2": 2
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 1,
-                        "comp2": 0
-                      }
-                    }
-                  },
-                  "right_bottom": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 5,
-                        "comp2": 6
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 5,
-                        "comp2": 4
-                      }
-                    }
-                  },
-                  "right_top": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 5,
-                        "comp2": 6
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 1,
-                        "comp2": 0
-                      }
-                    }
-                  }
-                }
-              },
-              "shape": {
-                "type": "COMM",
-                "comp1": [
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ]
-                ],
-                "comp2": [
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ]
                 ]
               },
@@ -3977,39 +710,13 @@
                 "category": {
                   "height": {
                     "type": "COMM",
-                    "comp1": 5,
-                    "comp2": 5
+                    "comp1": 10,
+                    "comp2": 10
                   },
                   "width": {
                     "type": "COMM",
-                    "comp1": 5,
-                    "comp2": 5
-                  }
-                }
-              },
-              "symmetry": {
-                "type": "DIFF",
-                "score": "1/4",
-                "category": {
-                  "anti_symm": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  },
-                  "diag_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "hori_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "verti_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
+                    "comp1": 10,
+                    "comp2": 10
                   }
                 }
               }
@@ -4017,32 +724,26 @@
           }
         }
       },
-      "object_2": {
+      "grid_2": {
         "spec": {
-          "type": "object",
+          "type": "grid",
           "pair_idx": 2,
           "pair_type": "example",
-          "id1": "T470c91de.P2.G0.O4",
-          "id2": "T470c91de.P2.G1.O0",
-          "match_confidence": 0.5949999999999999
+          "id1": "T470c91de.P2.G0",
+          "id2": "T470c91de.P2.G1"
         },
         "result": {
           "id": {
-            "id1": "T470c91de.P2.G0.O4",
-            "id2": "T470c91de.P2.G1.O0"
+            "id1": "T470c91de.P2.G0",
+            "id2": "T470c91de.P2.G1"
           },
           "result": {
             "type": "DIFF",
-            "score": "3/8",
+            "score": "1/3",
             "category": {
-              "area": {
-                "type": "DIFF",
-                "comp1": 8,
-                "comp2": 9
-              },
               "color": {
-                "type": "COMM",
-                "score": "10/10",
+                "type": "DIFF",
+                "score": "9/10",
                 "category": {
                   "0": {
                     "type": "COMM",
@@ -4056,8 +757,8 @@
                   },
                   "2": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   },
                   "3": {
                     "type": "COMM",
@@ -4081,221 +782,311 @@
                   },
                   "7": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   },
                   "8": {
-                    "type": "COMM",
-                    "comp1": false,
+                    "type": "DIFF",
+                    "comp1": true,
                     "comp2": false
                   },
                   "9": {
                     "type": "COMM",
-                    "comp1": false,
-                    "comp2": false
+                    "comp1": true,
+                    "comp2": true
                   }
                 }
               },
-              "coordinate": {
+              "contents": {
                 "type": "DIFF",
                 "comp1": [
                   [
-                    6,
-                    8
-                  ],
-                  [
-                    6,
-                    9
-                  ],
-                  [
-                    6,
-                    10
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
                     7,
-                    8
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
                     7,
-                    9
-                  ],
-                  [
                     7,
-                    10
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
+                    9,
+                    7
                   ],
                   [
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
+                    9,
+                    7
+                  ],
+                  [
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
+                    9,
+                    7
+                  ],
+                  [
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
                     8,
-                    9
+                    7
                   ],
                   [
+                    2,
+                    2,
+                    2,
                     8,
-                    10
+                    7,
+                    7,
+                    7,
+                    7,
+                    3,
+                    3,
+                    3
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    3,
+                    3,
+                    3
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    8,
+                    3,
+                    3
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ]
                 ],
                 "comp2": [
                   [
                     7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
                     7
                   ],
                   [
                     7,
-                    8
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ],
                   [
                     7,
-                    9
-                  ],
-                  [
-                    8,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
                     7
                   ],
                   [
-                    8,
-                    8
-                  ],
-                  [
-                    8,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
                     9
                   ],
                   [
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
                     9,
+                    9,
+                    9
+                  ],
+                  [
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
+                    9
+                  ],
+                  [
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    7,
+                    9,
+                    9,
+                    9
+                  ],
+                  [
+                    7,
+                    2,
+                    2,
+                    2,
+                    2,
+                    7,
+                    7,
+                    3,
+                    3,
+                    3,
                     7
                   ],
                   [
-                    9,
-                    8
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    3,
+                    3,
+                    3,
+                    7
                   ],
                   [
-                    9,
-                    9
-                  ]
-                ]
-              },
-              "method": {
-                "type": "COMM",
-                "score": "3/3",
-                "category": {
-                  "diagonal": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  },
-                  "univalued": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  },
-                  "without_bg": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  }
-                }
-              },
-              "position": {
-                "type": "DIFF",
-                "score": "0/4",
-                "category": {
-                  "left_bottom": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 8,
-                        "comp2": 7
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 8,
-                        "comp2": 9
-                      }
-                    }
-                  },
-                  "left_top": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 8,
-                        "comp2": 7
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 6,
-                        "comp2": 7
-                      }
-                    }
-                  },
-                  "right_bottom": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 10,
-                        "comp2": 9
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 8,
-                        "comp2": 9
-                      }
-                    }
-                  },
-                  "right_top": {
-                    "type": "DIFF",
-                    "score": "0/2",
-                    "category": {
-                      "col_index": {
-                        "type": "DIFF",
-                        "comp1": 10,
-                        "comp2": 9
-                      },
-                      "row_index": {
-                        "type": "DIFF",
-                        "comp1": 6,
-                        "comp2": 7
-                      }
-                    }
-                  }
-                }
-              },
-              "shape": {
-                "type": "DIFF",
-                "comp1": [
-                  [
-                    1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    3,
+                    3,
+                    3,
+                    7
                   ],
                   [
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    -1,
-                    1,
-                    1
-                  ]
-                ],
-                "comp2": [
-                  [
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1
-                  ],
-                  [
-                    1,
-                    1,
-                    1
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7,
+                    7
                   ]
                 ]
               },
@@ -4305,39 +1096,13 @@
                 "category": {
                   "height": {
                     "type": "COMM",
-                    "comp1": 3,
-                    "comp2": 3
+                    "comp1": 11,
+                    "comp2": 11
                   },
                   "width": {
                     "type": "COMM",
-                    "comp1": 3,
-                    "comp2": 3
-                  }
-                }
-              },
-              "symmetry": {
-                "type": "DIFF",
-                "score": "1/4",
-                "category": {
-                  "anti_symm": {
-                    "type": "COMM",
-                    "comp1": true,
-                    "comp2": true
-                  },
-                  "diag_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "hori_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
-                  },
-                  "verti_symm": {
-                    "type": "DIFF",
-                    "comp1": false,
-                    "comp2": true
+                    "comp1": 11,
+                    "comp2": 11
                   }
                 }
               }
@@ -4534,10 +1299,1819 @@
       "inter_pair_consistent": false,
       "inter_pair_group_count_match": false
     },
-    "generalize-diagnostics": {
-      "concepts_tried": 0,
-      "best_near_miss": null
+    "second_order_comparison": {
+      "result": {
+        "type": "DIFF",
+        "score": "2/3",
+        "category": {
+          "category": {
+            "type": "DIFF",
+            "score": "1/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "category": {
+                    "type": "DIFF",
+                    "score": "5/10",
+                    "category": {
+                      "0": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "1": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "2": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "3": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "4": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "5": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "6": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "7": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": true,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": true,
+                            "comp2": true
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "8": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": true,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "DIFF",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      },
+                      "9": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "score": {
+                    "type": "COMM",
+                    "comp1": "9/10",
+                    "comp2": "9/10"
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "score": "1/3",
+                "category": {
+                  "comp1": {
+                    "type": "DIFF",
+                    "comp1": [
+                      [
+                        9,
+                        9,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        9,
+                        8,
+                        7,
+                        7,
+                        7,
+                        8,
+                        1,
+                        1,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        8,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7,
+                        7
+                      ]
+                    ],
+                    "comp2": [
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        8,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        8,
+                        6,
+                        6,
+                        6,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        6,
+                        6,
+                        6,
+                        6,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ]
+                    ]
+                  },
+                  "comp2": {
+                    "type": "DIFF",
+                    "comp1": [
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        9,
+                        9,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        9,
+                        9,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        1,
+                        1,
+                        1,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        5,
+                        5,
+                        5,
+                        5,
+                        5,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ]
+                    ],
+                    "comp2": [
+                      [
+                        7,
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        2,
+                        2,
+                        2,
+                        2,
+                        2,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        6,
+                        6,
+                        6,
+                        6,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        6,
+                        6,
+                        6,
+                        6,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ],
+                      [
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7,
+                        7
+                      ]
+                    ]
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              },
+              "size": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "category": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "height": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": 10,
+                            "comp2": 10
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": 10,
+                            "comp2": 10
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "width": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": 10,
+                            "comp2": 10
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": 10,
+                            "comp2": 10
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "score": {
+                    "type": "COMM",
+                    "comp1": "2/2",
+                    "comp2": "2/2"
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "COMM",
+                    "comp2": "COMM"
+                  }
+                }
+              }
+            }
+          },
+          "score": {
+            "type": "COMM",
+            "comp1": "1/3",
+            "comp2": "1/3"
+          },
+          "type": {
+            "type": "COMM",
+            "comp1": "DIFF",
+            "comp2": "DIFF"
+          }
+        }
+      },
+      "comm_fields": [
+        "score",
+        "type"
+      ],
+      "content_comm_fields": {
+        "inner_comm_fields": [
+          "size"
+        ],
+        "inner_diff_fields": [
+          "color",
+          "contents"
+        ],
+        "inner_score": "1/3"
+      },
+      "score": "2/3",
+      "full_category": {
+        "category": {
+          "type": "DIFF",
+          "score": "1/3",
+          "category": {
+            "color": {
+              "type": "DIFF",
+              "score": "2/3",
+              "category": {
+                "category": {
+                  "type": "DIFF",
+                  "score": "5/10",
+                  "category": {
+                    "0": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "1": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "2": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "3": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "4": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "5": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "6": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "7": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": true,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": true,
+                          "comp2": true
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "8": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": true,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "DIFF",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    },
+                    "9": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    }
+                  }
+                },
+                "score": {
+                  "type": "COMM",
+                  "comp1": "9/10",
+                  "comp2": "9/10"
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            },
+            "contents": {
+              "type": "DIFF",
+              "score": "1/3",
+              "category": {
+                "comp1": {
+                  "type": "DIFF",
+                  "comp1": [
+                    [
+                      9,
+                      9,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      9,
+                      8,
+                      7,
+                      7,
+                      7,
+                      8,
+                      1,
+                      1,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      8,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7,
+                      7
+                    ]
+                  ],
+                  "comp2": [
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      8,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      8,
+                      6,
+                      6,
+                      6,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      6,
+                      6,
+                      6,
+                      6,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ]
+                  ]
+                },
+                "comp2": {
+                  "type": "DIFF",
+                  "comp1": [
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      9,
+                      9,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      9,
+                      9,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      1,
+                      1,
+                      1,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      5,
+                      5,
+                      5,
+                      5,
+                      5,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ]
+                  ],
+                  "comp2": [
+                    [
+                      7,
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      2,
+                      2,
+                      2,
+                      2,
+                      2,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      6,
+                      6,
+                      6,
+                      6,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      6,
+                      6,
+                      6,
+                      6,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ],
+                    [
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7,
+                      7
+                    ]
+                  ]
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            },
+            "size": {
+              "type": "COMM",
+              "score": "3/3",
+              "category": {
+                "category": {
+                  "type": "COMM",
+                  "score": "2/2",
+                  "category": {
+                    "height": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": 10,
+                          "comp2": 10
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": 10,
+                          "comp2": 10
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "width": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": 10,
+                          "comp2": 10
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": 10,
+                          "comp2": 10
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    }
+                  }
+                },
+                "score": {
+                  "type": "COMM",
+                  "comp1": "2/2",
+                  "comp2": "2/2"
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "COMM",
+                  "comp2": "COMM"
+                }
+              }
+            }
+          }
+        },
+        "score": {
+          "type": "COMM",
+          "comp1": "1/3",
+          "comp2": "1/3"
+        },
+        "type": {
+          "type": "COMM",
+          "comp1": "DIFF",
+          "comp2": "DIFF"
+        }
+      }
     },
+    "au_pattern": {
+      "type": "DIFF",
+      "score": "1/3",
+      "category": {
+        "color": {
+          "type": "DIFF",
+          "category": {
+            "0": {
+              "type": "COMM",
+              "comp1": false,
+              "comp2": false
+            },
+            "1": {
+              "type": "COMM",
+              "comp1": "?var_1",
+              "comp2": "?var_2"
+            },
+            "2": {
+              "type": "COMM",
+              "comp1": "?var_3",
+              "comp2": "?var_4"
+            },
+            "3": {
+              "type": "COMM",
+              "comp1": "?var_5",
+              "comp2": "?var_6"
+            },
+            "4": {
+              "type": "COMM",
+              "comp1": false,
+              "comp2": false
+            },
+            "5": {
+              "type": "COMM",
+              "comp1": "?var_7",
+              "comp2": "?var_8"
+            },
+            "6": {
+              "type": "COMM",
+              "comp1": "?var_9",
+              "comp2": "?var_10"
+            },
+            "7": {
+              "type": "COMM",
+              "comp1": true,
+              "comp2": true
+            },
+            "8": {
+              "type": "DIFF",
+              "comp1": true,
+              "comp2": false
+            },
+            "9": {
+              "type": "COMM",
+              "comp1": "?var_11",
+              "comp2": "?var_12"
+            }
+          },
+          "score": "9/10"
+        },
+        "contents": {
+          "type": "DIFF",
+          "comp1": "?var_13",
+          "comp2": "?var_14"
+        },
+        "size": {
+          "type": "COMM",
+          "category": {
+            "height": {
+              "type": "COMM",
+              "comp1": "?var_15",
+              "comp2": "?var_16"
+            },
+            "width": {
+              "type": "COMM",
+              "comp1": "?var_17",
+              "comp2": "?var_18"
+            }
+          },
+          "score": "2/2"
+        }
+      }
+    },
+    "au_invariants": {
+      "top_level": {
+        "color": "DIFF",
+        "contents": "DIFF",
+        "size": "COMM"
+      },
+      "variable_count": 18,
+      "sub_fields": {
+        "color": {
+          "0": "COMM",
+          "4": "COMM",
+          "7": "COMM",
+          "8": "DIFF",
+          "score": "9/10"
+        },
+        "size": {
+          "score": "2/2"
+        }
+      },
+      "comm_fields": [
+        "size"
+      ],
+      "diff_fields": [
+        "color",
+        "contents"
+      ]
+    },
+    "generalize-diagnostics": {
+      "concepts_tried": 5,
+      "best_near_miss": {
+        "concept_id": "arrow_ray_to_edge",
+        "pair_index": 0,
+        "reason": "output_mismatch",
+        "total_cells": 100,
+        "wrong_cells": 50,
+        "partial_score": 0.5,
+        "wrong_cell_sample": [
+          [
+            0,
+            0,
+            8,
+            7
+          ],
+          [
+            0,
+            1,
+            8,
+            7
+          ],
+          [
+            0,
+            2,
+            8,
+            7
+          ],
+          [
+            0,
+            3,
+            8,
+            7
+          ],
+          [
+            0,
+            4,
+            8,
+            1
+          ]
+        ]
+      }
+    },
+    "concepts-tried-count": 5,
     "active-rules": [
       {
         "type": "identity",
@@ -4852,7 +3426,7 @@
     }
   },
   "substates": [],
-  "wme_count": 259,
+  "wme_count": 84,
   "last_10_wmes": [
     {
       "identifier": "S1",

@@ -1,0 +1,17 @@
+{
+  "concept_id": "fill_cross_grid_sections",
+  "version": 1,
+  "description": "Grid has a vertical column of one color and horizontal colored rows. Fill sections at intersections.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "fill_cross_grid_sections", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

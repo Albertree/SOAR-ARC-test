@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260413_071735_connect_diamonds",
+  "source": "chunked",
+  "source_tasks": [
+    "60a26a3e"
+  ],
+  "times_validated": 1,
+  "times_failed": 1,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": false,
+        "group_anchors_consistent": false
+      },
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "connect_diamonds",
+    "param_source": "inferred(bg), inferred(line_color)"
+  }
+}

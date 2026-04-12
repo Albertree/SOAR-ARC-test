@@ -1,0 +1,18 @@
+{
+  "concept_id": "gravity",
+  "version": 1,
+  "description": "Drop all non-background cells in a direction (down, up, left, or right).",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "direction": {"type": "str", "infer": "from_examples", "candidates": ["down", "up", "left", "right"]},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "gravity", "args": {"grid": "$input", "direction": "$direction", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

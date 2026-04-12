@@ -1,0 +1,2096 @@
+{
+  "s1": {
+    "type": "state",
+    "superstate": null,
+    "io": {
+      "input-link": {
+        "task": "27a28665"
+      },
+      "output-link": {}
+    },
+    "smem": {
+      "id": "SM1"
+    },
+    "epmem": {
+      "id": "E1"
+    },
+    "focus": {
+      "level": "GRID",
+      "scope": "within_pair_examples"
+    },
+    "current-task": "27a28665",
+    "comparison-agenda": [
+      {
+        "type": "grid",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T27a28665.P0.G0",
+        "id2": "T27a28665.P0.G1"
+      },
+      {
+        "type": "grid",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T27a28665.P1.G0",
+        "id2": "T27a28665.P1.G1"
+      },
+      {
+        "type": "grid",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T27a28665.P2.G0",
+        "id2": "T27a28665.P2.G1"
+      },
+      {
+        "type": "grid",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T27a28665.P3.G0",
+        "id2": "T27a28665.P3.G1"
+      },
+      {
+        "type": "grid",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "T27a28665.P4.G0",
+        "id2": "T27a28665.P4.G1"
+      },
+      {
+        "type": "grid",
+        "pair_idx": 5,
+        "pair_type": "example",
+        "id1": "T27a28665.P5.G0",
+        "id2": "T27a28665.P5.G1"
+      },
+      {
+        "type": "grid",
+        "pair_idx": 6,
+        "pair_type": "example",
+        "id1": "T27a28665.P6.G0",
+        "id2": "T27a28665.P6.G1"
+      }
+    ],
+    "pending-comparisons": [],
+    "comparisons": {
+      "grid_0": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 0,
+          "pair_type": "example",
+          "id1": "T27a28665.P0.G0",
+          "id2": "T27a28665.P0.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P0.G0",
+            "id2": "T27a28665.P0.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    5,
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    0,
+                    5
+                  ],
+                  [
+                    0,
+                    5,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "grid_1": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 1,
+          "pair_type": "example",
+          "id1": "T27a28665.P1.G0",
+          "id2": "T27a28665.P1.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P1.G0",
+            "id2": "T27a28665.P1.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    8,
+                    0,
+                    8
+                  ],
+                  [
+                    0,
+                    8,
+                    0
+                  ],
+                  [
+                    8,
+                    0,
+                    8
+                  ]
+                ],
+                "comp2": [
+                  [
+                    2
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "grid_2": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 2,
+          "pair_type": "example",
+          "id1": "T27a28665.P2.G0",
+          "id2": "T27a28665.P2.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P2.G0",
+            "id2": "T27a28665.P2.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    5,
+                    0,
+                    5
+                  ],
+                  [
+                    0,
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    0,
+                    5
+                  ]
+                ],
+                "comp2": [
+                  [
+                    2
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "grid_3": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 3,
+          "pair_type": "example",
+          "id1": "T27a28665.P3.G0",
+          "id2": "T27a28665.P3.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P3.G0",
+            "id2": "T27a28665.P3.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    1,
+                    1
+                  ],
+                  [
+                    0,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    0,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    3
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "grid_4": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 4,
+          "pair_type": "example",
+          "id1": "T27a28665.P4.G0",
+          "id2": "T27a28665.P4.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P4.G0",
+            "id2": "T27a28665.P4.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    8,
+                    8
+                  ],
+                  [
+                    0,
+                    8,
+                    8
+                  ],
+                  [
+                    8,
+                    0,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    3
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "grid_5": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 5,
+          "pair_type": "example",
+          "id1": "T27a28665.P5.G0",
+          "id2": "T27a28665.P5.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P5.G0",
+            "id2": "T27a28665.P5.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    4,
+                    4,
+                    0
+                  ],
+                  [
+                    4,
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    4,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "grid_6": {
+        "spec": {
+          "type": "grid",
+          "pair_idx": 6,
+          "pair_type": "example",
+          "id1": "T27a28665.P6.G0",
+          "id2": "T27a28665.P6.G1"
+        },
+        "result": {
+          "id": {
+            "id1": "T27a28665.P6.G0",
+            "id2": "T27a28665.P6.G1"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "7/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    5,
+                    5
+                  ],
+                  [
+                    0,
+                    5,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    6
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 1
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "patterns": {
+      "grid_size_preserved": false,
+      "pair_analyses": [
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                5
+              ],
+              "output_colors": [
+                1
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        },
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                8
+              ],
+              "output_colors": [
+                2
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        },
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                5
+              ],
+              "output_colors": [
+                2
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        },
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                0
+              ],
+              "output_colors": [
+                3
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        },
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                0
+              ],
+              "output_colors": [
+                3
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        },
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                4
+              ],
+              "output_colors": [
+                1
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        },
+        {
+          "total_changes": 1,
+          "num_groups": 1,
+          "groups": [
+            {
+              "input_colors": [
+                0
+              ],
+              "output_colors": [
+                6
+              ],
+              "top_row": 0,
+              "top_col": 0,
+              "max_row": 0,
+              "max_col": 0,
+              "cell_count": 1
+            }
+          ],
+          "size_match": false
+        }
+      ],
+      "inter_pair_consistent": true,
+      "inter_pair_group_count_match": true
+    },
+    "second_order_comparison": {
+      "result": {
+        "type": "DIFF",
+        "score": "2/3",
+        "category": {
+          "category": {
+            "type": "DIFF",
+            "score": "1/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "category": {
+                    "type": "DIFF",
+                    "score": "6/10",
+                    "category": {
+                      "0": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": true,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "DIFF",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      },
+                      "1": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "DIFF",
+                            "comp1": "DIFF",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "2": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "type": {
+                            "type": "DIFF",
+                            "comp1": "COMM",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      },
+                      "3": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "4": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "5": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "DIFF",
+                            "comp1": "DIFF",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "6": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "7": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "8": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "DIFF",
+                            "comp1": "COMM",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      },
+                      "9": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "score": {
+                    "type": "COMM",
+                    "comp1": "7/10",
+                    "comp2": "7/10"
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "score": "1/3",
+                "category": {
+                  "comp1": {
+                    "type": "DIFF",
+                    "comp1": [
+                      [
+                        5,
+                        5,
+                        0
+                      ],
+                      [
+                        5,
+                        0,
+                        5
+                      ],
+                      [
+                        0,
+                        5,
+                        0
+                      ]
+                    ],
+                    "comp2": [
+                      [
+                        8,
+                        0,
+                        8
+                      ],
+                      [
+                        0,
+                        8,
+                        0
+                      ],
+                      [
+                        8,
+                        0,
+                        8
+                      ]
+                    ]
+                  },
+                  "comp2": {
+                    "type": "DIFF",
+                    "comp1": [
+                      [
+                        1
+                      ]
+                    ],
+                    "comp2": [
+                      [
+                        2
+                      ]
+                    ]
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              },
+              "size": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "category": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "height": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": 3,
+                            "comp2": 3
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": 1,
+                            "comp2": 1
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "DIFF",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      },
+                      "width": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": 3,
+                            "comp2": 3
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": 1,
+                            "comp2": 1
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "DIFF",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "score": {
+                    "type": "COMM",
+                    "comp1": "0/2",
+                    "comp2": "0/2"
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              }
+            }
+          },
+          "score": {
+            "type": "COMM",
+            "comp1": "0/3",
+            "comp2": "0/3"
+          },
+          "type": {
+            "type": "COMM",
+            "comp1": "DIFF",
+            "comp2": "DIFF"
+          }
+        }
+      },
+      "comm_fields": [
+        "score",
+        "type"
+      ],
+      "content_comm_fields": {
+        "inner_comm_fields": [
+          "size"
+        ],
+        "inner_diff_fields": [
+          "color",
+          "contents"
+        ],
+        "inner_score": "1/3"
+      },
+      "score": "2/3",
+      "full_category": {
+        "category": {
+          "type": "DIFF",
+          "score": "1/3",
+          "category": {
+            "color": {
+              "type": "DIFF",
+              "score": "2/3",
+              "category": {
+                "category": {
+                  "type": "DIFF",
+                  "score": "6/10",
+                  "category": {
+                    "0": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": true,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "DIFF",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    },
+                    "1": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "DIFF",
+                          "comp1": "DIFF",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "2": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "type": {
+                          "type": "DIFF",
+                          "comp1": "COMM",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    },
+                    "3": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "4": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "5": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "DIFF",
+                          "comp1": "DIFF",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "6": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "7": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "8": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "DIFF",
+                          "comp1": "COMM",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    },
+                    "9": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    }
+                  }
+                },
+                "score": {
+                  "type": "COMM",
+                  "comp1": "7/10",
+                  "comp2": "7/10"
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            },
+            "contents": {
+              "type": "DIFF",
+              "score": "1/3",
+              "category": {
+                "comp1": {
+                  "type": "DIFF",
+                  "comp1": [
+                    [
+                      5,
+                      5,
+                      0
+                    ],
+                    [
+                      5,
+                      0,
+                      5
+                    ],
+                    [
+                      0,
+                      5,
+                      0
+                    ]
+                  ],
+                  "comp2": [
+                    [
+                      8,
+                      0,
+                      8
+                    ],
+                    [
+                      0,
+                      8,
+                      0
+                    ],
+                    [
+                      8,
+                      0,
+                      8
+                    ]
+                  ]
+                },
+                "comp2": {
+                  "type": "DIFF",
+                  "comp1": [
+                    [
+                      1
+                    ]
+                  ],
+                  "comp2": [
+                    [
+                      2
+                    ]
+                  ]
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            },
+            "size": {
+              "type": "COMM",
+              "score": "3/3",
+              "category": {
+                "category": {
+                  "type": "COMM",
+                  "score": "2/2",
+                  "category": {
+                    "height": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": 3,
+                          "comp2": 3
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": 1,
+                          "comp2": 1
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "DIFF",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    },
+                    "width": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": 3,
+                          "comp2": 3
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": 1,
+                          "comp2": 1
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "DIFF",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    }
+                  }
+                },
+                "score": {
+                  "type": "COMM",
+                  "comp1": "0/2",
+                  "comp2": "0/2"
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            }
+          }
+        },
+        "score": {
+          "type": "COMM",
+          "comp1": "0/3",
+          "comp2": "0/3"
+        },
+        "type": {
+          "type": "COMM",
+          "comp1": "DIFF",
+          "comp2": "DIFF"
+        }
+      }
+    },
+    "au_pattern": {
+      "type": "DIFF",
+      "score": "0/3",
+      "category": {
+        "color": {
+          "type": "DIFF",
+          "category": {
+            "0": {
+              "type": "DIFF",
+              "comp1": true,
+              "comp2": false
+            },
+            "1": {
+              "type": "?var_1"
+            },
+            "2": {
+              "type": "?var_2"
+            },
+            "3": {
+              "type": "?var_3"
+            },
+            "4": {
+              "type": "?var_4"
+            },
+            "5": {
+              "type": "?var_5"
+            },
+            "6": {
+              "type": "?var_6"
+            },
+            "7": {
+              "type": "COMM",
+              "comp1": false,
+              "comp2": false
+            },
+            "8": {
+              "type": "?var_7"
+            },
+            "9": {
+              "type": "COMM",
+              "comp1": false,
+              "comp2": false
+            }
+          },
+          "score": "7/10"
+        },
+        "contents": {
+          "type": "DIFF",
+          "comp1": "?var_8",
+          "comp2": "?var_9"
+        },
+        "size": {
+          "type": "DIFF",
+          "category": {
+            "height": {
+              "type": "DIFF",
+              "comp1": 3,
+              "comp2": 1
+            },
+            "width": {
+              "type": "DIFF",
+              "comp1": 3,
+              "comp2": 1
+            }
+          },
+          "score": "0/2"
+        }
+      }
+    },
+    "au_invariants": {
+      "top_level": {
+        "color": "DIFF",
+        "contents": "DIFF",
+        "size": "DIFF"
+      },
+      "variable_count": 9,
+      "sub_fields": {
+        "color": {
+          "0": "DIFF",
+          "7": "COMM",
+          "9": "COMM",
+          "score": "7/10"
+        },
+        "size": {
+          "height": "DIFF",
+          "width": "DIFF",
+          "score": "0/2"
+        }
+      },
+      "comm_fields": [],
+      "diff_fields": [
+        "color",
+        "contents",
+        "size"
+      ]
+    },
+    "generalize-diagnostics": {
+      "concepts_tried": 0,
+      "best_near_miss": null
+    },
+    "concepts-tried-count": 0,
+    "active-rules": [
+      {
+        "type": "identity",
+        "confidence": 0.0
+      }
+    ],
+    "predictions": {
+      "test_0": [
+        [
+          0,
+          8,
+          0
+        ],
+        [
+          8,
+          8,
+          8
+        ],
+        [
+          0,
+          8,
+          0
+        ]
+      ],
+      "test_1": [
+        [
+          7,
+          7,
+          0
+        ],
+        [
+          7,
+          0,
+          7
+        ],
+        [
+          0,
+          7,
+          0
+        ]
+      ],
+      "test_2": [
+        [
+          2,
+          0,
+          2
+        ],
+        [
+          0,
+          2,
+          0
+        ],
+        [
+          2,
+          0,
+          2
+        ]
+      ]
+    },
+    "S1": {
+      "output-link": "O_out"
+    },
+    "O_out": {
+      "predicted-grid": [
+        [
+          [
+            0,
+            8,
+            0
+          ],
+          [
+            8,
+            8,
+            8
+          ],
+          [
+            0,
+            8,
+            0
+          ]
+        ],
+        [
+          [
+            7,
+            7,
+            0
+          ],
+          [
+            7,
+            0,
+            7
+          ],
+          [
+            0,
+            7,
+            0
+          ]
+        ],
+        [
+          [
+            2,
+            0,
+            2
+          ],
+          [
+            0,
+            2,
+            0
+          ],
+          [
+            2,
+            0,
+            2
+          ]
+        ]
+      ]
+    },
+    "goal": {
+      "subgoals": {
+        "test_0": {
+          "status": "solved"
+        },
+        "test_1": {
+          "status": "solved"
+        },
+        "test_2": {
+          "status": "solved"
+        }
+      }
+    }
+  },
+  "substates": [],
+  "wme_count": 120,
+  "last_10_wmes": [
+    {
+      "identifier": "S1",
+      "attribute": "O1"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "name"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "op-preference"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "task-id"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator-application"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "S1"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "O_out"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "goal"
+    }
+  ]
+}

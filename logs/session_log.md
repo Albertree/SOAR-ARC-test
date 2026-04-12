@@ -168,3 +168,33 @@
 - Stored rule hits: 0
 - Time: 4s
 - Log: logs/learn_20260413_042538.log
+
+---
+## Learning Loop -- 2026-04-13 05:44
+
+- Split: training, Tasks: 50
+- Correct: 1 / 50 (2.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 98s
+- Log: logs/learn_20260413_054252.log
+
+---
+## Learning Loop -- 2026-04-13 07:17
+
+- Split: training, Tasks: 10
+- Correct: 0 / 10 (0.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 17s
+- Log: logs/learn_20260413_071646.log
+
+---
+## Learning Loop -- 2026-04-13 07:18
+
+- Split: training, Tasks: 30
+- Correct: 8 / 30 (26.7%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 50s
+- Log: logs/learn_20260413_071726.log

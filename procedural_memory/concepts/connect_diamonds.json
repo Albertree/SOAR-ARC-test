@@ -1,0 +1,18 @@
+{
+  "concept_id": "connect_diamonds",
+  "version": 1,
+  "description": "Find diamond shapes (3x3 cross) and connect pairs sharing a row or column with lines.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "line_color": {"type": "color", "infer": "from_examples"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "connect_diamonds", "args": {"grid": "$input", "line_color": "$line_color", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

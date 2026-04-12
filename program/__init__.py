@@ -1,10 +1,11 @@
 """
 program — knowledge abstraction package.
 
-Public interface:
-    anti_unify        — anti-unify two ARCKG comparison results
-    anti_unify_pairs  — anti-unify a list of comparison results
-    extract_invariants — extract concrete invariant fields from AU result
+Modules:
+    anti_unification — AU over ARCKG comparison result trees
+    program_solver   — per-pair program solver using existing concepts
+    program_au       — AU over programs (step lists)
+    claude_au        — Claude-assisted program solving and concept generation
 """
 
 from program.anti_unification import anti_unify, anti_unify_pairs, extract_invariants

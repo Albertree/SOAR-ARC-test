@@ -320,6 +320,33 @@ def main():
                     }
                     with open(f"{sol_dir}/trace.json", "w") as f:
                         json.dump(trace, f, indent=2)
+
+                    # Save per-pair programs and AU template
+                    try:
+                        from program.program_solver import solve_all_pairs
+                        from program.program_au import au_program_list
+
+                        pair_programs = solve_all_pairs(task)
+                        programs = [p for _, p in pair_programs if p is not None]
+                        program_record = {
+                            "task_hex": task_hex,
+                            "pair_programs": [
+                                {"pair_idx": idx, "solved": prog is not None, "program": prog}
+                                for idx, prog in pair_programs
+                            ],
+                            "all_pairs_solved": all(p is not None for _, p in pair_programs),
+                        }
+                        if programs:
+                            template = au_program_list(programs)
+                            program_record["au_template"] = template
+                            if template:
+                                print(f"[PROGRAM-AU] {task_hex}: {len(template['variables'])} vars, "
+                                      f"prims={[s['primitive'] for s in template['steps']]}")
+                        with open(f"{sol_dir}/program.json", "w") as f:
+                            json.dump(program_record, f, indent=2, default=str)
+                    except Exception as prog_err:
+                        print(f"[WARN] Program save failed for {task_hex}: {prog_err}")
+
                 except Exception as e:
                     print(f"[WARN] Could not write episodic record for {task_hex}: {e}")
 
