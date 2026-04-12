@@ -336,12 +336,23 @@ def main():
                             ],
                             "all_pairs_solved": all(p is not None for _, p in pair_programs),
                         }
-                        if programs:
+                        if len(programs) >= 2:
                             template = au_program_list(programs)
                             program_record["au_template"] = template
                             if template:
                                 print(f"[PROGRAM-AU] {task_hex}: {len(template['variables'])} vars, "
                                       f"prims={[s['primitive'] for s in template['steps']]}")
+                        elif len(programs) == 1:
+                            prog = programs[0]
+                            program_record["au_template"] = {
+                                "concept_id_a": prog.get("concept_id", "?"),
+                                "concept_id_b": prog.get("concept_id", "?"),
+                                "steps": prog["steps"],
+                                "variables": [],
+                                "variable_count": 0,
+                            }
+                            print(f"[PROGRAM-AU] {task_hex}: single-pair template, "
+                                  f"prims={[s['primitive'] for s in prog['steps']]}")
                         with open(f"{sol_dir}/program.json", "w") as f:
                             json.dump(program_record, f, indent=2, default=str)
                     except Exception as prog_err:

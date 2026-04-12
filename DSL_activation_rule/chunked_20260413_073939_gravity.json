@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260413_071737_rank_recolor_objects",
+  "rule_id": "chunked_20260413_073939_gravity",
   "source": "chunked",
   "source_tasks": [
-    "6e82a1ae"
+    "1e0a9b12"
   ],
-  "times_validated": 2,
-  "times_failed": 3,
+  "times_validated": 1,
+  "times_failed": 5,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "multi_group",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "rank_recolor_objects",
-    "param_source": "inferred(bg), inferred(target_color)"
+    "concept": "gravity",
+    "param_source": "inferred(bg), inferred(direction)"
   }
 }

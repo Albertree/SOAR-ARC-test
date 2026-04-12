@@ -110,11 +110,10 @@ def run_discovery(dry_run=False):
     if dry_run:
         return
 
-    # Check if Claude API is available
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        print("\nANTHROPIC_API_KEY not set — skipping Claude-based concept generation.")
-        print("Set the key and re-run to generate concepts from AU templates.")
+    # Check if claude CLI is available
+    import shutil
+    if not shutil.which("claude"):
+        print("[DISCOVERY] claude CLI not found in PATH — skipping")
         return
 
     from program.claude_au import template_to_concept_json, au_merge_with_claude

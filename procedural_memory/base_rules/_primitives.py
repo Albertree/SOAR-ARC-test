@@ -27,6 +27,51 @@ def extract_row(grid, row_index):
     return [grid[row_index][:]]
 
 
+def extract_frame_interior(grid):
+    """Find a rectangular frame drawn with a single color and extract its interior.
+    The frame color is a non-background color whose cells form the border of a
+    bounding rectangle (top/bottom rows and left/right columns of the rectangle).
+    Returns the subgrid inside the frame, excluding the frame cells."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+    # Collect all colors and their positions
+    color_positions = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_positions.setdefault(v, []).append((r, c))
+    # For each candidate color, check if it forms a rectangular frame
+    for color, positions in color_positions.items():
+        rows = [p[0] for p in positions]
+        cols = [p[1] for p in positions]
+        top_r, bot_r = min(rows), max(rows)
+        left_c, right_c = min(cols), max(cols)
+        # Frame must be at least 3x3 to have an interior
+        if bot_r - top_r < 2 or right_c - left_c < 2:
+            continue
+        # Build expected frame positions (top row, bottom row, left col, right col)
+        expected = set()
+        for c in range(left_c, right_c + 1):
+            expected.add((top_r, c))
+            expected.add((bot_r, c))
+        for r in range(top_r, bot_r + 1):
+            expected.add((r, left_c))
+            expected.add((r, right_c))
+        # Check that all positions of this color match the expected frame
+        pos_set = set(positions)
+        if pos_set == expected:
+            # Extract interior
+            interior_top = top_r + 1
+            interior_left = left_c + 1
+            interior_height = bot_r - top_r - 1
+            interior_width = right_c - left_c - 1
+            return [row[interior_left:interior_left + interior_width]
+                    for row in grid[interior_top:interior_top + interior_height]]
+    return None
+
+
 def extract_objects(grid, bg=0):
     """Find connected components of non-bg cells.
     Returns list of dicts: {"positions": [(r,c),...], "color": int, "bbox": (top,left,h,w)}."""

@@ -2,45 +2,28 @@
 Claude-assisted program solving and concept generation.
 
 Used when brute-force solver fails or AU templates need concept JSONs.
-All Claude calls use the Anthropic API via urllib (no SDK dependency).
+All Claude calls use the `claude` CLI subprocess (same pattern as run_loop.sh).
 """
 import json
 import os
+import sys
+import subprocess
 import inspect
 
 
 def _call_claude(prompt, max_tokens=2000):
-    """Call Claude API. Returns response text or raises."""
-    import urllib.request
-
-    api_key = os.environ.get("ANTHROPIC_API_KEY", "")
-    if not api_key:
-        raise RuntimeError("ANTHROPIC_API_KEY not set")
-
-    payload = json.dumps({
-        "model": "claude-sonnet-4-20250514",
-        "max_tokens": max_tokens,
-        "messages": [{"role": "user", "content": prompt}]
-    }).encode()
-
-    req = urllib.request.Request(
-        "https://api.anthropic.com/v1/messages",
-        data=payload,
-        headers={
-            "Content-Type": "application/json",
-            "x-api-key": api_key,
-            "anthropic-version": "2023-06-01",
-        },
-        method="POST"
+    """Call Claude via CLI subprocess. Returns response text or raises."""
+    result = subprocess.run(
+        ["claude", "-p", prompt,
+         "--permission-mode", "bypassPermissions",
+         "--output-format", "text"],
+        capture_output=True, text=True, timeout=120,
+        cwd=os.getcwd(),
+        shell=(sys.platform == "win32"),
     )
-
-    with urllib.request.urlopen(req) as resp:
-        data = json.loads(resp.read())
-
-    return "".join(
-        block["text"] for block in data.get("content", [])
-        if block.get("type") == "text"
-    )
+    if result.returncode not in (0, 1):
+        raise RuntimeError(f"claude exited {result.returncode}: {result.stderr[:200]}")
+    return result.stdout.strip()
 
 
 def _render_grid(raw):

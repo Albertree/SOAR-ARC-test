@@ -137,9 +137,15 @@ while true; do
     log "Running triage (50 tasks)..."
     python scripts/triage.py 50 ${SESSION} 2>&1 | tee -a "$PIPELINE_LOG"
 
-    # ── Concept discovery from solved programs ──────────────
-    log "Running concept discovery..."
+    # ── Concept discovery from AU templates ──────────────
+    log "Running concept discovery from AU templates..."
     python scripts/concept_discovery.py 2>&1 | tee -a "$PIPELINE_LOG"
+    DISCOVERY_EXIT=${PIPESTATUS[0]}
+    if [ $DISCOVERY_EXIT -eq 0 ]; then
+        log "Concept discovery: OK"
+    else
+        log "[!] Concept discovery failed (exit $DISCOVERY_EXIT)"
+    fi
     python scripts/validate_concepts.py 2>&1 | tee -a "$PIPELINE_LOG"
 
     # ── Auto-grow task pool on 100% score ──────────────────

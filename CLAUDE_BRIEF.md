@@ -1,150 +1,103 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T04:25:07
-Tasks analyzed: 20
+Generated: 2026-04-13T07:41:18
+Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 0 | 0% |
-| MISSING_CONCEPT | 11 | 55% |
-| PARAM_ERROR | 1 | 5% |
-| STRUCTURAL | 8 | 40% |
+| SOLVED | 1 | 2% |
+| MISSING_CONCEPT | 13 | 26% |
+| PARAM_ERROR | 10 | 20% |
+| STRUCTURAL | 26 | 52% |
 
 ## Current Concepts
+- `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
 - `color_map` — size_preserved=True, color_preserved=False
+- `connect_diamonds` — size_preserved=True, color_preserved=False
+- `fill_cross_grid_sections` — size_preserved=True, color_preserved=False
 - `flip_horizontal` — size_preserved=True, color_preserved=True
 - `flip_vertical` — size_preserved=True, color_preserved=True
-- `gravity_down` — size_preserved=True, color_preserved=True
+- `gravity` — size_preserved=True, color_preserved=True
 - `horizontal_mirror_concat` — size_preserved=False, color_preserved=True
 - `rank_recolor_columns` — size_preserved=True, color_preserved=False
 - `rank_recolor_objects` — size_preserved=True, color_preserved=False
-- `rotate_90_cw` — size_preserved=False, color_preserved=True
+- `rotate_90_cw` — size_preserved=?, color_preserved=True
 - `scale_2x` — size_preserved=False, color_preserved=True
+- `swap_quadrant_shapes` — size_preserved=True, color_preserved=?
 - `vertical_mirror_concat` — size_preserved=False, color_preserved=True
+- `zigzag_shear_rect` — size_preserved=True, color_preserved=True
+
+## Solved Tasks
+- `1e0a9b12`
 
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `18286ef8`: `color_map` partial_score=0.95
+- `e1d2900e`: `zigzag_shear_rect` partial_score=0.96
+- `55059096`: `arrow_ray_to_edge` partial_score=0.95
+- `f8a8fe49`: `flip_horizontal` partial_score=0.95
+- `689c358e`: `arrow_ray_to_edge` partial_score=0.93
+- `673ef223`: `arrow_ray_to_edge` partial_score=0.93
 
 ## Highest Leverage Gap
-**2 MISSING_CONCEPT tasks** share this signature:
-`('same_size', 'no_color_change', '3in_3out')`
+**1 MISSING_CONCEPT tasks** share this signature:
+`('size_6x8', 'color_change', '6in_5out')`
 
 No concept covers this transformation. Writing one concept here
-could solve up to 2 tasks.
+could solve up to 1 tasks.
 
-### Example: `d492a647`
-Training pairs: 2
-**Pair 0** (13x16 -> 13x16):
-```
-Input:
-5 0 5 0 5 5 5 5 5 5 5 0
-0 5 5 0 5 5 5 0 5 0 0 5
-5 5 5 0 0 0 0 0 0 0 0 0
-5 5 0 0 0 0 0 0 0 0 0 5
-5 0 5 0 0 0 0 0 0 0 0 5
-5 5 5 0 0 0 0 3 0 0 0 0
-0 5 0 0 0 0 0 0 0 0 0 5
-0 5 5 0 0 0 0 0 0 0 0 0
-... (5 more rows)
-Output:
-5 0 5 0 5 5 5 5 5 5 5 0
-0 5 5 3 5 5 5 3 5 3 0 5
-5 5 5 0 0 0 0 0 0 0 0 0
-5 5 0 3 0 3 0 3 0 3 0 5
-5 0 5 0 0 0 0 0 0 0 0 5
-5 5 5 3 0 3 0 3 0 3 0 3
-0 5 0 0 0 0 0 0 0 0 0 5
-0 5 5 3 0 3 0 3 0 3 0 3
-... (5 more rows)
-```
-**Pair 1** (13x13 -> 13x13):
-```
-Input:
-0 0 5 0 5 5 5 0 5 0 5 5
-5 5 0 5 0 0 5 5 0 5 5 5
-5 0 5 0 0 0 0 0 0 0 0 0
-5 0 0 0 0 0 0 0 0 0 0 0
-5 5 5 0 0 1 0 0 0 0 0 5
-0 5 5 0 0 0 0 0 0 0 0 5
-0 5 5 0 0 0 0 0 0 0 0 0
-5 0 5 0 0 0 0 0 0 0 0 0
-... (5 more rows)
-Output:
-0 1 5 1 5 5 5 1 5 1 5 5
-5 5 0 5 0 0 5 5 0 5 5 5
-5 1 5 1 0 1 0 1 0 1 0 1
-5 0 0 0 0 0 0 0 0 0 0 0
-5 5 5 1 0 1 0 1 0 1 0 5
-0 5 5 0 0 0 0 0 0 0 0 5
-0 5 5 1 0 1 0 1 0 1 0 1
-5 0 5 0 0 0 0 0 0 0 0 0
-... (5 more rows)
-```
-
-### Example: `6855a6e4`
+### Example: `1c786137`
 Training pairs: 3
-**Pair 0** (15x15 -> 15x15):
+**Pair 0** (23x21 -> 6x8):
 ```
 Input:
-0 0 0 0 5 0 0 0 0 0 0 0
-0 0 0 0 5 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 2 2 2 2 2 0 0 0 0 0
-0 0 2 0 0 0 2 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-... (7 more rows)
+3 8 8 0 3 8 8 0 8 0 3 1
+3 3 0 0 5 3 0 3 8 0 3 3
+1 5 1 3 1 1 8 3 0 0 3 8
+5 3 0 8 2 2 2 2 2 2 2 2
+0 1 3 3 2 0 0 8 0 3 3 3
+8 0 0 8 2 1 0 0 0 3 0 3
+1 1 5 0 2 3 3 0 3 3 0 8
+0 0 8 8 2 3 3 5 1 0 3 0
+... (15 more rows)
 Output:
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 2 2 2 2 2 0 0 0 0 0
-0 0 2 0 0 0 2 0 0 0 0 0
-0 0 0 0 5 0 0 0 0 0 0 0
-0 0 0 0 5 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-... (7 more rows)
+0 0 8 0 3 3 3 3
+1 0 0 0 3 0 3 1
+3 3 0 3 3 0 8 1
+3 3 5 1 0 3 0 0
+5 1 3 0 1 3 1 1
+5 0 8 0 3 0 8 8
 ```
-**Pair 1** (15x15 -> 15x15):
+**Pair 1** (13x16 -> 5x3):
 ```
 Input:
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 2 2 0 0 0 0 0 2 2
-0 0 0 2 0 0 0 0 0 0 0 2
-5 5 0 2 0 0 0 0 0 0 0 2
-... (7 more rows)
+0 6 9 6 6 0 6 3 6 9 6 6
+9 9 0 6 6 0 0 9 3 6 6 6
+6 0 9 0 0 6 0 6 6 0 3 0
+9 6 6 9 9 9 6 3 6 9 9 6
+6 6 0 0 6 6 9 0 0 3 0 0
+9 9 6 0 0 9 0 0 3 9 3 0
+3 6 4 4 4 4 4 6 0 0 0 9
+9 0 4 3 3 0 4 0 0 6 0 0
+... (5 more rows)
 Output:
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 0 0 0 0 0 0 0 0 0
-0 0 0 2 2 0 0 0 0 0 2 2
-0 0 0 2 0 0 0 0 0 5 0 2
-0 0 0 2 0 5 5 0 5 5 0 2
-... (7 more rows)
+3 3 0
+9 3 9
+6 6 0
+9 0 0
+6 3 9
 ```
 
 ## Unused Primitives
-These 33 primitives exist but no concept uses them:
-- `arrow_ray_to_edge`
+These 28 primitives exist but no concept uses them:
 - `assign_rank_colors`
-- `connect_diamonds`
 - `connect_waypoints`
 - `count_color`
 - `extract_column`
 - `extract_objects`
 - `extract_row`
 - `extract_subgrid`
-- `fill_cross_grid_sections`
 - `fill_quadrants_from_corners`
 - `fill_rect_interiors_by_size`
 - `fill_region`
@@ -164,10 +117,8 @@ These 33 primitives exist but no concept uses them:
 - `separator_reflect_trails`
 - `staircase`
 - `staircase_from_row`
-- `swap_quadrant_shapes`
 - `transpose`
 - `unique_colors`
-- `zigzag_shear_rect`
 
 ## Your Task This Session
 
