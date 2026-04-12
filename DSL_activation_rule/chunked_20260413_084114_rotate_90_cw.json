@@ -1,11 +1,11 @@
 {
-  "rule_id": "chunked_20260413_071749_scale_2x",
+  "rule_id": "chunked_20260413_084114_rotate_90_cw",
   "source": "chunked",
   "source_tasks": [
-    "c59eb873"
+    "ed36ccf7"
   ],
-  "times_validated": 5,
-  "times_failed": 2,
+  "times_validated": 1,
+  "times_failed": 1,
   "condition": {
     "level": "GRID",
     "topology": {
@@ -13,15 +13,15 @@
       "contents": {
         "type": "DIFF",
         "change_pattern": "scattered",
-        "change_scope": "subset",
+        "change_scope": "single_object",
         "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
-      "size": "DIFF"
+      "size": "COMM"
     }
   },
   "action": {
-    "concept": "scale_2x",
-    "param_source": "no_params"
+    "concept": "rotate_90_cw",
+    "param_source": "inferred(times)"
   }
 }

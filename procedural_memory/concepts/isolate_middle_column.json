@@ -1,0 +1,17 @@
+{
+  "concept_id": "isolate_middle_column",
+  "version": 1,
+  "description": "Keep only the center column of the grid, fill all other cells with background color.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "isolate_middle_column", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

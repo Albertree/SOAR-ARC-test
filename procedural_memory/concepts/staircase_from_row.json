@@ -1,0 +1,17 @@
+{
+  "concept_id": "staircase_from_row",
+  "version": 1,
+  "description": "Expand a single row into a staircase triangle, adding one more colored cell per row from the left.",
+  "signature": {
+    "grid_size_preserved": false,
+    "color_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "staircase_from_row", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
