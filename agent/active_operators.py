@@ -389,6 +389,71 @@ class ExtractPatternOperator(Operator):
 
         wm.s1["patterns"] = patterns
 
+        # Second-order comparison: compare pair0's result to pair1's.
+        # COMM fields = structural invariants across training pairs.
+        comps = wm.s1.get("comparisons", {})
+        comp_keys = sorted(comps.keys())
+        if len(comp_keys) >= 2:
+            try:
+                from ARCKG.comparison import compare as _cmp, _is_relation_result
+                r0_full = comps[comp_keys[0]].get("result", {})
+                r1_full = comps[comp_keys[1]].get("result", {})
+                if _is_relation_result(r0_full) and _is_relation_result(r1_full):
+                    second_order = _cmp(r0_full, r1_full)
+                    second_result = second_order.get("result", {})
+                    second_cat = second_result.get("category", {})
+                    top_comm = sorted(
+                        k for k, v in second_cat.items()
+                        if isinstance(v, dict) and v.get("type") == "COMM"
+                    )
+
+                    # Drill into category.category for content-level COMM fields
+                    content_comm = {}
+                    cat_inner = second_cat.get("category", {})
+                    if isinstance(cat_inner, dict):
+                        deep_cat = cat_inner.get("category", {})
+                        if isinstance(deep_cat, dict):
+                            deep_comm = sorted(
+                                k for k, v in deep_cat.items()
+                                if isinstance(v, dict) and v.get("type") == "COMM"
+                            )
+                            deep_diff = sorted(
+                                k for k, v in deep_cat.items()
+                                if isinstance(v, dict) and v.get("type") == "DIFF"
+                            )
+                            content_comm = {
+                                "inner_comm_fields": deep_comm,
+                                "inner_diff_fields": deep_diff,
+                                "inner_score": cat_inner.get("score", "?"),
+                            }
+
+                    wm.s1["second_order_comparison"] = {
+                        "result": second_result,
+                        "comm_fields": top_comm,
+                        "content_comm_fields": content_comm,
+                        "score": second_result.get("score", "0/0"),
+                        "full_category": second_cat,
+                    }
+                    deep_info = content_comm.get("inner_comm_fields", [])
+                    print(f"[SECOND-ORDER] score={second_result.get('score','?')}, "
+                          f"deep_comm={deep_info}")
+            except Exception:
+                pass
+
+        # Anti-unify all first-order comparison results
+        try:
+            from program.anti_unification import anti_unify_pairs, extract_invariants
+            all_results = [comps[k].get("result", {}) for k in sorted(comps.keys())]
+            all_results = [r for r in all_results if r]
+            if len(all_results) >= 2:
+                au_pattern = anti_unify_pairs(all_results)
+                invariants = extract_invariants(au_pattern)
+                wm.s1["au_pattern"] = au_pattern
+                wm.s1["au_invariants"] = invariants
+                print(f"[AU] Invariants across {len(all_results)} pairs: {invariants}")
+        except Exception:
+            pass
+
     # ---- internal helpers ------------------------------------------------
 
     def _analyze_pair(self, g0, g1):
@@ -515,27 +580,35 @@ class GeneralizeOperator(Operator):
         # Try chunked activation rules first (topology-based shortcut)
         rule = None
         chunked_hint = None
+        # Gather WM context for concept matching (used by both chunked and standard paths)
+        focus_level = (wm.s1.get("focus") or {}).get("level", "GRID")
+        wm_comparisons = wm.s1.get("comparisons") or {}
+        second_order = wm.s1.get("second_order_comparison", {})
+        so_comm = second_order.get("comm_fields", []) if second_order else []
+        wm_au_inv = wm.s1.get("au_invariants")
+
         try:
             from agent.chunking import try_chunked_rules
             chunked_hint = try_chunked_rules(comparisons, task, patterns=patterns)
             if chunked_hint:
-                # Validate the chunked hint against examples
                 concept_id = chunked_hint.get("concept_id", "")
                 from agent.rule_engine import try_all
-                rule = try_all(patterns, task)
+                rule = try_all(patterns, task, focus_level=focus_level,
+                               comparisons=wm_comparisons if wm_comparisons else None,
+                               second_order_comm=so_comm if so_comm else None,
+                               au_invariants=wm_au_inv if wm_au_inv else None)
                 if rule and rule.get("concept_id") == concept_id:
                     print(f"[CHUNK] Chunked rule confirmed: {concept_id}")
-                elif rule:
-                    pass  # different concept won, that's fine
-                # If try_all found nothing, try_all already returns None
         except Exception:
             pass
 
         # Standard concept matching
-        focus_level = (wm.s1.get("focus") or {}).get("level", "GRID")
         if rule is None:
             from agent.rule_engine import try_all
-            rule = try_all(patterns, task, focus_level=focus_level)
+            rule = try_all(patterns, task, focus_level=focus_level,
+                           comparisons=wm_comparisons if wm_comparisons else None,
+                           second_order_comm=so_comm if so_comm else None,
+                           au_invariants=wm_au_inv if wm_au_inv else None)
 
         # Try two-step composition before falling back to identity
         if rule is None or rule.get("type") == "identity":

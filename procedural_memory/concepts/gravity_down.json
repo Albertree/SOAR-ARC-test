@@ -1,0 +1,18 @@
+{
+  "concept_id": "gravity_down",
+  "version": 1,
+  "description": "Drop all non-background cells downward (gravity effect).",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": true,
+    "requires_content_diff": true,
+    "object_count_behavior": "preserve"
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "gravity", "args": {"grid": "$input", "direction": "down", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

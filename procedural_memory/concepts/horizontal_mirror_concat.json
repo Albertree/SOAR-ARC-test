@@ -1,0 +1,18 @@
+{
+  "concept_id": "horizontal_mirror_concat",
+  "version": 1,
+  "description": "Concatenate grid with its horizontal flip (left-right mirror) to produce a symmetric doubled grid.",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": [1, 2],
+    "color_preserved": true,
+    "requires_content_diff": false,
+    "object_count_behavior": "increase"
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "flip_horizontal", "args": {"grid": "$input"}, "output": "flipped"},
+    {"id": "s2", "primitive": "concat_horizontal", "args": {"grid_a": "$input", "grid_b": "$flipped"}, "output": "result"}
+  ],
+  "result": "$result"
+}

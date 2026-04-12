@@ -226,9 +226,20 @@ def topology_similarity(topo_a: dict, topo_b: dict) -> float:
 
 def structural_similarity(comp_result_a: dict, comp_result_b: dict) -> float:
     """Recursive category dict comparison. Preserves nesting unlike topology_similarity.
+    Accepts full arckg result, wrapped category, or raw category dict.
     Returns 0.0-1.0. Identical structures → 1.0."""
     if not comp_result_a or not comp_result_b:
         return 0.0
+
+    def _normalize(r):
+        if "category" in r:
+            return r
+        if any(isinstance(v, dict) and "type" in v for v in r.values()):
+            return {"category": r}
+        return r
+
+    comp_result_a = _normalize(comp_result_a)
+    comp_result_b = _normalize(comp_result_b)
 
     cat_a = comp_result_a.get("category", {})
     cat_b = comp_result_b.get("category", {})
@@ -259,6 +270,38 @@ def structural_similarity(comp_result_a: dict, comp_result_b: dict) -> float:
             score += 1.0
 
     return score / len(all_keys)
+
+
+def build_retrieval_key(comp_result: dict) -> dict:
+    """Build retrieval key preserving full nested ARCKG comparison structure."""
+    result = comp_result.get("result", {})
+    return {
+        "nested_category": result.get("category", {}),
+        "score": result.get("score", "0/0"),
+        "type": result.get("type", "DIFF"),
+    }
+
+
+def build_second_order_retrieval_key(r0: dict, r1: dict) -> dict:
+    """Build second-order retrieval key from two first-order comparison results.
+    COMM fields = structural invariants across training pairs."""
+    from ARCKG.comparison import compare as _arckg_compare
+    try:
+        second = _arckg_compare(r0, r1)
+        result = second.get("result", {})
+        cat = result.get("category", {})
+        comm_fields = sorted(
+            k for k, v in cat.items()
+            if isinstance(v, dict) and v.get("type") == "COMM"
+        )
+        return {
+            "nested_category": cat,
+            "score": result.get("score", "0/0"),
+            "type": result.get("type", "DIFF"),
+            "comm_fields": comm_fields,
+        }
+    except Exception:
+        return {}
 
 
 def _episode_bucket_key(topology: dict) -> str:
@@ -714,10 +757,12 @@ def fingerprint_similarity(a: dict, b: dict) -> float:
 
 
 def find_similar_episodes(fingerprint: dict, topology: dict = None,
+                          au_invariants: dict = None,
                           episodic_memory_root: str = EPISODIC_MEMORY_ROOT,
                           threshold: float = 0.7, max_results: int = 5) -> list:
     """
-    Find episodes similar to the current task using 4-tier lookup:
+    Find episodes similar to the current task using 5-tier lookup:
+      Tier 0.5: AU invariants exact match (strongest structural signal)
       Tier 0: structural similarity > 0.85 on full comparison result (HINTS ONLY)
       Tier 1: exact topology match (structural_key)
       Tier 2: partial topology match (topology_similarity > 0.5)
@@ -747,13 +792,62 @@ def find_similar_episodes(fingerprint: dict, topology: dict = None,
     if not all_episodes:
         return []
 
-    # Tier 0: Structural similarity on full comparison result (HINTS ONLY)
+    # Tier 0.5: AU invariants multi-dimensional match
+    if au_invariants and isinstance(au_invariants, dict):
+        cur_var = au_invariants.get("variable_count", -1)
+        cur_comm = au_invariants.get("comm_fields", [])
+        cur_sub = au_invariants.get("sub_fields", {})
+
+        au_matches = []
+        for ep in all_episodes:
+            sol = ep.get("_sol", {})
+            ep_au = sol.get("au_invariants", {})
+            if not ep_au or not isinstance(ep_au, dict):
+                continue
+            ep_var = ep_au.get("variable_count", -1)
+            ep_comm = ep_au.get("comm_fields", [])
+            ep_sub = ep_au.get("sub_fields", {})
+
+            score = 0.0
+            if cur_comm == ep_comm:
+                score += 0.4
+            if cur_var >= 0 and ep_var >= 0:
+                diff = abs(cur_var - ep_var)
+                if diff == 0:
+                    score += 0.3
+                elif diff <= 2:
+                    score += 0.2
+                elif diff <= 5:
+                    score += 0.1
+            if cur_sub and ep_sub:
+                sub_matches = 0
+                sub_total = len(set(cur_sub.keys()) | set(ep_sub.keys()))
+                for k in cur_sub:
+                    if k in ep_sub and isinstance(cur_sub[k], dict) and isinstance(ep_sub[k], dict):
+                        if cur_sub[k].get("score") == ep_sub[k].get("score"):
+                            sub_matches += 1
+                if sub_total > 0:
+                    score += 0.3 * (sub_matches / sub_total)
+
+            if score >= 0.5:
+                au_matches.append((ep, score))
+
+        if au_matches:
+            au_matches.sort(key=lambda x: -x[1])
+            return au_matches[:max_results]
+
+    # Tier 0: Structural similarity on full nested comparison result (HINTS ONLY)
+    # Uses second_order_key from solution.json if available (richer signal)
     if topology and isinstance(topology, dict):
         struct_matches = []
         for ep in all_episodes:
-            ep_topo = ep.get("topology")
-            if ep_topo and isinstance(ep_topo, dict):
-                sim = structural_similarity(topology, ep_topo)
+            # Prefer second_order_key nested_category from solution.json
+            sol = ep.get("_sol", {})
+            ep_nested = (sol.get("second_order_key", {}).get("nested_category")
+                         or sol.get("retrieval_key", {}).get("nested_category")
+                         or ep.get("topology"))
+            if ep_nested and isinstance(ep_nested, dict):
+                sim = structural_similarity(topology, ep_nested)
                 if sim > 0.85:
                     struct_matches.append((ep, sim))
         if struct_matches:

@@ -1,0 +1,3466 @@
+{
+  "s1": {
+    "type": "state",
+    "superstate": null,
+    "io": {
+      "input-link": {
+        "task": "09629e4f"
+      },
+      "output-link": {}
+    },
+    "smem": {
+      "id": "SM1"
+    },
+    "epmem": {
+      "id": "E1"
+    },
+    "focus": {
+      "level": "OBJECT",
+      "scope": "within_pair_examples",
+      "failure_type": "structural"
+    },
+    "current-task": "09629e4f",
+    "concepts-tried-count": 0,
+    "descent_count": 1,
+    "object_deletions": [
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O0"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O1"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O2"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O3"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O4"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O5"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O6"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O7"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O8"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O9"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O10"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O11"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O12"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O13"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O14"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O15"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O16"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O17"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O18"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O19"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O21"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O22"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O23"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O24"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O25"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O26"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O27"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O28"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O29"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O30"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O31"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O32"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O33"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O34"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O35"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O36"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O37"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O38"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O39"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O40"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O41"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O42"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O43"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O44"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O45"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O46"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O47"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O48"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O49"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O50"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O51"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O52"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O62"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O63"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O64"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O65"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O66"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O67"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O68"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O69"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O70"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O71"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O72"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O73"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O74"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O75"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O76"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O77"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O78"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O79"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O80"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O81"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O82"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "T09629e4f.P0.G0.O83"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O0"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O1"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O2"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O3"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O4"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O5"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O6"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O7"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O8"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O9"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O10"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O12"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O13"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O14"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O15"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O16"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O17"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O18"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O19"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O20"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O21"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O22"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O23"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O24"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O25"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O26"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O27"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O28"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O29"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O30"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O31"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O32"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O33"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O34"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O35"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O36"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O37"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O38"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O39"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O40"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O41"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O42"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O43"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O44"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O45"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O46"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O47"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O48"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O49"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O50"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O51"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O52"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O53"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O63"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O64"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O65"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O66"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O67"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O68"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O69"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O70"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O71"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O72"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O73"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O74"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O75"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O76"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O77"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O78"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O79"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O80"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O81"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "T09629e4f.P1.G0.O82"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O0"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O1"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O2"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O3"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O4"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O5"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O6"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O7"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O8"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O9"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O10"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O11"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O12"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O13"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O14"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O15"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O16"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O17"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O18"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O19"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O20"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O21"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O22"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O24"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O25"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O26"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O27"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O28"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O29"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O30"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O31"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O32"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O33"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O34"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O35"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O36"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O37"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O38"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O39"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O40"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O41"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O42"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O43"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O44"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O45"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O46"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O47"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O48"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O49"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O50"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O51"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O52"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O53"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O54"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O55"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O65"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O66"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O67"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O68"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O69"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O70"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O71"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O72"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O73"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O74"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O75"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O76"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O77"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O78"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O79"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O80"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O81"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O82"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O83"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O84"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O85"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "T09629e4f.P2.G0.O86"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O0"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O1"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O2"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O3"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O4"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O5"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O6"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O7"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O8"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O9"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O10"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O11"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O12"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O13"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O14"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O15"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O16"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O17"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O18"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O19"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O20"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O21"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O22"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O23"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O24"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O25"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O26"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O27"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O28"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O29"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O30"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O31"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O32"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O33"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O34"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O35"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O36"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O38"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O39"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O40"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O41"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O42"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O43"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O44"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O45"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O46"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O47"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O48"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O49"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O50"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O51"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O52"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O53"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O54"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O55"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O56"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O66"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O67"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O68"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O69"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O70"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O71"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O72"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O73"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O74"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O75"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O76"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "T09629e4f.P3.G0.O77"
+      }
+    ],
+    "comparison-agenda": [
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O84",
+        "id2": "T09629e4f.P0.G1.O4",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O85",
+        "id2": "T09629e4f.P0.G1.O11",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O53",
+        "id2": "T09629e4f.P0.G1.O8",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O54",
+        "id2": "T09629e4f.P0.G1.O3",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O55",
+        "id2": "T09629e4f.P0.G1.O1",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O56",
+        "id2": "T09629e4f.P0.G1.O9",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O57",
+        "id2": "T09629e4f.P0.G1.O6",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O58",
+        "id2": "T09629e4f.P0.G1.O10",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O59",
+        "id2": "T09629e4f.P0.G1.O0",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O60",
+        "id2": "T09629e4f.P0.G1.O7",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O61",
+        "id2": "T09629e4f.P0.G1.O2",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "T09629e4f.P0.G0.O20",
+        "id2": "T09629e4f.P0.G1.O5",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O83",
+        "id2": "T09629e4f.P1.G1.O3",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O84",
+        "id2": "T09629e4f.P1.G1.O11",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O54",
+        "id2": "T09629e4f.P1.G1.O9",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O55",
+        "id2": "T09629e4f.P1.G1.O0",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O56",
+        "id2": "T09629e4f.P1.G1.O6",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O57",
+        "id2": "T09629e4f.P1.G1.O4",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O58",
+        "id2": "T09629e4f.P1.G1.O1",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O59",
+        "id2": "T09629e4f.P1.G1.O10",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O60",
+        "id2": "T09629e4f.P1.G1.O7",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O61",
+        "id2": "T09629e4f.P1.G1.O8",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O62",
+        "id2": "T09629e4f.P1.G1.O2",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "T09629e4f.P1.G0.O11",
+        "id2": "T09629e4f.P1.G1.O5",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O87",
+        "id2": "T09629e4f.P2.G1.O3",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O88",
+        "id2": "T09629e4f.P2.G1.O11",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O56",
+        "id2": "T09629e4f.P2.G1.O0",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O57",
+        "id2": "T09629e4f.P2.G1.O6",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O58",
+        "id2": "T09629e4f.P2.G1.O7",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O59",
+        "id2": "T09629e4f.P2.G1.O9",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O60",
+        "id2": "T09629e4f.P2.G1.O2",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O61",
+        "id2": "T09629e4f.P2.G1.O4",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O62",
+        "id2": "T09629e4f.P2.G1.O8",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O63",
+        "id2": "T09629e4f.P2.G1.O10",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O64",
+        "id2": "T09629e4f.P2.G1.O1",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O23",
+        "id2": "T09629e4f.P2.G1.O5",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O78",
+        "id2": "T09629e4f.P3.G1.O4",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O79",
+        "id2": "T09629e4f.P3.G1.O11",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O57",
+        "id2": "T09629e4f.P3.G1.O1",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O58",
+        "id2": "T09629e4f.P3.G1.O10",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O59",
+        "id2": "T09629e4f.P3.G1.O6",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O60",
+        "id2": "T09629e4f.P3.G1.O8",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O61",
+        "id2": "T09629e4f.P3.G1.O9",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O62",
+        "id2": "T09629e4f.P3.G1.O7",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O63",
+        "id2": "T09629e4f.P3.G1.O0",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O64",
+        "id2": "T09629e4f.P3.G1.O3",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O65",
+        "id2": "T09629e4f.P3.G1.O2",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O37",
+        "id2": "T09629e4f.P3.G1.O5",
+        "match_confidence": 0.7199999999999999
+      }
+    ],
+    "pending-comparisons": [
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O61",
+        "id2": "T09629e4f.P2.G1.O4",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O62",
+        "id2": "T09629e4f.P2.G1.O8",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O63",
+        "id2": "T09629e4f.P2.G1.O10",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O64",
+        "id2": "T09629e4f.P2.G1.O1",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "T09629e4f.P2.G0.O23",
+        "id2": "T09629e4f.P2.G1.O5",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O78",
+        "id2": "T09629e4f.P3.G1.O4",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O79",
+        "id2": "T09629e4f.P3.G1.O11",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O57",
+        "id2": "T09629e4f.P3.G1.O1",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O58",
+        "id2": "T09629e4f.P3.G1.O10",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O59",
+        "id2": "T09629e4f.P3.G1.O6",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O60",
+        "id2": "T09629e4f.P3.G1.O8",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O61",
+        "id2": "T09629e4f.P3.G1.O9",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O62",
+        "id2": "T09629e4f.P3.G1.O7",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O63",
+        "id2": "T09629e4f.P3.G1.O0",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O64",
+        "id2": "T09629e4f.P3.G1.O3",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O65",
+        "id2": "T09629e4f.P3.G1.O2",
+        "match_confidence": 0.7199999999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "T09629e4f.P3.G0.O37",
+        "id2": "T09629e4f.P3.G1.O5",
+        "match_confidence": 0.7199999999999999
+      }
+    ],
+    "comparisons": {
+      "object_0": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 0,
+          "pair_type": "example",
+          "id1": "T09629e4f.P0.G0.O20",
+          "id2": "T09629e4f.P0.G1.O5",
+          "match_confidence": 0.7199999999999999
+        },
+        "result": {
+          "id": {
+            "id1": "T09629e4f.P0.G0.O20",
+            "id2": "T09629e4f.P0.G1.O5"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/8",
+            "category": {
+              "area": {
+                "type": "DIFF",
+                "comp1": 1,
+                "comp2": 76
+              },
+              "color": {
+                "type": "DIFF",
+                "score": "6/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "3": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "5": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "6": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    7
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    7
+                  ],
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    3,
+                    8
+                  ],
+                  [
+                    3,
+                    9
+                  ],
+                  [
+                    3,
+                    10
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    4,
+                    9
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    5,
+                    3
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    5,
+                    5
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    6,
+                    5
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    6,
+                    10
+                  ],
+                  [
+                    7,
+                    0
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    7,
+                    10
+                  ],
+                  [
+                    8,
+                    0
+                  ],
+                  [
+                    8,
+                    1
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    7
+                  ],
+                  [
+                    9,
+                    0
+                  ],
+                  [
+                    9,
+                    1
+                  ],
+                  [
+                    9,
+                    2
+                  ],
+                  [
+                    9,
+                    3
+                  ],
+                  [
+                    9,
+                    7
+                  ],
+                  [
+                    10,
+                    0
+                  ],
+                  [
+                    10,
+                    1
+                  ],
+                  [
+                    10,
+                    2
+                  ],
+                  [
+                    10,
+                    3
+                  ],
+                  [
+                    10,
+                    7
+                  ]
+                ]
+              },
+              "method": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  }
+                }
+              },
+              "position": {
+                "type": "DIFF",
+                "score": "1/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 1,
+                    "comp2": 11
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 1,
+                    "comp2": 11
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "DIFF",
+                "score": "0/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "hori_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "object_1": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 1,
+          "pair_type": "example",
+          "id1": "T09629e4f.P1.G0.O11",
+          "id2": "T09629e4f.P1.G1.O5",
+          "match_confidence": 0.7199999999999999
+        },
+        "result": {
+          "id": {
+            "id1": "T09629e4f.P1.G0.O11",
+            "id2": "T09629e4f.P1.G1.O5"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "0/8",
+            "category": {
+              "area": {
+                "type": "DIFF",
+                "comp1": 1,
+                "comp2": 76
+              },
+              "color": {
+                "type": "DIFF",
+                "score": "6/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "3": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "5": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "6": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    0
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    7
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    0,
+                    10
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    1,
+                    9
+                  ],
+                  [
+                    1,
+                    10
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    7
+                  ],
+                  [
+                    2,
+                    8
+                  ],
+                  [
+                    2,
+                    9
+                  ],
+                  [
+                    2,
+                    10
+                  ],
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    3,
+                    8
+                  ],
+                  [
+                    3,
+                    9
+                  ],
+                  [
+                    3,
+                    10
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    5,
+                    3
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    5,
+                    5
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    6,
+                    5
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    7,
+                    0
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    7,
+                    10
+                  ],
+                  [
+                    8,
+                    0
+                  ],
+                  [
+                    8,
+                    1
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    7
+                  ],
+                  [
+                    8,
+                    8
+                  ],
+                  [
+                    8,
+                    9
+                  ],
+                  [
+                    8,
+                    10
+                  ],
+                  [
+                    9,
+                    0
+                  ],
+                  [
+                    9,
+                    1
+                  ],
+                  [
+                    9,
+                    2
+                  ],
+                  [
+                    9,
+                    3
+                  ],
+                  [
+                    9,
+                    7
+                  ],
+                  [
+                    9,
+                    8
+                  ],
+                  [
+                    9,
+                    9
+                  ],
+                  [
+                    9,
+                    10
+                  ],
+                  [
+                    10,
+                    0
+                  ],
+                  [
+                    10,
+                    1
+                  ],
+                  [
+                    10,
+                    2
+                  ],
+                  [
+                    10,
+                    3
+                  ],
+                  [
+                    10,
+                    7
+                  ],
+                  [
+                    10,
+                    8
+                  ],
+                  [
+                    10,
+                    9
+                  ],
+                  [
+                    10,
+                    10
+                  ]
+                ]
+              },
+              "method": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  }
+                }
+              },
+              "position": {
+                "type": "DIFF",
+                "score": "1/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 0,
+                        "comp2": 10
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    -1,
+                    -1,
+                    -1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 1,
+                    "comp2": 11
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 1,
+                    "comp2": 11
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "DIFF",
+                "score": "0/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "hori_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "object_2": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 2,
+          "pair_type": "example",
+          "id1": "T09629e4f.P2.G0.O60",
+          "id2": "T09629e4f.P2.G1.O2",
+          "match_confidence": 0.7199999999999999
+        },
+        "result": {
+          "id": {
+            "id1": "T09629e4f.P2.G0.O60",
+            "id2": "T09629e4f.P2.G1.O2"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "5/8",
+            "category": {
+              "area": {
+                "type": "COMM",
+                "comp1": 9,
+                "comp2": 9
+              },
+              "color": {
+                "type": "DIFF",
+                "score": "5/10",
+                "category": {
+                  "0": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "DIFF",
+                    "comp1": true,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "COMM",
+                "comp1": [
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    4,
+                    9
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    6,
+                    10
+                  ]
+                ],
+                "comp2": [
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    4,
+                    9
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    6,
+                    10
+                  ]
+                ]
+              },
+              "method": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  }
+                }
+              },
+              "position": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 8,
+                        "comp2": 8
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 6,
+                        "comp2": 6
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 8,
+                        "comp2": 8
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 4,
+                        "comp2": 4
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 10,
+                        "comp2": 10
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 6,
+                        "comp2": 6
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 10,
+                        "comp2": 10
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 4,
+                        "comp2": 4
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "COMM",
+                "comp1": [
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "COMM",
+                "score": "2/2",
+                "category": {
+                  "height": {
+                    "type": "COMM",
+                    "comp1": 3,
+                    "comp2": 3
+                  },
+                  "width": {
+                    "type": "COMM",
+                    "comp1": 3,
+                    "comp2": 3
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "DIFF",
+                "score": "0/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "diag_symm": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "hori_symm": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  },
+                  "verti_symm": {
+                    "type": "DIFF",
+                    "comp1": false,
+                    "comp2": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "substates": [],
+  "wme_count": 370,
+  "last_10_wmes": [
+    {
+      "identifier": "S1",
+      "attribute": "comparisons"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "O1"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "name"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "op-preference"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "task-id"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator-application"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "pending-comparisons"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "comparisons"
+    }
+  ]
+}

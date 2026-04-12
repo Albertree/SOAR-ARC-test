@@ -1,0 +1,27 @@
+{
+  "rule_id": "chunked_20260413_015351_rank_recolor_objects",
+  "source": "chunked",
+  "source_tasks": [
+    "b230c067"
+  ],
+  "times_validated": 1,
+  "times_failed": 4,
+  "condition": {
+    "level": "GRID",
+    "topology": {
+      "color": "DIFF",
+      "contents": {
+        "type": "DIFF",
+        "change_pattern": "multi_group",
+        "change_scope": "subset",
+        "num_groups_consistent": true,
+        "group_anchors_consistent": false
+      },
+      "size": "COMM"
+    }
+  },
+  "action": {
+    "concept": "rank_recolor_objects",
+    "param_source": "inferred(bg), inferred(target_color)"
+  }
+}

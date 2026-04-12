@@ -1,0 +1,18 @@
+{
+  "concept_id": "vertical_mirror_concat",
+  "version": 1,
+  "description": "Concatenate grid with its vertical flip (top-bottom mirror) to produce a symmetric doubled grid.",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": [2, 1],
+    "color_preserved": true,
+    "requires_content_diff": false,
+    "object_count_behavior": "increase"
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "flip_vertical", "args": {"grid": "$input"}, "output": "flipped"},
+    {"id": "s2", "primitive": "concat_vertical", "args": {"grid_a": "$input", "grid_b": "$flipped"}, "output": "result"}
+  ],
+  "result": "$result"
+}

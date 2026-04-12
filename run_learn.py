@@ -258,6 +258,31 @@ def main():
                                 "concept_id_b": r0.get("concept_id_b"),
                             }
 
+                    # Build retrieval keys from WM comparison results
+                    retrieval_key = {}
+                    second_order_key = {}
+                    au_invariants_val = {}
+                    if wm is not None:
+                        comps = wm.s1.get("comparisons", {})
+                        comp_results = [v.get("result", {}) for v in comps.values() if v.get("result")]
+                        if comp_results:
+                            from agent.episodic import build_retrieval_key, build_second_order_retrieval_key
+                            retrieval_key = build_retrieval_key(comp_results[0])
+                            if len(comp_results) >= 2:
+                                second_order_key = build_second_order_retrieval_key(
+                                    comp_results[0], comp_results[1]
+                                )
+                        # Capture AU invariants and second-order from pipeline
+                        so = wm.s1.get("second_order_comparison", {})
+                        if so:
+                            second_order_key = {
+                                "nested_category": so.get("full_category", {}),
+                                "score": so.get("score", "0/0"),
+                                "comm_fields": so.get("comm_fields", []),
+                                "content_comm_fields": so.get("content_comm_fields", {}),
+                            }
+                        au_invariants_val = wm.s1.get("au_invariants", {})
+
                     solution = {
                         "task_hex": task_hex,
                         "session_timestamp": time.strftime("%Y-%m-%dT%H:%M:%S"),
@@ -270,6 +295,9 @@ def main():
                         "composition": composition_info,
                         "steps_taken": steps,
                         "time_sec": round(elapsed, 2),
+                        "retrieval_key": retrieval_key,
+                        "second_order_key": second_order_key,
+                        "au_invariants": au_invariants_val,
                     }
                     with open(f"{sol_dir}/solution.json", "w") as f:
                         json.dump(solution, f, indent=2)

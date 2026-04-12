@@ -1,0 +1,5495 @@
+{
+  "s1": {
+    "type": "state",
+    "superstate": null,
+    "io": {
+      "input-link": {
+        "task": "a59b95c0"
+      },
+      "output-link": {}
+    },
+    "smem": {
+      "id": "SM1"
+    },
+    "epmem": {
+      "id": "E1"
+    },
+    "focus": {
+      "level": "OBJECT",
+      "scope": "within_pair_examples",
+      "failure_type": "structural"
+    },
+    "current-task": "a59b95c0",
+    "second_order_comparison": {
+      "result": {
+        "type": "DIFF",
+        "score": "2/3",
+        "category": {
+          "category": {
+            "type": "DIFF",
+            "score": "0/3",
+            "category": {
+              "color": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "category": {
+                    "type": "DIFF",
+                    "score": "5/10",
+                    "category": {
+                      "0": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "1": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "2": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "3": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "4": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": false,
+                            "comp2": true
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "5": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "6": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "7": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "8": {
+                        "type": "COMM",
+                        "score": "3/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "COMM",
+                            "comp1": false,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      },
+                      "9": {
+                        "type": "DIFF",
+                        "score": "1/3",
+                        "category": {
+                          "comp1": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": true,
+                            "comp2": false
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "COMM",
+                            "comp2": "COMM"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "score": {
+                    "type": "COMM",
+                    "comp1": "10/10",
+                    "comp2": "10/10"
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "COMM",
+                    "comp2": "COMM"
+                  }
+                }
+              },
+              "contents": {
+                "type": "DIFF",
+                "score": "1/3",
+                "category": {
+                  "comp1": {
+                    "type": "DIFF",
+                    "comp1": [
+                      [
+                        9,
+                        7,
+                        9
+                      ],
+                      [
+                        9,
+                        6,
+                        7
+                      ],
+                      [
+                        7,
+                        6,
+                        6
+                      ]
+                    ],
+                    "comp2": [
+                      [
+                        3,
+                        4,
+                        4
+                      ],
+                      [
+                        3,
+                        3,
+                        3
+                      ],
+                      [
+                        3,
+                        4,
+                        4
+                      ]
+                    ]
+                  },
+                  "comp2": {
+                    "type": "DIFF",
+                    "comp1": [
+                      [
+                        9,
+                        7,
+                        9,
+                        9,
+                        7,
+                        9,
+                        9,
+                        7,
+                        9
+                      ],
+                      [
+                        9,
+                        6,
+                        7,
+                        9,
+                        6,
+                        7,
+                        9,
+                        6,
+                        7
+                      ],
+                      [
+                        7,
+                        6,
+                        6,
+                        7,
+                        6,
+                        6,
+                        7,
+                        6,
+                        6
+                      ],
+                      [
+                        9,
+                        7,
+                        9,
+                        9,
+                        7,
+                        9,
+                        9,
+                        7,
+                        9
+                      ],
+                      [
+                        9,
+                        6,
+                        7,
+                        9,
+                        6,
+                        7,
+                        9,
+                        6,
+                        7
+                      ],
+                      [
+                        7,
+                        6,
+                        6,
+                        7,
+                        6,
+                        6,
+                        7,
+                        6,
+                        6
+                      ],
+                      [
+                        9,
+                        7,
+                        9,
+                        9,
+                        7,
+                        9,
+                        9,
+                        7,
+                        9
+                      ],
+                      [
+                        9,
+                        6,
+                        7,
+                        9,
+                        6,
+                        7,
+                        9,
+                        6,
+                        7
+                      ],
+                      [
+                        7,
+                        6,
+                        6,
+                        7,
+                        6,
+                        6,
+                        7,
+                        6,
+                        6
+                      ]
+                    ],
+                    "comp2": [
+                      [
+                        3,
+                        4,
+                        4,
+                        3,
+                        4,
+                        4
+                      ],
+                      [
+                        3,
+                        3,
+                        3,
+                        3,
+                        3,
+                        3
+                      ],
+                      [
+                        3,
+                        4,
+                        4,
+                        3,
+                        4,
+                        4
+                      ],
+                      [
+                        3,
+                        4,
+                        4,
+                        3,
+                        4,
+                        4
+                      ],
+                      [
+                        3,
+                        3,
+                        3,
+                        3,
+                        3,
+                        3
+                      ],
+                      [
+                        3,
+                        4,
+                        4,
+                        3,
+                        4,
+                        4
+                      ]
+                    ]
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "2/3",
+                "category": {
+                  "category": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "height": {
+                        "type": "DIFF",
+                        "score": "2/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": 3,
+                            "comp2": 3
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": 9,
+                            "comp2": 6
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "DIFF",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      },
+                      "width": {
+                        "type": "DIFF",
+                        "score": "2/3",
+                        "category": {
+                          "comp1": {
+                            "type": "COMM",
+                            "comp1": 3,
+                            "comp2": 3
+                          },
+                          "comp2": {
+                            "type": "DIFF",
+                            "comp1": 9,
+                            "comp2": 6
+                          },
+                          "type": {
+                            "type": "COMM",
+                            "comp1": "DIFF",
+                            "comp2": "DIFF"
+                          }
+                        }
+                      }
+                    }
+                  },
+                  "score": {
+                    "type": "COMM",
+                    "comp1": "0/2",
+                    "comp2": "0/2"
+                  },
+                  "type": {
+                    "type": "COMM",
+                    "comp1": "DIFF",
+                    "comp2": "DIFF"
+                  }
+                }
+              }
+            }
+          },
+          "score": {
+            "type": "COMM",
+            "comp1": "1/3",
+            "comp2": "1/3"
+          },
+          "type": {
+            "type": "COMM",
+            "comp1": "DIFF",
+            "comp2": "DIFF"
+          }
+        }
+      },
+      "comm_fields": [
+        "score",
+        "type"
+      ],
+      "content_comm_fields": {
+        "inner_comm_fields": [],
+        "inner_diff_fields": [
+          "color",
+          "contents",
+          "size"
+        ],
+        "inner_score": "0/3"
+      },
+      "score": "2/3",
+      "full_category": {
+        "category": {
+          "type": "DIFF",
+          "score": "0/3",
+          "category": {
+            "color": {
+              "type": "DIFF",
+              "score": "2/3",
+              "category": {
+                "category": {
+                  "type": "DIFF",
+                  "score": "5/10",
+                  "category": {
+                    "0": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "1": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "2": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "3": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "4": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": false,
+                          "comp2": true
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "5": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "6": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "7": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "8": {
+                      "type": "COMM",
+                      "score": "3/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "COMM",
+                          "comp1": false,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    },
+                    "9": {
+                      "type": "DIFF",
+                      "score": "1/3",
+                      "category": {
+                        "comp1": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": true,
+                          "comp2": false
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "COMM",
+                          "comp2": "COMM"
+                        }
+                      }
+                    }
+                  }
+                },
+                "score": {
+                  "type": "COMM",
+                  "comp1": "10/10",
+                  "comp2": "10/10"
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "COMM",
+                  "comp2": "COMM"
+                }
+              }
+            },
+            "contents": {
+              "type": "DIFF",
+              "score": "1/3",
+              "category": {
+                "comp1": {
+                  "type": "DIFF",
+                  "comp1": [
+                    [
+                      9,
+                      7,
+                      9
+                    ],
+                    [
+                      9,
+                      6,
+                      7
+                    ],
+                    [
+                      7,
+                      6,
+                      6
+                    ]
+                  ],
+                  "comp2": [
+                    [
+                      3,
+                      4,
+                      4
+                    ],
+                    [
+                      3,
+                      3,
+                      3
+                    ],
+                    [
+                      3,
+                      4,
+                      4
+                    ]
+                  ]
+                },
+                "comp2": {
+                  "type": "DIFF",
+                  "comp1": [
+                    [
+                      9,
+                      7,
+                      9,
+                      9,
+                      7,
+                      9,
+                      9,
+                      7,
+                      9
+                    ],
+                    [
+                      9,
+                      6,
+                      7,
+                      9,
+                      6,
+                      7,
+                      9,
+                      6,
+                      7
+                    ],
+                    [
+                      7,
+                      6,
+                      6,
+                      7,
+                      6,
+                      6,
+                      7,
+                      6,
+                      6
+                    ],
+                    [
+                      9,
+                      7,
+                      9,
+                      9,
+                      7,
+                      9,
+                      9,
+                      7,
+                      9
+                    ],
+                    [
+                      9,
+                      6,
+                      7,
+                      9,
+                      6,
+                      7,
+                      9,
+                      6,
+                      7
+                    ],
+                    [
+                      7,
+                      6,
+                      6,
+                      7,
+                      6,
+                      6,
+                      7,
+                      6,
+                      6
+                    ],
+                    [
+                      9,
+                      7,
+                      9,
+                      9,
+                      7,
+                      9,
+                      9,
+                      7,
+                      9
+                    ],
+                    [
+                      9,
+                      6,
+                      7,
+                      9,
+                      6,
+                      7,
+                      9,
+                      6,
+                      7
+                    ],
+                    [
+                      7,
+                      6,
+                      6,
+                      7,
+                      6,
+                      6,
+                      7,
+                      6,
+                      6
+                    ]
+                  ],
+                  "comp2": [
+                    [
+                      3,
+                      4,
+                      4,
+                      3,
+                      4,
+                      4
+                    ],
+                    [
+                      3,
+                      3,
+                      3,
+                      3,
+                      3,
+                      3
+                    ],
+                    [
+                      3,
+                      4,
+                      4,
+                      3,
+                      4,
+                      4
+                    ],
+                    [
+                      3,
+                      4,
+                      4,
+                      3,
+                      4,
+                      4
+                    ],
+                    [
+                      3,
+                      3,
+                      3,
+                      3,
+                      3,
+                      3
+                    ],
+                    [
+                      3,
+                      4,
+                      4,
+                      3,
+                      4,
+                      4
+                    ]
+                  ]
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            },
+            "size": {
+              "type": "DIFF",
+              "score": "2/3",
+              "category": {
+                "category": {
+                  "type": "DIFF",
+                  "score": "0/2",
+                  "category": {
+                    "height": {
+                      "type": "DIFF",
+                      "score": "2/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": 3,
+                          "comp2": 3
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": 9,
+                          "comp2": 6
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "DIFF",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    },
+                    "width": {
+                      "type": "DIFF",
+                      "score": "2/3",
+                      "category": {
+                        "comp1": {
+                          "type": "COMM",
+                          "comp1": 3,
+                          "comp2": 3
+                        },
+                        "comp2": {
+                          "type": "DIFF",
+                          "comp1": 9,
+                          "comp2": 6
+                        },
+                        "type": {
+                          "type": "COMM",
+                          "comp1": "DIFF",
+                          "comp2": "DIFF"
+                        }
+                      }
+                    }
+                  }
+                },
+                "score": {
+                  "type": "COMM",
+                  "comp1": "0/2",
+                  "comp2": "0/2"
+                },
+                "type": {
+                  "type": "COMM",
+                  "comp1": "DIFF",
+                  "comp2": "DIFF"
+                }
+              }
+            }
+          }
+        },
+        "score": {
+          "type": "COMM",
+          "comp1": "1/3",
+          "comp2": "1/3"
+        },
+        "type": {
+          "type": "COMM",
+          "comp1": "DIFF",
+          "comp2": "DIFF"
+        }
+      }
+    },
+    "au_pattern": {
+      "type": "DIFF",
+      "score": "1/3",
+      "category": {
+        "color": {
+          "type": "COMM",
+          "category": {
+            "0": {
+              "type": "COMM",
+              "comp1": false,
+              "comp2": false
+            },
+            "1": {
+              "type": "COMM",
+              "comp1": "?var_1",
+              "comp2": "?var_2"
+            },
+            "2": {
+              "type": "COMM",
+              "comp1": "?var_3",
+              "comp2": "?var_4"
+            },
+            "3": {
+              "type": "COMM",
+              "comp1": "?var_5",
+              "comp2": "?var_6"
+            },
+            "4": {
+              "type": "COMM",
+              "comp1": "?var_7",
+              "comp2": "?var_8"
+            },
+            "5": {
+              "type": "COMM",
+              "comp1": false,
+              "comp2": false
+            },
+            "6": {
+              "type": "COMM",
+              "comp1": "?var_9",
+              "comp2": "?var_10"
+            },
+            "7": {
+              "type": "COMM",
+              "comp1": "?var_11",
+              "comp2": "?var_12"
+            },
+            "8": {
+              "type": "COMM",
+              "comp1": "?var_13",
+              "comp2": "?var_14"
+            },
+            "9": {
+              "type": "COMM",
+              "comp1": "?var_15",
+              "comp2": "?var_16"
+            }
+          },
+          "score": "10/10"
+        },
+        "contents": {
+          "type": "DIFF",
+          "comp1": "?var_17",
+          "comp2": "?var_18"
+        },
+        "size": {
+          "type": "DIFF",
+          "category": {
+            "height": {
+              "type": "DIFF",
+              "comp1": 3,
+              "comp2": "?var_19"
+            },
+            "width": {
+              "type": "DIFF",
+              "comp1": 3,
+              "comp2": "?var_20"
+            }
+          },
+          "score": "0/2"
+        }
+      }
+    },
+    "au_invariants": {
+      "top_level": {
+        "color": "COMM",
+        "contents": "DIFF",
+        "size": "DIFF"
+      },
+      "variable_count": 20,
+      "sub_fields": {
+        "color": {
+          "0": "COMM",
+          "5": "COMM",
+          "score": "10/10"
+        },
+        "size": {
+          "score": "0/2"
+        }
+      },
+      "comm_fields": [
+        "color"
+      ],
+      "diff_fields": [
+        "contents",
+        "size"
+      ]
+    },
+    "concepts-tried-count": 0,
+    "descent_count": 1,
+    "object_additions": [
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O0"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O1"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O2"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O3"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O4"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O5"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O6"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O7"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O8"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O9"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O10"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O12"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O13"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O17"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O18"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O19"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O20"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O22"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O23"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O24"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O25"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O26"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O27"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O28"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O29"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O30"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O31"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O32"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O33"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O34"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O35"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O36"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O37"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O39"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O40"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O41"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O42"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O44"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O45"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O46"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O47"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O48"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O50"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O51"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O52"
+      },
+      {
+        "pair_idx": 0,
+        "node_id": "Ta59b95c0.P0.G1.O53"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "Ta59b95c0.P1.G1.O0"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "Ta59b95c0.P1.G1.O1"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "Ta59b95c0.P1.G1.O3"
+      },
+      {
+        "pair_idx": 1,
+        "node_id": "Ta59b95c0.P1.G1.O4"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O0"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O1"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O2"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O3"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O4"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O5"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O6"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O7"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O8"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O9"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O10"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O11"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O12"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O13"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O14"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O15"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O16"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O17"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O18"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O19"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O20"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O21"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O22"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O23"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O24"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O25"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O26"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O28"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O29"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O30"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O31"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O32"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O33"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O35"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O37"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O38"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O39"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O40"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O41"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O42"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O43"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O44"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O45"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O46"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O47"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O48"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O49"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O50"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O51"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O53"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O54"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O55"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O56"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O57"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O58"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O60"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O61"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O62"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O63"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O64"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O65"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O66"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O68"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O69"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O70"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O71"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O72"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O73"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O74"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O75"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O76"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O78"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O79"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O80"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O81"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O82"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O83"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O84"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O85"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O86"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O87"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O88"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O89"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O90"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O91"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O92"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O93"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O94"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O95"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O96"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O97"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O98"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O99"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O100"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O101"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O102"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O103"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O104"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O105"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O106"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O107"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O108"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O109"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O110"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O111"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O112"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O113"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O115"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O116"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O117"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O118"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O120"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O121"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O122"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O123"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O125"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O126"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O127"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O128"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O129"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O130"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O131"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O132"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O134"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O135"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O136"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O137"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O138"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O139"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O141"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O142"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O143"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O144"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O145"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O146"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O147"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O148"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O149"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O150"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O151"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O152"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O153"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O155"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O156"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O157"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O158"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O159"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O160"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O161"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O162"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O163"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O164"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O165"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O166"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O167"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O168"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O169"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O170"
+      },
+      {
+        "pair_idx": 2,
+        "node_id": "Ta59b95c0.P2.G1.O171"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "Ta59b95c0.P3.G1.O0"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "Ta59b95c0.P3.G1.O2"
+      },
+      {
+        "pair_idx": 3,
+        "node_id": "Ta59b95c0.P3.G1.O3"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O0"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O1"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O2"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O3"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O4"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O5"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O6"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O7"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O8"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O9"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O10"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O12"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O13"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O15"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O16"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O17"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O23"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O24"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O25"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O26"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O27"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O28"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O29"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O30"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O32"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O33"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O34"
+      },
+      {
+        "pair_idx": 4,
+        "node_id": "Ta59b95c0.P4.G1.O35"
+      }
+    ],
+    "comparison-agenda": [
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O0",
+        "id2": "Ta59b95c0.P0.G1.O11",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O2",
+        "id2": "Ta59b95c0.P0.G1.O38",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O4",
+        "id2": "Ta59b95c0.P0.G1.O21",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O5",
+        "id2": "Ta59b95c0.P0.G1.O16",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O7",
+        "id2": "Ta59b95c0.P0.G1.O43",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O1",
+        "id2": "Ta59b95c0.P0.G1.O14",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O6",
+        "id2": "Ta59b95c0.P0.G1.O49",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O3",
+        "id2": "Ta59b95c0.P0.G1.O15",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 0,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P0.G0.O8",
+        "id2": "Ta59b95c0.P0.G1.O54",
+        "match_confidence": 0.8495238095238096
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P1.G0.O1",
+        "id2": "Ta59b95c0.P1.G1.O2",
+        "match_confidence": 0.7337499999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P1.G0.O0",
+        "id2": "Ta59b95c0.P1.G1.O5",
+        "match_confidence": 0.7337499999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P1.G0.O2",
+        "id2": "Ta59b95c0.P1.G1.O6",
+        "match_confidence": 0.7337499999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 1,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P1.G0.O3",
+        "id2": "Ta59b95c0.P1.G1.O7",
+        "match_confidence": 0.7337499999999999
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O0",
+        "id2": "Ta59b95c0.P2.G1.O34",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O1",
+        "id2": "Ta59b95c0.P2.G1.O36",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O2",
+        "id2": "Ta59b95c0.P2.G1.O27",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O3",
+        "id2": "Ta59b95c0.P2.G1.O59",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O5",
+        "id2": "Ta59b95c0.P2.G1.O67",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O6",
+        "id2": "Ta59b95c0.P2.G1.O77",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O8",
+        "id2": "Ta59b95c0.P2.G1.O140",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O11",
+        "id2": "Ta59b95c0.P2.G1.O133",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O12",
+        "id2": "Ta59b95c0.P2.G1.O154",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O7",
+        "id2": "Ta59b95c0.P2.G1.O114",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O9",
+        "id2": "Ta59b95c0.P2.G1.O119",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O4",
+        "id2": "Ta59b95c0.P2.G1.O52",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 2,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P2.G0.O10",
+        "id2": "Ta59b95c0.P2.G1.O124",
+        "match_confidence": 0.8938461538461537
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P3.G0.O0",
+        "id2": "Ta59b95c0.P3.G1.O1",
+        "match_confidence": 0.7200000000000001
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P3.G0.O1",
+        "id2": "Ta59b95c0.P3.G1.O4",
+        "match_confidence": 0.7200000000000001
+      },
+      {
+        "type": "object",
+        "pair_idx": 3,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P3.G0.O2",
+        "id2": "Ta59b95c0.P3.G1.O5",
+        "match_confidence": 0.7200000000000001
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O0",
+        "id2": "Ta59b95c0.P4.G1.O14",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O1",
+        "id2": "Ta59b95c0.P4.G1.O11",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O3",
+        "id2": "Ta59b95c0.P4.G1.O19",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O6",
+        "id2": "Ta59b95c0.P4.G1.O31",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O7",
+        "id2": "Ta59b95c0.P4.G1.O22",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O2",
+        "id2": "Ta59b95c0.P4.G1.O18",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O4",
+        "id2": "Ta59b95c0.P4.G1.O20",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O5",
+        "id2": "Ta59b95c0.P4.G1.O21",
+        "match_confidence": 0.7782142857142856
+      }
+    ],
+    "pending-comparisons": [
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O1",
+        "id2": "Ta59b95c0.P4.G1.O11",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O3",
+        "id2": "Ta59b95c0.P4.G1.O19",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O6",
+        "id2": "Ta59b95c0.P4.G1.O31",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O7",
+        "id2": "Ta59b95c0.P4.G1.O22",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O2",
+        "id2": "Ta59b95c0.P4.G1.O18",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O4",
+        "id2": "Ta59b95c0.P4.G1.O20",
+        "match_confidence": 0.7782142857142856
+      },
+      {
+        "type": "object",
+        "pair_idx": 4,
+        "pair_type": "example",
+        "id1": "Ta59b95c0.P4.G0.O5",
+        "id2": "Ta59b95c0.P4.G1.O21",
+        "match_confidence": 0.7782142857142856
+      }
+    ],
+    "comparisons": {
+      "object_0": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 0,
+          "pair_type": "example",
+          "id1": "Ta59b95c0.P0.G0.O8",
+          "id2": "Ta59b95c0.P0.G1.O54",
+          "match_confidence": 0.8495238095238096
+        },
+        "result": {
+          "id": {
+            "id1": "Ta59b95c0.P0.G0.O8",
+            "id2": "Ta59b95c0.P0.G1.O54"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "3/8",
+            "category": {
+              "area": {
+                "type": "DIFF",
+                "comp1": 9,
+                "comp2": 81
+              },
+              "color": {
+                "type": "COMM",
+                "score": "10/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    0,
+                    7
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    2,
+                    7
+                  ],
+                  [
+                    2,
+                    8
+                  ],
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    3,
+                    8
+                  ],
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    4,
+                    2
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
+                    5,
+                    3
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    5,
+                    5
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    6,
+                    0
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    6,
+                    2
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    6,
+                    5
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    7,
+                    0
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    8,
+                    0
+                  ],
+                  [
+                    8,
+                    1
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    4
+                  ],
+                  [
+                    8,
+                    5
+                  ],
+                  [
+                    8,
+                    6
+                  ],
+                  [
+                    8,
+                    7
+                  ],
+                  [
+                    8,
+                    8
+                  ]
+                ]
+              },
+              "method": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "position": {
+                "type": "DIFF",
+                "score": "1/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 8
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 8
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 8
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 8
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 9
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 9
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "hori_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "object_1": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 1,
+          "pair_type": "example",
+          "id1": "Ta59b95c0.P1.G0.O3",
+          "id2": "Ta59b95c0.P1.G1.O7",
+          "match_confidence": 0.7337499999999999
+        },
+        "result": {
+          "id": {
+            "id1": "Ta59b95c0.P1.G0.O3",
+            "id2": "Ta59b95c0.P1.G1.O7"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "3/8",
+            "category": {
+              "area": {
+                "type": "DIFF",
+                "comp1": 9,
+                "comp2": 36
+              },
+              "color": {
+                "type": "COMM",
+                "score": "10/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    4,
+                    2
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
+                    5,
+                    3
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    5,
+                    5
+                  ]
+                ]
+              },
+              "method": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "position": {
+                "type": "DIFF",
+                "score": "1/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 6
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 6
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "hori_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "object_2": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 2,
+          "pair_type": "example",
+          "id1": "Ta59b95c0.P2.G0.O10",
+          "id2": "Ta59b95c0.P2.G1.O124",
+          "match_confidence": 0.8938461538461537
+        },
+        "result": {
+          "id": {
+            "id1": "Ta59b95c0.P2.G0.O10",
+            "id2": "Ta59b95c0.P2.G1.O124"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "3/8",
+            "category": {
+              "area": {
+                "type": "DIFF",
+                "comp1": 9,
+                "comp2": 144
+              },
+              "color": {
+                "type": "COMM",
+                "score": "10/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    0,
+                    6
+                  ],
+                  [
+                    0,
+                    7
+                  ],
+                  [
+                    0,
+                    8
+                  ],
+                  [
+                    0,
+                    9
+                  ],
+                  [
+                    0,
+                    10
+                  ],
+                  [
+                    0,
+                    11
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    1,
+                    6
+                  ],
+                  [
+                    1,
+                    7
+                  ],
+                  [
+                    1,
+                    8
+                  ],
+                  [
+                    1,
+                    9
+                  ],
+                  [
+                    1,
+                    10
+                  ],
+                  [
+                    1,
+                    11
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    2,
+                    6
+                  ],
+                  [
+                    2,
+                    7
+                  ],
+                  [
+                    2,
+                    8
+                  ],
+                  [
+                    2,
+                    9
+                  ],
+                  [
+                    2,
+                    10
+                  ],
+                  [
+                    2,
+                    11
+                  ],
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    3,
+                    6
+                  ],
+                  [
+                    3,
+                    7
+                  ],
+                  [
+                    3,
+                    8
+                  ],
+                  [
+                    3,
+                    9
+                  ],
+                  [
+                    3,
+                    10
+                  ],
+                  [
+                    3,
+                    11
+                  ],
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    4,
+                    2
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    4,
+                    6
+                  ],
+                  [
+                    4,
+                    7
+                  ],
+                  [
+                    4,
+                    8
+                  ],
+                  [
+                    4,
+                    9
+                  ],
+                  [
+                    4,
+                    10
+                  ],
+                  [
+                    4,
+                    11
+                  ],
+                  [
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
+                    5,
+                    3
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    5,
+                    5
+                  ],
+                  [
+                    5,
+                    6
+                  ],
+                  [
+                    5,
+                    7
+                  ],
+                  [
+                    5,
+                    8
+                  ],
+                  [
+                    5,
+                    9
+                  ],
+                  [
+                    5,
+                    10
+                  ],
+                  [
+                    5,
+                    11
+                  ],
+                  [
+                    6,
+                    0
+                  ],
+                  [
+                    6,
+                    1
+                  ],
+                  [
+                    6,
+                    2
+                  ],
+                  [
+                    6,
+                    3
+                  ],
+                  [
+                    6,
+                    4
+                  ],
+                  [
+                    6,
+                    5
+                  ],
+                  [
+                    6,
+                    6
+                  ],
+                  [
+                    6,
+                    7
+                  ],
+                  [
+                    6,
+                    8
+                  ],
+                  [
+                    6,
+                    9
+                  ],
+                  [
+                    6,
+                    10
+                  ],
+                  [
+                    6,
+                    11
+                  ],
+                  [
+                    7,
+                    0
+                  ],
+                  [
+                    7,
+                    1
+                  ],
+                  [
+                    7,
+                    2
+                  ],
+                  [
+                    7,
+                    3
+                  ],
+                  [
+                    7,
+                    4
+                  ],
+                  [
+                    7,
+                    5
+                  ],
+                  [
+                    7,
+                    6
+                  ],
+                  [
+                    7,
+                    7
+                  ],
+                  [
+                    7,
+                    8
+                  ],
+                  [
+                    7,
+                    9
+                  ],
+                  [
+                    7,
+                    10
+                  ],
+                  [
+                    7,
+                    11
+                  ],
+                  [
+                    8,
+                    0
+                  ],
+                  [
+                    8,
+                    1
+                  ],
+                  [
+                    8,
+                    2
+                  ],
+                  [
+                    8,
+                    3
+                  ],
+                  [
+                    8,
+                    4
+                  ],
+                  [
+                    8,
+                    5
+                  ],
+                  [
+                    8,
+                    6
+                  ],
+                  [
+                    8,
+                    7
+                  ],
+                  [
+                    8,
+                    8
+                  ],
+                  [
+                    8,
+                    9
+                  ],
+                  [
+                    8,
+                    10
+                  ],
+                  [
+                    8,
+                    11
+                  ],
+                  [
+                    9,
+                    0
+                  ],
+                  [
+                    9,
+                    1
+                  ],
+                  [
+                    9,
+                    2
+                  ],
+                  [
+                    9,
+                    3
+                  ],
+                  [
+                    9,
+                    4
+                  ],
+                  [
+                    9,
+                    5
+                  ],
+                  [
+                    9,
+                    6
+                  ],
+                  [
+                    9,
+                    7
+                  ],
+                  [
+                    9,
+                    8
+                  ],
+                  [
+                    9,
+                    9
+                  ],
+                  [
+                    9,
+                    10
+                  ],
+                  [
+                    9,
+                    11
+                  ],
+                  [
+                    10,
+                    0
+                  ],
+                  [
+                    10,
+                    1
+                  ],
+                  [
+                    10,
+                    2
+                  ],
+                  [
+                    10,
+                    3
+                  ],
+                  [
+                    10,
+                    4
+                  ],
+                  [
+                    10,
+                    5
+                  ],
+                  [
+                    10,
+                    6
+                  ],
+                  [
+                    10,
+                    7
+                  ],
+                  [
+                    10,
+                    8
+                  ],
+                  [
+                    10,
+                    9
+                  ],
+                  [
+                    10,
+                    10
+                  ],
+                  [
+                    10,
+                    11
+                  ],
+                  [
+                    11,
+                    0
+                  ],
+                  [
+                    11,
+                    1
+                  ],
+                  [
+                    11,
+                    2
+                  ],
+                  [
+                    11,
+                    3
+                  ],
+                  [
+                    11,
+                    4
+                  ],
+                  [
+                    11,
+                    5
+                  ],
+                  [
+                    11,
+                    6
+                  ],
+                  [
+                    11,
+                    7
+                  ],
+                  [
+                    11,
+                    8
+                  ],
+                  [
+                    11,
+                    9
+                  ],
+                  [
+                    11,
+                    10
+                  ],
+                  [
+                    11,
+                    11
+                  ]
+                ]
+              },
+              "method": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "position": {
+                "type": "DIFF",
+                "score": "1/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 11
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 11
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 11
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 11
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 12
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 12
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "hori_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "object_3": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 3,
+          "pair_type": "example",
+          "id1": "Ta59b95c0.P3.G0.O2",
+          "id2": "Ta59b95c0.P3.G1.O5",
+          "match_confidence": 0.7200000000000001
+        },
+        "result": {
+          "id": {
+            "id1": "Ta59b95c0.P3.G0.O2",
+            "id2": "Ta59b95c0.P3.G1.O5"
+          },
+          "result": {
+            "type": "DIFF",
+            "score": "3/8",
+            "category": {
+              "area": {
+                "type": "DIFF",
+                "comp1": 9,
+                "comp2": 36
+              },
+              "color": {
+                "type": "COMM",
+                "score": "10/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    0
+                  ],
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    0,
+                    2
+                  ],
+                  [
+                    0,
+                    3
+                  ],
+                  [
+                    0,
+                    4
+                  ],
+                  [
+                    0,
+                    5
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    2
+                  ],
+                  [
+                    1,
+                    3
+                  ],
+                  [
+                    1,
+                    4
+                  ],
+                  [
+                    1,
+                    5
+                  ],
+                  [
+                    2,
+                    0
+                  ],
+                  [
+                    2,
+                    1
+                  ],
+                  [
+                    2,
+                    2
+                  ],
+                  [
+                    2,
+                    3
+                  ],
+                  [
+                    2,
+                    4
+                  ],
+                  [
+                    2,
+                    5
+                  ],
+                  [
+                    3,
+                    0
+                  ],
+                  [
+                    3,
+                    1
+                  ],
+                  [
+                    3,
+                    2
+                  ],
+                  [
+                    3,
+                    3
+                  ],
+                  [
+                    3,
+                    4
+                  ],
+                  [
+                    3,
+                    5
+                  ],
+                  [
+                    4,
+                    0
+                  ],
+                  [
+                    4,
+                    1
+                  ],
+                  [
+                    4,
+                    2
+                  ],
+                  [
+                    4,
+                    3
+                  ],
+                  [
+                    4,
+                    4
+                  ],
+                  [
+                    4,
+                    5
+                  ],
+                  [
+                    5,
+                    0
+                  ],
+                  [
+                    5,
+                    1
+                  ],
+                  [
+                    5,
+                    2
+                  ],
+                  [
+                    5,
+                    3
+                  ],
+                  [
+                    5,
+                    4
+                  ],
+                  [
+                    5,
+                    5
+                  ]
+                ]
+              },
+              "method": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "position": {
+                "type": "DIFF",
+                "score": "1/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "DIFF",
+                    "score": "0/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      },
+                      "row_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "DIFF",
+                    "score": "1/2",
+                    "category": {
+                      "col_index": {
+                        "type": "DIFF",
+                        "comp1": 2,
+                        "comp2": 5
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "DIFF",
+                "comp1": [
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ],
+                  [
+                    1,
+                    1,
+                    1,
+                    1,
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "DIFF",
+                "score": "0/2",
+                "category": {
+                  "height": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 6
+                  },
+                  "width": {
+                    "type": "DIFF",
+                    "comp1": 3,
+                    "comp2": 6
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "hori_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "object_4": {
+        "spec": {
+          "type": "object",
+          "pair_idx": 4,
+          "pair_type": "example",
+          "id1": "Ta59b95c0.P4.G0.O0",
+          "id2": "Ta59b95c0.P4.G1.O14",
+          "match_confidence": 0.7782142857142856
+        },
+        "result": {
+          "id": {
+            "id1": "Ta59b95c0.P4.G0.O0",
+            "id2": "Ta59b95c0.P4.G1.O14"
+          },
+          "result": {
+            "type": "COMM",
+            "score": "8/8",
+            "category": {
+              "area": {
+                "type": "COMM",
+                "comp1": 3,
+                "comp2": 3
+              },
+              "color": {
+                "type": "COMM",
+                "score": "10/10",
+                "category": {
+                  "0": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "1": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "2": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "3": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "4": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "5": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "6": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "7": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "8": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "9": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              },
+              "coordinate": {
+                "type": "COMM",
+                "comp1": [
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    0,
+                    1
+                  ],
+                  [
+                    1,
+                    0
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "method": {
+                "type": "COMM",
+                "score": "3/3",
+                "category": {
+                  "diagonal": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "univalued": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "without_bg": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  }
+                }
+              },
+              "position": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "left_bottom": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 1,
+                        "comp2": 1
+                      }
+                    }
+                  },
+                  "left_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  },
+                  "right_bottom": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 1,
+                        "comp2": 1
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 1,
+                        "comp2": 1
+                      }
+                    }
+                  },
+                  "right_top": {
+                    "type": "COMM",
+                    "score": "2/2",
+                    "category": {
+                      "col_index": {
+                        "type": "COMM",
+                        "comp1": 1,
+                        "comp2": 1
+                      },
+                      "row_index": {
+                        "type": "COMM",
+                        "comp1": 0,
+                        "comp2": 0
+                      }
+                    }
+                  }
+                }
+              },
+              "shape": {
+                "type": "COMM",
+                "comp1": [
+                  [
+                    -1,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ],
+                "comp2": [
+                  [
+                    -1,
+                    1
+                  ],
+                  [
+                    1,
+                    1
+                  ]
+                ]
+              },
+              "size": {
+                "type": "COMM",
+                "score": "2/2",
+                "category": {
+                  "height": {
+                    "type": "COMM",
+                    "comp1": 2,
+                    "comp2": 2
+                  },
+                  "width": {
+                    "type": "COMM",
+                    "comp1": 2,
+                    "comp2": 2
+                  }
+                }
+              },
+              "symmetry": {
+                "type": "COMM",
+                "score": "4/4",
+                "category": {
+                  "anti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "diag_symm": {
+                    "type": "COMM",
+                    "comp1": true,
+                    "comp2": true
+                  },
+                  "hori_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  },
+                  "verti_symm": {
+                    "type": "COMM",
+                    "comp1": false,
+                    "comp2": false
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "substates": [],
+  "wme_count": 373,
+  "last_10_wmes": [
+    {
+      "identifier": "S1",
+      "attribute": "comparisons"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "O1"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "name"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "op-preference"
+    },
+    {
+      "identifier": "O1",
+      "attribute": "task-id"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "operator-application"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "pending-comparisons"
+    },
+    {
+      "identifier": "S1",
+      "attribute": "comparisons"
+    }
+  ]
+}

@@ -165,6 +165,7 @@ class ActiveSoarAgent:
         if active_rules and isinstance(active_rules, list):
             rule_type = active_rules[0].get("type", "none")
 
+        second_order = wm.s1.get("second_order_comparison", {})
         self.last_solve_info.update({
             "method": "pipeline",
             "rule_type": rule_type,
@@ -172,6 +173,8 @@ class ActiveSoarAgent:
             "failure_trace": wm.s1.get("generalize-diagnostics"),
             "concepts_tried": wm.s1.get("concepts-tried-count", 0),
             "stored_rules_scanned": stored_rules_scanned,
+            "second_order_comm_fields": second_order.get("comm_fields", []),
+            "second_order_score": second_order.get("score", "0/0"),
         })
 
         # --- Learn: save new rule + episode if pipeline discovered one ---

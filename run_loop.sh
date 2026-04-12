@@ -133,6 +133,10 @@ while true; do
     log "Result: $SCORE_LINE"
     log "Memory: $RULES_LINE"
 
+    # ── Generate CLAUDE_BRIEF.md for this session ─────────
+    log "Running triage (50 tasks)..."
+    python scripts/triage.py 50 ${SESSION} 2>&1 | tee -a "$PIPELINE_LOG"
+
     # ── Auto-grow task pool on 100% score ──────────────────
     CORRECT_N=$(echo "$SCORE_LINE" | grep -oP '\d+(?= /)' || echo "0")
     TOTAL_N=$(echo "$SCORE_LINE" | grep -oP '(?<= / )\d+' || echo "0")

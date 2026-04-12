@@ -59,32 +59,47 @@ def _ensure_loaded():
 # ARCKG-based structural analysis
 # ======================================================================
 
-def _extract_arckg_features(task, focus_level: str = "GRID"):
+def _extract_arckg_features(task, focus_level: str = "GRID",
+                             comparisons: dict = None):
     """Extract structural features from ARCKG COMM/DIFF comparison of example pairs.
-    Returns a dict of features derived from the relational graph, not raw cells."""
+    When comparisons is provided (from wm.s1['comparisons']), uses pre-computed results
+    instead of re-running arckg_compare."""
     features = {
-        "size_comm": True,             # majority-vote: are input/output sizes identical?
-        "size_comm_per_pair": [],      # per-pair booleans
-        "color_comm": True,            # majority-vote: are color palettes identical?
+        "size_comm": True,
+        "size_comm_per_pair": [],
+        "color_comm": True,
         "color_comm_per_pair": [],
-        "contents_comm": True,         # majority-vote: are contents identical?
+        "contents_comm": True,
         "contents_comm_per_pair": [],
-        "height_ratios": [],           # output_h / input_h per pair
-        "width_ratios": [],            # output_w / input_w per pair
-        "colors_added": set(),         # colors in output not in input
-        "colors_removed": set(),       # colors in input not in output
-        "comm_scores": [],             # COMM score per pair (fraction)
-        "diff_fields": set(),          # which top-level fields are DIFF
+        "height_ratios": [],
+        "width_ratios": [],
+        "colors_added": set(),
+        "colors_removed": set(),
+        "comm_scores": [],
+        "diff_fields": set(),
     }
 
-    for pair in task.example_pairs:
-        g0 = pair.input_grid
-        g1 = pair.output_grid
-        if g0 is None or g1 is None:
-            continue
+    # Build list of inner result dicts to process
+    cats = []
+    if comparisons:
+        for key in sorted(comparisons.keys()):
+            entry = comparisons[key]
+            arckg_out = entry.get("result", {})
+            inner = arckg_out.get("result", {})
+            if inner:
+                cats.append(inner.get("category", {}))
 
-        comparison = arckg_compare(g0, g1)
-        cat = comparison.get("result", {}).get("category", {})
+    if not cats:
+        # Fallback: compute fresh
+        for pair in task.example_pairs:
+            g0 = pair.input_grid
+            g1 = pair.output_grid
+            if g0 is None or g1 is None:
+                continue
+            comparison = arckg_compare(g0, g1)
+            cats.append(comparison.get("result", {}).get("category", {}))
+
+    for cat in cats:
 
         # Size analysis from ARCKG structure
         size_cat = cat.get("size", {})
@@ -132,22 +147,25 @@ def _extract_arckg_features(task, focus_level: str = "GRID"):
             if field_cmp.get("type") == "DIFF":
                 features["diff_fields"].add(field)
 
-        # Object count behavior — use pre-computed Grid.objects (no recomputation)
-        try:
-            in_obj_count = len(g0.objects) if hasattr(g0, 'objects') and g0.objects is not None else 0
-            out_obj_count = len(g1.objects) if hasattr(g1, 'objects') and g1.objects is not None else 0
-            features.setdefault("object_count_per_pair", []).append((in_obj_count, out_obj_count))
-        except Exception:
-            pass
+        # Overall COMM score (extracted from inner result, not top-level comparison)
+        # When using pre-computed comparisons, we need the score from the cat's parent
+        # For now, approximate from category fields
+        cat_total = len(cat)
+        cat_comm = sum(1 for v in cat.values() if isinstance(v, dict) and v.get("type") == "COMM")
+        if cat_total > 0:
+            features["comm_scores"].append(cat_comm / cat_total)
 
-        # Overall COMM score
-        score_str = comparison.get("result", {}).get("score", "0/0")
-        parts = score_str.split("/")
-        if len(parts) == 2:
+    # Object count behavior from Grid.objects (separate from the comparison loop)
+    for pair in task.example_pairs:
+        g0 = pair.input_grid
+        g1 = pair.output_grid
+        if g0 is not None and g1 is not None:
             try:
-                features["comm_scores"].append(int(parts[0]) / max(int(parts[1]), 1))
-            except ValueError:
-                features["comm_scores"].append(0.0)
+                ic = len(g0.objects) if hasattr(g0, 'objects') and g0.objects is not None else 0
+                oc = len(g1.objects) if hasattr(g1, 'objects') and g1.objects is not None else 0
+                features.setdefault("object_count_per_pair", []).append((ic, oc))
+            except Exception:
+                pass
 
     # Object count behavior aggregate
     obj_pairs = features.get("object_count_per_pair", [])
@@ -193,7 +211,8 @@ def _extract_arckg_features(task, focus_level: str = "GRID"):
 # Signature matching (fast filter via ARCKG features)
 # ======================================================================
 
-def _signature_matches(sig, arckg_features, patterns):
+def _signature_matches(sig, arckg_features, patterns,
+                        second_order_comm=None, au_invariants=None):
     """Check if a concept's signature matches the ARCKG-derived structural features.
     This is the fast filter — eliminates obviously wrong concepts."""
 
@@ -245,6 +264,20 @@ def _signature_matches(sig, arckg_features, patterns):
         feat_obj = arckg_features.get("object_count_behavior")
         if feat_obj is not None and sig_obj != feat_obj:
             return False
+
+    # AU invariant checks (when available)
+    if au_invariants and isinstance(au_invariants, dict):
+        top = au_invariants.get("top_level", {})
+        size_inv = top.get("size")
+        if size_inv is not None and sig.get("grid_size_preserved") is not None:
+            expected = "COMM" if sig["grid_size_preserved"] else "DIFF"
+            if size_inv != expected:
+                return False
+        color_inv = top.get("color")
+        if color_inv is not None and sig.get("color_preserved") is not None:
+            expected = "COMM" if sig["color_preserved"] else "DIFF"
+            if color_inv != expected:
+                return False
 
     return True
 
@@ -559,7 +592,9 @@ def _validate_concept(concept, params, task, verbose=False):
 # Public API
 # ======================================================================
 
-def try_concepts(patterns, task, focus_level: str = "GRID"):
+def try_concepts(patterns, task, focus_level: str = "GRID",
+                 comparisons: dict = None, second_order_comm: list = None,
+                 au_invariants: dict = None):
     """Try all concepts against a task. Returns rule dict or None.
 
     Flow:
@@ -571,9 +606,11 @@ def try_concepts(patterns, task, focus_level: str = "GRID"):
     if not _concepts:
         return None
 
-    # Extract structural features via ARCKG comparison
+    # Extract structural features — use pre-computed comparisons if available
     try:
-        arckg_features = _extract_arckg_features(task, focus_level=focus_level)
+        arckg_features = _extract_arckg_features(
+            task, focus_level=focus_level, comparisons=comparisons
+        )
     except Exception:
         arckg_features = {
             "size_comm": True, "color_comm": True, "contents_comm": True,
@@ -588,7 +625,9 @@ def try_concepts(patterns, task, focus_level: str = "GRID"):
 
     for concept in _concepts:
         sig = concept.get("signature", {})
-        if not _signature_matches(sig, arckg_features, patterns):
+        if not _signature_matches(sig, arckg_features, patterns,
+                                   second_order_comm=second_order_comm,
+                                   au_invariants=au_invariants):
             continue
 
         concepts_tried += 1

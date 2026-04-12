@@ -260,35 +260,7 @@ class ReadyForDescentRule(ElaborationRule):
     """
 
     def condition(self, wm) -> bool:
-        if wm.depth == 0:
-            return False
-        s1 = wm.s1
-        active_rules = s1.get("active-rules")
-        if not active_rules or active_rules[0].get("type") != "identity":
-            return False
-        if (s1.get("focus") or {}).get("level") != "GRID":
-            return False
-        if s1.get("descent_count", 0) >= 1:
-            return False
-        if s1.get("g2_constant_output"):
-            return False
-        try:
-            from procedural_memory.base_rules._concept_engine import _last_failure_diagnostics
-            nm = (_last_failure_diagnostics.get("best_near_miss")
-                  if _last_failure_diagnostics else None)
-            best_score = nm.get("partial_score", 0.0) if nm else 0.0
-            if best_score >= 0.9:
-                return False
-        except Exception:
-            pass
-        task = wm.task
-        if task is None:
-            return False
-        return any(
-            len(pair.input_grid.objects or []) > 0
-            for pair in task.example_pairs
-            if pair.input_grid is not None
-        )
+        return False  # disabled: no object-level concepts exist yet
 
     def derive(self, wm) -> dict:
         return {"ready_for_descent": True}

@@ -1,0 +1,17 @@
+{
+  "concept_id": "color_map",
+  "version": 1,
+  "description": "Apply a consistent color mapping: each input color maps to a specific output color across all pairs.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "mapping": {"type": "color_map", "infer": "color_map_from_arckg"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "recolor", "args": {"grid": "$input", "mapping": "$mapping"}, "output": "result"}
+  ],
+  "result": "$result"
+}

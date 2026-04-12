@@ -88,3 +88,83 @@
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260412_234053.log
+
+---
+## Learning Loop -- 2026-04-13 00:24
+
+- Split: training, Tasks: 20
+- Correct: 1 / 20 (5.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 1
+- Time: 47s
+- Log: logs/learn_20260413_002342.log
+
+---
+## Learning Loop -- 2026-04-13 00:56
+
+- Split: training, Tasks: 50
+- Correct: 1 / 50 (2.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 1
+- Time: 106s
+- Log: logs/learn_20260413_005434.log
+
+---
+## Learning Loop -- 2026-04-13 01:19
+
+- Split: training, Tasks: 5
+- Correct: 0 / 5 (0.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260413_011902.log
+
+---
+## Learning Loop -- 2026-04-13 01:54
+
+- Split: training, Tasks: 20
+- Correct: 0 / 20 (0.0%)
+- Rules: 1 -> 2 (+1 learned)
+- Stored rule hits: 0
+- Time: 77s
+- Log: logs/learn_20260413_015253.log
+
+---
+## Learning Loop -- 2026-04-13 02:08
+
+- Split: training, Tasks: 50
+- Correct: 1 / 50 (2.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 98s
+- Log: logs/learn_20260413_020652.log
+
+---
+## Learning Loop -- 2026-04-13 02:58
+
+- Split: training, Tasks: 50
+- Correct: 0 / 50 (0.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 114s
+- Log: logs/learn_20260413_025650.log
+
+---
+## Learning Loop -- 2026-04-13 02:59
+
+- Split: training, Tasks: 50
+- Correct: 1 / 50 (2.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 28s
+- Log: logs/learn_20260413_025851.log
+
+---
+## Learning Loop -- 2026-04-13 04:25
+
+- Split: training, Tasks: 5
+- Correct: 0 / 5 (0.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260413_042538.log

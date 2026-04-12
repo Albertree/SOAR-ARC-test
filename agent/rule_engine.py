@@ -28,12 +28,17 @@ def _ensure_loaded():
     _loaded = True
 
 
-def try_all(patterns, task, focus_level: str = "GRID"):
+def try_all(patterns, task, focus_level: str = "GRID",
+            comparisons: dict = None, second_order_comm: list = None,
+            au_invariants: dict = None):
     """Match concepts against task. Returns first matching rule dict or None."""
     _ensure_loaded()
     try:
         from procedural_memory.base_rules._concept_engine import try_concepts
-        result = try_concepts(patterns, task, focus_level=focus_level)
+        result = try_concepts(patterns, task, focus_level=focus_level,
+                              comparisons=comparisons,
+                              second_order_comm=second_order_comm,
+                              au_invariants=au_invariants)
         if result is not None:
             return result
     except Exception:
