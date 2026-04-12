@@ -1152,6 +1152,62 @@ def arrow_ray_to_edge(grid):
     return output
 
 
+def collect_objects_concat(grid, bg=0):
+    """Extract all non-bg color groups as bounding-box subgrids, determine layout
+    direction (horizontal vs vertical), sort by position, and concatenate."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    # Group cells by color
+    color_cells = {}
+    for r in range(h):
+        for c in range(w):
+            v = grid[r][c]
+            if v != bg:
+                color_cells.setdefault(v, []).append((r, c))
+    if not color_cells:
+        return grid
+    # Build bounding box and center for each color group
+    groups = []
+    for color, cells in color_cells.items():
+        min_r = min(p[0] for p in cells)
+        max_r = max(p[0] for p in cells)
+        min_c = min(p[1] for p in cells)
+        max_c = max(p[1] for p in cells)
+        bh = max_r - min_r + 1
+        bw = max_c - min_c + 1
+        center_r = (min_r + max_r) / 2
+        center_c = (min_c + max_c) / 2
+        groups.append({
+            "bbox": (min_r, min_c, bh, bw),
+            "center": (center_r, center_c),
+        })
+    # Determine layout direction from spread of centers
+    rows = [g["center"][0] for g in groups]
+    cols = [g["center"][1] for g in groups]
+    row_spread = max(rows) - min(rows) if len(rows) > 1 else 0
+    col_spread = max(cols) - min(cols) if len(cols) > 1 else 0
+    horizontal = col_spread >= row_spread
+    # Sort by column if horizontal, by row if vertical
+    if horizontal:
+        groups.sort(key=lambda g: g["center"][1])
+    else:
+        groups.sort(key=lambda g: g["center"][0])
+    # Extract bounding box subgrids
+    subgrids = []
+    for g in groups:
+        top, left, bh, bw = g["bbox"]
+        sub = extract_subgrid(grid, top, left, bh, bw)
+        subgrids.append(sub)
+    # Concatenate
+    result = subgrids[0]
+    for sub in subgrids[1:]:
+        if horizontal:
+            result = concat_horizontal(result, sub)
+        else:
+            result = concat_vertical(result, sub)
+    return result
+
+
 def zigzag_shear_rect(grid, bg=0):
     """Find a colored rectangle on bg and apply zigzag shear.
     Each row shifts horizontally based on distance from the bottom row:

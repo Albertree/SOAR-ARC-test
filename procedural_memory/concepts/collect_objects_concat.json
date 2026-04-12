@@ -1,0 +1,18 @@
+{
+  "concept_id": "collect_objects_concat",
+  "version": 1,
+  "description": "Extract all non-bg objects as bounding-box subgrids, sort by position, and concatenate horizontally or vertically based on spatial layout.",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": null,
+    "color_preserved": true,
+    "requires_content_diff": false
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "collect_objects_concat", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
