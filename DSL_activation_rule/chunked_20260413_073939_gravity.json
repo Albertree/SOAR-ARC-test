@@ -5,7 +5,7 @@
     "1e0a9b12"
   ],
   "times_validated": 1,
-  "times_failed": 5,
+  "times_failed": 20,
   "condition": {
     "level": "GRID",
     "topology": {

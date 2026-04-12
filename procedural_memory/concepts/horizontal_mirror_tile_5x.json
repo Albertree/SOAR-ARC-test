@@ -1,0 +1,19 @@
+{
+  "concept_id": "horizontal_mirror_tile_5x",
+  "version": 1,
+  "description": "Tile grid 5x horizontally, alternating original and horizontally-flipped: input|flip|input|flip|input.",
+  "signature": {
+    "grid_size_preserved": false,
+    "size_ratio": [1, 5],
+    "color_preserved": true,
+    "requires_content_diff": false
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "flip_horizontal", "args": {"grid": "$input"}, "output": "flipped"},
+    {"id": "s2", "primitive": "concat_horizontal", "args": {"grid_a": "$input", "grid_b": "$flipped"}, "output": "pair"},
+    {"id": "s3", "primitive": "concat_horizontal", "args": {"grid_a": "$pair", "grid_b": "$pair"}, "output": "quad"},
+    {"id": "s4", "primitive": "concat_horizontal", "args": {"grid_a": "$quad", "grid_b": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

@@ -1,19 +1,20 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T07:41:18
+Generated: 2026-04-13T08:13:11
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
 | SOLVED | 1 | 2% |
-| MISSING_CONCEPT | 13 | 26% |
-| PARAM_ERROR | 10 | 20% |
-| STRUCTURAL | 26 | 52% |
+| MISSING_CONCEPT | 1 | 2% |
+| PARAM_ERROR | 6 | 12% |
+| STRUCTURAL | 42 | 84% |
 
 ## Current Concepts
 - `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
 - `color_map` — size_preserved=True, color_preserved=False
 - `connect_diamonds` — size_preserved=True, color_preserved=False
+- `extract_frame_interior` — size_preserved=False, color_preserved=False
 - `fill_cross_grid_sections` — size_preserved=True, color_preserved=False
 - `flip_horizontal` — size_preserved=True, color_preserved=True
 - `flip_vertical` — size_preserved=True, color_preserved=True
@@ -28,65 +29,52 @@ Tasks analyzed: 50
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
 ## Solved Tasks
-- `1e0a9b12`
+- `0d3d703e`
 
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `e1d2900e`: `zigzag_shear_rect` partial_score=0.96
-- `55059096`: `arrow_ray_to_edge` partial_score=0.95
-- `f8a8fe49`: `flip_horizontal` partial_score=0.95
-- `689c358e`: `arrow_ray_to_edge` partial_score=0.93
-- `673ef223`: `arrow_ray_to_edge` partial_score=0.93
+- `810b9b61`: `color_map` partial_score=0.94
+- `dc2e9a9d`: `arrow_ray_to_edge` partial_score=0.93
+- `952a094c`: `flip_horizontal` partial_score=0.92
+- `9d9215db`: `zigzag_shear_rect` partial_score=0.91
+- `06df4c85`: `flip_horizontal` partial_score=0.91
 
 ## Highest Leverage Gap
 **1 MISSING_CONCEPT tasks** share this signature:
-`('size_6x8', 'color_change', '6in_5out')`
+`('size_4x20', 'no_color_change', '2in_2out')`
 
 No concept covers this transformation. Writing one concept here
 could solve up to 1 tasks.
 
-### Example: `1c786137`
-Training pairs: 3
-**Pair 0** (23x21 -> 6x8):
+### Example: `bc4146bd`
+Training pairs: 4
+**Pair 0** (4x4 -> 4x20):
 ```
 Input:
-3 8 8 0 3 8 8 0 8 0 3 1
-3 3 0 0 5 3 0 3 8 0 3 3
-1 5 1 3 1 1 8 3 0 0 3 8
-5 3 0 8 2 2 2 2 2 2 2 2
-0 1 3 3 2 0 0 8 0 3 3 3
-8 0 0 8 2 1 0 0 0 3 0 3
-1 1 5 0 2 3 3 0 3 3 0 8
-0 0 8 8 2 3 3 5 1 0 3 0
-... (15 more rows)
+2 2 2 2
+8 2 2 2
+2 2 8 2
+8 2 8 8
 Output:
-0 0 8 0 3 3 3 3
-1 0 0 0 3 0 3 1
-3 3 0 3 3 0 8 1
-3 3 5 1 0 3 0 0
-5 1 3 0 1 3 1 1
-5 0 8 0 3 0 8 8
+2 2 2 2 2 2 2 2 2 2 2 2
+8 2 2 2 2 2 2 8 8 2 2 2
+2 2 8 2 2 8 2 2 2 2 8 2
+8 2 8 8 8 8 2 8 8 2 8 8
 ```
-**Pair 1** (13x16 -> 5x3):
+**Pair 1** (4x4 -> 4x20):
 ```
 Input:
-0 6 9 6 6 0 6 3 6 9 6 6
-9 9 0 6 6 0 0 9 3 6 6 6
-6 0 9 0 0 6 0 6 6 0 3 0
-9 6 6 9 9 9 6 3 6 9 9 6
-6 6 0 0 6 6 9 0 0 3 0 0
-9 9 6 0 0 9 0 0 3 9 3 0
-3 6 4 4 4 4 4 6 0 0 0 9
-9 0 4 3 3 0 4 0 0 6 0 0
-... (5 more rows)
+9 5 1 5
+1 5 9 1
+9 1 5 5
+5 5 5 1
 Output:
-3 3 0
-9 3 9
-6 6 0
-9 0 0
-6 3 9
+9 5 1 5 5 1 5 9 9 5 1 5
+1 5 9 1 1 9 5 1 1 5 9 1
+9 1 5 5 5 5 1 9 9 1 5 5
+5 5 5 1 1 5 5 5 5 5 5 1
 ```
 
 ## Unused Primitives

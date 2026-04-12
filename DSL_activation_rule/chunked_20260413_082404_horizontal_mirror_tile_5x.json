@@ -1,11 +1,11 @@
 {
-  "rule_id": "chunked_20260413_071735_vertical_mirror_concat",
+  "rule_id": "chunked_20260413_082404_horizontal_mirror_tile_5x",
   "source": "chunked",
   "source_tasks": [
-    "8be77c9e"
+    "bc4146bd"
   ],
-  "times_validated": 3,
-  "times_failed": 5,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "vertical_mirror_concat",
+    "concept": "horizontal_mirror_tile_5x",
     "param_source": "no_params"
   }
 }
