@@ -568,11 +568,20 @@ def _validate_concept(concept, params, task, verbose=False):
         if predicted != pair.output_grid.raw:
             if verbose:
                 expected = pair.output_grid.raw
+                h_pred, w_pred = len(predicted), len(predicted[0]) if predicted else 0
+                h_exp, w_exp = len(expected), len(expected[0]) if expected else 0
+                if h_pred != h_exp or w_pred != w_exp:
+                    return False, {
+                        "concept_id": concept["concept_id"],
+                        "pair_index": i,
+                        "reason": "shape_mismatch",
+                        "partial_score": 0.0,
+                    }
                 wrong = [(r, c, predicted[r][c], expected[r][c])
-                         for r in range(len(predicted))
-                         for c in range(len(predicted[0]))
+                         for r in range(h_pred)
+                         for c in range(w_pred)
                          if predicted[r][c] != expected[r][c]]
-                total = len(predicted) * len(predicted[0])
+                total = h_pred * w_pred
                 return False, {
                     "concept_id": concept["concept_id"],
                     "pair_index": i,
