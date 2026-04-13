@@ -1240,3 +1240,68 @@ def zigzag_shear_rect(grid, bg=0):
                 if 0 <= nc < w:
                     output[r][nc] = grid[r][c]
     return output
+
+
+def vertical_palindrome(grid):
+    """Create a vertically palindromic grid: R0..Rn, Rn-1..R0.
+    Input of n rows produces 2n-1 rows."""
+    result = [row[:] for row in grid]
+    for row in reversed(grid[:-1]):
+        result.append(row[:])
+    return result
+
+
+def erase_indicator_color(grid, bg=0):
+    """Detect an L-shaped frame (a non-bg color forming a horizontal bar
+    and a vertical bar meeting at a corner in the top-left region).
+    The single non-bg, non-frame color inside the frame is the 'key'.
+    Erase all key-colored cells outside the frame region."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find a horizontal bar of a single non-bg color in the first rows
+    frame_color = None
+    frame_row = None
+    frame_width = 0
+    for r in range(min(h, 10)):
+        c0 = grid[r][0]
+        if c0 == bg:
+            continue
+        run = 1
+        while run < w and grid[r][run] == c0:
+            run += 1
+        if run >= 3:
+            # Check if the last column of this run has the same color above
+            frame_col = run - 1
+            if r > 0 and all(grid[rr][frame_col] == c0 for rr in range(r)):
+                frame_color = c0
+                frame_row = r
+                frame_width = run
+                break
+
+    if frame_color is None:
+        return None
+
+    # Find key color inside the protected region
+    key_color = None
+    for r in range(frame_row):
+        for c in range(frame_width - 1):
+            v = grid[r][c]
+            if v != bg and v != frame_color:
+                key_color = v
+                break
+        if key_color is not None:
+            break
+
+    if key_color is None:
+        return None
+
+    # Erase key color outside protected region
+    output = [row[:] for row in grid]
+    for r in range(h):
+        for c in range(w):
+            if r <= frame_row and c < frame_width:
+                continue
+            if output[r][c] == key_color:
+                output[r][c] = bg
+    return output

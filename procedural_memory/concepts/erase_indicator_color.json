@@ -1,0 +1,17 @@
+{
+  "concept_id": "erase_indicator_color",
+  "version": 1,
+  "description": "L-shaped frame in top-left corner indicates a key color. All instances of that color outside the frame region are erased to background.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "erase_indicator_color", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

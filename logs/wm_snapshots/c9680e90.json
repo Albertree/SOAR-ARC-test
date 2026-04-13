@@ -2621,21 +2621,15 @@
       ]
     },
     "generalize-diagnostics": {
-      "concepts_tried": 5,
+      "concepts_tried": 6,
       "best_near_miss": {
-        "concept_id": "arrow_ray_to_edge",
+        "concept_id": "isolate_middle_column",
         "pair_index": 0,
         "reason": "output_mismatch",
         "total_cells": 81,
-        "wrong_cells": 18,
-        "partial_score": 0.7777777777777778,
+        "wrong_cells": 14,
+        "partial_score": 0.8271604938271605,
         "wrong_cell_sample": [
-          [
-            0,
-            2,
-            5,
-            7
-          ],
           [
             0,
             3,
@@ -2655,15 +2649,21 @@
             5
           ],
           [
-            2,
-            8,
-            5,
-            7
+            4,
+            0,
+            7,
+            9
+          ],
+          [
+            4,
+            1,
+            7,
+            9
           ]
         ]
       }
     },
-    "concepts-tried-count": 5,
+    "concepts-tried-count": 6,
     "active-rules": [
       {
         "type": "identity",

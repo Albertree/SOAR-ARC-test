@@ -5,7 +5,7 @@
     "0d3d703e"
   ],
   "times_validated": 2,
-  "times_failed": 1,
+  "times_failed": 2,
   "condition": {
     "level": "GRID",
     "topology": {

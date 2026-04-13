@@ -2,10 +2,11 @@
   "rule_id": "chunked_20260413_071735_vertical_mirror_concat",
   "source": "chunked",
   "source_tasks": [
-    "8be77c9e"
+    "8be77c9e",
+    "6fa7a44f"
   ],
-  "times_validated": 5,
-  "times_failed": 7,
+  "times_validated": 7,
+  "times_failed": 10,
   "condition": {
     "level": "GRID",
     "topology": {

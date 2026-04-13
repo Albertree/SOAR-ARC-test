@@ -1,19 +1,19 @@
 {
-  "rule_id": "chunked_20260413_080819_extract_frame_interior",
+  "rule_id": "chunked_20260413_091034_double_vertical_palindrome",
   "source": "chunked",
   "source_tasks": [
-    "1c786137"
+    "eb281b96"
   ],
   "times_validated": 1,
-  "times_failed": 9,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "single_group",
-        "change_scope": "single_object",
+        "change_pattern": "column_wise",
+        "change_scope": "subset",
         "num_groups_consistent": true,
         "group_anchors_consistent": true
       },
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "extract_frame_interior",
+    "concept": "double_vertical_palindrome",
     "param_source": "no_params"
   }
 }

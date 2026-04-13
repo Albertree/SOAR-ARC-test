@@ -1788,10 +1788,10 @@
       ]
     },
     "generalize-diagnostics": {
-      "concepts_tried": 2,
+      "concepts_tried": 3,
       "best_near_miss": null
     },
-    "concepts-tried-count": 2,
+    "concepts-tried-count": 3,
     "active-rules": [
       {
         "type": "identity",
