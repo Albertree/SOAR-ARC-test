@@ -1,11 +1,11 @@
 {
-  "rule_id": "chunked_20260413_071735_connect_diamonds",
+  "rule_id": "chunked_20260413_094046_fill_rect_interiors_by_size",
   "source": "chunked",
   "source_tasks": [
-    "60a26a3e"
+    "c0f76784"
   ],
-  "times_validated": 8,
-  "times_failed": 20,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "connect_diamonds",
-    "param_source": "inferred(bg), inferred(line_color)"
+    "concept": "fill_rect_interiors_by_size",
+    "param_source": "inferred(bg), inferred(border_color)"
   }
 }

@@ -1,11 +1,11 @@
 {
-  "rule_id": "chunked_20260413_071735_connect_diamonds",
+  "rule_id": "chunked_20260413_094047_fill_quadrants_from_corners",
   "source": "chunked",
   "source_tasks": [
-    "60a26a3e"
+    "e9ac8c9e"
   ],
-  "times_validated": 8,
-  "times_failed": 20,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
@@ -14,14 +14,14 @@
         "type": "DIFF",
         "change_pattern": "multi_group",
         "change_scope": "subset",
-        "num_groups_consistent": false,
+        "num_groups_consistent": true,
         "group_anchors_consistent": false
       },
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "connect_diamonds",
-    "param_source": "inferred(bg), inferred(line_color)"
+    "concept": "fill_quadrants_from_corners",
+    "param_source": "inferred(bg), inferred(fill_color)"
   }
 }

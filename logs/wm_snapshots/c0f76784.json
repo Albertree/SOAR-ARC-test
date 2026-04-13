@@ -3642,7 +3642,7 @@
       ]
     },
     "generalize-diagnostics": {
-      "concepts_tried": 7,
+      "concepts_tried": 9,
       "best_near_miss": {
         "concept_id": "arrow_ray_to_edge",
         "pair_index": 0,
@@ -3684,7 +3684,7 @@
         ]
       }
     },
-    "concepts-tried-count": 7,
+    "concepts-tried-count": 9,
     "active-rules": [
       {
         "type": "identity",

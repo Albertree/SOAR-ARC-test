@@ -5,7 +5,7 @@
     "55059096"
   ],
   "times_validated": 1,
-  "times_failed": 0,
+  "times_failed": 2,
   "condition": {
     "level": "GRID",
     "topology": {

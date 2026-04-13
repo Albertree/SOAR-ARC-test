@@ -1,23 +1,25 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T09:14:23
+Generated: 2026-04-13T09:30:16
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 3 | 6% |
+| SOLVED | 1 | 2% |
 | MISSING_CONCEPT | 0 | 0% |
-| PARAM_ERROR | 12 | 24% |
-| STRUCTURAL | 35 | 70% |
+| PARAM_ERROR | 9 | 18% |
+| STRUCTURAL | 40 | 80% |
 
 ## Current Concepts
 - `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
 - `collect_objects_concat` — size_preserved=False, color_preserved=True
 - `color_map` — size_preserved=True, color_preserved=False
 - `connect_diamonds` — size_preserved=True, color_preserved=False
+- `connect_diamonds_diagonal` — size_preserved=True, color_preserved=False
 - `double_vertical_palindrome` — size_preserved=False, color_preserved=True
 - `erase_indicator_color` — size_preserved=True, color_preserved=False
 - `extract_frame_interior` — size_preserved=False, color_preserved=False
+- `fill_between_row_markers` — size_preserved=True, color_preserved=False
 - `fill_cross_grid_sections` — size_preserved=True, color_preserved=False
 - `flip_horizontal` — size_preserved=True, color_preserved=True
 - `flip_vertical` — size_preserved=True, color_preserved=True
@@ -36,19 +38,17 @@ Tasks analyzed: 50
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
 ## Solved Tasks
-- `13f06aa5`
-- `3c9b0459`
-- `1cf80156`
+- `0d3d703e`
 
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `55059096`: `arrow_ray_to_edge` partial_score=0.95
-- `f8a8fe49`: `flip_horizontal` partial_score=0.95
-- `992798f6`: `arrow_ray_to_edge` partial_score=0.94
-- `72207abc`: `zigzag_shear_rect` partial_score=0.93
-- `a699fb00`: `arrow_ray_to_edge` partial_score=0.92
+- `18286ef8`: `color_map` partial_score=0.95
+- `d6ad076f`: `arrow_ray_to_edge` partial_score=0.94
+- `22806e14`: `zigzag_shear_rect` partial_score=0.94
+- `6855a6e4`: `zigzag_shear_rect` partial_score=0.92
+- `1d61978c`: `rank_recolor_columns` partial_score=0.91
 
 ## Unused Primitives
 These 25 primitives exist but no concept uses them:
