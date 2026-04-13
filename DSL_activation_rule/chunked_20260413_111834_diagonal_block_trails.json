@@ -1,19 +1,18 @@
 {
-  "rule_id": "chunked_20260413_073939_gravity",
+  "rule_id": "chunked_20260413_111834_diagonal_block_trails",
   "source": "chunked",
   "source_tasks": [
-    "1e0a9b12",
-    "3906de3d"
+    "5c0a986e"
   ],
   "times_validated": 2,
-  "times_failed": 143,
+  "times_failed": 3,
   "condition": {
     "level": "GRID",
     "topology": {
       "color": "COMM",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "multi_group",
+        "change_pattern": "column_wise",
         "change_scope": "subset",
         "num_groups_consistent": false,
         "group_anchors_consistent": false
@@ -22,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "gravity",
-    "param_source": "inferred(bg), inferred(direction)"
+    "concept": "diagonal_block_trails",
+    "param_source": "inferred(downright_color), inferred(upleft_color)"
   }
 }

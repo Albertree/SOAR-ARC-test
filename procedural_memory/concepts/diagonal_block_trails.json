@@ -1,7 +1,7 @@
 {
   "concept_id": "diagonal_block_trails",
-  "version": 1,
-  "description": "Two 2x2 blocks extend diagonal trails: one up-left, one down-right.",
+  "version": 3,
+  "description": "Two 2x2 blocks of distinct non-bg colors. One trails up-left from its top-left corner, the other trails down-right from its bottom-right corner.",
   "signature": {
     "grid_size_preserved": true,
     "color_preserved": true,

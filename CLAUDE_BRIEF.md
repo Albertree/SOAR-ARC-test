@@ -1,14 +1,14 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T11:06:24
+Generated: 2026-04-13T11:19:39
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 0 | 0% |
+| SOLVED | 4 | 8% |
 | MISSING_CONCEPT | 0 | 0% |
 | PARAM_ERROR | 6 | 12% |
-| STRUCTURAL | 44 | 88% |
+| STRUCTURAL | 40 | 80% |
 
 ## Current Concepts
 - `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
@@ -46,15 +46,21 @@ Tasks analyzed: 50
 - `vertical_mirror_concat` — size_preserved=False, color_preserved=True
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
+## Solved Tasks
+- `08ed6ac7`
+- `5c0a986e`
+- `8be77c9e`
+- `85c4e7cd`
+
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `af902bf9`: `arrow_ray_to_edge` partial_score=0.99
-- `ae3edfdc`: `reverse_rings` partial_score=0.96
-- `63613498`: `arrow_ray_to_edge` partial_score=0.95
-- `a834deea`: `arrow_ray_to_edge` partial_score=0.92
-- `902510d5`: `arrow_ray_to_edge` partial_score=0.91
+- `72a961c9`: `zigzag_shear_rect` partial_score=0.95
+- `72322fa7`: `zigzag_shear_rect` partial_score=0.92
+- `ba97ae07`: `zigzag_shear_rect` partial_score=0.91
+- `b7955b3c`: `arrow_ray_to_edge` partial_score=0.90
+- `fcc82909`: `shrinking_triangle` partial_score=0.90
 
 ## Unused Primitives
 These 22 primitives exist but no concept uses them:

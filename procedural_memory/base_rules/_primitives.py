@@ -1560,6 +1560,92 @@ def shrinking_triangle(grid, bg=7):
     return output
 
 
+def stripe_intersection_fix(grid):
+    """Two stripes (one horizontal band, one vertical band) cross on a bg grid.
+    One stripe is 'pure' (all cells in its band are its own color).
+    The other is 'impure' (its cells at the intersection show the pure stripe's color).
+    At the intersection, replace the pure stripe's color with the impure stripe's color."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+    output = [row[:] for row in grid]
+
+    # Find pure H rows (all cells same non-bg color)
+    pure_h_rows = []
+    h_color = None
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            pure_h_rows.append(r)
+            h_color = grid[r][0]
+
+    # Find pure V cols (all cells same non-bg color)
+    pure_v_cols = []
+    v_color = None
+    for c in range(w):
+        vals = set(grid[r][c] for r in range(h))
+        if len(vals) == 1 and grid[0][c] != bg:
+            pure_v_cols.append(c)
+            v_color = grid[0][c]
+
+    if pure_v_cols and not pure_h_rows:
+        # V is pure. Find impure H rows by checking non-V-col cells.
+        v_col_set = set(pure_v_cols)
+        for r in range(h):
+            other_vals = set(grid[r][c] for c in range(w) if c not in v_col_set) - {bg}
+            if len(other_vals) == 1:
+                impure_color = other_vals.pop()
+                if impure_color != v_color:
+                    for c in pure_v_cols:
+                        output[r][c] = impure_color
+        return output
+
+    if pure_h_rows and not pure_v_cols:
+        # H is pure. Find impure V cols by checking non-H-row cells.
+        h_row_set = set(pure_h_rows)
+        for c in range(w):
+            other_vals = set(grid[r][c] for r in range(h) if r not in h_row_set) - {bg}
+            if len(other_vals) == 1:
+                impure_color = other_vals.pop()
+                if impure_color != h_color:
+                    for r in pure_h_rows:
+                        output[r][c] = impure_color
+        return output
+
+    return output
+
+
+def shadow_by_unique_colors(grid, bg=0):
+    """Find 2x2 non-bg blocks on a bg grid. Below each block, draw a shadow
+    of color 3 with height equal to the number of unique colors in that block."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+
+    # Find all 2x2 blocks of non-bg cells
+    blocks = []
+    used = set()
+    for r in range(h - 1):
+        for c in range(w - 1):
+            if (r, c) in used:
+                continue
+            vals = [grid[r][c], grid[r][c + 1], grid[r + 1][c], grid[r + 1][c + 1]]
+            if all(v != bg for v in vals):
+                blocks.append((r, c, vals))
+                used.update([(r, c), (r, c + 1), (r + 1, c), (r + 1, c + 1)])
+
+    # Draw shadow below each block
+    for r, c, vals in blocks:
+        unique_count = len(set(vals))
+        for i in range(unique_count):
+            shadow_r = r + 2 + i
+            if shadow_r < h:
+                output[shadow_r][c] = 3
+                output[shadow_r][c + 1] = 3
+
+    return output
+
+
 def dot_to_nearest_line(grid):
     """Find full-span lines (entire row or column of one non-bg color).
     Find isolated single-cell dots. Each dot moves toward the nearest
