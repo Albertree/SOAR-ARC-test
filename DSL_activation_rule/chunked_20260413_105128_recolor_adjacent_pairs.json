@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260413_085229_reverse_rings",
+  "rule_id": "chunked_20260413_105128_recolor_adjacent_pairs",
   "source": "chunked",
   "source_tasks": [
-    "85c4e7cd"
+    "d90796e8"
   ],
-  "times_validated": 9,
-  "times_failed": 5,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
         "change_pattern": "scattered",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "reverse_rings",
-    "param_source": "no_params"
+    "concept": "recolor_adjacent_pairs",
+    "param_source": "inferred(color_a), inferred(color_b), inferred(new_a)"
   }
 }

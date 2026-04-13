@@ -205,6 +205,30 @@ def overlay(base, top, transparent=0):
 # COLOR primitives (grid -> grid)
 # ============================================================
 
+def recolor_adjacent_pairs(grid, color_a, color_b, new_a, bg=0):
+    """Find orthogonally adjacent pairs of (color_a, color_b).
+    Replace color_a with new_a and color_b with bg.
+    Cells not adjacent to the other color stay unchanged."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    mark_a = set()
+    mark_b = set()
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == color_a:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < h and 0 <= nc < w and grid[nr][nc] == color_b:
+                        mark_a.add((r, c))
+                        mark_b.add((nr, nc))
+    output = [row[:] for row in grid]
+    for r, c in mark_a:
+        output[r][c] = new_a
+    for r, c in mark_b:
+        output[r][c] = bg
+    return output
+
+
 def recolor(grid, mapping):
     """Replace colors according to {old: new} mapping. Unmapped colors unchanged.
     Keys in mapping can be int or str (auto-converted)."""
@@ -555,6 +579,52 @@ def assign_rank_colors(grid, components, bg=0):
             j += 1
         rank += 1
         i = j
+    return output
+
+
+def replace_frames_with_interiors(grid, border_color, fill_color, bg=0):
+    """Find rectangular frames of border_color. Erase frames, fill interiors with fill_color.
+    Solid blocks with no interior are just erased."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    visited = set()
+    components = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == border_color and (r, c) not in visited:
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited and grid[nr][nc] == border_color:
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                components.append(comp)
+    output = [row[:] for row in grid]
+    for comp in components:
+        # Erase all border cells
+        for r, c in comp:
+            output[r][c] = bg
+        # Check if it forms a rectangular frame with interior
+        rs = [p[0] for p in comp]
+        cs = [p[1] for p in comp]
+        min_r, max_r = min(rs), max(rs)
+        min_c, max_c = min(cs), max(cs)
+        if max_r - min_r < 2 or max_c - min_c < 2:
+            continue
+        expected = set()
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if r == min_r or r == max_r or c == min_c or c == max_c:
+                    expected.add((r, c))
+        if set(comp) == expected:
+            for r in range(min_r + 1, max_r):
+                for c in range(min_c + 1, max_c):
+                    output[r][c] = fill_color
     return output
 
 

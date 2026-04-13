@@ -2,10 +2,11 @@
   "rule_id": "chunked_20260413_073939_gravity",
   "source": "chunked",
   "source_tasks": [
-    "1e0a9b12"
+    "1e0a9b12",
+    "3906de3d"
   ],
-  "times_validated": 1,
-  "times_failed": 105,
+  "times_validated": 2,
+  "times_failed": 116,
   "condition": {
     "level": "GRID",
     "topology": {

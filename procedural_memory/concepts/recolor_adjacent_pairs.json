@@ -1,0 +1,19 @@
+{
+  "concept_id": "recolor_adjacent_pairs",
+  "version": 1,
+  "description": "When two specific colors are orthogonally adjacent, replace one with a new color and the other with background.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "color_a": {"type": "color", "infer": "from_examples"},
+    "color_b": {"type": "color", "infer": "from_examples"},
+    "new_a": {"type": "color", "infer": "single_added_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "recolor_adjacent_pairs", "args": {"grid": "$input", "color_a": "$color_a", "color_b": "$color_b", "new_a": "$new_a"}, "output": "result"}
+  ],
+  "result": "$result"
+}

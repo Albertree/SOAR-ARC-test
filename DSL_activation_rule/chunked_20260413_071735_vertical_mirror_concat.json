@@ -5,8 +5,8 @@
     "8be77c9e",
     "6fa7a44f"
   ],
-  "times_validated": 7,
-  "times_failed": 10,
+  "times_validated": 8,
+  "times_failed": 13,
   "condition": {
     "level": "GRID",
     "topology": {

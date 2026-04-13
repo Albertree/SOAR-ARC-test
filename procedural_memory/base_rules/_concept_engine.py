@@ -382,6 +382,24 @@ def _infer_non_bg_single(task, arckg_features, patterns):
     return color
 
 
+@_register_infer("single_added_color")
+def _infer_single_added_color(task, arckg_features, patterns):
+    """Return the single color that appears in output but not input, consistent across pairs."""
+    added = None
+    for pair in task.example_pairs:
+        in_colors = {v for row in pair.input_grid.raw for v in row}
+        out_colors = {v for row in pair.output_grid.raw for v in row}
+        new_colors = out_colors - in_colors
+        if len(new_colors) != 1:
+            return None
+        c = new_colors.pop()
+        if added is None:
+            added = c
+        elif added != c:
+            return None
+    return added
+
+
 @_register_infer("column_index_from_arckg")
 def _infer_column_index(task, arckg_features, patterns):
     """Find which column is preserved in output. Uses ARCKG contents DIFF

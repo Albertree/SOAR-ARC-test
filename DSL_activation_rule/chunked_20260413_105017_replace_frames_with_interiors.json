@@ -1,15 +1,15 @@
 {
-  "rule_id": "chunked_20260413_085229_reverse_rings",
+  "rule_id": "chunked_20260413_105017_replace_frames_with_interiors",
   "source": "chunked",
   "source_tasks": [
-    "85c4e7cd"
+    "d5d6de2d"
   ],
-  "times_validated": 9,
-  "times_failed": 5,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
         "change_pattern": "scattered",
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "reverse_rings",
-    "param_source": "no_params"
+    "concept": "replace_frames_with_interiors",
+    "param_source": "inferred(border_color), inferred(fill_color)"
   }
 }

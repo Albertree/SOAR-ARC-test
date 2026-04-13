@@ -1788,10 +1788,15 @@
       ]
     },
     "generalize-diagnostics": {
-      "concepts_tried": 3,
-      "best_near_miss": null
+      "concepts_tried": 4,
+      "best_near_miss": {
+        "concept_id": "double_vertical_palindrome",
+        "pair_index": 0,
+        "reason": "shape_mismatch",
+        "partial_score": 0.0
+      }
     },
-    "concepts-tried-count": 3,
+    "concepts-tried-count": 4,
     "active-rules": [
       {
         "type": "identity",
