@@ -1,13 +1,13 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T09:45:38
+Generated: 2026-04-13T10:06:39
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 1 | 2% |
+| SOLVED | 2 | 4% |
 | MISSING_CONCEPT | 0 | 0% |
-| PARAM_ERROR | 9 | 18% |
+| PARAM_ERROR | 8 | 16% |
 | STRUCTURAL | 40 | 80% |
 
 ## Current Concepts
@@ -16,6 +16,7 @@ Tasks analyzed: 50
 - `color_map` — size_preserved=True, color_preserved=False
 - `connect_diamonds` — size_preserved=True, color_preserved=False
 - `connect_diamonds_diagonal` — size_preserved=True, color_preserved=False
+- `diagonal_block_trails` — size_preserved=True, color_preserved=True
 - `double_vertical_palindrome` — size_preserved=False, color_preserved=True
 - `erase_indicator_color` — size_preserved=True, color_preserved=False
 - `extract_frame_interior` — size_preserved=False, color_preserved=False
@@ -29,6 +30,7 @@ Tasks analyzed: 50
 - `horizontal_mirror_concat` — size_preserved=False, color_preserved=True
 - `horizontal_mirror_tile_5x` — size_preserved=False, color_preserved=True
 - `isolate_middle_column` — size_preserved=True, color_preserved=False
+- `midpoint_cross` — size_preserved=True, color_preserved=False
 - `rank_recolor_columns` — size_preserved=True, color_preserved=False
 - `rank_recolor_objects` — size_preserved=True, color_preserved=False
 - `reverse_rings` — size_preserved=True, color_preserved=True
@@ -41,17 +43,18 @@ Tasks analyzed: 50
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
 ## Solved Tasks
-- `b230c067`
+- `85c4e7cd`
+- `68b16354`
 
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `22208ba4`: `zigzag_shear_rect` partial_score=0.97
-- `11dc524f`: `reverse_rings` partial_score=0.95
-- `18286ef8`: `color_map` partial_score=0.95
-- `e9614598`: `arrow_ray_to_edge` partial_score=0.95
-- `5c0a986e`: `zigzag_shear_rect` partial_score=0.92
+- `72a961c9`: `zigzag_shear_rect` partial_score=0.95
+- `a416fc5b`: `arrow_ray_to_edge` partial_score=0.93
+- `7ddcd7ec`: `zigzag_shear_rect` partial_score=0.93
+- `f8f52ecc`: `zigzag_shear_rect` partial_score=0.92
+- `d687bc17`: `arrow_ray_to_edge` partial_score=0.91
 
 ## Unused Primitives
 These 22 primitives exist but no concept uses them:

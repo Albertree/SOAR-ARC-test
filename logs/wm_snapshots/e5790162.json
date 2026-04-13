@@ -2587,7 +2587,7 @@
       ]
     },
     "generalize-diagnostics": {
-      "concepts_tried": 4,
+      "concepts_tried": 5,
       "best_near_miss": {
         "concept_id": "zigzag_shear_rect",
         "pair_index": 0,
@@ -2629,7 +2629,7 @@
         ]
       }
     },
-    "concepts-tried-count": 4,
+    "concepts-tried-count": 5,
     "active-rules": [
       {
         "type": "identity",
