@@ -1152,6 +1152,73 @@ def arrow_ray_to_edge(grid):
     return output
 
 
+def fill_between_row_markers(grid, marker_color, fill_color, bg=0):
+    """On each row, find all cells with marker_color and fill the gaps between
+    consecutive markers with fill_color. Markers themselves are unchanged."""
+    output = [row[:] for row in grid]
+    for r in range(len(grid)):
+        positions = [c for c in range(len(grid[r])) if grid[r][c] == marker_color]
+        if len(positions) < 2:
+            continue
+        for i in range(len(positions) - 1):
+            for c in range(positions[i] + 1, positions[i + 1]):
+                output[r][c] = fill_color
+    return output
+
+
+def connect_diamonds_diagonal(grid, line_color=2, bg=0):
+    """Find plus-shaped (3x3 cross) objects and connect pairs whose centers are
+    on a perfect 45-degree diagonal with a line of line_color between them."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find plus-shape centers: cell where all 4 cardinal neighbors exist and
+    # have the same color as the center cell
+    centers = []
+    for r in range(1, h - 1):
+        for c in range(1, w - 1):
+            v = grid[r][c]
+            if v == bg:
+                continue
+            if (grid[r - 1][c] == v and grid[r + 1][c] == v and
+                    grid[r][c - 1] == v and grid[r][c + 1] == v):
+                centers.append((r, c))
+
+    output = [row[:] for row in grid]
+
+    # Connect pairs on perfect diagonals (|dr| == |dc|)
+    connected = set()
+    for i in range(len(centers)):
+        best_j = None
+        best_dist = float('inf')
+        ar, ac = centers[i]
+        for j in range(len(centers)):
+            if i == j:
+                continue
+            br, bc = centers[j]
+            dr = abs(br - ar)
+            dc = abs(bc - ac)
+            if dr == dc and dr > 1 and dr < best_dist:
+                best_dist = dr
+                best_j = j
+        if best_j is not None:
+            pair = (min(i, best_j), max(i, best_j))
+            if pair not in connected:
+                connected.add(pair)
+                ar, ac = centers[i]
+                br, bc = centers[best_j]
+                sr = 1 if br > ar else -1
+                sc = 1 if bc > ac else -1
+                cr, cc = ar + sr, ac + sc
+                while (cr, cc) != (br, bc):
+                    if output[cr][cc] == bg:
+                        output[cr][cc] = line_color
+                    cr += sr
+                    cc += sc
+
+    return output
+
+
 def collect_objects_concat(grid, bg=0):
     """Extract all non-bg color groups as bounding-box subgrids, determine layout
     direction (horizontal vs vertical), sort by position, and concatenate."""

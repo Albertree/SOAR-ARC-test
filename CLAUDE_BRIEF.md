@@ -1,20 +1,22 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T08:57:25
+Generated: 2026-04-13T09:14:23
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 1 | 2% |
+| SOLVED | 3 | 6% |
 | MISSING_CONCEPT | 0 | 0% |
-| PARAM_ERROR | 7 | 14% |
-| STRUCTURAL | 42 | 84% |
+| PARAM_ERROR | 12 | 24% |
+| STRUCTURAL | 35 | 70% |
 
 ## Current Concepts
 - `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
 - `collect_objects_concat` — size_preserved=False, color_preserved=True
 - `color_map` — size_preserved=True, color_preserved=False
 - `connect_diamonds` — size_preserved=True, color_preserved=False
+- `double_vertical_palindrome` — size_preserved=False, color_preserved=True
+- `erase_indicator_color` — size_preserved=True, color_preserved=False
 - `extract_frame_interior` — size_preserved=False, color_preserved=False
 - `fill_cross_grid_sections` — size_preserved=True, color_preserved=False
 - `flip_horizontal` — size_preserved=True, color_preserved=True
@@ -34,17 +36,19 @@ Tasks analyzed: 50
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
 ## Solved Tasks
-- `6fa7a44f`
+- `13f06aa5`
+- `3c9b0459`
+- `1cf80156`
 
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `eb281b96`: `collect_objects_concat` partial_score=1.00
-- `37ce87bb`: `arrow_ray_to_edge` partial_score=0.98
-- `5792cb4d`: `flip_horizontal` partial_score=0.96
-- `1e81d6f9`: `zigzag_shear_rect` partial_score=0.91
-- `358ba94e`: `zigzag_shear_rect` partial_score=0.91
+- `55059096`: `arrow_ray_to_edge` partial_score=0.95
+- `f8a8fe49`: `flip_horizontal` partial_score=0.95
+- `992798f6`: `arrow_ray_to_edge` partial_score=0.94
+- `72207abc`: `zigzag_shear_rect` partial_score=0.93
+- `a699fb00`: `arrow_ray_to_edge` partial_score=0.92
 
 ## Unused Primitives
 These 25 primitives exist but no concept uses them:

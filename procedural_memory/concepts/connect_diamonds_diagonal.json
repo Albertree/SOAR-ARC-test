@@ -1,0 +1,19 @@
+{
+  "concept_id": "connect_diamonds_diagonal",
+  "version": 1,
+  "description": "Connect plus-shaped objects on perfect 45-degree diagonals with a colored line",
+  "signature": {
+    "grid_size_preserved": true,
+    "size_ratio": null,
+    "color_preserved": false,
+    "requires_content_diff": true,
+    "input_constraints": []
+  },
+  "parameters": {
+    "line_color": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "connect_diamonds_diagonal", "args": {"grid": "$input", "line_color": "$line_color"}, "output": "result"}
+  ],
+  "result": "$result"
+}

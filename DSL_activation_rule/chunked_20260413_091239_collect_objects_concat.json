@@ -1,27 +1,27 @@
 {
-  "rule_id": "chunked_20260413_071736_fill_cross_grid_sections",
+  "rule_id": "chunked_20260413_091239_collect_objects_concat",
   "source": "chunked",
   "source_tasks": [
-    "332202d5"
+    "1cf80156"
   ],
-  "times_validated": 7,
-  "times_failed": 4,
+  "times_validated": 1,
+  "times_failed": 1,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "DIFF",
+      "color": "COMM",
       "contents": {
         "type": "DIFF",
         "change_pattern": "single_group",
-        "change_scope": "all_cells",
+        "change_scope": "single_object",
         "num_groups_consistent": true,
         "group_anchors_consistent": true
       },
-      "size": "COMM"
+      "size": "DIFF"
     }
   },
   "action": {
-    "concept": "fill_cross_grid_sections",
+    "concept": "collect_objects_concat",
     "param_source": "inferred(bg)"
   }
 }
