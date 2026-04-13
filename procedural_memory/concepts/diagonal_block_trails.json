@@ -1,0 +1,18 @@
+{
+  "concept_id": "diagonal_block_trails",
+  "version": 1,
+  "description": "Two 2x2 blocks extend diagonal trails: one up-left, one down-right.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "upleft_color": {"type": "color", "infer": "from_examples"},
+    "downright_color": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "diagonal_block_trails", "args": {"grid": "$input", "upleft_color": "$upleft_color", "downright_color": "$downright_color"}, "output": "result"}
+  ],
+  "result": "$result"
+}

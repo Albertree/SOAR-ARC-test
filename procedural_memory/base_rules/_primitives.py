@@ -1372,3 +1372,57 @@ def erase_indicator_color(grid, bg=0):
             if output[r][c] == key_color:
                 output[r][c] = bg
     return output
+
+
+def diagonal_block_trails(grid, upleft_color, downright_color, bg=0):
+    """Find 2x2 blocks of two colors. The upleft_color block extends a diagonal
+    trail up-left from its top-left corner. The downright_color block extends
+    a diagonal trail down-right from its bottom-right corner."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    output = [row[:] for row in grid]
+    for color, direction in [(upleft_color, "upleft"), (downright_color, "downright")]:
+        found = False
+        for r in range(h - 1):
+            if found:
+                break
+            for c in range(w - 1):
+                if (grid[r][c] == color and grid[r][c + 1] == color and
+                        grid[r + 1][c] == color and grid[r + 1][c + 1] == color):
+                    if direction == "upleft":
+                        tr, tc = r - 1, c - 1
+                        while 0 <= tr and 0 <= tc:
+                            output[tr][tc] = color
+                            tr -= 1
+                            tc -= 1
+                    else:
+                        tr, tc = r + 2, c + 2
+                        while tr < h and tc < w:
+                            output[tr][tc] = color
+                            tr += 1
+                            tc += 1
+                    found = True
+                    break
+    return output
+
+
+def midpoint_cross(grid, marker_color, cross_color, bg=0):
+    """Find exactly two cells of marker_color, place a plus-shaped cross
+    of cross_color at their midpoint. Markers are preserved."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    markers = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] == marker_color:
+                markers.append((r, c))
+    if len(markers) != 2:
+        return None
+    mr = (markers[0][0] + markers[1][0]) // 2
+    mc = (markers[0][1] + markers[1][1]) // 2
+    output = [row[:] for row in grid]
+    for dr, dc in [(0, 0), (-1, 0), (1, 0), (0, -1), (0, 1)]:
+        nr, nc = mr + dr, mc + dc
+        if 0 <= nr < h and 0 <= nc < w:
+            output[nr][nc] = cross_color
+    return output

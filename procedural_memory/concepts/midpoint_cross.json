@@ -1,0 +1,18 @@
+{
+  "concept_id": "midpoint_cross",
+  "version": 1,
+  "description": "Find two marker cells and place a plus-shaped cross at their midpoint.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "marker_color": {"type": "color", "infer": "non_bg_single"},
+    "cross_color": {"type": "color", "infer": "from_examples"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "midpoint_cross", "args": {"grid": "$input", "marker_color": "$marker_color", "cross_color": "$cross_color"}, "output": "result"}
+  ],
+  "result": "$result"
+}

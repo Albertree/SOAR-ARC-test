@@ -4,8 +4,8 @@
   "source_tasks": [
     "c0f76784"
   ],
-  "times_validated": 1,
-  "times_failed": 0,
+  "times_validated": 2,
+  "times_failed": 5,
   "condition": {
     "level": "GRID",
     "topology": {

@@ -1,11 +1,11 @@
 {
-  "rule_id": "chunked_20260413_015351_rank_recolor_objects",
+  "rule_id": "chunked_20260413_094251_separator_reflect_trails",
   "source": "chunked",
   "source_tasks": [
-    "b230c067"
+    "c9680e90"
   ],
-  "times_validated": 3,
-  "times_failed": 29,
+  "times_validated": 1,
+  "times_failed": 3,
   "condition": {
     "level": "GRID",
     "topology": {
@@ -14,14 +14,14 @@
         "type": "DIFF",
         "change_pattern": "multi_group",
         "change_scope": "subset",
-        "num_groups_consistent": true,
+        "num_groups_consistent": false,
         "group_anchors_consistent": false
       },
       "size": "COMM"
     }
   },
   "action": {
-    "concept": "rank_recolor_objects",
-    "param_source": "inferred(bg), inferred(target_color)"
+    "concept": "separator_reflect_trails",
+    "param_source": "inferred(bg)"
   }
 }

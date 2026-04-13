@@ -1,19 +1,19 @@
 {
-  "rule_id": "chunked_20260413_015351_rank_recolor_objects",
+  "rule_id": "chunked_20260413_100129_midpoint_cross",
   "source": "chunked",
   "source_tasks": [
-    "b230c067"
+    "e9614598"
   ],
-  "times_validated": 3,
-  "times_failed": 29,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
       "color": "DIFF",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "multi_group",
-        "change_scope": "subset",
+        "change_pattern": "single_group",
+        "change_scope": "single_object",
         "num_groups_consistent": true,
         "group_anchors_consistent": false
       },
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "rank_recolor_objects",
-    "param_source": "inferred(bg), inferred(target_color)"
+    "concept": "midpoint_cross",
+    "param_source": "inferred(cross_color), inferred(marker_color)"
   }
 }
