@@ -1,14 +1,14 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T10:54:12
+Generated: 2026-04-13T11:06:24
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 3 | 6% |
+| SOLVED | 0 | 0% |
 | MISSING_CONCEPT | 0 | 0% |
-| PARAM_ERROR | 11 | 22% |
-| STRUCTURAL | 36 | 72% |
+| PARAM_ERROR | 6 | 12% |
+| STRUCTURAL | 44 | 88% |
 
 ## Current Concepts
 - `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
@@ -17,6 +17,7 @@ Tasks analyzed: 50
 - `connect_diamonds` — size_preserved=True, color_preserved=False
 - `connect_diamonds_diagonal` — size_preserved=True, color_preserved=False
 - `diagonal_block_trails` — size_preserved=True, color_preserved=True
+- `dot_to_nearest_line` — size_preserved=True, color_preserved=False
 - `double_vertical_palindrome` — size_preserved=False, color_preserved=True
 - `erase_indicator_color` — size_preserved=True, color_preserved=False
 - `extract_frame_interior` — size_preserved=False, color_preserved=False
@@ -39,25 +40,21 @@ Tasks analyzed: 50
 - `rotate_90_cw` — size_preserved=?, color_preserved=True
 - `scale_2x` — size_preserved=False, color_preserved=True
 - `separator_reflect_trails` — size_preserved=True, color_preserved=False
+- `shrinking_triangle` — size_preserved=True, color_preserved=False
 - `staircase_from_row` — size_preserved=False, color_preserved=True
 - `swap_quadrant_shapes` — size_preserved=True, color_preserved=?
 - `vertical_mirror_concat` — size_preserved=False, color_preserved=True
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
-## Solved Tasks
-- `3c9b0459`
-- `1c786137`
-- `d5d6de2d`
-
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `1a07d186`: `arrow_ray_to_edge` partial_score=0.97
-- `aa62e3f4`: `isolate_middle_column` partial_score=0.96
-- `b5bb5719`: `zigzag_shear_rect` partial_score=0.93
-- `dc2e9a9d`: `arrow_ray_to_edge` partial_score=0.93
-- `e4941b18`: `zigzag_shear_rect` partial_score=0.93
+- `af902bf9`: `arrow_ray_to_edge` partial_score=0.99
+- `ae3edfdc`: `reverse_rings` partial_score=0.96
+- `63613498`: `arrow_ray_to_edge` partial_score=0.95
+- `a834deea`: `arrow_ray_to_edge` partial_score=0.92
+- `902510d5`: `arrow_ray_to_edge` partial_score=0.91
 
 ## Unused Primitives
 These 22 primitives exist but no concept uses them:
