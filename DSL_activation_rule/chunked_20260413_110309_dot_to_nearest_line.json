@@ -1,18 +1,18 @@
 {
-  "rule_id": "chunked_20260413_060217_zigzag_shear_rect",
+  "rule_id": "chunked_20260413_110309_dot_to_nearest_line",
   "source": "chunked",
   "source_tasks": [
-    "1c56ad9f"
+    "1a07d186"
   ],
-  "times_validated": 14,
-  "times_failed": 5,
+  "times_validated": 1,
+  "times_failed": 0,
   "condition": {
     "level": "GRID",
     "topology": {
-      "color": "COMM",
+      "color": "DIFF",
       "contents": {
         "type": "DIFF",
-        "change_pattern": "row_wise",
+        "change_pattern": "column_wise",
         "change_scope": "subset",
         "num_groups_consistent": false,
         "group_anchors_consistent": false
@@ -21,7 +21,7 @@
     }
   },
   "action": {
-    "concept": "zigzag_shear_rect",
-    "param_source": "inferred(bg)"
+    "concept": "dot_to_nearest_line",
+    "param_source": "no_params"
   }
 }

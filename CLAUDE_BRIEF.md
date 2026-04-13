@@ -1,14 +1,14 @@
 # CLAUDE BRIEF
-Generated: 2026-04-13T10:40:42
+Generated: 2026-04-13T10:54:12
 Tasks analyzed: 50
 
 ## Results
 | Category | Count | % |
 |----------|-------|---|
-| SOLVED | 5 | 10% |
+| SOLVED | 3 | 6% |
 | MISSING_CONCEPT | 0 | 0% |
-| PARAM_ERROR | 7 | 14% |
-| STRUCTURAL | 38 | 76% |
+| PARAM_ERROR | 11 | 22% |
+| STRUCTURAL | 36 | 72% |
 
 ## Current Concepts
 - `arrow_ray_to_edge` — size_preserved=True, color_preserved=False
@@ -33,6 +33,8 @@ Tasks analyzed: 50
 - `midpoint_cross` — size_preserved=True, color_preserved=False
 - `rank_recolor_columns` — size_preserved=True, color_preserved=False
 - `rank_recolor_objects` — size_preserved=True, color_preserved=False
+- `recolor_adjacent_pairs` — size_preserved=True, color_preserved=False
+- `replace_frames_with_interiors` — size_preserved=True, color_preserved=False
 - `reverse_rings` — size_preserved=True, color_preserved=True
 - `rotate_90_cw` — size_preserved=?, color_preserved=True
 - `scale_2x` — size_preserved=False, color_preserved=True
@@ -43,21 +45,19 @@ Tasks analyzed: 50
 - `zigzag_shear_rect` — size_preserved=True, color_preserved=True
 
 ## Solved Tasks
-- `6150a2bd`
-- `68b16354`
-- `67a3c6ac`
-- `aabf363d`
-- `3906de3d`
+- `3c9b0459`
+- `1c786137`
+- `d5d6de2d`
 
 ## PARAM_ERROR Tasks (concept fired but wrong output)
 These are the easiest wins — the concept structure is right,
 only parameter inference needs fixing.
 
-- `1acc24af`: `color_map` partial_score=0.98
-- `d90796e8`: `color_map` partial_score=0.95
-- `7e2bad24`: `zigzag_shear_rect` partial_score=0.94
-- `17b866bd`: `flip_horizontal` partial_score=0.92
-- `d5d6de2d`: `isolate_middle_column` partial_score=0.91
+- `1a07d186`: `arrow_ray_to_edge` partial_score=0.97
+- `aa62e3f4`: `isolate_middle_column` partial_score=0.96
+- `b5bb5719`: `zigzag_shear_rect` partial_score=0.93
+- `dc2e9a9d`: `arrow_ray_to_edge` partial_score=0.93
+- `e4941b18`: `zigzag_shear_rect` partial_score=0.93
 
 ## Unused Primitives
 These 22 primitives exist but no concept uses them:

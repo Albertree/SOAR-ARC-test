@@ -1,0 +1,17 @@
+{
+  "concept_id": "shrinking_triangle",
+  "version": 1,
+  "description": "First row has colored cells that shrink inward by 1 each row, alternating between two colors based on left-parent cell.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "shrinking_triangle", "args": {"grid": "$input", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}

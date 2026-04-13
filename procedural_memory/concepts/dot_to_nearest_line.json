@@ -1,0 +1,15 @@
+{
+  "concept_id": "dot_to_nearest_line",
+  "version": 1,
+  "description": "Find full-span lines and isolated dots. Each dot moves toward the nearest line of the same color and lands adjacent to it.",
+  "signature": {
+    "grid_size_preserved": true,
+    "color_preserved": false,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "dot_to_nearest_line", "args": {"grid": "$input"}, "output": "result"}
+  ],
+  "result": "$result"
+}

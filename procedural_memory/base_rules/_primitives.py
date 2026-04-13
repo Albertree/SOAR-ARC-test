@@ -1496,3 +1496,149 @@ def midpoint_cross(grid, marker_color, cross_color, bg=0):
         if 0 <= nr < h and 0 <= nc < w:
             output[nr][nc] = cross_color
     return output
+
+
+def shrinking_triangle(grid, bg=7):
+    """First row has non-bg colored cells (colors c1, c2). Each subsequent row
+    shrinks inward by 1 from each side. Each cell in row i+1 at position j
+    takes the opposite color of row i at position j-1.
+    The two non-bg colors swap: if left-parent is c1, child is c2 and vice versa."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+
+    # Find the non-bg colors in row 0
+    colors = set()
+    for v in grid[0]:
+        if v != bg:
+            colors.add(v)
+    colors = sorted(colors)
+    if len(colors) == 0:
+        return [row[:] for row in grid]
+
+    # Build color swap map
+    if len(colors) == 1:
+        # Only one color present; need to find the "other" color
+        # Look at the output pattern - for single-color inputs, alternate with color 2
+        c1 = colors[0]
+        c2 = 2 if c1 != 2 else 5
+        swap = {c1: c2, c2: c1}
+    else:
+        c1, c2 = colors[0], colors[1]
+        swap = {c1: c2, c2: c1}
+
+    # Find the span of non-bg cells in row 0
+    first_col = None
+    last_col = None
+    for c in range(w):
+        if grid[0][c] != bg:
+            if first_col is None:
+                first_col = c
+            last_col = c
+
+    if first_col is None:
+        return [row[:] for row in grid]
+
+    output = [[bg] * w for _ in range(h)]
+    # Copy row 0
+    for c in range(w):
+        output[0][c] = grid[0][c]
+
+    # Generate subsequent rows
+    left = first_col
+    right = last_col
+    for i in range(1, h):
+        left += 1
+        right -= 1
+        if left > right:
+            break
+        for c in range(left, right + 1):
+            parent = output[i - 1][c - 1]
+            if parent in swap:
+                output[i][c] = swap[parent]
+            else:
+                output[i][c] = parent
+    return output
+
+
+def dot_to_nearest_line(grid):
+    """Find full-span lines (entire row or column of one non-bg color).
+    Find isolated single-cell dots. Each dot moves toward the nearest
+    line of the SAME color and lands adjacent to it (one cell away).
+    Dots with no matching line are removed."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    bg = find_bg_color(grid)
+
+    # Find full-span horizontal lines (entire row is one non-bg color)
+    h_lines = {}  # row -> color
+    for r in range(h):
+        vals = set(grid[r])
+        if len(vals) == 1 and grid[r][0] != bg:
+            h_lines[r] = grid[r][0]
+
+    # Find full-span vertical lines (entire column is one non-bg color)
+    v_lines = {}  # col -> color
+    for c in range(w):
+        vals = set(grid[r][c] for r in range(h))
+        if len(vals) == 1 and grid[0][c] != bg:
+            v_lines[c] = grid[0][c]
+
+    # Collect all line cells
+    line_cells = set()
+    for r in h_lines:
+        for c in range(w):
+            line_cells.add((r, c))
+    for c in v_lines:
+        for r in range(h):
+            line_cells.add((r, c))
+
+    # Find isolated dots (single non-bg cells not part of any line)
+    dots = []
+    for r in range(h):
+        for c in range(w):
+            if grid[r][c] != bg and (r, c) not in line_cells:
+                dots.append((r, c, grid[r][c]))
+
+    # Build output: start with lines + bg
+    output = [[bg] * w for _ in range(h)]
+    for r in h_lines:
+        for c in range(w):
+            output[r][c] = h_lines[r]
+    for c in v_lines:
+        for r in range(h):
+            output[r][c] = v_lines[c]
+
+    # Move each dot toward nearest matching line
+    for dr, dc, color in dots:
+        best_dist = float('inf')
+        best_pos = None
+
+        # Check horizontal lines of same color
+        for lr, lc in h_lines.items():
+            if lc == color:
+                dist = abs(dr - lr)
+                if dist < best_dist:
+                    best_dist = dist
+                    # Land one cell away from the line, toward the dot
+                    if dr < lr:
+                        best_pos = (lr - 1, dc)
+                    else:
+                        best_pos = (lr + 1, dc)
+
+        # Check vertical lines of same color
+        for lc_col, lc_color in v_lines.items():
+            if lc_color == color:
+                dist = abs(dc - lc_col)
+                if dist < best_dist:
+                    best_dist = dist
+                    if dc < lc_col:
+                        best_pos = (dr, lc_col - 1)
+                    else:
+                        best_pos = (dr, lc_col + 1)
+
+        if best_pos is not None:
+            pr, pc = best_pos
+            if 0 <= pr < h and 0 <= pc < w:
+                output[pr][pc] = color
+
+    return output
