@@ -346,6 +346,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_fractal_block_denoise(patterns, wm)
 
+        # Strategy 49: bbox fill (fill 0-cells within bounding box of fg shape)
+        if rule is None:
+            rule = self._try_bbox_fill(patterns, wm)
+
+        # Strategy 50: symmetry complete (complete 4-fold rotational symmetry)
+        if rule is None:
+            rule = self._try_symmetry_complete(patterns, wm)
+
+        # Strategy 51: accelerating sequence (colors at triangular-number positions)
+        if rule is None:
+            rule = self._try_accelerating_sequence(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -6028,6 +6040,229 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: bbox fill -------------------------------------------------
+
+    def _try_bbox_fill(self, patterns, wm):
+        """
+        Detect: input has a single fg color forming a shape on bg 0.
+        Output fills 0-cells within the bounding box of the fg shape with
+        a second fill color. Cells outside bbox stay unchanged.
+        Category: bounding box completion / shape infill.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        fg_color = None
+        fill_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Input should have exactly one non-zero color
+            in_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] != 0:
+                        in_colors.add(raw_in[r][c])
+            if len(in_colors) != 1:
+                return None
+            pair_fg = in_colors.pop()
+
+            # Output should have exactly two non-zero colors: fg and fill
+            out_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if raw_out[r][c] != 0:
+                        out_colors.add(raw_out[r][c])
+            if len(out_colors) != 2 or pair_fg not in out_colors:
+                return None
+            pair_fill = (out_colors - {pair_fg}).pop()
+
+            if fg_color is None:
+                fg_color = pair_fg
+                fill_color = pair_fill
+            elif pair_fg != fg_color or pair_fill != fill_color:
+                return None
+
+            # Compute bounding box of fg cells
+            fg_rows = [r for r in range(H) for c in range(W) if raw_in[r][c] == fg_color]
+            fg_cols = [c for r in range(H) for c in range(W) if raw_in[r][c] == fg_color]
+            if not fg_rows:
+                return None
+            min_r, max_r = min(fg_rows), max(fg_rows)
+            min_c, max_c = min(fg_cols), max(fg_cols)
+
+            # Verify: within bbox, 0→fill_color; fg stays fg; outside bbox unchanged
+            for r in range(H):
+                for c in range(W):
+                    in_val = raw_in[r][c]
+                    out_val = raw_out[r][c]
+                    if min_r <= r <= max_r and min_c <= c <= max_c:
+                        if in_val == fg_color:
+                            if out_val != fg_color:
+                                return None
+                        elif in_val == 0:
+                            if out_val != fill_color:
+                                return None
+                    else:
+                        if out_val != in_val:
+                            return None
+
+        if fg_color is None:
+            return None
+
+        return {
+            "type": "bbox_fill",
+            "fg_color": fg_color,
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: symmetry complete -----------------------------------------
+
+    def _try_symmetry_complete(self, patterns, wm):
+        """
+        Detect: input has a pattern on bg 0 that is nearly 4-fold rotationally
+        symmetric about the center of its bounding box. Output completes the
+        symmetry by filling in missing rotational counterparts.
+        Category: symmetry completion patterns (diamond, checkerboard, etc.).
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Find non-zero cells
+            nz_cells = []
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] != 0:
+                        nz_cells.append((r, c, raw_in[r][c]))
+            if len(nz_cells) < 3:
+                return None
+
+            rows = [r for r, c, v in nz_cells]
+            cols = [c for r, c, v in nz_cells]
+            min_r, max_r = min(rows), max(rows)
+            min_c, max_c = min(cols), max(cols)
+
+            # Bbox must be square for 4-fold rotation
+            if (max_r - min_r) != (max_c - min_c) or (max_r - min_r) < 2:
+                return None
+
+            cr = (min_r + max_r) / 2.0
+            cc = (min_c + max_c) / 2.0
+
+            # Build symmetry-completed grid
+            completed = [row[:] for row in raw_in]
+            for r, c, v in nz_cells:
+                for nr, nc in [
+                    (cr + (c - cc), cc - (r - cr)),       # 90° CW
+                    (2 * cr - r, 2 * cc - c),             # 180°
+                    (cr - (c - cc), cc + (r - cr)),       # 270°
+                ]:
+                    nri, nci = int(round(nr)), int(round(nc))
+                    if 0 <= nri < H and 0 <= nci < W:
+                        if completed[nri][nci] == 0:
+                            completed[nri][nci] = v
+                        elif completed[nri][nci] != v:
+                            return None  # Conflict
+
+            # Verify completed matches output
+            for r in range(H):
+                for c in range(W):
+                    if completed[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "symmetry_complete", "confidence": 1.0}
+
+    # ---- strategy: accelerating sequence -------------------------------------
+
+    def _try_accelerating_sequence(self, patterns, wm):
+        """
+        Detect: input has one row with seed colors; output fills that row with
+        colors cycling through the seed at triangular-number positions
+        (gaps increase by 1 each step: 1, 2, 3, 4, ...).
+        Category: accelerating / expanding sequence patterns.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Find the single non-zero row
+            nz_row = None
+            for r in range(H):
+                if any(raw_in[r][c] != 0 for c in range(W)):
+                    if nz_row is not None:
+                        return None
+                    nz_row = r
+            if nz_row is None:
+                return None
+
+            # Collect seed colors
+            seed_colors = []
+            for c in range(W):
+                if raw_in[nz_row][c] != 0:
+                    seed_colors.append(raw_in[nz_row][c])
+            if len(seed_colors) < 2:
+                return None
+
+            # Verify seed positions match triangular numbers
+            seed_positions = [c for c in range(W) if raw_in[nz_row][c] != 0]
+            for i, pos in enumerate(seed_positions):
+                if pos != i * (i + 1) // 2:
+                    return None
+
+            # Generate expected output row
+            expected_row = [0] * W
+            pos = 0
+            gap = 1
+            ci = 0
+            while pos < W:
+                expected_row[pos] = seed_colors[ci % len(seed_colors)]
+                ci += 1
+                pos += gap
+                gap += 1
+
+            # Verify output
+            for c in range(W):
+                if raw_out[nz_row][c] != expected_row[c]:
+                    return None
+            for r in range(H):
+                if r != nz_row:
+                    for c in range(W):
+                        if raw_out[r][c] != 0:
+                            return None
+
+        return {"type": "accelerating_sequence", "confidence": 1.0}
+
     def _find_hollow_rects(self, raw):
         """Find hollow or solid rectangles of non-zero colors on bg 0."""
         H = len(raw)
@@ -6242,6 +6477,12 @@ class PredictOperator(Operator):
             return self._apply_mirror_row_tile(rule, input_grid)
         if rule_type == "larger_interior_rect":
             return self._apply_larger_interior_rect(rule, input_grid)
+        if rule_type == "bbox_fill":
+            return self._apply_bbox_fill(rule, input_grid)
+        if rule_type == "symmetry_complete":
+            return self._apply_symmetry_complete(rule, input_grid)
+        if rule_type == "accelerating_sequence":
+            return self._apply_accelerating_sequence(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -8135,6 +8376,97 @@ class PredictOperator(Operator):
         rects.sort(reverse=True)
         winner = rects[0][1]
         return [[winner, winner], [winner, winner]]
+
+    # ---- apply: bbox fill ---------------------------------------------------
+
+    def _apply_bbox_fill(self, rule, input_grid):
+        """Fill 0-cells within bounding box of fg shape with fill_color."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        fg_color = rule["fg_color"]
+        fill_color = rule["fill_color"]
+
+        min_r, max_r = H, -1
+        min_c, max_c = W, -1
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == fg_color:
+                    if r < min_r: min_r = r
+                    if r > max_r: max_r = r
+                    if c < min_c: min_c = c
+                    if c > max_c: max_c = c
+
+        out = [row[:] for row in raw]
+        if max_r >= 0:
+            for r in range(min_r, max_r + 1):
+                for c in range(min_c, max_c + 1):
+                    if out[r][c] == 0:
+                        out[r][c] = fill_color
+        return out
+
+    # ---- apply: symmetry complete -------------------------------------------
+
+    def _apply_symmetry_complete(self, rule, input_grid):
+        """Complete 4-fold rotational symmetry about the bbox center."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        nz_cells = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0:
+                    nz_cells.append((r, c, raw[r][c]))
+
+        if not nz_cells:
+            return [row[:] for row in raw]
+
+        rows = [r for r, c, v in nz_cells]
+        cols = [c for r, c, v in nz_cells]
+        cr = (min(rows) + max(rows)) / 2.0
+        cc = (min(cols) + max(cols)) / 2.0
+
+        out = [row[:] for row in raw]
+        for r, c, v in nz_cells:
+            for nr, nc in [
+                (cr + (c - cc), cc - (r - cr)),
+                (2 * cr - r, 2 * cc - c),
+                (cr - (c - cc), cc + (r - cr)),
+            ]:
+                nri, nci = int(round(nr)), int(round(nc))
+                if 0 <= nri < H and 0 <= nci < W and out[nri][nci] == 0:
+                    out[nri][nci] = v
+        return out
+
+    # ---- apply: accelerating sequence ---------------------------------------
+
+    def _apply_accelerating_sequence(self, rule, input_grid):
+        """Place cycling seed colors at triangular-number positions."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        nz_row = None
+        for r in range(H):
+            if any(raw[r][c] != 0 for c in range(W)):
+                nz_row = r
+                break
+        if nz_row is None:
+            return [row[:] for row in raw]
+
+        seed_colors = [raw[nz_row][c] for c in range(W) if raw[nz_row][c] != 0]
+
+        out = [[0] * W for _ in range(H)]
+        pos = 0
+        gap = 1
+        ci = 0
+        while pos < W:
+            out[nz_row][pos] = seed_colors[ci % len(seed_colors)]
+            ci += 1
+            pos += gap
+            gap += 1
+        return out
 
     # ---- helpers ---------------------------------------------------------
 

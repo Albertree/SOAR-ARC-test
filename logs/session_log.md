@@ -713,3 +713,80 @@
 - Stored rule hits: 54
 - Time: 210s
 - Log: logs/learn_20260422_024731.log
+
+---
+## Learning Loop -- 2026-04-22 02:55
+
+- Split: training, Tasks: 80
+- Correct: 55 / 80 (68.8%)
+- Rules: 182 -> 188 (+6 learned)
+- Stored rule hits: 54
+- Time: 209s
+- Log: logs/learn_20260422_025217.log
+
+---
+## Session 21 -- 2026-04-22 03:23
+
+### Strategies Added
+1. **bbox_fill** (Strategy 49): Input has a single fg color (e.g. 8) forming a
+   shape on bg 0 with internal gaps. Output fills 0-cells within the bounding
+   box of the fg shape with a fill color (e.g. 2). Placed before color_mapping
+   to prevent false-positive match. (solves 6d75e8bb)
+2. **symmetry_complete** (Strategy 50): Input has a pattern on bg 0 that is
+   nearly 4-fold rotationally symmetric (diamond/checkerboard). Output completes
+   the symmetry by filling in missing rotational counterparts around the bbox
+   center. Requires square bounding box. (solves 11852cab)
+3. **accelerating_sequence** (Strategy 51): Input has one row with seed colors
+   at start positions matching triangular numbers (0, 1, 3, 6, ...). Output
+   fills that row by cycling seed colors at positions with increasing gaps
+   (1, 2, 3, 4, ...). (solves 72207abc)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%) — up from 55/80 (68.8%)
+- Solved (new): 6d75e8bb (bbox_fill), 11852cab (symmetry_complete), 72207abc (accelerating_sequence)
+- Rules: 202 -> 208 (+6 learned)
+- Stored rule hits: 56
+- Discovered: 7 new rules from pipeline
+- Time: 210s
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 03:14
+
+- Split: training, Tasks: 80
+- Correct: 57 / 80 (71.2%)
+- Rules: 188 -> 196 (+8 learned)
+- Stored rule hits: 54
+- Time: 210s
+- Log: logs/learn_20260422_031034.log
+
+---
+## Learning Loop -- 2026-04-22 03:17
+
+- Split: training, Tasks: 80
+- Correct: 57 / 80 (71.2%)
+- Rules: 196 -> 202 (+6 learned)
+- Stored rule hits: 56
+- Time: 210s
+- Log: logs/learn_20260422_031418.log
+
+---
+## Learning Loop -- 2026-04-22 03:23
+
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%)
+- Rules: 202 -> 208 (+6 learned)
+- Stored rule hits: 56
+- Time: 210s
+- Log: logs/learn_20260422_031932.log
+
+---
+## Learning Loop -- 2026-04-22 03:26
+
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%)
+- Rules: 208 -> 213 (+5 learned)
+- Stored rule hits: 57
+- Time: 210s
+- Log: logs/learn_20260422_032307.log
