@@ -542,6 +542,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_larger_interior_rect(patterns, wm)
 
+        # Strategy 58: rect minority gridlines (uniform rect + minority cells → grid lines)
+        if rule is None:
+            rule = self._try_rect_minority_gridlines(patterns, wm)
+
+        # Strategy 59: rect directional tile (hollow rect + 1-lines → tile in direction)
+        if rule is None:
+            rule = self._try_rect_directional_tile(patterns, wm)
+
+        # Strategy 60: corner block shift (corner blocks shift inward by block dims)
+        if rule is None:
+            rule = self._try_corner_block_shift(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -6976,6 +6988,348 @@ class GeneralizeOperator(Operator):
 
         return {"type": "tile_grid_recolor", "confidence": 1.0, "tile_color": 5}
 
+    # ---- strategy 58: rect minority gridlines --------------------------------
+
+    def _try_rect_minority_gridlines(self, patterns, wm):
+        """
+        Detect: grid with a rectangular region of mostly one color (dominant)
+        containing a few cells of another color (minority). The output extracts
+        just the rectangle and draws full horizontal+vertical grid lines through
+        each minority cell position. The rect may be embedded in noisy surroundings.
+        Category: pattern extraction / grid line inference from embedded markers.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            H, W = len(inp), len(inp[0])
+            oH, oW = len(out), len(out[0])
+
+            if oH >= H and oW >= W:
+                return None  # output not smaller than input
+
+            # Scan all possible top-left positions for a rect of output dims
+            found = False
+            for rmin in range(H - oH + 1):
+                for cmin in range(W - oW + 1):
+                    # Extract subgrid
+                    from collections import Counter as _Counter
+                    color_counts = _Counter()
+                    for r in range(rmin, rmin + oH):
+                        for c in range(cmin, cmin + oW):
+                            color_counts[inp[r][c]] += 1
+
+                    total = oH * oW
+                    if not color_counts:
+                        continue
+
+                    dom_color, dom_count = color_counts.most_common(1)[0]
+                    if dom_count < total * 0.7:
+                        continue
+
+                    # Check that non-dominant cells are all one color
+                    minority_color = None
+                    minority_positions = []
+                    valid = True
+                    for r in range(rmin, rmin + oH):
+                        for c in range(cmin, cmin + oW):
+                            v = inp[r][c]
+                            if v != dom_color:
+                                if minority_color is None:
+                                    minority_color = v
+                                elif v != minority_color:
+                                    valid = False
+                                    break
+                                minority_positions.append((r - rmin, c - cmin))
+                        if not valid:
+                            break
+
+                    if not valid or minority_color is None:
+                        continue
+                    if len(minority_positions) < 1:
+                        continue
+
+                    # Verify output: gridlines at minority positions
+                    min_rows = set(r for r, c in minority_positions)
+                    min_cols = set(c for r, c in minority_positions)
+
+                    expected = [[dom_color] * oW for _ in range(oH)]
+                    for mr in min_rows:
+                        for c in range(oW):
+                            expected[mr][c] = minority_color
+                    for mc in min_cols:
+                        for r in range(oH):
+                            expected[r][mc] = minority_color
+
+                    if expected == out:
+                        found = True
+                        break
+                if found:
+                    break
+
+            if not found:
+                return None
+
+        return {"type": "rect_minority_gridlines", "confidence": 1.0}
+
+    # ---- strategy 59: rect directional tile ----------------------------------
+
+    def _try_rect_directional_tile(self, patterns, wm):
+        """
+        Detect: grid has hollow rectangles (frame color X, interior bg 0) and
+        lines of color 1 as direction indicators. Each rect tiles in the direction(s)
+        indicated by 1-lines, extending from its position to the 1-line.
+        The 1-lines are replaced by the tiled pattern. Untouched rects stay.
+        Category: directional tiling / pattern extrusion.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            H, W = len(inp), len(inp[0])
+            if len(out) != H or len(out[0]) != W:
+                return None
+
+            # Find hollow rects: 4×4 frame of color X with 2×2 interior of 0
+            rects = []
+            used = set()
+            for r in range(H - 3):
+                for c in range(W - 3):
+                    v = inp[r][c]
+                    if v == 0 or v == 1:
+                        continue
+                    # Check 4×4 hollow rect
+                    frame_ok = True
+                    for dr in range(4):
+                        for dc in range(4):
+                            cell = inp[r + dr][c + dc]
+                            if dr in (0, 3) or dc in (0, 3):
+                                if cell != v:
+                                    frame_ok = False
+                                    break
+                            else:
+                                if cell != 0:
+                                    frame_ok = False
+                                    break
+                        if not frame_ok:
+                            break
+                    if frame_ok and (r, c) not in used:
+                        rects.append((r, c, v))
+                        for dr in range(4):
+                            for dc in range(4):
+                                used.add((r + dr, c + dc))
+
+            if not rects:
+                return None
+
+            # Find 1-lines (horizontal segments and vertical segments)
+            one_cells = set()
+            for r in range(H):
+                for c in range(W):
+                    if inp[r][c] == 1:
+                        one_cells.add((r, c))
+
+            if not one_cells:
+                return None
+
+            # For each rect, find associated 1-lines by alignment
+            # Build expected output
+            expected = [[inp[r][c] for c in range(W)] for r in range(H)]
+            # Remove 1-lines from expected
+            for r, c in one_cells:
+                expected[r][c] = 0
+
+            for rect_r, rect_c, rect_color in rects:
+                rect_pattern = [[inp[rect_r + dr][rect_c + dc] for dc in range(4)] for dr in range(4)]
+
+                # Check for horizontal 1-line (same row span as rect)
+                # Right side
+                h_one_r = None
+                for c_check in range(rect_c + 4, W):
+                    row_span_ones = all((rect_r + dr, c_check) in one_cells for dr in range(4))
+                    if row_span_ones:
+                        h_one_r = c_check
+                        break
+                if h_one_r is not None:
+                    # Tile rightward from rect to h_one_r
+                    for c_pos in range(rect_c + 4, h_one_r + 1):
+                        dc = (c_pos - rect_c) % 4
+                        for dr in range(4):
+                            expected[rect_r + dr][c_pos] = rect_pattern[dr][dc]
+
+                # Left side
+                h_one_l = None
+                for c_check in range(rect_c - 1, -1, -1):
+                    row_span_ones = all((rect_r + dr, c_check) in one_cells for dr in range(4))
+                    if row_span_ones:
+                        h_one_l = c_check
+                        break
+                if h_one_l is not None:
+                    # Tile leftward from rect to h_one_l
+                    for c_pos in range(rect_c - 1, h_one_l - 1, -1):
+                        dc = (c_pos - rect_c) % 4
+                        for dr in range(4):
+                            expected[rect_r + dr][c_pos] = rect_pattern[dr][dc]
+
+                # Check for vertical 1-line (same col span as rect)
+                # Below
+                v_one_b = None
+                for r_check in range(rect_r + 4, H):
+                    col_span_ones = all((r_check, rect_c + dc) in one_cells for dc in range(4))
+                    if col_span_ones:
+                        v_one_b = r_check
+                        break
+                if v_one_b is not None:
+                    for r_pos in range(rect_r + 4, v_one_b + 1):
+                        dr = (r_pos - rect_r) % 4
+                        for dc in range(4):
+                            expected[r_pos][rect_c + dc] = rect_pattern[dr][dc]
+
+                # Above
+                v_one_t = None
+                for r_check in range(rect_r - 1, -1, -1):
+                    col_span_ones = all((r_check, rect_c + dc) in one_cells for dc in range(4))
+                    if col_span_ones:
+                        v_one_t = r_check
+                        break
+                if v_one_t is not None:
+                    for r_pos in range(rect_r - 1, v_one_t - 1, -1):
+                        dr = (r_pos - rect_r) % 4
+                        for dc in range(4):
+                            expected[r_pos][rect_c + dc] = rect_pattern[dr][dc]
+
+            if expected != out:
+                return None
+
+        return {"type": "rect_directional_tile", "confidence": 1.0}
+
+    # ---- strategy 60: corner block shift -------------------------------------
+
+    def _try_corner_block_shift(self, patterns, wm):
+        """
+        Detect: grid with uniform background has rectangular blocks of non-bg
+        colors at corner-like positions. The most frequent non-bg color among
+        corner blocks shifts inward by one block dimension. Minority-color
+        blocks stay in place.
+        Category: object motion / corner block inward displacement.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            H, W = len(inp), len(inp[0])
+            if len(out) != H or len(out[0]) != W:
+                return None
+
+            # Find background color (most common)
+            from collections import Counter
+            flat = [inp[r][c] for r in range(H) for c in range(W)]
+            bg = Counter(flat).most_common(1)[0][0]
+
+            # Find connected components of non-bg cells
+            visited = set()
+            blocks = []
+            for r in range(H):
+                for c in range(W):
+                    if inp[r][c] != bg and (r, c) not in visited:
+                        color = inp[r][c]
+                        # BFS
+                        comp = []
+                        queue = [(r, c)]
+                        while queue:
+                            cr, cc = queue.pop(0)
+                            if (cr, cc) in visited:
+                                continue
+                            if cr < 0 or cr >= H or cc < 0 or cc >= W:
+                                continue
+                            if inp[cr][cc] != color:
+                                continue
+                            visited.add((cr, cc))
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                                queue.append((cr+dr, cc+dc))
+                        rmin = min(r2 for r2, c2 in comp)
+                        rmax = max(r2 for r2, c2 in comp)
+                        cmin = min(c2 for r2, c2 in comp)
+                        cmax = max(c2 for r2, c2 in comp)
+                        bh = rmax - rmin + 1
+                        bw = cmax - cmin + 1
+                        # Must be solid rectangle
+                        if len(comp) == bh * bw:
+                            blocks.append({
+                                "color": color,
+                                "rmin": rmin, "rmax": rmax,
+                                "cmin": cmin, "cmax": cmax,
+                                "h": bh, "w": bw
+                            })
+
+            if len(blocks) < 2:
+                return None
+
+            # Count color frequencies
+            color_counts = Counter(b["color"] for b in blocks)
+            if len(color_counts) < 2:
+                # All same color — all shift
+                majority_color = blocks[0]["color"]
+            else:
+                majority_color = color_counts.most_common(1)[0][0]
+
+            # Build expected output
+            expected = [[bg] * W for _ in range(H)]
+
+            for b in blocks:
+                if b["color"] != majority_color:
+                    # Minority blocks stay
+                    for r in range(b["rmin"], b["rmax"] + 1):
+                        for c in range(b["cmin"], b["cmax"] + 1):
+                            expected[r][c] = b["color"]
+                else:
+                    # Majority blocks shift inward by their own dimensions
+                    # Determine direction: toward center of grid
+                    center_r = (H - 1) / 2.0
+                    center_c = (W - 1) / 2.0
+                    block_center_r = (b["rmin"] + b["rmax"]) / 2.0
+                    block_center_c = (b["cmin"] + b["cmax"]) / 2.0
+
+                    dr = 0
+                    if block_center_r < center_r:
+                        dr = b["h"]
+                    elif block_center_r > center_r:
+                        dr = -b["h"]
+
+                    dc = 0
+                    if block_center_c < center_c:
+                        dc = b["w"]
+                    elif block_center_c > center_c:
+                        dc = -b["w"]
+
+                    nr = b["rmin"] + dr
+                    nc = b["cmin"] + dc
+                    for r in range(nr, nr + b["h"]):
+                        for c in range(nc, nc + b["w"]):
+                            if 0 <= r < H and 0 <= c < W:
+                                expected[r][c] = b["color"]
+
+            if expected != out:
+                return None
+
+        return {"type": "corner_block_shift", "confidence": 1.0}
+
 
 class DescendOperator(Operator):
     """
@@ -7161,6 +7515,12 @@ class PredictOperator(Operator):
             return self._apply_multi_layer_overlay(rule, input_grid)
         if rule_type == "tile_grid_recolor":
             return self._apply_tile_grid_recolor(rule, input_grid)
+        if rule_type == "rect_minority_gridlines":
+            return self._apply_rect_minority_gridlines(rule, input_grid)
+        if rule_type == "rect_directional_tile":
+            return self._apply_rect_directional_tile(rule, input_grid)
+        if rule_type == "corner_block_shift":
+            return self._apply_corner_block_shift(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -9483,6 +9843,287 @@ class PredictOperator(Operator):
                     for c in col_sections[tc]:
                         if raw[r][c] == 5:
                             output[r][c] = key_color
+        return output
+
+    # ---- strategy 58 apply: rect minority gridlines -------------------------
+
+    def _apply_rect_minority_gridlines(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Find the uniform rect by density analysis per color
+        best = None
+        best_area = 0
+        for dom_color in range(10):
+            # Compute per-row density of dom_color
+            row_counts = [0] * H
+            for r in range(H):
+                for c in range(W):
+                    if raw[r][c] == dom_color:
+                        row_counts[r] += 1
+
+            # Find contiguous row range with high density (> 40% of width)
+            thresh = max(3, W * 0.4)
+            high_rows = [r for r in range(H) if row_counts[r] >= thresh]
+            if len(high_rows) < 3:
+                continue
+
+            # Find contiguous groups of high-density rows
+            groups = []
+            start = high_rows[0]
+            for i in range(1, len(high_rows)):
+                if high_rows[i] != high_rows[i - 1] + 1:
+                    groups.append((start, high_rows[i - 1]))
+                    start = high_rows[i]
+            groups.append((start, high_rows[-1]))
+
+            for rmin, rmax in groups:
+                if rmax - rmin + 1 < 3:
+                    continue
+                # Find column range within these rows
+                col_counts = [0] * W
+                row_span = rmax - rmin + 1
+                for r in range(rmin, rmax + 1):
+                    for c in range(W):
+                        if raw[r][c] == dom_color:
+                            col_counts[c] += 1
+                col_thresh = max(2, row_span * 0.4)
+                high_cols = [c for c in range(W)
+                             if col_counts[c] >= col_thresh]
+                if len(high_cols) < 3:
+                    continue
+                cmin, cmax = high_cols[0], high_cols[-1]
+                rect_h = rmax - rmin + 1
+                rect_w = cmax - cmin + 1
+                total = rect_h * rect_w
+
+                # Check purity and single minority
+                dom_count = 0
+                minority_color = None
+                minority_positions = []
+                valid = True
+                for r in range(rmin, rmax + 1):
+                    for c in range(cmin, cmax + 1):
+                        v = raw[r][c]
+                        if v == dom_color:
+                            dom_count += 1
+                        else:
+                            if minority_color is None:
+                                minority_color = v
+                            elif v != minority_color:
+                                valid = False
+                                break
+                            minority_positions.append(
+                                (r - rmin, c - cmin))
+                    if not valid:
+                        break
+
+                if not valid or minority_color is None:
+                    continue
+                if dom_count < total * 0.7:
+                    continue
+                if total > best_area:
+                    best_area = total
+                    best = (rect_h, rect_w, dom_color, minority_color,
+                            minority_positions)
+
+        if best:
+            rect_h, rect_w, dom_color, minority_color, mpos = best
+            min_rows = set(r for r, c in mpos)
+            min_cols = set(c for r, c in mpos)
+            output = [[dom_color] * rect_w for _ in range(rect_h)]
+            for mr in min_rows:
+                for c in range(rect_w):
+                    output[mr][c] = minority_color
+            for mc in min_cols:
+                for r in range(rect_h):
+                    output[r][mc] = minority_color
+            return output
+
+        return [row[:] for row in raw]
+
+    # ---- strategy 59 apply: rect directional tile ----------------------------
+
+    def _apply_rect_directional_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Find hollow 4×4 rects
+        rects = []
+        used = set()
+        for r in range(H - 3):
+            for c in range(W - 3):
+                v = raw[r][c]
+                if v == 0 or v == 1:
+                    continue
+                frame_ok = True
+                for dr in range(4):
+                    for dc in range(4):
+                        cell = raw[r + dr][c + dc]
+                        if dr in (0, 3) or dc in (0, 3):
+                            if cell != v:
+                                frame_ok = False
+                                break
+                        else:
+                            if cell != 0:
+                                frame_ok = False
+                                break
+                    if not frame_ok:
+                        break
+                if frame_ok and (r, c) not in used:
+                    rects.append((r, c, v))
+                    for dr in range(4):
+                        for dc in range(4):
+                            used.add((r + dr, c + dc))
+
+        # Find 1-lines
+        one_cells = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == 1:
+                    one_cells.add((r, c))
+
+        output = [[raw[r][c] for c in range(W)] for r in range(H)]
+        # Remove 1-lines
+        for r, c in one_cells:
+            output[r][c] = 0
+
+        for rect_r, rect_c, rect_color in rects:
+            rect_pattern = [[raw[rect_r + dr][rect_c + dc] for dc in range(4)] for dr in range(4)]
+
+            # Right
+            h_one_r = None
+            for c_check in range(rect_c + 4, W):
+                if all((rect_r + dr, c_check) in one_cells for dr in range(4)):
+                    h_one_r = c_check
+                    break
+            if h_one_r is not None:
+                for c_pos in range(rect_c + 4, h_one_r + 1):
+                    dc = (c_pos - rect_c) % 4
+                    for dr in range(4):
+                        output[rect_r + dr][c_pos] = rect_pattern[dr][dc]
+
+            # Left
+            h_one_l = None
+            for c_check in range(rect_c - 1, -1, -1):
+                if all((rect_r + dr, c_check) in one_cells for dr in range(4)):
+                    h_one_l = c_check
+                    break
+            if h_one_l is not None:
+                for c_pos in range(rect_c - 1, h_one_l - 1, -1):
+                    dc = (c_pos - rect_c) % 4
+                    for dr in range(4):
+                        output[rect_r + dr][c_pos] = rect_pattern[dr][dc]
+
+            # Below
+            v_one_b = None
+            for r_check in range(rect_r + 4, H):
+                if all((r_check, rect_c + dc) in one_cells for dc in range(4)):
+                    v_one_b = r_check
+                    break
+            if v_one_b is not None:
+                for r_pos in range(rect_r + 4, v_one_b + 1):
+                    dr = (r_pos - rect_r) % 4
+                    for dc in range(4):
+                        output[r_pos][rect_c + dc] = rect_pattern[dr][dc]
+
+            # Above
+            v_one_t = None
+            for r_check in range(rect_r - 1, -1, -1):
+                if all((r_check, rect_c + dc) in one_cells for dc in range(4)):
+                    v_one_t = r_check
+                    break
+            if v_one_t is not None:
+                for r_pos in range(rect_r - 1, v_one_t - 1, -1):
+                    dr = (r_pos - rect_r) % 4
+                    for dc in range(4):
+                        output[r_pos][rect_c + dc] = rect_pattern[dr][dc]
+
+        return output
+
+    # ---- strategy 60 apply: corner block shift -------------------------------
+
+    def _apply_corner_block_shift(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        from collections import Counter
+        flat = [raw[r][c] for r in range(H) for c in range(W)]
+        bg = Counter(flat).most_common(1)[0][0]
+
+        # Find blocks
+        visited = set()
+        blocks = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != bg and (r, c) not in visited:
+                    color = raw[r][c]
+                    comp = []
+                    queue = [(r, c)]
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        if (cr, cc) in visited:
+                            continue
+                        if cr < 0 or cr >= H or cc < 0 or cc >= W:
+                            continue
+                        if raw[cr][cc] != color:
+                            continue
+                        visited.add((cr, cc))
+                        comp.append((cr, cc))
+                        for dr2, dc2 in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            queue.append((cr+dr2, cc+dc2))
+                    rmin = min(r2 for r2, c2 in comp)
+                    rmax = max(r2 for r2, c2 in comp)
+                    cmin = min(c2 for r2, c2 in comp)
+                    cmax = max(c2 for r2, c2 in comp)
+                    bh = rmax - rmin + 1
+                    bw = cmax - cmin + 1
+                    if len(comp) == bh * bw:
+                        blocks.append({
+                            "color": color,
+                            "rmin": rmin, "rmax": rmax,
+                            "cmin": cmin, "cmax": cmax,
+                            "h": bh, "w": bw
+                        })
+
+        color_counts = Counter(b["color"] for b in blocks)
+        if len(color_counts) < 2:
+            majority_color = blocks[0]["color"] if blocks else bg
+        else:
+            majority_color = color_counts.most_common(1)[0][0]
+
+        output = [[bg] * W for _ in range(H)]
+        center_r = (H - 1) / 2.0
+        center_c = (W - 1) / 2.0
+
+        for b in blocks:
+            if b["color"] != majority_color:
+                for r in range(b["rmin"], b["rmax"] + 1):
+                    for c in range(b["cmin"], b["cmax"] + 1):
+                        output[r][c] = b["color"]
+            else:
+                block_center_r = (b["rmin"] + b["rmax"]) / 2.0
+                block_center_c = (b["cmin"] + b["cmax"]) / 2.0
+
+                dr = 0
+                if block_center_r < center_r:
+                    dr = b["h"]
+                elif block_center_r > center_r:
+                    dr = -b["h"]
+
+                dc = 0
+                if block_center_c < center_c:
+                    dc = b["w"]
+                elif block_center_c > center_c:
+                    dc = -b["w"]
+
+                nr = b["rmin"] + dr
+                nc = b["cmin"] + dc
+                for r in range(nr, nr + b["h"]):
+                    for c in range(nc, nc + b["w"]):
+                        if 0 <= r < H and 0 <= c < W:
+                            output[r][c] = b["color"]
+
         return output
 
     # ---- helpers ---------------------------------------------------------

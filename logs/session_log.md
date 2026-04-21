@@ -974,3 +974,85 @@
 - Stored rule hits: 63
 - Time: 220s
 - Log: logs/learn_20260422_045002.log
+
+---
+## Learning Loop -- 2026-04-22 04:58
+
+- Split: training, Tasks: 80
+- Correct: 64 / 80 (80.0%)
+- Rules: 260 -> 264 (+4 learned)
+- Stored rule hits: 63
+- Time: 219s
+- Log: logs/learn_20260422_045456.log
+
+---
+## Session 24 -- 2026-04-22 05:22
+
+### Strategies Added
+1. **rect_minority_gridlines** (Strategy 58): Input has a rectangular region of
+   mostly one color (dominant) embedded in noisy surroundings, with a few cells
+   of a second color (minority) scattered inside. Output extracts the rectangle
+   and draws full horizontal+vertical grid lines through each minority cell
+   position. Uses density-based scanning to find the rect even in noisy grids.
+   Category: pattern extraction / grid line inference. (solves 8731374e)
+2. **rect_directional_tile** (Strategy 59): Input has hollow 4×4 rectangles
+   (frame of color X, 2×2 interior of 0) and lines of color 1 as direction
+   indicators. Each rect tiles in the direction(s) indicated by aligned 1-lines,
+   extending from its position to fill the space up to the 1-line marker.
+   1-lines are consumed/replaced by the tiled pattern.
+   Category: directional tiling / pattern extrusion. (solves c62e2108)
+3. **corner_block_shift** (Strategy 60): Grid with uniform background has
+   rectangular blocks of non-bg colors at corner-like positions. The most
+   frequent color among the blocks shifts inward by one block dimension
+   (toward grid center). Minority-color blocks stay in place.
+   Category: object motion / corner block inward displacement. (solves 22208ba4)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 67 / 80 (83.8%) — up from 64/80 (80.0%)
+- Solved (new): 8731374e (rect_minority_gridlines), c62e2108 (rect_directional_tile), 22208ba4 (corner_block_shift)
+- Rules: 274 -> 279 (+5 learned)
+- Stored rule hits: 65
+- Discovered: 6 new rules from pipeline
+- Time: 219s
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 05:09
+
+- Split: training, Tasks: 80
+- Correct: 66 / 80 (82.5%)
+- Rules: 264 -> 270 (+6 learned)
+- Stored rule hits: 63
+- Time: 221s
+- Log: logs/learn_20260422_050549.log
+
+---
+## Learning Loop -- 2026-04-22 05:13
+
+- Split: training, Tasks: 80
+- Correct: 66 / 80 (82.5%)
+- Rules: 270 -> 274 (+4 learned)
+- Stored rule hits: 65
+- Time: 219s
+- Log: logs/learn_20260422_050954.log
+
+---
+## Learning Loop -- 2026-04-22 05:22
+
+- Split: training, Tasks: 80
+- Correct: 67 / 80 (83.8%)
+- Rules: 274 -> 279 (+5 learned)
+- Stored rule hits: 65
+- Time: 219s
+- Log: logs/learn_20260422_051841.log
+
+---
+## Learning Loop -- 2026-04-22 05:26
+
+- Split: training, Tasks: 80
+- Correct: 67 / 80 (83.8%)
+- Rules: 279 -> 283 (+4 learned)
+- Stored rule hits: 65
+- Time: 221s
+- Log: logs/learn_20260422_052231.log
