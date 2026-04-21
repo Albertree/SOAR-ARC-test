@@ -110,3 +110,30 @@
 - Time: 66s
 - Log: logs/learn_20260421_191025.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 19:13
+
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%)
+- Rules: 25 -> 25 (+0 learned)
+- Stored rule hits: 11
+- Time: 66s
+- Log: logs/learn_20260421_191212.log
+
+---
+## Session 5 -- 2026-04-21 19:30
+
+### Strategies Added
+1. **trail_displacement** — grid split by separator row; active cells slide along adjacent trail-marker chains, target cells in the mirrored half apply the same displacement with vertical component negated (solves c9680e90)
+2. **zigzag_warp** — rectangular frame on zero background; each row shifts horizontally in a [0, -1, 0, +1] cycle whose starting phase = (1 - internal_rows) % 4 (solves 1c56ad9f)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%) — up from 11/20
+- Solved: e9ac8c9e, c0f76784, 8be77c9e, 6e82a1ae, c59eb873, bbc9ae5d, d23f8c26, 85c4e7cd, e5790162, 60a26a3e, 332202d5 (stored), c9680e90 (trail_displacement), 1c56ad9f (zigzag_warp)
+- Rules: 25 -> 27 (+2 learned)
+- Stored rule hits: 11
+- Time: 68s
+- Log: logs/learn_20260421_193101.log
+- Regression: 08ed6ac7 CORRECT

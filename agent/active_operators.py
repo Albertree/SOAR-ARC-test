@@ -342,6 +342,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_staircase_growth(patterns, wm)
 
+        # Strategy 14: trail displacement along marker chains
+        if rule is None:
+            rule = self._try_trail_displacement(patterns, wm)
+
+        # Strategy 15: zigzag warp of rectangular frame
+        if rule is None:
+            rule = self._try_zigzag_warp(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1508,6 +1516,254 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy: trail displacement along marker chains --------------------
+
+    def _try_trail_displacement(self, patterns, wm):
+        """
+        Detect pattern: grid divided by a separator row (uniform non-bg color).
+        Top half has 'target' colored cells, bottom half has 'active' + 'trail'
+        colored cells. Each active cell slides along its adjacent trail chain.
+        Each target cell (mirrored across separator) applies the same displacement
+        with the vertical component negated.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+
+        # Detect from first pair
+        raw_in = task.example_pairs[0].input_grid.raw
+        raw_out = task.example_pairs[0].output_grid.raw
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+
+        # Find background
+        freq = {}
+        for r in range(h):
+            for c in range(w):
+                freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+        bg = max(freq, key=freq.get)
+
+        # Find separator row (all cells same non-bg color)
+        sep_row = None
+        sep_color = None
+        for r in range(1, h - 1):
+            row_vals = set(raw_in[r])
+            if len(row_vals) == 1 and raw_in[r][0] != bg:
+                sep_row = r
+                sep_color = raw_in[r][0]
+                break
+
+        if sep_row is None:
+            return None
+
+        # Collect non-bg, non-sep colors in each half
+        top_colors = set()
+        bottom_colors = set()
+        for r in range(h):
+            if r == sep_row:
+                continue
+            for c in range(w):
+                v = raw_in[r][c]
+                if v != bg and v != sep_color:
+                    if r < sep_row:
+                        top_colors.add(v)
+                    else:
+                        bottom_colors.add(v)
+
+        if len(top_colors) != 1 or len(bottom_colors) != 2:
+            return None
+
+        target_color = top_colors.pop()
+
+        # Determine active vs trail: trail disappears in output
+        bottom_out_colors = set()
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                v = raw_out[r][c]
+                if v != bg and v != sep_color:
+                    bottom_out_colors.add(v)
+
+        trail_color = None
+        active_color = None
+        for c in bottom_colors:
+            if c not in bottom_out_colors:
+                trail_color = c
+            else:
+                active_color = c
+
+        if trail_color is None or active_color is None:
+            return None
+
+        # Verify on all pairs
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            raw_i, raw_o = g0.raw, g1.raw
+            hi = len(raw_i)
+
+            pair_sep = None
+            for r in range(1, hi - 1):
+                if len(set(raw_i[r])) == 1 and raw_i[r][0] == sep_color:
+                    pair_sep = r
+                    break
+            if pair_sep is None:
+                return None
+
+            predicted = self._predict_trail_displacement(
+                raw_i, pair_sep, sep_color, bg,
+                target_color, active_color, trail_color)
+            if predicted != raw_o:
+                return None
+
+        return {
+            "type": "trail_displacement",
+            "sep_color": sep_color,
+            "bg_color": bg,
+            "target_color": target_color,
+            "active_color": active_color,
+            "trail_color": trail_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _predict_trail_displacement(raw_in, sep_row, sep_color, bg,
+                                     target_color, active_color, trail_color):
+        """Slide each active cell along its trail chain; mirror for targets."""
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+
+        output = [[bg] * w for _ in range(h)]
+        for c in range(w):
+            output[sep_row][c] = sep_color
+
+        # Collect active and trail positions in bottom half
+        active_positions = []
+        trail_set = set()
+        for r in range(sep_row + 1, h):
+            for c in range(w):
+                if raw_in[r][c] == active_color:
+                    active_positions.append((r, c))
+                elif raw_in[r][c] == trail_color:
+                    trail_set.add((r, c))
+
+        # Trace each active cell's trail chain
+        displacements = {}
+        used_trails = set()
+
+        for ar, ac in active_positions:
+            visited = {(ar, ac)}
+            pos = (ar, ac)
+
+            while True:
+                pr, pc = pos
+                found_next = False
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = pr + dr, pc + dc
+                    if (nr, nc) in visited:
+                        continue
+                    if (nr, nc) in trail_set and (nr, nc) not in used_trails:
+                        visited.add((nr, nc))
+                        used_trails.add((nr, nc))
+                        pos = (nr, nc)
+                        found_next = True
+                        break
+                if not found_next:
+                    break
+
+            end_r, end_c = pos
+            displacements[(ar, ac)] = (end_r - ar, end_c - ac)
+
+        # Place moved active cells
+        for (ar, ac), (dr, dc) in displacements.items():
+            nr, nc = ar + dr, ac + dc
+            if 0 <= nr < h and 0 <= nc < w:
+                output[nr][nc] = active_color
+
+        # Mirror displacement for target cells in top half
+        for r in range(sep_row):
+            for c in range(w):
+                if raw_in[r][c] == target_color:
+                    mirror_r = 2 * sep_row - r
+                    if (mirror_r, c) in displacements:
+                        dr, dc = displacements[(mirror_r, c)]
+                        nr, nc = r - dr, c + dc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            output[nr][nc] = target_color
+
+        return output
+
+    # ---- strategy: zigzag warp of rectangular frame --------------------------
+
+    def _try_zigzag_warp(self, patterns, wm):
+        """
+        Detect pattern: rectangular frame of one color on zero background.
+        Each row of the frame is horizontally shifted by a zigzag offset
+        cycling through [0, -1, 0, +1]. Starting phase = (1 - internal_rows) % 4.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        CYCLE = [0, -1, 0, 1]
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            bg = raw_in[0][0]
+
+            # All non-bg cells must share one color
+            frame_color = None
+            top_r = bot_r = None
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        if frame_color is None:
+                            frame_color = v
+                        elif v != frame_color:
+                            return None
+                        if top_r is None:
+                            top_r = r
+                        bot_r = r
+
+            if frame_color is None or top_r is None:
+                return None
+
+            frame_h = bot_r - top_r + 1
+            internal_rows = frame_h - 2
+            if internal_rows < 1:
+                return None
+
+            phase = (1 - internal_rows) % 4
+
+            # Verify each frame row matches the expected shift
+            for row_idx in range(frame_h):
+                r = top_r + row_idx
+                offset = CYCLE[(phase + row_idx) % 4]
+                for c in range(w):
+                    src_c = c - offset
+                    expected = raw_in[r][src_c] if 0 <= src_c < w else bg
+                    if raw_out[r][c] != expected:
+                        return None
+
+            # Non-frame rows must be unchanged
+            for r in range(h):
+                if r < top_r or r > bot_r:
+                    for c in range(w):
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+        return {"type": "zigzag_warp", "confidence": 1.0}
+
 
 class DescendOperator(Operator):
     """
@@ -1593,6 +1849,10 @@ class PredictOperator(Operator):
             return self._apply_diamond_connect(rule, input_grid)
         if rule_type == "cross_grid_fill":
             return self._apply_cross_grid_fill(rule, input_grid)
+        if rule_type == "trail_displacement":
+            return self._apply_trail_displacement(rule, input_grid)
+        if rule_type == "zigzag_warp":
+            return self._apply_zigzag_warp(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1956,6 +2216,71 @@ class PredictOperator(Operator):
         return GeneralizeOperator._predict_cross_grid_fill(
             h, w, axis_col, axis_color, intersection_color,
             bg_color, colored_rows)
+
+    def _apply_trail_displacement(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        sep_color = rule["sep_color"]
+        bg = rule["bg_color"]
+        target_color = rule["target_color"]
+        active_color = rule["active_color"]
+        trail_color = rule["trail_color"]
+
+        # Find separator row
+        sep_row = None
+        for r in range(h):
+            if len(set(raw[r])) == 1 and raw[r][0] == sep_color:
+                sep_row = r
+                break
+
+        if sep_row is None:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._predict_trail_displacement(
+            raw, sep_row, sep_color, bg, target_color, active_color, trail_color)
+
+    def _apply_zigzag_warp(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        bg = raw[0][0]
+
+        # Find frame bounding box
+        top_r = bot_r = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    if top_r is None:
+                        top_r = r
+                    bot_r = r
+
+        if top_r is None:
+            return [row[:] for row in raw]
+
+        frame_h = bot_r - top_r + 1
+        internal_rows = frame_h - 2
+        if internal_rows < 1:
+            return [row[:] for row in raw]
+
+        phase = (1 - internal_rows) % 4
+        CYCLE = [0, -1, 0, 1]
+
+        output = [row[:] for row in raw]
+        for row_idx in range(frame_h):
+            r = top_r + row_idx
+            offset = CYCLE[(phase + row_idx) % 4]
+            if offset == 0:
+                continue
+            new_row = [bg] * w
+            for c in range(w):
+                src_c = c - offset
+                if 0 <= src_c < w:
+                    new_row[c] = raw[r][src_c]
+            output[r] = new_row
+
+        return output
 
     # ---- helpers ---------------------------------------------------------
 
