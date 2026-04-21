@@ -526,3 +526,73 @@
 - Time: 269s
 - Log: logs/learn_20260422_012355.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 01:33
+
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%)
+- Rules: 124 -> 126 (+2 learned)
+- Stored rule hits: 44
+- Time: 269s
+- Log: logs/learn_20260422_012927.log
+
+---
+## Learning Loop -- 2026-04-22 01:46
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 126 -> 131 (+5 learned)
+- Stored rule hits: 44
+- Time: 243s
+- Log: logs/learn_20260422_014220.log
+
+---
+## Learning Loop -- 2026-04-22 01:51
+
+- Split: training, Tasks: 80
+- Correct: 48 / 80 (60.0%)
+- Rules: 131 -> 133 (+2 learned)
+- Stored rule hits: 47
+- Time: 241s
+- Log: logs/learn_20260422_014705.log
+
+---
+## Learning Loop -- 2026-04-22 01:59
+
+- Split: training, Tasks: 80
+- Correct: 49 / 80 (61.3%)
+- Rules: 134 -> 136 (+2 learned)
+- Stored rule hits: 48
+- Time: 239s
+- Log: logs/learn_20260422_015509.log
+
+---
+## Learning Loop -- 2026-04-22 02:03
+
+- Split: training, Tasks: 80
+- Correct: 49 / 80 (61.3%)
+- Rules: 136 -> 138 (+2 learned)
+- Stored rule hits: 48
+- Time: 243s
+- Log: logs/learn_20260422_015914.log
+
+---
+## Session 18 -- 2026-04-22 02:03
+
+### Strategies Added
+1. **half_grid_boolean** — split input into two halves (horizontal separator, vertical separator, or plain bisection), detect boolean operation (OR/AND/NOR/NAND), output result color (solves e345f17b via NOR, 506d28a5 via OR)
+2. **inverse_tile** — invert input colors (0↔foreground) then tile 2×2 to produce output at 2× dimensions (solves 48131b3c)
+3. **grid_separator_max_fill** — input divided by separator rows/cols into cell grid; fill cells with maximum non-zero pixel count, clear others (solves 29623171)
+
+### Bug Fix
+- Fixed h_separator detection in `_check_boolean_split`: was accepting the first uniform non-zero row as separator even if it didn't divide the grid into equal halves. Now validates that the candidate separator produces equal halves matching output dimensions.
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 49 / 80 (61.3%) — up from 45/80 (56.2%), +4 tasks
+- Solved: e345f17b (half_grid_boolean/NOR), 506d28a5 (half_grid_boolean/OR), 48131b3c (inverse_tile), 29623171 (grid_separator_max_fill)
+- Rules: 136 -> 138 (+2 learned)
+- Stored rule hits: 48
+- Time: 243s
+- Regression: 08ed6ac7 CORRECT

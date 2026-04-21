@@ -470,6 +470,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_xor_comparison(patterns, wm)
 
+        # Strategy 40: half-grid boolean (OR/AND/NOR/NAND between two halves)
+        if rule is None:
+            rule = self._try_half_grid_boolean(patterns, wm)
+
+        # Strategy 41: inverse tile (invert 0↔color, tile 2×2)
+        if rule is None:
+            rule = self._try_inverse_tile(patterns, wm)
+
+        # Strategy 42: grid separator max fill (fill cells with max non-zero count)
+        if rule is None:
+            rule = self._try_grid_separator_max_fill(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -5268,6 +5280,340 @@ class GeneralizeOperator(Operator):
             "out_color": out_color,
         }
 
+    # ---- strategy: half-grid boolean (OR/AND/NOR/NAND) -------------------
+
+    def _try_half_grid_boolean(self, patterns, wm):
+        """
+        Detect: input is split into two halves (horizontal separator, vertical
+        separator, or simple width/height bisection).  A consistent boolean
+        operation (OR, AND, NOR, NAND) maps the two halves to the output.
+        Output uses a single result color on a 0 background.
+        Category: set operation / comparison patterns.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses:
+            return None
+
+        for split_mode in ["h_separator", "v_separator", "v_half", "h_half"]:
+            result = self._check_boolean_split(task, split_mode)
+            if result is not None:
+                return result
+        return None
+
+    def _check_boolean_split(self, task, split_mode):
+        """Check if *split_mode* yields a consistent boolean op across pairs."""
+        candidates = None
+        sep_color = None
+
+        for pair in task.example_pairs:
+            ig, og = pair.input_grid, pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in, raw_out = ig.raw, og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            oH = len(raw_out)
+            oW = len(raw_out[0]) if raw_out else 0
+
+            half_a = half_b = None
+
+            if split_mode == "h_separator":
+                sep_row = sc = None
+                for r in range(1, H - 1):
+                    row = raw_in[r]
+                    if len(set(row)) == 1 and row[0] != 0:
+                        th = r
+                        bh = H - r - 1
+                        # Accept only if it divides into equal halves matching output
+                        if th == bh and oH == th and oW == W:
+                            if sep_color is None or sep_color == row[0]:
+                                sep_row, sc = r, row[0]
+                                break
+                if sep_row is None:
+                    return None
+                if sep_color is None:
+                    sep_color = sc
+                top_h = sep_row
+                bot_start = sep_row + 1
+                half_a = [raw_in[r] for r in range(top_h)]
+                half_b = [raw_in[r] for r in range(bot_start, bot_start + top_h)]
+
+            elif split_mode == "v_separator":
+                sep_col = sc = None
+                for c in range(1, W - 1):
+                    col_vals = [raw_in[r][c] for r in range(H)]
+                    if len(set(col_vals)) == 1 and col_vals[0] != 0:
+                        sep_col, sc = c, col_vals[0]
+                        break
+                if sep_col is None:
+                    return None
+                if sep_color is None:
+                    sep_color = sc
+                elif sep_color != sc:
+                    return None
+                left_w = sep_col
+                right_start = sep_col + 1
+                right_w = W - right_start
+                if left_w != right_w or oH != H or oW != left_w:
+                    return None
+                half_a = [row[:left_w] for row in raw_in]
+                half_b = [row[right_start:right_start + left_w] for row in raw_in]
+
+            elif split_mode == "v_half":
+                if W % 2 != 0:
+                    return None
+                hw = W // 2
+                if oH != H or oW != hw:
+                    return None
+                half_a = [row[:hw] for row in raw_in]
+                half_b = [row[hw:] for row in raw_in]
+
+            elif split_mode == "h_half":
+                if H % 2 != 0:
+                    return None
+                hh = H // 2
+                if oH != hh or oW != W:
+                    return None
+                half_a = [raw_in[r] for r in range(hh)]
+                half_b = [raw_in[r] for r in range(hh, H)]
+
+            if half_a is None:
+                return None
+
+            pair_matches = []
+            for op in ["or", "and", "nor", "nand"]:
+                out_c = None
+                ok = True
+                for r in range(oH):
+                    for c in range(oW):
+                        a = half_a[r][c] != 0
+                        b = half_b[r][c] != 0
+                        if op == "or":
+                            res = a or b
+                        elif op == "and":
+                            res = a and b
+                        elif op == "nor":
+                            res = not (a or b)
+                        else:
+                            res = not (a and b)
+                        o = raw_out[r][c]
+                        if res:
+                            if o == 0:
+                                ok = False
+                                break
+                            if out_c is None:
+                                out_c = o
+                            elif o != out_c:
+                                ok = False
+                                break
+                        else:
+                            if o != 0:
+                                ok = False
+                                break
+                    if not ok:
+                        break
+                if ok and out_c is not None:
+                    pair_matches.append((op, out_c))
+
+            if not pair_matches:
+                return None
+            candidates = pair_matches if candidates is None else [
+                c for c in candidates if c in pair_matches
+            ]
+            if not candidates:
+                return None
+
+        if not candidates:
+            return None
+        op, out_c = candidates[0]
+        return {
+            "type": "half_grid_boolean",
+            "confidence": 1.0,
+            "operation": op,
+            "split_mode": split_mode,
+            "sep_color": sep_color,
+            "out_color": out_c,
+        }
+
+    # ---- strategy: inverse tile (invert then tile 2×2) -------------------
+
+    def _try_inverse_tile(self, patterns, wm):
+        """
+        Detect: output is 2× input dimensions.  The output equals the colour-
+        inverted input (0↔non-zero colour) tiled 2×2.
+        Category: tiling with colour inversion.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses:
+            return None
+
+        for pair in task.example_pairs:
+            ig, og = pair.input_grid, pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in, raw_out = ig.raw, og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            oH = len(raw_out)
+            oW = len(raw_out[0]) if raw_out else 0
+            if oH != 2 * H or oW != 2 * W:
+                return None
+
+            # Single non-zero colour in input
+            colors = set()
+            for row in raw_in:
+                for v in row:
+                    if v != 0:
+                        colors.add(v)
+            if len(colors) != 1:
+                return None
+            fg = colors.pop()
+
+            inv = [[fg if v == 0 else 0 for v in row] for row in raw_in]
+            for qr in range(2):
+                for qc in range(2):
+                    for r in range(H):
+                        for c in range(W):
+                            if raw_out[qr * H + r][qc * W + c] != inv[r][c]:
+                                return None
+
+        return {"type": "inverse_tile", "confidence": 1.0}
+
+    # ---- strategy: grid separator max fill -------------------------------
+
+    def _try_grid_separator_max_fill(self, patterns, wm):
+        """
+        Detect: input divided by separator rows/columns into a regular grid of
+        cells.  Cells whose non-zero pixel count equals the maximum across all
+        cells are filled entirely with their colour; others are cleared.
+        Category: grid quantisation / max-fill.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        sep_color = None
+
+        for pair in task.example_pairs:
+            ig, og = pair.input_grid, pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in, raw_out = ig.raw, og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Detect separator colour from full rows
+            sc = None
+            sep_rows = []
+            for r in range(H):
+                vals = set(raw_in[r])
+                if len(vals) == 1 and raw_in[r][0] != 0:
+                    sep_rows.append(r)
+                    if sc is None:
+                        sc = raw_in[r][0]
+                    elif raw_in[r][0] != sc:
+                        return None
+
+            sep_cols = []
+            if sc is not None:
+                for c in range(W):
+                    col_vals = set(raw_in[r][c] for r in range(H))
+                    if len(col_vals) == 1 and raw_in[0][c] == sc:
+                        sep_cols.append(c)
+
+            if sc is None or not sep_rows or not sep_cols:
+                return None
+            if sep_color is None:
+                sep_color = sc
+            elif sep_color != sc:
+                return None
+
+            # Cell bounds
+            row_bounds = []
+            prev = 0
+            for sr in sorted(sep_rows):
+                if sr > prev:
+                    row_bounds.append((prev, sr))
+                prev = sr + 1
+            if prev < H:
+                row_bounds.append((prev, H))
+
+            col_bounds = []
+            prev = 0
+            for sci in sorted(sep_cols):
+                if sci > prev:
+                    col_bounds.append((prev, sci))
+                prev = sci + 1
+            if prev < W:
+                col_bounds.append((prev, W))
+
+            if not row_bounds or not col_bounds:
+                return None
+
+            # Count non-zero, non-separator pixels per cell
+            cell_counts = []
+            cell_colors = []
+            for rb in row_bounds:
+                rc, rclr = [], []
+                for cb in col_bounds:
+                    cnt = 0
+                    cc = None
+                    for r in range(rb[0], rb[1]):
+                        for c in range(cb[0], cb[1]):
+                            v = raw_in[r][c]
+                            if v != 0 and v != sep_color:
+                                cnt += 1
+                                cc = v
+                    rc.append(cnt)
+                    rclr.append(cc)
+                cell_counts.append(rc)
+                cell_colors.append(rclr)
+
+            max_cnt = max(max(row) for row in cell_counts)
+            if max_cnt == 0:
+                return None
+
+            # Verify output matches expectation
+            for ri, rb in enumerate(row_bounds):
+                for ci, cb in enumerate(col_bounds):
+                    is_max = cell_counts[ri][ci] == max_cnt
+                    fill_c = cell_colors[ri][ci] if is_max else None
+                    for r in range(rb[0], rb[1]):
+                        for c in range(cb[0], cb[1]):
+                            o = raw_out[r][c]
+                            if is_max:
+                                if o != fill_c:
+                                    return None
+                            else:
+                                if o != 0:
+                                    return None
+
+            # Verify separators preserved
+            for r in sep_rows:
+                for c in range(W):
+                    if raw_out[r][c] != sep_color:
+                        return None
+            for c in sep_cols:
+                for r in range(H):
+                    if raw_out[r][c] != sep_color:
+                        return None
+
+        return {
+            "type": "grid_separator_max_fill",
+            "confidence": 1.0,
+            "sep_color": sep_color,
+        }
+
 
 class DescendOperator(Operator):
     """
@@ -5417,6 +5763,12 @@ class PredictOperator(Operator):
             return self._apply_double_mirror(rule, input_grid)
         if rule_type == "xor_comparison":
             return self._apply_xor_comparison(rule, input_grid)
+        if rule_type == "half_grid_boolean":
+            return self._apply_half_grid_boolean(rule, input_grid)
+        if rule_type == "inverse_tile":
+            return self._apply_inverse_tile(rule, input_grid)
+        if rule_type == "grid_separator_max_fill":
+            return self._apply_grid_separator_max_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6965,6 +7317,172 @@ class PredictOperator(Operator):
                 b = raw[bot_start + r][c] != 0
                 if t != b:
                     out[r][c] = out_color
+        return out
+
+    # ---- apply: half-grid boolean ----------------------------------------
+
+    def _apply_half_grid_boolean(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        op = rule.get("operation")
+        split_mode = rule.get("split_mode")
+        sep_color = rule.get("sep_color")
+        out_color = rule.get("out_color")
+
+        half_a = half_b = None
+        out_h = out_w = 0
+
+        if split_mode == "h_separator":
+            sep_row = None
+            for r in range(H):
+                if len(set(raw[r])) == 1 and raw[r][0] == sep_color:
+                    sep_row = r
+                    break
+            if sep_row is None:
+                return [row[:] for row in raw]
+            top_h = sep_row
+            bot_start = sep_row + 1
+            half_a = [raw[r] for r in range(top_h)]
+            half_b = [raw[r] for r in range(bot_start, bot_start + top_h)]
+            out_h, out_w = top_h, W
+
+        elif split_mode == "v_separator":
+            sep_col = None
+            for c in range(W):
+                col_vals = [raw[r][c] for r in range(H)]
+                if len(set(col_vals)) == 1 and col_vals[0] == sep_color:
+                    sep_col = c
+                    break
+            if sep_col is None:
+                return [row[:] for row in raw]
+            left_w = sep_col
+            right_start = sep_col + 1
+            half_a = [row[:left_w] for row in raw]
+            half_b = [row[right_start:right_start + left_w] for row in raw]
+            out_h, out_w = H, left_w
+
+        elif split_mode == "v_half":
+            hw = W // 2
+            half_a = [row[:hw] for row in raw]
+            half_b = [row[hw:] for row in raw]
+            out_h, out_w = H, hw
+
+        elif split_mode == "h_half":
+            hh = H // 2
+            half_a = [raw[r] for r in range(hh)]
+            half_b = [raw[r] for r in range(hh, H)]
+            out_h, out_w = hh, W
+
+        if half_a is None:
+            return [row[:] for row in raw]
+
+        out = [[0] * out_w for _ in range(out_h)]
+        for r in range(out_h):
+            for c in range(out_w):
+                a = half_a[r][c] != 0
+                b = half_b[r][c] != 0
+                if op == "or":
+                    res = a or b
+                elif op == "and":
+                    res = a and b
+                elif op == "nor":
+                    res = not (a or b)
+                else:
+                    res = not (a and b)
+                if res:
+                    out[r][c] = out_color
+        return out
+
+    # ---- apply: inverse tile ---------------------------------------------
+
+    def _apply_inverse_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        fg = 0
+        for row in raw:
+            for v in row:
+                if v != 0:
+                    fg = v
+                    break
+            if fg:
+                break
+        if fg == 0:
+            fg = 1
+        inv = [[fg if v == 0 else 0 for v in row] for row in raw]
+        out = [[0] * (2 * W) for _ in range(2 * H)]
+        for r in range(H):
+            for c in range(W):
+                val = inv[r][c]
+                out[r][c] = val
+                out[r][W + c] = val
+                out[H + r][c] = val
+                out[H + r][W + c] = val
+        return out
+
+    # ---- apply: grid separator max fill ----------------------------------
+
+    def _apply_grid_separator_max_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        sep_color = rule.get("sep_color")
+
+        sep_rows = [r for r in range(H)
+                     if len(set(raw[r])) == 1 and raw[r][0] == sep_color]
+        sep_cols = [c for c in range(W)
+                     if len(set(raw[r][c] for r in range(H))) == 1
+                     and raw[0][c] == sep_color]
+
+        def _bounds(seps, total):
+            bounds = []
+            prev = 0
+            for s in sorted(seps):
+                if s > prev:
+                    bounds.append((prev, s))
+                prev = s + 1
+            if prev < total:
+                bounds.append((prev, total))
+            return bounds
+
+        row_bounds = _bounds(sep_rows, H)
+        col_bounds = _bounds(sep_cols, W)
+
+        cell_counts = []
+        cell_colors = []
+        for rb in row_bounds:
+            rc, rclr = [], []
+            for cb in col_bounds:
+                cnt = 0
+                cc = None
+                for r in range(rb[0], rb[1]):
+                    for c in range(cb[0], cb[1]):
+                        v = raw[r][c]
+                        if v != 0 and v != sep_color:
+                            cnt += 1
+                            cc = v
+                rc.append(cnt)
+                rclr.append(cc)
+            cell_counts.append(rc)
+            cell_colors.append(rclr)
+
+        max_cnt = max(max(row) for row in cell_counts) if cell_counts else 0
+        out = [[0] * W for _ in range(H)]
+
+        for r in sep_rows:
+            for c in range(W):
+                out[r][c] = sep_color
+        for c in sep_cols:
+            for r in range(H):
+                out[r][c] = sep_color
+
+        for ri, rb in enumerate(row_bounds):
+            for ci, cb in enumerate(col_bounds):
+                if cell_counts[ri][ci] == max_cnt and cell_colors[ri][ci] is not None:
+                    for r in range(rb[0], rb[1]):
+                        for c in range(cb[0], cb[1]):
+                            out[r][c] = cell_colors[ri][ci]
         return out
 
     # ---- helpers ---------------------------------------------------------
