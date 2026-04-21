@@ -164,3 +164,30 @@
 - Time: 63s
 - Log: logs/learn_20260421_202308.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 20:25
+
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%)
+- Rules: 29 -> 29 (+0 learned)
+- Stored rule hits: 15
+- Time: 62s
+- Log: logs/learn_20260421_202448.log
+
+---
+## Session 7 -- 2026-04-21 20:54
+
+### Strategies Added
+1. **quadrant_pattern_swap** — grid divided into sections by separator rows/cols; left and right quadrants swap their foreground patterns, each taking the source quadrant's bg color; if both bg colors match, both patterns are erased (solves 5a719d11)
+2. **block_wedge_split** — 3 colored blocks on background; middle block slides into adjacent rectangular block, splitting it into two halves perpendicular to the movement axis; the other block stays as anchor (solves 9f669b64)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%) — up from 15/20
+- Solved: e9ac8c9e, c0f76784, 8be77c9e, 6e82a1ae, c59eb873, bbc9ae5d, d23f8c26, 85c4e7cd, e5790162, 60a26a3e, 332202d5, c9680e90, 1c56ad9f, 825aa9e9, 13f06aa5 (stored), 9f669b64 (block_wedge_split), 5a719d11 (quadrant_pattern_swap)
+- Rules: 30 -> 31 (+1 learned)
+- Stored rule hits: 16
+- Time: 64s
+- Log: logs/learn_20260421_205315.log
+- Regression: 08ed6ac7 CORRECT

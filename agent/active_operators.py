@@ -358,6 +358,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_arrow_projection(patterns, wm)
 
+        # Strategy 18: quadrant pattern swap (left/right sections swap fg patterns)
+        if rule is None:
+            rule = self._try_quadrant_pattern_swap(patterns, wm)
+
+        # Strategy 19: block wedge split (middle block inserts into adjacent block)
+        if rule is None:
+            rule = self._try_block_wedge_split(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2090,6 +2098,307 @@ class GeneralizeOperator(Operator):
         return output
 
 
+    # ---- strategy: quadrant pattern swap ------------------------------------
+
+    def _try_quadrant_pattern_swap(self, patterns, wm):
+        """
+        Detect pattern: grid divided into sections by separator rows/cols of 0.
+        Each section has a left and right quadrant with different bg colors.
+        Output swaps the foreground patterns: right's pattern -> left (colored as
+        right's bg), left's pattern -> right (colored as left's bg).
+        If both quadrants share the same bg, both patterns are erased.
+        """
+        task = wm.task
+        if not task:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g0.raw) != len(g1.raw):
+                return None
+            if (len(g0.raw[0]) if g0.raw else 0) != (len(g1.raw[0]) if g1.raw else 0):
+                return None
+
+        # Validate each training pair independently
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h < 3 or w < 5:
+                return None
+
+            # Find separator columns (all-zero columns)
+            sep_cols = [c for c in range(w)
+                        if all(raw_in[r][c] == 0 for r in range(h))]
+            if not sep_cols:
+                return None
+
+            # Must be a single contiguous run
+            for i in range(len(sep_cols) - 1):
+                if sep_cols[i + 1] != sep_cols[i] + 1:
+                    return None
+
+            left_c0, left_c1 = 0, sep_cols[0] - 1
+            right_c0, right_c1 = sep_cols[-1] + 1, w - 1
+            if left_c1 < 0 or right_c0 > w - 1:
+                return None
+            left_w = left_c1 - left_c0 + 1
+            right_w = right_c1 - right_c0 + 1
+            if left_w != right_w or left_w < 2:
+                return None
+
+            # Find separator rows (all-zero rows)
+            sep_row_set = set()
+            for r in range(h):
+                if all(raw_in[r][c] == 0 for c in range(w)):
+                    sep_row_set.add(r)
+
+            # Build sections
+            sections = []
+            r = 0
+            while r < h:
+                if r in sep_row_set:
+                    r += 1
+                    continue
+                start = r
+                while r < h and r not in sep_row_set:
+                    r += 1
+                sections.append((start, r - 1))
+            if len(sections) < 2:
+                return None
+
+            # Validate each section
+            for rs, re in sections:
+                left_bg = self._quadrant_bg(raw_in, rs, re, left_c0, left_c1)
+                right_bg = self._quadrant_bg(raw_in, rs, re, right_c0, right_c1)
+                if left_bg is None or right_bg is None:
+                    return None
+
+                left_pat = self._quadrant_fg(raw_in, rs, re, left_c0, left_c1, left_bg)
+                right_pat = self._quadrant_fg(raw_in, rs, re, right_c0, right_c1, right_bg)
+
+                if left_bg == right_bg:
+                    # Both patterns erased
+                    for r in range(rs, re + 1):
+                        for c in range(left_c0, left_c1 + 1):
+                            if raw_out[r][c] != left_bg:
+                                return None
+                        for c in range(right_c0, right_c1 + 1):
+                            if raw_out[r][c] != right_bg:
+                                return None
+                else:
+                    # Patterns swap
+                    for r in range(rs, re + 1):
+                        for c in range(left_c0, left_c1 + 1):
+                            rel = (r - rs, c - left_c0)
+                            expected = right_bg if rel in right_pat else left_bg
+                            if raw_out[r][c] != expected:
+                                return None
+                        for c in range(right_c0, right_c1 + 1):
+                            rel = (r - rs, c - right_c0)
+                            expected = left_bg if rel in left_pat else right_bg
+                            if raw_out[r][c] != expected:
+                                return None
+
+        return {"type": "quadrant_pattern_swap", "confidence": 1.0}
+
+    @staticmethod
+    def _quadrant_bg(raw, rs, re, c0, c1):
+        freq = {}
+        for r in range(rs, re + 1):
+            for c in range(c0, c1 + 1):
+                v = raw[r][c]
+                freq[v] = freq.get(v, 0) + 1
+        return max(freq, key=freq.get) if freq else None
+
+    @staticmethod
+    def _quadrant_fg(raw, rs, re, c0, c1, bg):
+        pat = set()
+        for r in range(rs, re + 1):
+            for c in range(c0, c1 + 1):
+                if raw[r][c] != bg:
+                    pat.add((r - rs, c - c0))
+        return pat
+
+    # ---- strategy: block wedge split --------------------------------------
+
+    def _try_block_wedge_split(self, patterns, wm):
+        """
+        Detect pattern: 3 colored blocks on a background. The middle block
+        slides into one adjacent block, splitting it into two halves.
+        The other block stays in place.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find background (most frequent)
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            bg = max(freq, key=freq.get)
+
+            # Group non-bg cells by color (blocks are uniform color)
+            color_cells = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        color_cells.setdefault(v, []).append((r, c))
+            if len(color_cells) != 3:
+                return None
+
+            block_infos = []
+            for color, cells in color_cells.items():
+                rows = [r for r, c in cells]
+                cols = [c for r, c in cells]
+                block_infos.append({
+                    "color": color,
+                    "cells": set(cells),
+                    "r0": min(rows), "r1": max(rows),
+                    "c0": min(cols), "c1": max(cols),
+                })
+
+            # Determine arrangement axis and find middle block
+            mid = self._find_middle_block(block_infos)
+            if mid is None:
+                return None
+
+            # Verify the output matches an expected split
+            if not self._verify_wedge_split(raw_in, raw_out, block_infos, mid, bg, h, w):
+                return None
+
+        return {"type": "block_wedge_split", "confidence": 1.0}
+
+    @staticmethod
+    def _find_middle_block(infos):
+        """Find the block whose bounding box center is between the other two."""
+        for axis in ["r", "c"]:
+            centers = []
+            for i, b in enumerate(infos):
+                centers.append((i, (b[f"{axis}0"] + b[f"{axis}1"]) / 2))
+            centers.sort(key=lambda x: x[1])
+            idx_low, idx_mid, idx_high = centers[0][0], centers[1][0], centers[2][0]
+            # Middle block's range must overlap with both others in the perpendicular axis
+            perp = "c" if axis == "r" else "r"
+            b_mid = infos[idx_mid]
+            b_low = infos[idx_low]
+            b_high = infos[idx_high]
+            mid_range = (b_mid[f"{perp}0"], b_mid[f"{perp}1"])
+            low_range = (b_low[f"{perp}0"], b_low[f"{perp}1"])
+            high_range = (b_high[f"{perp}0"], b_high[f"{perp}1"])
+            # Check overlap in perpendicular axis
+            if (mid_range[1] >= low_range[0] and mid_range[0] <= low_range[1] and
+                    mid_range[1] >= high_range[0] and mid_range[0] <= high_range[1]):
+                return {"mid": idx_mid, "low": idx_low, "high": idx_high, "axis": axis}
+        return None
+
+    @staticmethod
+    def _verify_wedge_split(raw_in, raw_out, infos, mid_info, bg, h, w):
+        """Verify the output is a valid block wedge split."""
+        idx_mid = mid_info["mid"]
+        idx_low = mid_info["low"]
+        idx_high = mid_info["high"]
+        axis = mid_info["axis"]
+        b_mid = infos[idx_mid]
+        b_low = infos[idx_low]
+        b_high = infos[idx_high]
+
+        # Check which neighbor stays in place in the output
+        low_stays = all(raw_out[r][c] == raw_in[r][c] for r, c in b_low["cells"])
+        high_stays = all(raw_out[r][c] == raw_in[r][c] for r, c in b_high["cells"])
+
+        if not low_stays and not high_stays:
+            return False
+        if low_stays and high_stays:
+            return False  # Both can't stay -- one must split
+
+        anchor_idx = idx_low if low_stays else idx_high
+        target_idx = idx_high if low_stays else idx_low
+
+        b_anchor = infos[anchor_idx]
+        b_target = infos[target_idx]
+
+        # The target block should be cleared from its original position in the output
+        for r, c in b_target["cells"]:
+            if raw_out[r][c] == b_target["color"]:
+                # It's OK if target cells became the same color in a new arrangement
+                pass
+
+        # The middle block should be cleared from its original position
+        for r, c in b_mid["cells"]:
+            if raw_out[r][c] == b_mid["color"]:
+                # Could be part of the new arrangement, allow it
+                pass
+
+        # Find where the middle block color appears in the output
+        mid_in_out = set()
+        for r in range(h):
+            for c in range(w):
+                if raw_out[r][c] == b_mid["color"]:
+                    mid_in_out.add((r, c))
+
+        # The middle block should have moved, same number of cells
+        if len(mid_in_out) != len(b_mid["cells"]):
+            return False
+
+        # Find where the target block color appears in the output
+        tgt_in_out = set()
+        for r in range(h):
+            for c in range(w):
+                if raw_out[r][c] == b_target["color"]:
+                    tgt_in_out.add((r, c))
+
+        # Target should have same number of cells
+        if len(tgt_in_out) != len(b_target["cells"]):
+            return False
+
+        return True
+
+    # ---- block wedge split helpers ----------------------------------------
+
+    @staticmethod
+    def _detect_blocks_and_split(raw, bg, h, w):
+        """Detect 3 blocks and compute the wedge split transformation."""
+        color_cells = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != bg:
+                    color_cells.setdefault(v, []).append((r, c))
+        if len(color_cells) != 3:
+            return None
+
+        block_infos = []
+        for color, cells in color_cells.items():
+            rows = [r for r, c in cells]
+            cols = [c for r, c in cells]
+            block_infos.append({
+                "color": color,
+                "cells": set(cells),
+                "r0": min(rows), "r1": max(rows),
+                "c0": min(cols), "c1": max(cols),
+            })
+
+        mid_info = GeneralizeOperator._find_middle_block(block_infos)
+        if mid_info is None:
+            return None
+
+        return block_infos, mid_info
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -2182,6 +2491,10 @@ class PredictOperator(Operator):
             return self._apply_gravity_slide(rule, input_grid)
         if rule_type == "arrow_projection":
             return self._apply_arrow_projection(rule, input_grid)
+        if rule_type == "quadrant_pattern_swap":
+            return self._apply_quadrant_pattern_swap(rule, input_grid)
+        if rule_type == "block_wedge_split":
+            return self._apply_block_wedge_split(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2671,6 +2984,222 @@ class PredictOperator(Operator):
 
         return GeneralizeOperator._predict_arrow_projection(
             raw, bg, shape_infos, h, w)
+
+    def _apply_quadrant_pattern_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        output = [row[:] for row in raw]
+
+        # Find separator columns
+        sep_cols = [c for c in range(w)
+                    if all(raw[r][c] == 0 for r in range(h))]
+        if not sep_cols:
+            return output
+
+        left_c0, left_c1 = 0, sep_cols[0] - 1
+        right_c0, right_c1 = sep_cols[-1] + 1, w - 1
+
+        # Find separator rows
+        sep_row_set = set()
+        for r in range(h):
+            if all(raw[r][c] == 0 for c in range(w)):
+                sep_row_set.add(r)
+
+        # Build sections
+        sections = []
+        r = 0
+        while r < h:
+            if r in sep_row_set:
+                r += 1
+                continue
+            start = r
+            while r < h and r not in sep_row_set:
+                r += 1
+            sections.append((start, r - 1))
+
+        for rs, re in sections:
+            left_bg = GeneralizeOperator._quadrant_bg(raw, rs, re, left_c0, left_c1)
+            right_bg = GeneralizeOperator._quadrant_bg(raw, rs, re, right_c0, right_c1)
+            left_pat = GeneralizeOperator._quadrant_fg(raw, rs, re, left_c0, left_c1, left_bg)
+            right_pat = GeneralizeOperator._quadrant_fg(raw, rs, re, right_c0, right_c1, right_bg)
+
+            if left_bg == right_bg:
+                for r in range(rs, re + 1):
+                    for c in range(left_c0, left_c1 + 1):
+                        output[r][c] = left_bg
+                    for c in range(right_c0, right_c1 + 1):
+                        output[r][c] = right_bg
+            else:
+                for r in range(rs, re + 1):
+                    for c in range(left_c0, left_c1 + 1):
+                        rel = (r - rs, c - left_c0)
+                        output[r][c] = right_bg if rel in right_pat else left_bg
+                    for c in range(right_c0, right_c1 + 1):
+                        rel = (r - rs, c - right_c0)
+                        output[r][c] = left_bg if rel in left_pat else right_bg
+
+        return output
+
+    def _apply_block_wedge_split(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find bg
+        freq = {}
+        for r in range(h):
+            for c in range(w):
+                freq[raw[r][c]] = freq.get(raw[r][c], 0) + 1
+        bg = max(freq, key=freq.get)
+
+        result = GeneralizeOperator._detect_blocks_and_split(raw, bg, h, w)
+        if result is None:
+            return [row[:] for row in raw]
+
+        block_infos, mid_info = result
+        idx_mid = mid_info["mid"]
+        idx_low = mid_info["low"]
+        idx_high = mid_info["high"]
+        axis = mid_info["axis"]
+
+        b_mid = block_infos[idx_mid]
+        b_low = block_infos[idx_low]
+        b_high = block_infos[idx_high]
+
+        perp = "c" if axis == "r" else "r"
+
+        # Determine which block to insert into: the one whose perpendicular
+        # extent is strictly > mid's perpendicular extent; prefer tighter fit
+        mid_perp = b_mid[f"{perp}1"] - b_mid[f"{perp}0"] + 1
+        low_perp = b_low[f"{perp}1"] - b_low[f"{perp}0"] + 1
+        high_perp = b_high[f"{perp}1"] - b_high[f"{perp}0"] + 1
+
+        # Determine target: prefer the rectangular block; tiebreak by larger perp
+        def _is_rect(b):
+            return len(b["cells"]) == (b["r1"] - b["r0"] + 1) * (b["c1"] - b["c0"] + 1)
+
+        low_rect = _is_rect(b_low)
+        high_rect = _is_rect(b_high)
+
+        if low_rect and not high_rect:
+            target_idx = idx_low
+        elif high_rect and not low_rect:
+            target_idx = idx_high
+        elif low_perp > high_perp:
+            target_idx = idx_low
+        elif high_perp > low_perp:
+            target_idx = idx_high
+        elif low_perp > mid_perp:
+            target_idx = idx_low
+        else:
+            target_idx = idx_high
+
+        anchor_idx = idx_high if target_idx == idx_low else idx_low
+
+        b_target = block_infos[target_idx]
+        b_anchor = block_infos[anchor_idx]
+
+        # Movement direction: mid moves toward target, away from anchor
+        if axis == "r":
+            # Blocks stacked vertically
+            mid_center = (b_mid["r0"] + b_mid["r1"]) / 2
+            target_center = (b_target["r0"] + b_target["r1"]) / 2
+            move_dir = 1 if target_center > mid_center else -1
+        else:
+            mid_center = (b_mid["c0"] + b_mid["c1"]) / 2
+            target_center = (b_target["c0"] + b_target["c1"]) / 2
+            move_dir = 1 if target_center > mid_center else -1
+
+        # Build output
+        output = [[bg] * w for _ in range(h)]
+
+        # Place anchor block unchanged
+        for r, c in b_anchor["cells"]:
+            output[r][c] = b_anchor["color"]
+
+        # Compute target split
+        target_perp = b_target[f"{perp}1"] - b_target[f"{perp}0"] + 1
+        half_size = target_perp // 2
+
+        # Target's perpendicular center
+        target_perp_center = (b_target[f"{perp}0"] + b_target[f"{perp}1"]) / 2
+
+        # Each half shifts outward by mid_perp/2
+        shift = (mid_perp + 1) // 2  # round up for odd
+
+        # Build target cell map relative to bounding box
+        target_cells_by_rel = {}
+        for r, c in b_target["cells"]:
+            if perp == "c":
+                rel_perp = c - b_target["c0"]
+                along = r
+            else:
+                rel_perp = r - b_target["r0"]
+                along = c
+            target_cells_by_rel.setdefault(rel_perp, []).append(along)
+
+        # Split target into low-half and high-half
+        for rel_perp, alongs in target_cells_by_rel.items():
+            if rel_perp < half_size:
+                # Low half -- shift toward lower perp values
+                new_perp = b_target[f"{perp}0"] + rel_perp - shift
+            else:
+                # High half -- shift toward higher perp values
+                new_perp = b_target[f"{perp}0"] + rel_perp + shift
+
+            for along_val in alongs:
+                if perp == "c":
+                    nr, nc = along_val, new_perp
+                else:
+                    nr, nc = new_perp, along_val
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = b_target["color"]
+
+        # Place mid block at its new position (clamped to grid bounds)
+        mid_depth = b_mid[f"{axis}1"] - b_mid[f"{axis}0"] + 1
+        target_depth = b_target[f"{axis}1"] - b_target[f"{axis}0"] + 1
+
+        if axis == "r":
+            if move_dir > 0:
+                if mid_depth < target_depth:
+                    new_r0 = b_target["r1"] + 1 - mid_depth
+                else:
+                    new_r0 = b_target["r1"] + 1
+                new_r0 = max(0, min(new_r0, h - mid_depth))
+            else:
+                if mid_depth < target_depth:
+                    new_r0 = b_target["r0"]
+                else:
+                    new_r0 = b_target["r0"] - mid_depth
+                new_r0 = max(0, min(new_r0, h - mid_depth))
+            new_c0 = b_mid["c0"]
+            for r, c in b_mid["cells"]:
+                nr = new_r0 + (r - b_mid["r0"])
+                nc = new_c0 + (c - b_mid["c0"])
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = b_mid["color"]
+        else:
+            if move_dir > 0:
+                if mid_depth < target_depth:
+                    new_c0 = b_target["c1"] + 1 - mid_depth
+                else:
+                    new_c0 = b_target["c1"] + 1
+                new_c0 = max(0, min(new_c0, w - mid_depth))
+            else:
+                if mid_depth < target_depth:
+                    new_c0 = b_target["c0"]
+                else:
+                    new_c0 = b_target["c0"] - mid_depth
+                new_c0 = max(0, min(new_c0, w - mid_depth))
+            new_r0 = b_mid["r0"]
+            for r, c in b_mid["cells"]:
+                nr = new_r0 + (r - b_mid["r0"])
+                nc = new_c0 + (c - b_mid["c0"])
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = b_mid["color"]
+
+        return output
 
     # ---- helpers ---------------------------------------------------------
 
