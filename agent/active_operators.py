@@ -291,42 +291,54 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
-        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        # Strategy 1: path tracing between turn markers
+        rule = self._try_path_trace(patterns, wm)
 
-        # Strategy 2: reverse concentric rectangular rings
+        # Strategy 2: diamond connection (+ shapes linked by lines)
+        if rule is None:
+            rule = self._try_diamond_connect(patterns, wm)
+
+        # Strategy 3: cross-grid band fill (column axis + colored rows)
+        if rule is None:
+            rule = self._try_cross_grid_fill(patterns, wm)
+
+        # Strategy 4: sequential recoloring (e.g., color objects 1, 2, 3, ...)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
+
+        # Strategy 5: reverse concentric rectangular rings
         if rule is None:
             rule = self._try_reverse_concentric_rings(patterns, wm)
 
-        # Strategy 3: keep only the center column
+        # Strategy 6: keep only the center column
         if rule is None:
             rule = self._try_keep_center_column(patterns, wm)
 
-        # Strategy 4: simple 1:1 color mapping
+        # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
-        # Strategy 5: uniform scaling (output = NxN blocks of input cells)
+        # Strategy 8: uniform scaling (output = NxN blocks of input cells)
         if rule is None:
             rule = self._try_uniform_scale(patterns, wm)
 
-        # Strategy 6: recolor by connected-component size
+        # Strategy 9: recolor by connected-component size
         if rule is None:
             rule = self._try_recolor_by_size(patterns, wm)
 
-        # Strategy 7: corner-marker quadrant fill
+        # Strategy 10: corner-marker quadrant fill
         if rule is None:
             rule = self._try_corner_fill(patterns, wm)
 
-        # Strategy 8: vertical mirror (output = input rows + reversed rows)
+        # Strategy 11: vertical mirror (output = input rows + reversed rows)
         if rule is None:
             rule = self._try_vertical_mirror(patterns, wm)
 
-        # Strategy 9: fill hollow rectangles by interior size
+        # Strategy 12: fill hollow rectangles by interior size
         if rule is None:
             rule = self._try_fill_rect_by_size(patterns, wm)
 
-        # Strategy 10: staircase growth (single row expands into triangle)
+        # Strategy 13: staircase growth (single row expands into triangle)
         if rule is None:
             rule = self._try_staircase_growth(patterns, wm)
 
@@ -1013,6 +1025,490 @@ class GeneralizeOperator(Operator):
 # DescendOperator -- placeholder for deeper KG exploration
 # ======================================================================
 
+    # ---- strategy: path tracing between turn markers ----------------------
+
+    def _try_path_trace(self, patterns, wm):
+        """
+        Detect pattern: a start marker traces L-shaped paths toward turn
+        markers. One marker color causes clockwise turns, another causes
+        counter-clockwise turns. The path is drawn with the start color.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+
+        # Scan ALL example pairs to identify colors
+        bg = None
+        all_in_colors = set()
+        start_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find background (most frequent in input)
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+            if bg is None:
+                bg = pair_bg
+            elif bg != pair_bg:
+                return None
+
+            # Collect non-bg colors
+            in_cnt = {}
+            out_cnt = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        in_cnt[v] = in_cnt.get(v, 0) + 1
+                        all_in_colors.add(v)
+                    v2 = raw_out[r][c]
+                    if v2 != bg:
+                        out_cnt[v2] = out_cnt.get(v2, 0) + 1
+
+            # The start/path color grows in the output
+            for c in in_cnt:
+                if out_cnt.get(c, 0) > in_cnt[c]:
+                    if start_color is None:
+                        start_color = c
+                    elif start_color != c:
+                        return None
+
+        if start_color is None or len(all_in_colors) < 2 or len(all_in_colors) > 3:
+            return None
+
+        marker_colors = sorted(c for c in all_in_colors if c != start_color)
+        if not marker_colors or len(marker_colors) > 2:
+            return None
+
+        # Determine starting direction from first pair
+        raw_in = task.example_pairs[0].input_grid.raw
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+
+        start_positions = []
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] == start_color:
+                    start_positions.append((r, c))
+        if len(start_positions) != 1:
+            return None
+        start_pos = start_positions[0]
+
+        sr, sc = start_pos
+        directions = []
+        if sc == 0:
+            directions.append((0, 1))   # RIGHT
+        if sc == w - 1:
+            directions.append((0, -1))  # LEFT
+        if sr == 0:
+            directions.append((1, 0))   # DOWN
+        if sr == h - 1:
+            directions.append((-1, 0))  # UP
+        if not directions:
+            return None
+
+        CW = {(0, 1): (1, 0), (1, 0): (0, -1),
+              (0, -1): (-1, 0), (-1, 0): (0, 1)}
+        CCW = {(0, 1): (-1, 0), (-1, 0): (0, -1),
+               (0, -1): (1, 0), (1, 0): (0, 1)}
+
+        # Try all combinations of direction and marker assignment
+        if len(marker_colors) == 2:
+            assignments = [
+                {marker_colors[0]: CW, marker_colors[1]: CCW},
+                {marker_colors[0]: CCW, marker_colors[1]: CW},
+            ]
+        else:
+            assignments = [
+                {marker_colors[0]: CW},
+                {marker_colors[0]: CCW},
+            ]
+
+        for init_dir in directions:
+            for assign in assignments:
+                # Simulate path for ALL example pairs
+                all_match = True
+                for pair in task.example_pairs:
+                    g0, g1 = pair.input_grid, pair.output_grid
+                    ri = g0.raw
+                    hi, wi = len(ri), len(ri[0]) if ri else 0
+
+                    # Find start and markers in this pair
+                    sp = None
+                    mm = {}
+                    for r in range(hi):
+                        for c in range(wi):
+                            if ri[r][c] == start_color:
+                                sp = (r, c)
+                            elif ri[r][c] != bg:
+                                mm[(r, c)] = ri[r][c]
+
+                    if sp is None:
+                        all_match = False
+                        break
+
+                    predicted = self._simulate_path(
+                        ri, sp, init_dir, mm, assign, start_color, bg, hi, wi)
+                    if predicted != g1.raw:
+                        all_match = False
+                        break
+
+                if all_match:
+                    cw_color = None
+                    ccw_color = None
+                    for mc, turn_map in assign.items():
+                        if turn_map is CW:
+                            cw_color = mc
+                        else:
+                            ccw_color = mc
+                    return {
+                        "type": "path_trace",
+                        "start_color": start_color,
+                        "bg_color": bg,
+                        "cw_color": cw_color,
+                        "ccw_color": ccw_color,
+                        "init_dir": list(init_dir),
+                        "confidence": 1.0,
+                    }
+
+        return None
+
+    @staticmethod
+    def _simulate_path(raw_in, start, init_dir, marker_map, assign, start_color, bg, h, w):
+        """Simulate path tracing and return predicted grid."""
+        output = [row[:] for row in raw_in]
+        # Clear start from output (will be redrawn as path)
+        r, c = start
+        output[r][c] = bg
+
+        # Trace path
+        dr, dc = init_dir
+        pr, pc = start
+
+        for _ in range(h * w * 4):  # safety limit
+            output[pr][pc] = start_color
+
+            # Look ahead
+            nr, nc = pr + dr, pc + dc
+            if nr < 0 or nr >= h or nc < 0 or nc >= w:
+                break  # hit edge
+
+            if (nr, nc) in marker_map:
+                mc = marker_map[(nr, nc)]
+                turn_map = assign.get(mc)
+                if turn_map is not None:
+                    dr, dc = turn_map[(dr, dc)]
+                else:
+                    break
+                # Stay at current position, continue in new direction
+            else:
+                pr, pc = nr, nc
+
+        return output
+
+    # ---- strategy: diamond connection (+ shapes linked by lines) ----------
+
+    def _try_diamond_connect(self, patterns, wm):
+        """
+        Detect pattern: diamond shapes (+ of 4 cells around empty center)
+        on same row or column are connected by lines of a connector color
+        between their facing tips.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        diamond_color = None
+        connector_color = None
+        bg_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find background
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+            if bg_color is None:
+                bg_color = pair_bg
+            elif bg_color != pair_bg:
+                return None
+
+            # Find diamond centers (bg cells with 4 same-color non-bg neighbors)
+            centers = []
+            for r in range(1, h - 1):
+                for c in range(1, w - 1):
+                    if raw_in[r][c] != bg_color:
+                        continue
+                    neighbors = [raw_in[r - 1][c], raw_in[r + 1][c],
+                                 raw_in[r][c - 1], raw_in[r][c + 1]]
+                    if all(n != bg_color for n in neighbors) and len(set(neighbors)) == 1:
+                        centers.append((r, c))
+                        dc = neighbors[0]
+                        if diamond_color is None:
+                            diamond_color = dc
+                        elif diamond_color != dc:
+                            return None
+
+            if not centers or diamond_color is None:
+                return None
+
+            # All non-bg input cells should be diamond_color
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg_color and v != diamond_color:
+                        return None
+
+            # Determine connector color from output diff
+            for r in range(h):
+                for c in range(w):
+                    if raw_out[r][c] != raw_in[r][c]:
+                        cc = raw_out[r][c]
+                        if connector_color is None:
+                            connector_color = cc
+                        elif connector_color != cc:
+                            return None
+
+            # Verify by simulating connections
+            predicted = self._predict_diamond_connect(
+                raw_in, centers, diamond_color, connector_color, bg_color, h, w)
+            if predicted != raw_out:
+                return None
+
+        if connector_color is None:
+            return None
+
+        return {
+            "type": "diamond_connect",
+            "diamond_color": diamond_color,
+            "connector_color": connector_color,
+            "bg_color": bg_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _predict_diamond_connect(raw_in, centers, diamond_color, connector_color, bg_color, h, w):
+        """Connect diamond tips on same row/column with connector lines."""
+        output = [row[:] for row in raw_in]
+
+        # Group centers by row and by column
+        by_row = {}
+        by_col = {}
+        for r, c in centers:
+            by_row.setdefault(r, []).append(c)
+            by_col.setdefault(c, []).append(r)
+
+        # Connect horizontally (same row)
+        for r, cols in by_row.items():
+            cols_sorted = sorted(cols)
+            for i in range(len(cols_sorted) - 1):
+                c1 = cols_sorted[i]
+                c2 = cols_sorted[i + 1]
+                # Right tip of left diamond at (r, c1+1)
+                # Left tip of right diamond at (r, c2-1)
+                # Fill (r, c1+2) to (r, c2-2) with connector
+                for c in range(c1 + 2, c2 - 1):
+                    output[r][c] = connector_color
+
+        # Connect vertically (same column)
+        for c, rows in by_col.items():
+            rows_sorted = sorted(rows)
+            for i in range(len(rows_sorted) - 1):
+                r1 = rows_sorted[i]
+                r2 = rows_sorted[i + 1]
+                for r in range(r1 + 2, r2 - 1):
+                    output[r][c] = connector_color
+
+        return output
+
+    # ---- strategy: cross-grid band fill ----------------------------------
+
+    def _try_cross_grid_fill(self, patterns, wm):
+        """
+        Detect pattern: grid has a column axis of one color (with intersection
+        markers) and colored horizontal rows. Output fills bands between
+        colored rows with band colors, axis becomes intersection color,
+        colored rows become intersection color (axis position gets axis color).
+        Axis column position may vary between examples.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        bg_color = None
+        axis_color = None
+        intersection_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Find background
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+            if bg_color is None:
+                bg_color = pair_bg
+            elif bg_color != pair_bg:
+                return None
+
+            # Find axis column for THIS example
+            pair_axis_col = None
+            pair_ac = None
+            pair_ic = None
+            for c in range(w):
+                col_vals = set(raw_in[r][c] for r in range(h))
+                if bg_color in col_vals:
+                    continue
+                if len(col_vals) != 2:
+                    continue
+                vals = list(col_vals)
+                cnt0 = sum(1 for r in range(h) if raw_in[r][c] == vals[0])
+                cnt1 = sum(1 for r in range(h) if raw_in[r][c] == vals[1])
+                ac = vals[0] if cnt0 > cnt1 else vals[1]
+                ic = vals[1] if cnt0 > cnt1 else vals[0]
+                pair_axis_col = c
+                pair_ac = ac
+                pair_ic = ic
+                break
+
+            if pair_axis_col is None:
+                return None
+
+            # Axis color and intersection color must be consistent
+            if axis_color is None:
+                axis_color = pair_ac
+            elif axis_color != pair_ac:
+                return None
+            if intersection_color is None:
+                intersection_color = pair_ic
+            elif intersection_color != pair_ic:
+                return None
+
+            # Find colored rows
+            pair_colored_rows = []
+            for r in range(h):
+                if raw_in[r][pair_axis_col] == intersection_color:
+                    row_colors = set()
+                    for c2 in range(w):
+                        if c2 == pair_axis_col:
+                            continue
+                        if raw_in[r][c2] != bg_color:
+                            row_colors.add(raw_in[r][c2])
+                    if len(row_colors) != 1:
+                        return None
+                    pair_colored_rows.append((r, row_colors.pop()))
+
+            if not pair_colored_rows:
+                return None
+
+            # Verify output matches prediction
+            predicted = self._predict_cross_grid_fill(
+                h, w, pair_axis_col, axis_color, intersection_color,
+                bg_color, pair_colored_rows)
+            if predicted != raw_out:
+                return None
+
+        return {
+            "type": "cross_grid_fill",
+            "axis_color": axis_color,
+            "intersection_color": intersection_color,
+            "bg_color": bg_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _predict_cross_grid_fill(h, w, axis_col, axis_color, intersection_color,
+                                  bg_color, colored_rows):
+        """Build output grid for cross-grid band fill."""
+        # Build band assignments
+        # Group consecutive same-color colored rows
+        cr_list = sorted(colored_rows, key=lambda x: x[0])
+
+        # Find boundaries between different-color bands
+        # Each row gets assigned a band color
+        row_band = [None] * h
+        row_is_colored = [False] * h
+        row_is_transition = [False] * h
+
+        for r, color in cr_list:
+            row_is_colored[r] = True
+
+        # Find transitions between different-color bands
+        transitions = []
+        for i in range(len(cr_list) - 1):
+            r1, c1 = cr_list[i]
+            r2, c2 = cr_list[i + 1]
+            if c1 != c2:
+                mid = (r1 + r2) / 2
+                if mid == int(mid):
+                    transitions.append(int(mid))
+
+        for t in transitions:
+            row_is_transition[t] = True
+
+        # Assign band colors using Voronoi (nearest colored row)
+        for r in range(h):
+            if row_is_transition[r]:
+                continue
+            best_dist = h + 1
+            best_color = None
+            for cr, cc in cr_list:
+                d = abs(r - cr)
+                if d < best_dist:
+                    best_dist = d
+                    best_color = cc
+            row_band[r] = best_color
+
+        # Build output
+        output = [[bg_color] * w for _ in range(h)]
+        for r in range(h):
+            if row_is_transition[r]:
+                for c in range(w):
+                    output[r][c] = intersection_color
+            elif row_is_colored[r]:
+                for c in range(w):
+                    if c == axis_col:
+                        output[r][c] = axis_color
+                    else:
+                        output[r][c] = intersection_color
+            else:
+                band_c = row_band[r]
+                for c in range(w):
+                    if c == axis_col:
+                        output[r][c] = intersection_color
+                    else:
+                        output[r][c] = band_c
+
+        return output
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -1091,6 +1587,12 @@ class PredictOperator(Operator):
             return self._apply_fill_rect_by_size(rule, input_grid)
         if rule_type == "staircase_growth":
             return self._apply_staircase_growth(rule, input_grid)
+        if rule_type == "path_trace":
+            return self._apply_path_trace(rule, input_grid)
+        if rule_type == "diamond_connect":
+            return self._apply_diamond_connect(rule, input_grid)
+        if rule_type == "cross_grid_fill":
+            return self._apply_cross_grid_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1357,6 +1859,103 @@ class PredictOperator(Operator):
             count = start_count + r
             output.append([color if c < count else 0 for c in range(w)])
         return output
+
+    def _apply_path_trace(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        start_color = rule["start_color"]
+        bg = rule["bg_color"]
+        cw_color = rule.get("cw_color")
+        ccw_color = rule.get("ccw_color")
+        init_dir = tuple(rule["init_dir"])
+
+        CW = {(0, 1): (1, 0), (1, 0): (0, -1),
+              (0, -1): (-1, 0), (-1, 0): (0, 1)}
+        CCW = {(0, 1): (-1, 0), (-1, 0): (0, -1),
+               (0, -1): (1, 0), (1, 0): (0, 1)}
+
+        # Find start and markers
+        start = None
+        marker_map = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v == start_color:
+                    start = (r, c)
+                elif v != bg:
+                    marker_map[(r, c)] = v
+
+        if start is None:
+            return [row[:] for row in raw]
+
+        assign = {}
+        if cw_color is not None:
+            assign[cw_color] = CW
+        if ccw_color is not None:
+            assign[ccw_color] = CCW
+
+        return GeneralizeOperator._simulate_path(
+            raw, start, init_dir, marker_map, assign, start_color, bg, h, w)
+
+    def _apply_diamond_connect(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        diamond_color = rule["diamond_color"]
+        connector_color = rule["connector_color"]
+        bg_color = rule["bg_color"]
+
+        # Find diamond centers
+        centers = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if raw[r][c] != bg_color:
+                    continue
+                neighbors = [raw[r - 1][c], raw[r + 1][c],
+                             raw[r][c - 1], raw[r][c + 1]]
+                if all(n == diamond_color for n in neighbors):
+                    centers.append((r, c))
+
+        return GeneralizeOperator._predict_diamond_connect(
+            raw, centers, diamond_color, connector_color, bg_color, h, w)
+
+    def _apply_cross_grid_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        axis_color = rule["axis_color"]
+        intersection_color = rule["intersection_color"]
+        bg_color = rule["bg_color"]
+
+        # Find axis column from this input
+        axis_col = None
+        for c in range(w):
+            col_vals = set(raw[r][c] for r in range(h))
+            if bg_color not in col_vals and len(col_vals) <= 2:
+                if axis_color in col_vals:
+                    axis_col = c
+                    break
+
+        if axis_col is None:
+            return [row[:] for row in raw]
+
+        # Find colored rows from the input
+        colored_rows = []
+        for r in range(h):
+            if raw[r][axis_col] == intersection_color:
+                row_colors = set()
+                for c in range(w):
+                    if c == axis_col:
+                        continue
+                    if raw[r][c] != bg_color:
+                        row_colors.add(raw[r][c])
+                if len(row_colors) == 1:
+                    colored_rows.append((r, row_colors.pop()))
+
+        return GeneralizeOperator._predict_cross_grid_fill(
+            h, w, axis_col, axis_color, intersection_color,
+            bg_color, colored_rows)
 
     # ---- helpers ---------------------------------------------------------
 

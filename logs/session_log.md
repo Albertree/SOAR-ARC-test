@@ -82,3 +82,31 @@
 - Time: 65s
 - Log: logs/learn_20260421_183518.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 18:38
+
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%)
+- Rules: 20 -> 21 (+1 learned)
+- Stored rule hits: 8
+- Time: 63s
+- Log: logs/learn_20260421_183705.log
+
+---
+## Session 4 -- 2026-04-21 19:11
+
+### Strategies Added
+1. **path_trace** — start marker (3) traces L-shaped paths toward turn markers; color 6 = clockwise turn, color 8 = counter-clockwise turn (solves e5790162)
+2. **diamond_connect** — diamond shapes (+ pattern of 4 cells around empty center) on same row/column are connected by lines of connector color between facing tips (solves 60a26a3e)
+3. **cross_grid_fill** — grid with a colored column axis and colored horizontal rows; output fills band regions with nearest row's color, axis/rows become intersection color (solves 332202d5)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 11 / 20 (55.0%) — up from 8/20
+- Solved: e9ac8c9e, c0f76784, 8be77c9e, 6e82a1ae, c59eb873, bbc9ae5d, d23f8c26, 85c4e7cd (stored), e5790162 (path_trace), 60a26a3e (diamond_connect), 332202d5 (cross_grid_fill)
+- Rules: 24 -> 25 (+1 learned)
+- Stored rule hits: 10
+- Time: 66s
+- Log: logs/learn_20260421_191025.log
+- Regression: 08ed6ac7 CORRECT
