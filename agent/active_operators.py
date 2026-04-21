@@ -346,6 +346,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_fractal_block_denoise(patterns, wm)
 
+        # Strategy 52: pixel collect snake (scattered pixels → 3×3 boustrophedon)
+        if rule is None:
+            rule = self._try_pixel_collect_snake(patterns, wm)
+
+        # Strategy 53: frame scale pattern (2×2 quadrant pattern → fill frame interior)
+        if rule is None:
+            rule = self._try_frame_scale_pattern(patterns, wm)
+
+        # Strategy 54: box slide trail (3×3 box slides along dotted trail)
+        if rule is None:
+            rule = self._try_box_slide_trail(patterns, wm)
+
         # Strategy 49: bbox fill (fill 0-cells within bounding box of fg shape)
         if rule is None:
             rule = self._try_bbox_fill(patterns, wm)
@@ -523,6 +535,344 @@ class GeneralizeOperator(Operator):
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- strategy 52: pixel collect snake --------------------------------
+
+    def _try_pixel_collect_snake(self, patterns, wm):
+        """
+        Detect: sparse grid (mostly 0s) with scattered single non-zero pixels.
+        Output is a smaller grid (e.g. 3×3) filled by sorting pixels by column
+        and placing them in boustrophedon (snake) order: even rows L→R, odd rows R→L.
+        Category: pixel collection / spatial sorting into compact grids.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        out_rows = out_cols = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H_in = len(raw_in)
+            W_in = len(raw_in[0]) if raw_in else 0
+            H_out = len(raw_out)
+            W_out = len(raw_out[0]) if raw_out else 0
+
+            # Output must be smaller than input
+            if H_out >= H_in or W_out >= W_in:
+                return None
+
+            # Collect non-zero pixels from input, sorted by column then row
+            pixels = []
+            for r in range(H_in):
+                for c in range(W_in):
+                    if raw_in[r][c] != 0:
+                        pixels.append((c, r, raw_in[r][c]))
+            # Sort by column (primary), then row (secondary)
+            pixels.sort(key=lambda p: (p[0], p[1]))
+
+            # Must fit into output grid
+            if len(pixels) > H_out * W_out:
+                return None
+
+            # Place in boustrophedon order and verify
+            expected = [[0] * W_out for _ in range(H_out)]
+            idx = 0
+            for row in range(H_out):
+                if row % 2 == 0:
+                    cols = range(W_out)
+                else:
+                    cols = range(W_out - 1, -1, -1)
+                for col in cols:
+                    if idx < len(pixels):
+                        expected[row][col] = pixels[idx][2]
+                        idx += 1
+
+            # Verify against actual output
+            for r in range(H_out):
+                for c in range(W_out):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+            # Check consistent output size
+            if out_rows is None:
+                out_rows = H_out
+                out_cols = W_out
+            elif out_rows != H_out or out_cols != W_out:
+                return None
+
+        return {"type": "pixel_collect_snake", "out_rows": out_rows,
+                "out_cols": out_cols, "confidence": 1.0}
+
+    # ---- strategy 53: frame scale pattern --------------------------------
+
+    def _try_frame_scale_pattern(self, patterns, wm):
+        """
+        Detect: rectangular frame of color F on bg 0, with a 2×2 quadrant
+        color pattern inside. Output crops to the frame and scales the 2×2
+        pattern to fill the entire interior evenly.
+        Category: crop + scale-up / frame extraction with pattern expansion.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H_in = len(raw_in)
+            W_in = len(raw_in[0]) if raw_in else 0
+            H_out = len(raw_out)
+            W_out = len(raw_out[0]) if raw_out else 0
+
+            # Find the frame: a rectangle of uniform non-zero color
+            frame_color = None
+            fr_top = fr_bot = fr_left = fr_right = None
+            for r in range(H_in):
+                for c in range(W_in):
+                    v = raw_in[r][c]
+                    if v != 0:
+                        if frame_color is None:
+                            frame_color = v
+                        if v == frame_color:
+                            if fr_top is None or r < fr_top:
+                                fr_top = r
+                            if fr_bot is None or r > fr_bot:
+                                fr_bot = r
+                            if fr_left is None or c < fr_left:
+                                fr_left = c
+                            if fr_right is None or c > fr_right:
+                                fr_right = c
+            if frame_color is None or fr_top is None:
+                return None
+
+            # Verify frame border: top/bottom rows and left/right cols should be frame_color
+            for c in range(fr_left, fr_right + 1):
+                if raw_in[fr_top][c] != frame_color or raw_in[fr_bot][c] != frame_color:
+                    return None
+            for r in range(fr_top, fr_bot + 1):
+                if raw_in[r][fr_left] != frame_color or raw_in[r][fr_right] != frame_color:
+                    return None
+
+            int_top = fr_top + 1
+            int_bot = fr_bot - 1
+            int_left = fr_left + 1
+            int_right = fr_right - 1
+            int_h = int_bot - int_top + 1
+            int_w = int_right - int_left + 1
+
+            if int_h < 2 or int_w < 2:
+                return None
+
+            # Find the 2×2 quadrant pattern inside the frame
+            # Collect non-zero non-frame cells in the interior
+            pattern_cells = []
+            for r in range(int_top, int_bot + 1):
+                for c in range(int_left, int_right + 1):
+                    v = raw_in[r][c]
+                    if v != 0 and v != frame_color:
+                        pattern_cells.append((r, c, v))
+
+            if not pattern_cells:
+                return None
+
+            # Find bounding box of pattern
+            pr_min = min(r for r, c, v in pattern_cells)
+            pr_max = max(r for r, c, v in pattern_cells)
+            pc_min = min(c for r, c, v in pattern_cells)
+            pc_max = max(c for r, c, v in pattern_cells)
+
+            pat_h = pr_max - pr_min + 1
+            pat_w = pc_max - pc_min + 1
+
+            # Must be even dimensions (2×2 pattern potentially scaled)
+            if pat_h % 2 != 0 or pat_w % 2 != 0:
+                return None
+
+            half_h = pat_h // 2
+            half_w = pat_w // 2
+
+            # Extract the 4 quadrant colors
+            tl_color = raw_in[pr_min][pc_min]
+            tr_color = raw_in[pr_min][pc_min + half_w]
+            bl_color = raw_in[pr_min + half_h][pc_min]
+            br_color = raw_in[pr_min + half_h][pc_min + half_w]
+
+            if any(c == 0 or c == frame_color for c in [tl_color, tr_color, bl_color, br_color]):
+                return None
+
+            # Verify all pattern cells match their quadrant
+            for r, c, v in pattern_cells:
+                qr = 0 if r < pr_min + half_h else 1
+                qc = 0 if c < pc_min + half_w else 1
+                expected_color = [tl_color, tr_color, bl_color, br_color][qr * 2 + qc]
+                if v != expected_color:
+                    return None
+
+            # Interior must be evenly divisible into 4 quadrants
+            if int_h % 2 != 0 or int_w % 2 != 0:
+                return None
+
+            # Verify output: should be the frame with scaled pattern
+            expected_h = fr_bot - fr_top + 1
+            expected_w = fr_right - fr_left + 1
+            if H_out != expected_h or W_out != expected_w:
+                return None
+
+            q_h = int_h // 2
+            q_w = int_w // 2
+            for r in range(H_out):
+                for c in range(W_out):
+                    if r == 0 or r == H_out - 1 or c == 0 or c == W_out - 1:
+                        if raw_out[r][c] != frame_color:
+                            return None
+                    else:
+                        ir = r - 1  # interior row
+                        ic = c - 1  # interior col
+                        qr = 0 if ir < q_h else 1
+                        qc = 0 if ic < q_w else 1
+                        expected_color = [tl_color, tr_color, bl_color, br_color][qr * 2 + qc]
+                        if raw_out[r][c] != expected_color:
+                            return None
+
+        return {"type": "frame_scale_pattern", "confidence": 1.0}
+
+    # ---- strategy 54: box slide trail ------------------------------------
+
+    def _try_box_slide_trail(self, patterns, wm):
+        """
+        Detect: 3×3 box of border_color (2) with center_color (3) inside,
+        plus a trail of center_color dots spaced 2 apart along the same
+        row/column. The box slides 1 step (2 cells) along the trail toward
+        the side with more dots (or positive direction if tied).
+        Category: object translation / sliding along marker path.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Find the 3×3 box: look for a 3×3 block where border is one color
+            # and center is another color
+            box_found = False
+            for r in range(H - 2):
+                for c in range(W - 2):
+                    center_val = raw_in[r + 1][c + 1]
+                    if center_val == 0:
+                        continue
+                    border_val = raw_in[r][c]
+                    if border_val == 0 or border_val == center_val:
+                        continue
+                    # Check all 8 border cells
+                    is_box = True
+                    for dr in range(3):
+                        for dc in range(3):
+                            if dr == 1 and dc == 1:
+                                continue
+                            if raw_in[r + dr][c + dc] != border_val:
+                                is_box = False
+                                break
+                        if not is_box:
+                            break
+                    if is_box:
+                        box_r, box_c = r, c
+                        box_found = True
+                        break
+                if box_found:
+                    break
+            if not box_found:
+                return None
+
+            center_r = box_r + 1
+            center_c = box_c + 1
+            center_val = raw_in[center_r][center_c]
+            border_val = raw_in[box_r][box_c]
+
+            # Find trail: same-color dots along the center row or col
+            h_trail = []
+            for c in range(W):
+                if raw_in[center_r][c] == center_val and not (box_c <= c <= box_c + 2):
+                    h_trail.append(c)
+
+            v_trail = []
+            for r in range(H):
+                if raw_in[r][center_c] == center_val and not (box_r <= r <= box_r + 2):
+                    v_trail.append(r)
+
+            if not h_trail and not v_trail:
+                return None
+
+            # Determine direction
+            if h_trail:
+                left_count = sum(1 for c in h_trail if c < box_c)
+                right_count = sum(1 for c in h_trail if c > box_c + 2)
+                if right_count > left_count:
+                    dr, dc = 0, 2
+                elif left_count > right_count:
+                    dr, dc = 0, -2
+                else:
+                    dr, dc = 0, 2  # tie → positive direction
+            else:
+                above_count = sum(1 for r in v_trail if r < box_r)
+                below_count = sum(1 for r in v_trail if r > box_r + 2)
+                if below_count > above_count:
+                    dr, dc = 2, 0
+                elif above_count > below_count:
+                    dr, dc = -2, 0
+                else:
+                    dr, dc = 2, 0  # tie ��� positive direction
+
+            # Build expected output: move box by (dr, dc)
+            new_box_r = box_r + dr
+            new_box_c = box_c + dc
+            if new_box_r < 0 or new_box_r + 2 >= H or new_box_c < 0 or new_box_c + 2 >= W:
+                return None
+
+            expected = [[0] * W for _ in range(H)]
+            # Copy trail dots and other content
+            for r in range(H):
+                for c in range(W):
+                    expected[r][c] = raw_in[r][c]
+
+            # Erase old box
+            for drr in range(3):
+                for dcc in range(3):
+                    expected[box_r + drr][box_c + dcc] = 0
+
+            # The old center becomes a trail dot
+            expected[center_r][center_c] = center_val
+
+            # Place new box
+            new_center_r = new_box_r + 1
+            new_center_c = new_box_c + 1
+            for drr in range(3):
+                for dcc in range(3):
+                    if drr == 1 and dcc == 1:
+                        expected[new_box_r + drr][new_box_c + dcc] = center_val
+                    else:
+                        expected[new_box_r + drr][new_box_c + dcc] = border_val
+
+            # Verify against actual output
+            for r in range(H):
+                for c in range(W):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "box_slide_trail", "confidence": 1.0}
 
     # ---- strategy: sequential recoloring --------------------------------
 
@@ -6483,6 +6833,12 @@ class PredictOperator(Operator):
             return self._apply_symmetry_complete(rule, input_grid)
         if rule_type == "accelerating_sequence":
             return self._apply_accelerating_sequence(rule, input_grid)
+        if rule_type == "pixel_collect_snake":
+            return self._apply_pixel_collect_snake(rule, input_grid)
+        if rule_type == "frame_scale_pattern":
+            return self._apply_frame_scale_pattern(rule, input_grid)
+        if rule_type == "box_slide_trail":
+            return self._apply_box_slide_trail(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -8467,6 +8823,216 @@ class PredictOperator(Operator):
             pos += gap
             gap += 1
         return out
+
+    # ---- apply: pixel collect snake --------------------------------------
+
+    def _apply_pixel_collect_snake(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        out_rows = rule["out_rows"]
+        out_cols = rule["out_cols"]
+
+        # Collect non-zero pixels sorted by column then row
+        pixels = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0:
+                    pixels.append((c, r, raw[r][c]))
+        pixels.sort(key=lambda p: (p[0], p[1]))
+
+        # Place in boustrophedon order
+        output = [[0] * out_cols for _ in range(out_rows)]
+        idx = 0
+        for row in range(out_rows):
+            if row % 2 == 0:
+                cols = range(out_cols)
+            else:
+                cols = range(out_cols - 1, -1, -1)
+            for col in cols:
+                if idx < len(pixels):
+                    output[row][col] = pixels[idx][2]
+                    idx += 1
+        return output
+
+    # ---- apply: frame scale pattern --------------------------------------
+
+    def _apply_frame_scale_pattern(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Find the frame
+        frame_color = None
+        fr_top = fr_bot = fr_left = fr_right = None
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                if v != 0:
+                    if frame_color is None:
+                        frame_color = v
+                    if v == frame_color:
+                        if fr_top is None or r < fr_top:
+                            fr_top = r
+                        if fr_bot is None or r > fr_bot:
+                            fr_bot = r
+                        if fr_left is None or c < fr_left:
+                            fr_left = c
+                        if fr_right is None or c > fr_right:
+                            fr_right = c
+        if frame_color is None:
+            return [row[:] for row in raw]
+
+        int_top = fr_top + 1
+        int_bot = fr_bot - 1
+        int_left = fr_left + 1
+        int_right = fr_right - 1
+        int_h = int_bot - int_top + 1
+        int_w = int_right - int_left + 1
+
+        # Find the 2×2 pattern
+        pattern_cells = []
+        for r in range(int_top, int_bot + 1):
+            for c in range(int_left, int_right + 1):
+                v = raw[r][c]
+                if v != 0 and v != frame_color:
+                    pattern_cells.append((r, c, v))
+
+        if not pattern_cells:
+            return [row[:] for row in raw]
+
+        pr_min = min(r for r, c, v in pattern_cells)
+        pc_min = min(c for r, c, v in pattern_cells)
+        pr_max = max(r for r, c, v in pattern_cells)
+        pc_max = max(c for r, c, v in pattern_cells)
+        pat_h = pr_max - pr_min + 1
+        pat_w = pc_max - pc_min + 1
+        half_h = max(pat_h // 2, 1)
+        half_w = max(pat_w // 2, 1)
+
+        tl = raw[pr_min][pc_min]
+        tr = raw[pr_min][pc_min + half_w]
+        bl = raw[pr_min + half_h][pc_min]
+        br = raw[pr_min + half_h][pc_min + half_w]
+
+        # Build output: frame + scaled pattern
+        out_h = fr_bot - fr_top + 1
+        out_w = fr_right - fr_left + 1
+        q_h = int_h // 2
+        q_w = int_w // 2
+
+        output = [[0] * out_w for _ in range(out_h)]
+        for r in range(out_h):
+            for c in range(out_w):
+                if r == 0 or r == out_h - 1 or c == 0 or c == out_w - 1:
+                    output[r][c] = frame_color
+                else:
+                    ir = r - 1
+                    ic = c - 1
+                    qr = 0 if ir < q_h else 1
+                    qc = 0 if ic < q_w else 1
+                    output[r][c] = [tl, tr, bl, br][qr * 2 + qc]
+        return output
+
+    # ---- apply: box slide trail ------------------------------------------
+
+    def _apply_box_slide_trail(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Find the 3×3 box
+        box_r = box_c = None
+        center_val = border_val = None
+        for r in range(H - 2):
+            for c in range(W - 2):
+                cv = raw[r + 1][c + 1]
+                if cv == 0:
+                    continue
+                bv = raw[r][c]
+                if bv == 0 or bv == cv:
+                    continue
+                is_box = True
+                for dr in range(3):
+                    for dc in range(3):
+                        if dr == 1 and dc == 1:
+                            continue
+                        if raw[r + dr][c + dc] != bv:
+                            is_box = False
+                            break
+                    if not is_box:
+                        break
+                if is_box:
+                    box_r, box_c = r, c
+                    center_val, border_val = cv, bv
+                    break
+            if box_r is not None:
+                break
+
+        if box_r is None:
+            return [row[:] for row in raw]
+
+        center_r = box_r + 1
+        center_c = box_c + 1
+
+        # Find trail along center row and center col
+        h_trail = []
+        for c in range(W):
+            if raw[center_r][c] == center_val and not (box_c <= c <= box_c + 2):
+                h_trail.append(c)
+
+        v_trail = []
+        for r in range(H):
+            if raw[r][center_c] == center_val and not (box_r <= r <= box_r + 2):
+                v_trail.append(r)
+
+        # Determine direction
+        if h_trail:
+            left_count = sum(1 for c in h_trail if c < box_c)
+            right_count = sum(1 for c in h_trail if c > box_c + 2)
+            if right_count > left_count:
+                dr, dc = 0, 2
+            elif left_count > right_count:
+                dr, dc = 0, -2
+            else:
+                dr, dc = 0, 2
+        elif v_trail:
+            above_count = sum(1 for r in v_trail if r < box_r)
+            below_count = sum(1 for r in v_trail if r > box_r + 2)
+            if below_count > above_count:
+                dr, dc = 2, 0
+            elif above_count > below_count:
+                dr, dc = -2, 0
+            else:
+                dr, dc = 2, 0
+        else:
+            return [row[:] for row in raw]
+
+        # Build output
+        new_box_r = box_r + dr
+        new_box_c = box_c + dc
+        if new_box_r < 0 or new_box_r + 2 >= H or new_box_c < 0 or new_box_c + 2 >= W:
+            return [row[:] for row in raw]
+
+        output = [row[:] for row in raw]
+
+        # Erase old box
+        for drr in range(3):
+            for dcc in range(3):
+                output[box_r + drr][box_c + dcc] = 0
+
+        # Old center becomes trail dot
+        output[center_r][center_c] = center_val
+
+        # Place new box
+        for drr in range(3):
+            for dcc in range(3):
+                if drr == 1 and dcc == 1:
+                    output[new_box_r + drr][new_box_c + dcc] = center_val
+                else:
+                    output[new_box_r + drr][new_box_c + dcc] = border_val
+
+        return output
 
     # ---- helpers ---------------------------------------------------------
 

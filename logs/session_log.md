@@ -790,3 +790,73 @@
 - Stored rule hits: 57
 - Time: 210s
 - Log: logs/learn_20260422_032307.log
+
+---
+## Learning Loop -- 2026-04-22 03:30
+
+- Split: training, Tasks: 80
+- Correct: 58 / 80 (72.5%)
+- Rules: 213 -> 218 (+5 learned)
+- Stored rule hits: 57
+- Time: 210s
+- Log: logs/learn_20260422_032727.log
+
+---
+## Session 22 -- 2026-04-22 03:52
+
+### Strategies Added
+1. **pixel_collect_snake** (Strategy 52): Sparse grid with scattered single non-zero
+   pixels on 0 background. Collect all pixels, sort by column (then row), place into
+   compact output grid (e.g. 3×3) in boustrophedon (snake) order: even rows L→R, odd
+   rows R→L. Category: spatial sorting / dimensionality reduction. (solves cdecee7f)
+2. **frame_scale_pattern** (Strategy 53): Rectangular frame of color 2 on 0 background
+   contains a 2×2 quadrant color pattern (4 distinct colors, each filling a block).
+   Output crops to the frame and scales the 2×2 pattern to fill the entire interior
+   evenly — each quadrant gets one color. Category: crop + scale-up / frame extraction.
+   (solves e7a25a18)
+3. **box_slide_trail** (Strategy 54): 3×3 box of border color (2) with center color (3)
+   on 0 background, plus a trail of center-color dots spaced 2 cells apart along the
+   same row or column. Box slides 1 step (2 cells) along the trail toward the side with
+   more dots (positive direction if tied). Old center becomes trail dot, trail dot at new
+   position absorbed into box. Category: object translation along marker path.
+   (solves 5168d44c)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%) — up from 58/80 (72.5%)
+- Solved (new): cdecee7f (pixel_collect_snake), e7a25a18 (frame_scale_pattern), 5168d44c (box_slide_trail)
+- Rules: 218 -> 225 (+7 learned)
+- Stored rule hits: 57
+- Discovered: 8 new rules from pipeline
+- Time: 220s
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 03:52
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 218 -> 225 (+7 learned)
+- Stored rule hits: 57
+- Time: 220s
+- Log: logs/learn_20260422_034910.log
+
+---
+## Learning Loop -- 2026-04-22 03:56
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 225 -> 229 (+4 learned)
+- Stored rule hits: 60
+- Time: 219s
+- Log: logs/learn_20260422_035259.log
+
+---
+## Learning Loop -- 2026-04-22 04:00
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 229 -> 233 (+4 learned)
+- Stored rule hits: 60
+- Time: 219s
+- Log: logs/learn_20260422_035653.log
