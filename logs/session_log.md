@@ -1056,3 +1056,66 @@
 - Stored rule hits: 65
 - Time: 221s
 - Log: logs/learn_20260422_052231.log
+
+---
+## Learning Loop -- 2026-04-22 05:30
+
+- Split: training, Tasks: 80
+- Correct: 67 / 80 (83.8%)
+- Rules: 283 -> 287 (+4 learned)
+- Stored rule hits: 65
+- Time: 219s
+- Log: logs/learn_20260422_052705.log
+
+---
+## Session 25 -- 2026-04-22 06:06
+
+### Strategies Added
+1. **grid_section_key_lookup** (Strategy 61): Grid divided by color-5 lines
+   into 3×3 sections. Each section has scattered values from {2,3,4,6,8}.
+   One "key" section has exactly 4 non-zero cells (missing color 8). Each
+   value V at local position (r,c) in the key section maps to: fill section
+   at grid position (r,c) with color V. Other sections get 0.
+   Category: grid section analysis / key-based lookup. (solves 09629e4f)
+2. **shape_template_catalog** (Strategy 62): Top-left area (bounded by
+   L-shaped 5-border) contains template shapes of distinct colors. Rest of
+   grid has shapes of color 3. Each 3-shape matches one template via
+   rotation/reflection (all 8 orientations). Output replaces each 3-shape
+   with matching template color.
+   Category: shape matching / template recoloring. (solves 845d6e51)
+3. **bar_chart_balance** (Strategy 63): Grid with bg=7 has vertical bars of
+   colors 8 and 2 at odd columns extending from bottom. Output adds a new
+   bar of color 5 at the next odd column. Height = sum(8-bar heights) -
+   sum(2-bar heights). Placed early in chain to prevent false-positive
+   match by recolor_sequential.
+   Category: bar chart derivation / balance computation. (solves 37ce87bb)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 70 / 80 (87.5%) — up from 67/80 (83.8%)
+- Solved (new): 09629e4f (grid_section_key_lookup), 845d6e51 (shape_template_catalog), 37ce87bb (bar_chart_balance)
+- Rules: 292 -> 298 (+6 learned)
+- Stored rule hits: 66
+- Discovered: 7 new rules from pipeline
+- Time: 220s
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 06:00
+
+- Split: training, Tasks: 80
+- Correct: 68 / 80 (85.0%)
+- Rules: 287 -> 292 (+5 learned)
+- Stored rule hits: 65
+- Time: 222s
+- Log: logs/learn_20260422_055658.log
+
+---
+## Learning Loop -- 2026-04-22 06:06
+
+- Split: training, Tasks: 80
+- Correct: 70 / 80 (87.5%)
+- Rules: 292 -> 298 (+6 learned)
+- Stored rule hits: 66
+- Time: 220s
+- Log: logs/learn_20260422_060236.log

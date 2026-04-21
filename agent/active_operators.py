@@ -306,6 +306,11 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_grid_lines_pattern(patterns, wm)
 
+        # Strategy 63: bar chart balance (bg=7, 8/2 bars at odd cols → add color-5 balance bar)
+        # (placed early to prevent false-positive match by recolor_sequential)
+        if rule is None:
+            rule = self._try_bar_chart_balance(patterns, wm)
+
         # Strategy 4: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -553,6 +558,18 @@ class GeneralizeOperator(Operator):
         # Strategy 60: corner block shift (corner blocks shift inward by block dims)
         if rule is None:
             rule = self._try_corner_block_shift(patterns, wm)
+
+        # Strategy 61: grid section key lookup (5-line grid → key section maps positions to fill colors)
+        if rule is None:
+            rule = self._try_grid_section_key_lookup(patterns, wm)
+
+        # Strategy 62: shape template catalog (key area templates + 3-shapes → recolor by shape match)
+        if rule is None:
+            rule = self._try_shape_template_catalog(patterns, wm)
+
+        # Strategy 63: bar chart balance (bg=7, 8/2 bars at odd cols → add color-5 balance bar)
+        if rule is None:
+            rule = self._try_bar_chart_balance(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -7330,6 +7347,271 @@ class GeneralizeOperator(Operator):
 
         return {"type": "corner_block_shift", "confidence": 1.0}
 
+    # ---- strategy 61: grid section key lookup --------------------------------
+
+    def _try_grid_section_key_lookup(self, patterns, wm):
+        """Grid divided by color-5 lines into 3×3 sections. One 'key' section
+        has exactly 4 non-zero cells (missing color 8). Each value V at local
+        position (r,c) in the key section → fill section at meta-position (r,c)
+        with color V. Other sections get 0."""
+        if wm.task is None:
+            return None
+        for pair in wm.task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            # Find separator rows and cols (all cells == 5)
+            sep_rows = [r for r in range(H) if all(raw_in[r][c] == 5 for c in range(W))]
+            sep_cols = [c for c in range(W) if all(raw_in[r][c] == 5 for r in range(H))]
+            if len(sep_rows) != 2 or len(sep_cols) != 2:
+                return None
+            # Build section row/col bands
+            row_bands = []
+            prev = 0
+            for sr in sep_rows:
+                row_bands.append((prev, sr))
+                prev = sr + 1
+            row_bands.append((prev, H))
+            col_bands = []
+            prev = 0
+            for sc in sep_cols:
+                col_bands.append((prev, sc))
+                prev = sc + 1
+            col_bands.append((prev, W))
+            if len(row_bands) != 3 or len(col_bands) != 3:
+                return None
+            # Find key section: exactly 4 non-zero cells with 4 unique values
+            key_section = None
+            key_mr = key_mc = -1
+            for mr in range(3):
+                for mc in range(3):
+                    r0, r1 = row_bands[mr]
+                    c0, c1 = col_bands[mc]
+                    cells = {}
+                    for r in range(r0, r1):
+                        for c in range(c0, c1):
+                            v = raw_in[r][c]
+                            if v != 0:
+                                cells[(r - r0, c - c0)] = v
+                    unique_vals = set(cells.values())
+                    if len(cells) == 4 and len(unique_vals) == 4 and 8 not in unique_vals:
+                        if key_section is not None:
+                            return None  # multiple keys
+                        key_section = cells
+                        key_mr, key_mc = mr, mc
+            if key_section is None:
+                return None
+            # Build expected output
+            expected = [[0] * W for _ in range(H)]
+            # Keep separator lines
+            for sr in sep_rows:
+                for c in range(W):
+                    expected[sr][c] = 5
+            for sc in sep_cols:
+                for r in range(H):
+                    expected[r][sc] = 5
+            # Fill sections based on key
+            for (lr, lc), v in key_section.items():
+                tr, tc = lr, lc  # target meta-position
+                r0, r1 = row_bands[tr]
+                c0, c1 = col_bands[tc]
+                for r in range(r0, r1):
+                    for c in range(c0, c1):
+                        expected[r][c] = v
+            if expected != raw_out:
+                return None
+        return {"type": "grid_section_key_lookup", "confidence": 1.0}
+
+    # ---- strategy 62: shape template catalog ---------------------------------
+
+    @staticmethod
+    def _normalize_shape(cells):
+        """Normalize a set of (r,c) positions to origin-relative frozenset."""
+        if not cells:
+            return frozenset()
+        min_r = min(r for r, c in cells)
+        min_c = min(c for r, c in cells)
+        return frozenset((r - min_r, c - min_c) for r, c in cells)
+
+    @staticmethod
+    def _shape_orientations(shape):
+        """Return all 8 orientations (4 rotations × 2 reflections) of a shape."""
+        orientations = set()
+        current = set(shape)
+        for _ in range(4):
+            # normalize
+            min_r = min(r for r, c in current)
+            min_c = min(c for r, c in current)
+            normed = frozenset((r - min_r, c - min_c) for r, c in current)
+            orientations.add(normed)
+            # reflect horizontally
+            reflected = set()
+            for r, c in normed:
+                reflected.add((r, -c))
+            min_c2 = min(c for r, c in reflected)
+            ref_normed = frozenset((r, c - min_c2) for r, c in reflected)
+            orientations.add(ref_normed)
+            # rotate 90 CW: (r,c) -> (c, -r)
+            current = set((c, -r) for r, c in current)
+        return orientations
+
+    @staticmethod
+    def _find_connected_components(grid, H, W, target_colors, region=None):
+        """Find 4-connected components of cells matching target_colors.
+        region is optional (r0,r1,c0,c1) bounds."""
+        r0, r1 = (0, H) if region is None else (region[0], region[1])
+        c0, c1 = (0, W) if region is None else (region[2], region[3])
+        visited = set()
+        components = []
+        for r in range(r0, r1):
+            for c in range(c0, c1):
+                if grid[r][c] in target_colors and (r, c) not in visited:
+                    color = grid[r][c]
+                    comp = []
+                    queue = [(r, c)]
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        if (cr, cc) in visited:
+                            continue
+                        if cr < r0 or cr >= r1 or cc < c0 or cc >= c1:
+                            continue
+                        if grid[cr][cc] != color:
+                            continue
+                        visited.add((cr, cc))
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            queue.append((cr+dr, cc+dc))
+                    components.append((color, comp))
+        return components
+
+    def _try_shape_template_catalog(self, patterns, wm):
+        """Key area (above/left of 5-dividers) has template shapes of distinct
+        colors. Rest of grid has color-3 shapes. Each 3-shape matches one
+        template (with rotation/reflection). Replace 3 with matching color."""
+        if wm.task is None:
+            return None
+        for pair in wm.task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            # Find sep_col: first column with 5 in row 0 (vertical separator)
+            sep_col = None
+            for c in range(W):
+                if raw_in[0][c] == 5:
+                    sep_col = c
+                    break
+            if sep_col is None or sep_col < 1:
+                return None
+            # Find sep_row: first row where cols 0..sep_col are all 5
+            sep_row = None
+            for r in range(1, H):
+                if all(raw_in[r][c] == 5 for c in range(sep_col + 1)):
+                    sep_row = r
+                    break
+            if sep_row is None or sep_row < 1:
+                return None
+            # Extract templates from key area (rows 0..sep_row-1, cols 0..sep_col-1)
+            key_colors = set()
+            for r in range(sep_row):
+                for c in range(sep_col):
+                    v = raw_in[r][c]
+                    if v != 0 and v != 5:
+                        key_colors.add(v)
+            if 3 in key_colors:
+                return None  # 3 should only be in the non-key area
+            templates = {}  # color -> set of orientations
+            comps = self._find_connected_components(
+                raw_in, H, W, key_colors, region=(0, sep_row, 0, sep_col))
+            for color, cells in comps:
+                shape = self._normalize_shape(cells)
+                orients = self._shape_orientations(shape)
+                templates[color] = orients
+            if not templates:
+                return None
+            # Find all color-3 components in the full grid
+            comps_3 = self._find_connected_components(raw_in, H, W, {3})
+            if not comps_3:
+                return None
+            # Match each 3-component to a template
+            expected = [row[:] for row in raw_in]
+            for _, cells in comps_3:
+                shape = self._normalize_shape(cells)
+                matched_color = None
+                for color, orients in templates.items():
+                    if shape in orients:
+                        matched_color = color
+                        break
+                if matched_color is None:
+                    return None  # unmatched shape
+                for r, c in cells:
+                    expected[r][c] = matched_color
+            if expected != raw_out:
+                return None
+        return {"type": "shape_template_catalog", "confidence": 1.0}
+
+    # ---- strategy 63: bar chart balance --------------------------------------
+
+    def _try_bar_chart_balance(self, patterns, wm):
+        """Grid bg=7 with vertical bars of colors 8 and 2 at odd columns.
+        Add a new bar of color 5 at the next odd column. Height = sum(8 heights) - sum(2 heights)."""
+        if wm.task is None:
+            return None
+        for pair in wm.task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            # Verify background is 7
+            from collections import Counter
+            flat = [raw_in[r][c] for r in range(H) for c in range(W)]
+            bg = Counter(flat).most_common(1)[0][0]
+            if bg != 7:
+                return None
+            # Scan odd columns for bars extending from bottom
+            sum_8 = 0
+            sum_2 = 0
+            max_bar_col = -1
+            for c in range(1, W, 2):
+                h = 0
+                bar_color = None
+                for r in range(H - 1, -1, -1):
+                    if raw_in[r][c] != 7:
+                        if bar_color is None:
+                            bar_color = raw_in[r][c]
+                        if raw_in[r][c] == bar_color:
+                            h += 1
+                        else:
+                            break
+                    else:
+                        break
+                if h > 0 and bar_color in (8, 2):
+                    if bar_color == 8:
+                        sum_8 += h
+                    else:
+                        sum_2 += h
+                    max_bar_col = max(max_bar_col, c)
+            balance_height = sum_8 - sum_2
+            if balance_height <= 0:
+                return None
+            # Target column: next odd column after the last bar
+            target_col = max_bar_col + 2
+            if target_col >= W or target_col % 2 == 0:
+                return None
+            # Build expected output
+            expected = [row[:] for row in raw_in]
+            for r in range(H - balance_height, H):
+                if 0 <= r < H:
+                    expected[r][target_col] = 5
+            if expected != raw_out:
+                return None
+        return {"type": "bar_chart_balance", "confidence": 1.0,
+                "bg_color": 7, "bar_color_pos": 8, "bar_color_neg": 2, "fill_color": 5}
+
 
 class DescendOperator(Operator):
     """
@@ -7521,6 +7803,12 @@ class PredictOperator(Operator):
             return self._apply_rect_directional_tile(rule, input_grid)
         if rule_type == "corner_block_shift":
             return self._apply_corner_block_shift(rule, input_grid)
+        if rule_type == "grid_section_key_lookup":
+            return self._apply_grid_section_key_lookup(rule, input_grid)
+        if rule_type == "shape_template_catalog":
+            return self._apply_shape_template_catalog(rule, input_grid)
+        if rule_type == "bar_chart_balance":
+            return self._apply_bar_chart_balance(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -10124,6 +10412,151 @@ class PredictOperator(Operator):
                         if 0 <= r < H and 0 <= c < W:
                             output[r][c] = b["color"]
 
+        return output
+
+    # ---- strategy 61 apply: grid section key lookup --------------------------
+
+    def _apply_grid_section_key_lookup(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        # Find separator rows and cols
+        sep_rows = [r for r in range(H) if all(raw[r][c] == 5 for c in range(W))]
+        sep_cols = [c for c in range(W) if all(raw[r][c] == 5 for r in range(H))]
+        if len(sep_rows) != 2 or len(sep_cols) != 2:
+            return [row[:] for row in raw]
+        # Build section bands
+        row_bands = []
+        prev = 0
+        for sr in sep_rows:
+            row_bands.append((prev, sr))
+            prev = sr + 1
+        row_bands.append((prev, H))
+        col_bands = []
+        prev = 0
+        for sc in sep_cols:
+            col_bands.append((prev, sc))
+            prev = sc + 1
+        col_bands.append((prev, W))
+        # Find key section
+        key_section = None
+        for mr in range(3):
+            for mc in range(3):
+                r0, r1 = row_bands[mr]
+                c0, c1 = col_bands[mc]
+                cells = {}
+                for r in range(r0, r1):
+                    for c in range(c0, c1):
+                        v = raw[r][c]
+                        if v != 0:
+                            cells[(r - r0, c - c0)] = v
+                unique_vals = set(cells.values())
+                if len(cells) == 4 and len(unique_vals) == 4 and 8 not in unique_vals:
+                    key_section = cells
+                    break
+            if key_section is not None:
+                break
+        if key_section is None:
+            return [row[:] for row in raw]
+        # Build output
+        output = [[0] * W for _ in range(H)]
+        for sr in sep_rows:
+            for c in range(W):
+                output[sr][c] = 5
+        for sc in sep_cols:
+            for r in range(H):
+                output[r][sc] = 5
+        for (lr, lc), v in key_section.items():
+            r0, r1 = row_bands[lr]
+            c0, c1 = col_bands[lc]
+            for r in range(r0, r1):
+                for c in range(c0, c1):
+                    output[r][c] = v
+        return output
+
+    # ---- strategy 62 apply: shape template catalog ---------------------------
+
+    def _apply_shape_template_catalog(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        # Find sep_col: first column with 5 in row 0
+        sep_col = None
+        for c in range(W):
+            if raw[0][c] == 5:
+                sep_col = c
+                break
+        # Find sep_row: first row where cols 0..sep_col are all 5
+        sep_row = None
+        if sep_col is not None:
+            for r in range(1, H):
+                if all(raw[r][c] == 5 for c in range(sep_col + 1)):
+                    sep_row = r
+                    break
+        if sep_row is None or sep_col is None:
+            return [row[:] for row in raw]
+        # Extract templates
+        key_colors = set()
+        for r in range(sep_row):
+            for c in range(sep_col):
+                v = raw[r][c]
+                if v != 0 and v != 5:
+                    key_colors.add(v)
+        templates = {}
+        comps = GeneralizeOperator._find_connected_components(
+            raw, H, W, key_colors, region=(0, sep_row, 0, sep_col))
+        for color, cells in comps:
+            shape = GeneralizeOperator._normalize_shape(cells)
+            orients = GeneralizeOperator._shape_orientations(shape)
+            templates[color] = orients
+        # Find and replace color-3 components
+        output = [row[:] for row in raw]
+        comps_3 = GeneralizeOperator._find_connected_components(raw, H, W, {3})
+        for _, cells in comps_3:
+            shape = GeneralizeOperator._normalize_shape(cells)
+            for color, orients in templates.items():
+                if shape in orients:
+                    for r, c in cells:
+                        output[r][c] = color
+                    break
+        return output
+
+    # ---- strategy 63 apply: bar chart balance --------------------------------
+
+    def _apply_bar_chart_balance(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        bg = rule.get("bg_color", 7)
+        pos_color = rule.get("bar_color_pos", 8)
+        neg_color = rule.get("bar_color_neg", 2)
+        fill_color = rule.get("fill_color", 5)
+        sum_pos = 0
+        sum_neg = 0
+        max_bar_col = -1
+        for c in range(1, W, 2):
+            h = 0
+            bar_color = None
+            for r in range(H - 1, -1, -1):
+                if raw[r][c] != bg:
+                    if bar_color is None:
+                        bar_color = raw[r][c]
+                    if raw[r][c] == bar_color:
+                        h += 1
+                    else:
+                        break
+                else:
+                    break
+            if h > 0 and bar_color in (pos_color, neg_color):
+                if bar_color == pos_color:
+                    sum_pos += h
+                else:
+                    sum_neg += h
+                max_bar_col = max(max_bar_col, c)
+        balance_height = sum_pos - sum_neg
+        target_col = max_bar_col + 2
+        output = [row[:] for row in raw]
+        if balance_height > 0 and 0 <= target_col < W:
+            for r in range(H - balance_height, H):
+                if 0 <= r < H:
+                    output[r][target_col] = fill_color
         return output
 
     # ---- helpers ---------------------------------------------------------
