@@ -350,6 +350,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_zigzag_warp(patterns, wm)
 
+        # Strategy 16: gravity slide toward wall boundary
+        if rule is None:
+            rule = self._try_gravity_slide(patterns, wm)
+
+        # Strategy 17: arrow projection to grid edges
+        if rule is None:
+            rule = self._try_arrow_projection(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1765,6 +1773,323 @@ class GeneralizeOperator(Operator):
         return {"type": "zigzag_warp", "confidence": 1.0}
 
 
+    # ---- strategy: gravity slide toward wall boundary ----------------------
+
+    def _try_gravity_slide(self, patterns, wm):
+        """
+        Detect pattern: grid has 3 colors (bg, wall, object). Wall forms
+        stepped boundary that stays fixed. Object components slide down
+        toward wall, stopping 1 row before contact. Against already-placed
+        objects, components touch (gap 0).
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        # Detect bg as the color present in ALL pairs with highest total count
+        total_freq = {}
+        pair_color_sets = []
+        for pair in task.example_pairs:
+            g0 = pair.input_grid
+            if not g0:
+                return None
+            raw_in = g0.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            pc = set()
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    total_freq[v] = total_freq.get(v, 0) + 1
+                    pc.add(v)
+            pair_color_sets.append(pc)
+
+        common_colors = pair_color_sets[0]
+        for pc in pair_color_sets[1:]:
+            common_colors = common_colors & pc
+        if not common_colors:
+            return None
+        bg = max(common_colors, key=lambda c: total_freq[c])
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            # Count per-pair colors
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+
+            non_bg = [c for c in freq if c != bg]
+            if len(non_bg) != 2:
+                return None
+
+            # Wall = unchanged between input and output
+            wall_color = obj_color = None
+            for color in non_bg:
+                in_pos = {(r2, c2) for r2 in range(h) for c2 in range(w)
+                          if raw_in[r2][c2] == color}
+                out_pos = {(r2, c2) for r2 in range(h) for c2 in range(w)
+                           if raw_out[r2][c2] == color}
+                if in_pos == out_pos:
+                    wall_color = color
+                else:
+                    obj_color = color
+
+            if wall_color is None or obj_color is None:
+                return None
+
+            predicted = GeneralizeOperator._predict_gravity_slide(
+                raw_in, bg, wall_color, obj_color, h, w)
+            if predicted != raw_out:
+                return None
+
+        return {"type": "gravity_slide", "bg_color": bg, "confidence": 1.0}
+
+    @staticmethod
+    def _predict_gravity_slide(raw_in, bg, wall_color, obj_color, h, w):
+        """Slide object components down, gap=1 from wall, gap=0 from placed."""
+        obj_cells = set()
+        wall_cells = set()
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] == obj_color:
+                    obj_cells.add((r, c))
+                elif raw_in[r][c] == wall_color:
+                    wall_cells.add((r, c))
+
+        # Connected components
+        components = []
+        visited = set()
+        for cell in obj_cells:
+            if cell in visited:
+                continue
+            comp = []
+            queue = [cell]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in obj_cells:
+                    continue
+                visited.add(p)
+                comp.append(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in obj_cells and nb not in visited:
+                        queue.append(nb)
+            components.append(comp)
+
+        # Process bottom-first (highest bottom row first)
+        components.sort(key=lambda comp: -max(r for r, c in comp))
+
+        output = [row[:] for row in raw_in]
+        for r, c in obj_cells:
+            output[r][c] = bg
+
+        placed = set()
+
+        for comp in components:
+            col_bottoms = {}
+            for r, c in comp:
+                if c not in col_bottoms or r > col_bottoms[c]:
+                    col_bottoms[c] = r
+
+            min_shift = h
+            for c, bottom_r in col_bottoms.items():
+                obs_r = h
+                obs_is_wall = True
+                for r in range(bottom_r + 1, h):
+                    if (r, c) in wall_cells:
+                        obs_r = r
+                        obs_is_wall = True
+                        break
+                    if (r, c) in placed:
+                        obs_r = r
+                        obs_is_wall = False
+                        break
+
+                gap = obs_r - bottom_r - 1
+                shift = max(0, gap - 1) if obs_is_wall else gap
+                if shift < min_shift:
+                    min_shift = shift
+
+            for r, c in comp:
+                nr = r + min_shift
+                if 0 <= nr < h:
+                    output[nr][c] = obj_color
+                    placed.add((nr, c))
+
+        return output
+
+    # ---- strategy: arrow projection to grid edges ----------------------------
+
+    def _try_arrow_projection(self, patterns, wm):
+        """
+        Detect pattern: shapes have a core color and a single special-color
+        cell. The special cell projects a ray (every 2 cells) toward the
+        nearest grid edge, filling that edge with the special color.
+        Corners where two borders meet become 0.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+
+            shape_infos = GeneralizeOperator._detect_arrow_shapes(
+                raw_in, pair_bg, h, w)
+            if shape_infos is None:
+                return None
+
+            predicted = GeneralizeOperator._predict_arrow_projection(
+                raw_in, pair_bg, shape_infos, h, w)
+            if predicted != raw_out:
+                return None
+
+        return {"type": "arrow_projection", "confidence": 1.0}
+
+    @staticmethod
+    def _detect_arrow_shapes(raw, bg, h, w):
+        """Find shapes with core + single special cell, determine direction."""
+        non_bg = set()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    non_bg.add((r, c))
+
+        if not non_bg:
+            return None
+
+        # Connected components
+        visited = set()
+        shapes = []
+        for cell in sorted(non_bg):
+            if cell in visited:
+                continue
+            comp = []
+            queue = [cell]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in non_bg:
+                    continue
+                visited.add(p)
+                comp.append(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in non_bg and nb not in visited:
+                        queue.append(nb)
+            shapes.append(comp)
+
+        infos = []
+        for comp in shapes:
+            cc = {}
+            for r, c in comp:
+                v = raw[r][c]
+                cc[v] = cc.get(v, 0) + 1
+            if len(cc) != 2:
+                continue
+
+            sorted_cc = sorted(cc.items(), key=lambda x: -x[1])
+            special_color = sorted_cc[1][0]
+
+            special_cells = [(r, c) for r, c in comp if raw[r][c] == special_color]
+            if len(special_cells) != 1:
+                continue
+
+            sr, sc = special_cells[0]
+            comp_set = set(comp)
+            dirs = []
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = sr + dr, sc + dc
+                if (nr, nc) not in comp_set:
+                    if 0 <= nr < h and 0 <= nc < w:
+                        if raw[nr][nc] == bg:
+                            dirs.append((dr, dc))
+                    else:
+                        dirs.append((dr, dc))
+            if len(dirs) != 1:
+                continue
+
+            infos.append({
+                "special_color": special_color,
+                "special_pos": (sr, sc),
+                "direction": dirs[0],
+            })
+
+        if not infos:
+            return None
+        return infos
+
+    @staticmethod
+    def _predict_arrow_projection(raw, bg, shape_infos, h, w):
+        """Project rays and fill borders for arrow shapes."""
+        output = [row[:] for row in raw]
+
+        # Phase 1: place ray dots (every 2 cells from special cell)
+        for info in shape_infos:
+            sr, sc = info["special_pos"]
+            dr, dc = info["direction"]
+            sp_color = info["special_color"]
+            r, c = sr + dr, sc + dc
+            step = 1
+            while 0 <= r < h and 0 <= c < w:
+                if step % 2 == 0:
+                    output[r][c] = sp_color
+                r += dr
+                c += dc
+                step += 1
+
+        # Phase 2: fill border rows/columns
+        border_info = {}
+        for info in shape_infos:
+            dr, dc = info["direction"]
+            sp_color = info["special_color"]
+            if dr == -1:
+                border_info["top"] = sp_color
+                for c2 in range(w):
+                    output[0][c2] = sp_color
+            elif dr == 1:
+                border_info["bottom"] = sp_color
+                for c2 in range(w):
+                    output[h - 1][c2] = sp_color
+            elif dc == -1:
+                border_info["left"] = sp_color
+                for r2 in range(h):
+                    output[r2][0] = sp_color
+            elif dc == 1:
+                border_info["right"] = sp_color
+                for r2 in range(h):
+                    output[r2][w - 1] = sp_color
+
+        # Phase 3: corners where two borders meet become 0
+        for cr, cc, e1, e2 in [(0, 0, "top", "left"),
+                                (0, w - 1, "top", "right"),
+                                (h - 1, 0, "bottom", "left"),
+                                (h - 1, w - 1, "bottom", "right")]:
+            if e1 in border_info and e2 in border_info:
+                output[cr][cc] = 0
+
+        return output
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -1853,6 +2178,10 @@ class PredictOperator(Operator):
             return self._apply_trail_displacement(rule, input_grid)
         if rule_type == "zigzag_warp":
             return self._apply_zigzag_warp(rule, input_grid)
+        if rule_type == "gravity_slide":
+            return self._apply_gravity_slide(rule, input_grid)
+        if rule_type == "arrow_projection":
+            return self._apply_arrow_projection(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2281,6 +2610,67 @@ class PredictOperator(Operator):
             output[r] = new_row
 
         return output
+
+    def _apply_gravity_slide(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg_color"]
+
+        freq = {}
+        for r in range(h):
+            for c in range(w):
+                freq[raw[r][c]] = freq.get(raw[r][c], 0) + 1
+
+        non_bg = [c for c in freq if c != bg]
+        if len(non_bg) != 2:
+            return [row[:] for row in raw]
+
+        # Wall = non-bg color that appears in the last row (or first row/col)
+        # Try last row first, then first col, then first row
+        wall_color = None
+        for check_cells in [
+            [(h - 1, c) for c in range(w)],
+            [(r, 0) for r in range(h)],
+            [(0, c) for c in range(w)],
+        ]:
+            counts = {}
+            for r2, c2 in check_cells:
+                v = raw[r2][c2]
+                if v != bg:
+                    counts[v] = counts.get(v, 0) + 1
+            if counts:
+                wall_color = max(counts, key=counts.get)
+                break
+
+        if wall_color is None:
+            return [row[:] for row in raw]
+
+        obj_candidates = [c for c in non_bg if c != wall_color]
+        if len(obj_candidates) != 1:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._predict_gravity_slide(
+            raw, bg, wall_color, obj_candidates[0], h, w)
+
+    def _apply_arrow_projection(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Detect bg as most frequent color
+        freq = {}
+        for r in range(h):
+            for c in range(w):
+                freq[raw[r][c]] = freq.get(raw[r][c], 0) + 1
+        bg = max(freq, key=freq.get)
+
+        shape_infos = GeneralizeOperator._detect_arrow_shapes(raw, bg, h, w)
+        if not shape_infos:
+            return [row[:] for row in raw]
+
+        return GeneralizeOperator._predict_arrow_projection(
+            raw, bg, shape_infos, h, w)
 
     # ---- helpers ---------------------------------------------------------
 

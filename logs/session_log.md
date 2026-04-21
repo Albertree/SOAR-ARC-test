@@ -137,3 +137,30 @@
 - Time: 68s
 - Log: logs/learn_20260421_193101.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 19:36
+
+- Split: training, Tasks: 20
+- Correct: 13 / 20 (65.0%)
+- Rules: 27 -> 27 (+0 learned)
+- Stored rule hits: 13
+- Time: 70s
+- Log: logs/learn_20260421_193514.log
+
+---
+## Session 6 -- 2026-04-21 20:24
+
+### Strategies Added
+1. **gravity_slide** — grid has 3 colors (bg, wall, object); wall forms stepped boundary; object components slide down toward wall, stopping 1 row before contact; stacked objects touch directly (solves 825aa9e9)
+2. **arrow_projection** — shapes have a core color and a single special-color cell; the special cell projects a ray (every 2 cells) toward the nearest grid edge, filling that entire edge with the special color; corners where two borders meet become 0 (solves 13f06aa5)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 15 / 20 (75.0%) — up from 13/20
+- Solved: e9ac8c9e, c0f76784, 8be77c9e, 6e82a1ae, c59eb873, bbc9ae5d, d23f8c26, 85c4e7cd, e5790162, 60a26a3e, 332202d5, c9680e90, 1c56ad9f (stored), 825aa9e9 (gravity_slide), 13f06aa5 (arrow_projection)
+- Rules: 29 -> 29 (+0 learned)
+- Stored rule hits: 15
+- Time: 63s
+- Log: logs/learn_20260421_202308.log
+- Regression: 08ed6ac7 CORRECT
