@@ -55,3 +55,30 @@
 - Time: 55s
 - Log: logs/learn_20260421_182507.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 18:27
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 15 -> 17 (+2 learned)
+- Stored rule hits: 6
+- Time: 55s
+- Log: logs/learn_20260421_182633.log
+
+---
+## Session 3 -- 2026-04-21 18:35
+
+### Strategies Added
+1. **reverse_concentric_rings** — concentric rectangular rings of uniform color; output reverses the ring order innermost ↔ outermost (solves 85c4e7cd)
+2. **keep_center_column** — output preserves only the center column of the input grid, zeroing all other cells (solves d23f8c26)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 8 / 20 (40.0%) — up from 6/20
+- Solved: e9ac8c9e, c0f76784, 8be77c9e, 6e82a1ae, c59eb873, bbc9ae5d (stored), d23f8c26 (keep_center_column), 85c4e7cd (reverse_concentric_rings)
+- Rules: 17 -> 20 (+3 learned)
+- Stored rule hits: 6
+- Time: 65s
+- Log: logs/learn_20260421_183518.log
+- Regression: 08ed6ac7 CORRECT

@@ -294,31 +294,39 @@ class GeneralizeOperator(Operator):
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         rule = self._try_recolor_sequential(patterns)
 
-        # Strategy 2: simple 1:1 color mapping
+        # Strategy 2: reverse concentric rectangular rings
+        if rule is None:
+            rule = self._try_reverse_concentric_rings(patterns, wm)
+
+        # Strategy 3: keep only the center column
+        if rule is None:
+            rule = self._try_keep_center_column(patterns, wm)
+
+        # Strategy 4: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
-        # Strategy 3: uniform scaling (output = NxN blocks of input cells)
+        # Strategy 5: uniform scaling (output = NxN blocks of input cells)
         if rule is None:
             rule = self._try_uniform_scale(patterns, wm)
 
-        # Strategy 4: recolor by connected-component size
+        # Strategy 6: recolor by connected-component size
         if rule is None:
             rule = self._try_recolor_by_size(patterns, wm)
 
-        # Strategy 5: corner-marker quadrant fill
+        # Strategy 7: corner-marker quadrant fill
         if rule is None:
             rule = self._try_corner_fill(patterns, wm)
 
-        # Strategy 6: vertical mirror (output = input rows + reversed rows)
+        # Strategy 8: vertical mirror (output = input rows + reversed rows)
         if rule is None:
             rule = self._try_vertical_mirror(patterns, wm)
 
-        # Strategy 7: fill hollow rectangles by interior size
+        # Strategy 9: fill hollow rectangles by interior size
         if rule is None:
             rule = self._try_fill_rect_by_size(patterns, wm)
 
-        # Strategy 8: staircase growth (single row expands into triangle)
+        # Strategy 10: staircase growth (single row expands into triangle)
         if rule is None:
             rule = self._try_staircase_growth(patterns, wm)
 
@@ -384,6 +392,99 @@ class GeneralizeOperator(Operator):
             if colors != list(range(colors[0], colors[0] + len(colors))):
                 return False
         return True
+
+    # ---- strategy: reverse concentric rings ------------------------------
+
+    def _try_reverse_concentric_rings(self, patterns, wm):
+        """
+        Detect pattern: grid consists of concentric rectangular rings, each
+        of uniform color. Output reverses the ring order (innermost ↔ outermost).
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            num_rings = (min(h, w) + 1) // 2
+            if num_rings < 2:
+                return None
+
+            in_rings = [None] * num_rings
+            out_rings = [None] * num_rings
+
+            valid = True
+            for r in range(h):
+                for c in range(w):
+                    d = min(r, c, h - 1 - r, w - 1 - c)
+                    if in_rings[d] is None:
+                        in_rings[d] = raw_in[r][c]
+                    elif in_rings[d] != raw_in[r][c]:
+                        valid = False
+                        break
+                    if out_rings[d] is None:
+                        out_rings[d] = raw_out[r][c]
+                    elif out_rings[d] != raw_out[r][c]:
+                        valid = False
+                        break
+                if not valid:
+                    break
+
+            if not valid:
+                return None
+
+            # All ring colors must be distinct in input
+            if len(set(in_rings)) != num_rings:
+                return None
+
+            # Output rings must be the reverse of input rings
+            if out_rings != list(reversed(in_rings)):
+                return None
+
+        return {"type": "reverse_concentric_rings", "confidence": 1.0}
+
+    # ---- strategy: keep center column ------------------------------------
+
+    def _try_keep_center_column(self, patterns, wm):
+        """
+        Detect pattern: output preserves only the center column of the input
+        grid, setting all other cells to zero (or background).
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        bg_color = 0
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if w < 3 or w % 2 == 0:
+                return None
+
+            mid_c = w // 2
+
+            for r in range(h):
+                for c in range(w):
+                    if c == mid_c:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+                    else:
+                        if raw_out[r][c] != bg_color:
+                            return None
+
+        return {"type": "keep_center_column", "bg_color": bg_color, "confidence": 0.9}
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -972,6 +1073,10 @@ class PredictOperator(Operator):
         rule_type = rule.get("type")
         if rule_type == "recolor_sequential":
             return self._apply_recolor_sequential(rule, input_grid)
+        if rule_type == "reverse_concentric_rings":
+            return self._apply_reverse_concentric_rings(rule, input_grid)
+        if rule_type == "keep_center_column":
+            return self._apply_keep_center_column(rule, input_grid)
         if rule_type == "color_mapping":
             return self._apply_color_mapping(rule, input_grid)
         if rule_type == "uniform_scale":
@@ -1028,6 +1133,43 @@ class PredictOperator(Operator):
             for r, c in group:
                 output[r][c] = new_color
 
+        return output
+
+    def _apply_reverse_concentric_rings(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        num_rings = (min(h, w) + 1) // 2
+
+        # Extract ring colors from input
+        ring_colors = [None] * num_rings
+        for r in range(h):
+            for c in range(w):
+                d = min(r, c, h - 1 - r, w - 1 - c)
+                if ring_colors[d] is None:
+                    ring_colors[d] = raw[r][c]
+
+        reversed_colors = list(reversed(ring_colors))
+
+        output = []
+        for r in range(h):
+            row = []
+            for c in range(w):
+                d = min(r, c, h - 1 - r, w - 1 - c)
+                row.append(reversed_colors[d])
+            output.append(row)
+        return output
+
+    def _apply_keep_center_column(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule.get("bg_color", 0)
+        mid_c = w // 2
+
+        output = [[bg] * w for _ in range(h)]
+        for r in range(h):
+            output[r][mid_c] = raw[r][mid_c]
         return output
 
     def _apply_color_mapping(self, rule, input_grid):
