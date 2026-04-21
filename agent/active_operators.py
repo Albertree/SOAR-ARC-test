@@ -450,6 +450,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_border_flood_fill(patterns, wm)
 
+        # Strategy 35: separator histogram (scatter dots → bar chart in framed center)
+        if rule is None:
+            rule = self._try_separator_histogram(patterns, wm)
+
+        # Strategy 36: rotation quadrant tile 4×4 (NxN → 4Nx4N rotation symmetry)
+        if rule is None:
+            rule = self._try_rotation_quadrant_tile_4x4(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -4807,6 +4815,250 @@ class GeneralizeOperator(Operator):
         return {(r, c) for r in range(r1, r2 + 1) for c in range(c1, c2 + 1)}
 
 
+    # ---- strategy: separator histogram -------------------------------------
+
+    def _try_separator_histogram(self, patterns, wm):
+        """
+        Detect pattern: grid divided by 2 horizontal + 2 vertical colored
+        separator lines.  Center section has scattered dots whose color
+        matches one separator.  Output = framed center with histogram bars
+        extending from the matching separator.
+
+        Category: grids with colored separator lines and scattered marker
+        dots that collapse into a bar-chart / histogram.
+        """
+        task = wm.task
+        if not task or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+
+            params = self._sep_hist_detect(raw_in)
+            if params is None:
+                return None
+
+            predicted = self._sep_hist_build(raw_in, params)
+            if predicted is None:
+                return None
+
+            if len(predicted) != len(raw_out):
+                return None
+            for r in range(len(predicted)):
+                if len(predicted[r]) != len(raw_out[r]):
+                    return None
+                for c in range(len(predicted[r])):
+                    if predicted[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "separator_histogram", "confidence": 1.0}
+
+    @staticmethod
+    def _sep_hist_detect(grid):
+        """Detect separator lines and marker colour in *grid*."""
+        H = len(grid)
+        W = len(grid[0]) if grid else 0
+        if H < 5 or W < 5:
+            return None
+
+        # Find horizontal separator rows
+        sep_rows = []
+        for r in range(H):
+            counts = {}
+            for c in range(W):
+                v = grid[r][c]
+                if v != 0:
+                    counts[v] = counts.get(v, 0) + 1
+            if not counts:
+                continue
+            dom = max(counts, key=counts.get)
+            if counts[dom] >= W * 0.7:
+                sep_rows.append((r, dom))
+
+        # Find vertical separator columns
+        sep_cols = []
+        for c in range(W):
+            counts = {}
+            for r in range(H):
+                v = grid[r][c]
+                if v != 0:
+                    counts[v] = counts.get(v, 0) + 1
+            if not counts:
+                continue
+            dom = max(counts, key=counts.get)
+            if counts[dom] >= H * 0.7:
+                sep_cols.append((c, dom))
+
+        if len(sep_rows) != 2 or len(sep_cols) != 2:
+            return None
+
+        sep_rows.sort()
+        sep_cols.sort()
+
+        hr1, hc1 = sep_rows[0]
+        hr2, hc2 = sep_rows[1]
+        vc1, vcc1 = sep_cols[0]
+        vc2, vcc2 = sep_cols[1]
+
+        r_start, r_end = hr1 + 1, hr2 - 1
+        c_start, c_end = vc1 + 1, vc2 - 1
+        if r_start > r_end or c_start > c_end:
+            return None
+
+        # Find marker colour in center section
+        marker_counts = {}
+        for r in range(r_start, r_end + 1):
+            for c in range(c_start, c_end + 1):
+                v = grid[r][c]
+                if v != 0:
+                    marker_counts[v] = marker_counts.get(v, 0) + 1
+
+        if not marker_counts:
+            return None
+
+        marker_color = max(marker_counts, key=marker_counts.get)
+
+        sep_map = {hc1: 'top', hc2: 'bottom', vcc1: 'left', vcc2: 'right'}
+        if marker_color not in sep_map:
+            return None
+
+        return {
+            'sep_rows': [(hr1, hc1), (hr2, hc2)],
+            'sep_cols': [(vc1, vcc1), (vc2, vcc2)],
+            'center': (r_start, r_end, c_start, c_end),
+            'marker_color': marker_color,
+            'fill_direction': sep_map[marker_color],
+        }
+
+    @staticmethod
+    def _sep_hist_build(grid, params):
+        """Build the histogram output grid from detected parameters."""
+        (hr1, hc1), (hr2, hc2) = params['sep_rows']
+        (vc1, vcc1), (vc2, vcc2) = params['sep_cols']
+        r_start, r_end, c_start, c_end = params['center']
+        marker = params['marker_color']
+        fill = params['fill_direction']
+
+        center_h = r_end - r_start + 1
+        center_w = c_end - c_start + 1
+        out_h = center_h + 2
+        out_w = center_w + 2
+
+        out = [[0] * out_w for _ in range(out_h)]
+
+        # Separator borders
+        for c in range(out_w):
+            out[0][c] = hc1
+            out[out_h - 1][c] = hc2
+        for r in range(out_h):
+            out[r][0] = vcc1
+            out[r][out_w - 1] = vcc2
+
+        # Corners from input crossing points
+        out[0][0] = grid[hr1][vc1]
+        out[0][out_w - 1] = grid[hr1][vc2]
+        out[out_h - 1][0] = grid[hr2][vc1]
+        out[out_h - 1][out_w - 1] = grid[hr2][vc2]
+
+        # Build histogram bars
+        if fill == 'bottom':
+            for ci in range(center_w):
+                topmost = None
+                for ri in range(r_start, r_end + 1):
+                    if grid[ri][c_start + ci] == marker:
+                        topmost = ri
+                        break
+                if topmost is not None:
+                    for ri in range(topmost, r_end + 1):
+                        out[1 + ri - r_start][1 + ci] = marker
+        elif fill == 'top':
+            for ci in range(center_w):
+                bottommost = None
+                for ri in range(r_end, r_start - 1, -1):
+                    if grid[ri][c_start + ci] == marker:
+                        bottommost = ri
+                        break
+                if bottommost is not None:
+                    for ri in range(r_start, bottommost + 1):
+                        out[1 + ri - r_start][1 + ci] = marker
+        elif fill == 'right':
+            for ri in range(center_h):
+                leftmost = None
+                for ci in range(c_start, c_end + 1):
+                    if grid[r_start + ri][ci] == marker:
+                        leftmost = ci
+                        break
+                if leftmost is not None:
+                    for ci in range(leftmost, c_end + 1):
+                        out[1 + ri][1 + ci - c_start] = marker
+        elif fill == 'left':
+            for ri in range(center_h):
+                rightmost = None
+                for ci in range(c_end, c_start - 1, -1):
+                    if grid[r_start + ri][ci] == marker:
+                        rightmost = ci
+                        break
+                if rightmost is not None:
+                    for ci in range(c_start, rightmost + 1):
+                        out[1 + ri][1 + ci - c_start] = marker
+
+        return out
+
+    # ---- strategy: rotation quadrant tile 4×4 ------------------------------
+
+    def _try_rotation_quadrant_tile_4x4(self, patterns, wm):
+        """
+        Detect pattern: input is NxN, output is 4Nx4N.  The output is a
+        4×4 arrangement of NxN blocks where each 2×2 quadrant shares one
+        rotation:
+            TL = 180°   TR = 90° CW
+            BL = 90° CCW BR = original
+
+        Category: small tiles expanded into 4-fold rotation-symmetry
+        mosaics.
+        """
+        task = wm.task
+        if not task or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            n = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if n == 0 or n != w:
+                return None
+            if len(raw_out) != 4 * n or len(raw_out[0]) != 4 * n:
+                return None
+
+            orig = [row[:] for row in raw_in]
+            rot180 = self._rotate_180(orig)
+            cw90 = self._rotate_cw90(orig)
+            ccw90 = self._rotate_ccw90(orig)
+
+            layout = [
+                [rot180, rot180, cw90, cw90],
+                [rot180, rot180, cw90, cw90],
+                [ccw90, ccw90, orig, orig],
+                [ccw90, ccw90, orig, orig],
+            ]
+
+            for br in range(4):
+                for bc in range(4):
+                    if not self._check_quadrant(raw_out, br * n, bc * n,
+                                                layout[br][bc]):
+                        return None
+
+        return {"type": "rotation_quadrant_tile_4x4", "confidence": 1.0}
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -4945,6 +5197,10 @@ class PredictOperator(Operator):
             return self._apply_rect_pixel_bridge(rule, input_grid)
         if rule_type == "fractal_block_denoise":
             return self._apply_fractal_block_denoise(rule, input_grid)
+        if rule_type == "separator_histogram":
+            return self._apply_separator_histogram(rule, input_grid)
+        if rule_type == "rotation_quadrant_tile_4x4":
+            return self._apply_rotation_quadrant_tile_4x4(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6387,6 +6643,45 @@ class PredictOperator(Operator):
                     for dc in range(block_w):
                         out[r0 + dr][c0 + dc] = source[dr][dc]
 
+        return out
+
+    # ---- apply: separator histogram ----------------------------------------
+
+    def _apply_separator_histogram(self, rule, input_grid):
+        raw = input_grid.raw
+        params = GeneralizeOperator._sep_hist_detect(raw)
+        if params is None:
+            return [row[:] for row in raw]
+        return GeneralizeOperator._sep_hist_build(raw, params)
+
+    # ---- apply: rotation quadrant tile 4×4 --------------------------------
+
+    def _apply_rotation_quadrant_tile_4x4(self, rule, input_grid):
+        raw = input_grid.raw
+        n = len(raw)
+        w = len(raw[0]) if raw else 0
+        if n == 0 or n != w:
+            return None
+
+        orig = [row[:] for row in raw]
+        rot180 = GeneralizeOperator._rotate_180(orig)
+        cw90 = GeneralizeOperator._rotate_cw90(orig)
+        ccw90 = GeneralizeOperator._rotate_ccw90(orig)
+
+        layout = [
+            [rot180, rot180, cw90, cw90],
+            [rot180, rot180, cw90, cw90],
+            [ccw90, ccw90, orig, orig],
+            [ccw90, ccw90, orig, orig],
+        ]
+
+        out = [[0] * (4 * n) for _ in range(4 * n)]
+        for br in range(4):
+            for bc in range(4):
+                blk = layout[br][bc]
+                for r in range(n):
+                    for c in range(n):
+                        out[br * n + r][bc * n + c] = blk[r][c]
         return out
 
     # ---- helpers ---------------------------------------------------------

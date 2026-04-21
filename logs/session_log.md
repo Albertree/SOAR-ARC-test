@@ -444,3 +444,34 @@
 - Stored rule hits: 35
 - Time: 153s
 - Log: logs/learn_20260422_004557.log
+
+---
+## Learning Loop -- 2026-04-22 00:52
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 113 -> 113 (+0 learned)
+- Stored rule hits: 38
+- Time: 148s
+- Log: logs/learn_20260422_004941.log
+
+---
+## Session 16 -- 2026-04-22 01:05
+
+### New Strategies
+1. **separator_histogram** (Strategy 35): Grids divided by 2 horizontal + 2 vertical
+   colored separator lines. Scattered marker dots in the center section (matching one
+   separator color) collapse into histogram bars extending from the matching separator.
+   Supports all 4 fill directions (top/bottom/left/right). Fixed task `5daaa586`.
+2. **rotation_quadrant_tile_4x4** (Strategy 36): NxN input → 4Nx4N output via 4×4 block
+   arrangement. Each 2×2 quadrant uses a specific rotation: TL=180°, TR=90°CW,
+   BL=90°CCW, BR=original. Fixed task `cf5fd0ad`.
+
+### Results
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%)  ← up from 38/40 (95.0%)
+- Rules: 113 -> 115 (+2 learned)
+- Stored rule hits: 38
+- Discovered: 2 new rules from pipeline
+- Time: 147s
+- Log: logs/learn_20260422_010305.log
