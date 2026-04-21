@@ -310,6 +310,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_corner_fill(patterns, wm)
 
+        # Strategy 6: vertical mirror (output = input rows + reversed rows)
+        if rule is None:
+            rule = self._try_vertical_mirror(patterns, wm)
+
+        # Strategy 7: fill hollow rectangles by interior size
+        if rule is None:
+            rule = self._try_fill_rect_by_size(patterns, wm)
+
+        # Strategy 8: staircase growth (single row expands into triangle)
+        if rule is None:
+            rule = self._try_staircase_growth(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -658,6 +670,243 @@ class GeneralizeOperator(Operator):
             "confidence": 0.95,
         }
 
+    # ---- strategy: vertical mirror (append reversed rows) ---------------
+
+    def _try_vertical_mirror(self, patterns, wm):
+        """
+        Detect pattern: output is input rows followed by input rows reversed.
+        Output height = 2 * input height, same width.
+        """
+        task = wm.task
+        if not task:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            if h_out != 2 * h_in or w_out != w_in:
+                return None
+
+            # Top half must equal input
+            for r in range(h_in):
+                for c in range(w_in):
+                    if raw_out[r][c] != raw_in[r][c]:
+                        return None
+
+            # Bottom half must equal reversed input
+            for r in range(h_in):
+                for c in range(w_in):
+                    if raw_out[h_in + r][c] != raw_in[h_in - 1 - r][c]:
+                        return None
+
+        return {"type": "vertical_mirror", "confidence": 1.0}
+
+    # ---- strategy: fill hollow rectangles by interior size ---------------
+
+    def _try_fill_rect_by_size(self, patterns, wm):
+        """
+        Detect pattern: rectangular frames of one color with hollow interiors.
+        Each interior is filled with a color determined by the interior's
+        minimum dimension (e.g., 1x1->6, 2x2->7, 3x3->8).
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        bg_color = None
+        frame_color = None
+        size_to_color = {}
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h, w = len(raw_in), len(raw_in[0]) if raw_in else 0
+
+            # Detect background
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+            if bg_color is None:
+                bg_color = pair_bg
+            elif bg_color != pair_bg:
+                return None
+
+            # Collect non-bg colors in input
+            non_bg_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != bg_color:
+                        non_bg_colors.add(raw_in[r][c])
+
+            if not non_bg_colors:
+                return None
+
+            # Try each non-bg color as frame color
+            found = False
+            for fc in sorted(non_bg_colors):
+                positions = [(r, c) for r in range(h) for c in range(w)
+                             if raw_in[r][c] == fc]
+                groups = PredictOperator._group_positions(positions)
+                if not groups:
+                    continue
+
+                all_valid = True
+                pair_map = {}
+
+                for group in groups:
+                    rows = [r for r, c in group]
+                    cols = [c for r, c in group]
+                    r1, r2 = min(rows), max(rows)
+                    c1, c2 = min(cols), max(cols)
+                    bh = r2 - r1 + 1
+                    bw = c2 - c1 + 1
+
+                    if bh < 3 or bw < 3:
+                        all_valid = False
+                        break
+
+                    # Check all border cells present, no interior cells
+                    group_set = set(group)
+                    for r in range(r1, r2 + 1):
+                        for c in range(c1, c2 + 1):
+                            is_border = (r == r1 or r == r2
+                                         or c == c1 or c == c2)
+                            if is_border and (r, c) not in group_set:
+                                all_valid = False
+                                break
+                            if not is_border and (r, c) in group_set:
+                                all_valid = False
+                                break
+                        if not all_valid:
+                            break
+                    if not all_valid:
+                        break
+
+                    # Interior must be bg in input
+                    for r in range(r1 + 1, r2):
+                        for c in range(c1 + 1, c2):
+                            if raw_in[r][c] != bg_color:
+                                all_valid = False
+                                break
+                        if not all_valid:
+                            break
+                    if not all_valid:
+                        break
+
+                    # Interior must be one consistent fill color in output
+                    fill_colors = set()
+                    for r in range(r1 + 1, r2):
+                        for c in range(c1 + 1, c2):
+                            fill_colors.add(raw_out[r][c])
+                    if len(fill_colors) != 1:
+                        all_valid = False
+                        break
+                    fill_c = fill_colors.pop()
+                    if fill_c == bg_color or fill_c == fc:
+                        all_valid = False
+                        break
+
+                    key = min(bh - 2, bw - 2)
+                    if key in pair_map and pair_map[key] != fill_c:
+                        all_valid = False
+                        break
+                    pair_map[key] = fill_c
+
+                if all_valid and pair_map:
+                    if frame_color is None:
+                        frame_color = fc
+                    elif frame_color != fc:
+                        return None
+                    for k, v in pair_map.items():
+                        if k in size_to_color and size_to_color[k] != v:
+                            return None
+                        size_to_color[k] = v
+                    found = True
+                    break
+
+            if not found:
+                return None
+
+        if frame_color is None or not size_to_color:
+            return None
+
+        return {
+            "type": "fill_rect_by_size",
+            "frame_color": frame_color,
+            "bg_color": bg_color,
+            "size_to_color": size_to_color,
+            "confidence": 0.95,
+        }
+
+    # ---- strategy: staircase growth (single row -> triangle) -------------
+
+    def _try_staircase_growth(self, patterns, wm):
+        """
+        Detect pattern: input is a single row with K colored cells from the
+        left. Output has width//2 rows where row i has K+i colored cells.
+        """
+        task = wm.task
+        if not task:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            if h_in != 1 or w_out != w_in:
+                return None
+            if w_in < 2 or h_out != w_in // 2:
+                return None
+
+            # Find contiguous colored cells from left
+            row = raw_in[0]
+            pair_color = None
+            start_count = 0
+            for c in range(w_in):
+                if row[c] != 0:
+                    if pair_color is None:
+                        pair_color = row[c]
+                    elif row[c] != pair_color:
+                        return None
+                    start_count += 1
+                else:
+                    break
+
+            if pair_color is None or start_count == 0:
+                return None
+
+            # Rest must be 0
+            for c in range(start_count, w_in):
+                if row[c] != 0:
+                    return None
+
+            # Verify output: each row adds one more colored cell
+            for r in range(h_out):
+                count = start_count + r
+                for c in range(w_out):
+                    expected = pair_color if c < count else 0
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {"type": "staircase_growth", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -731,6 +980,12 @@ class PredictOperator(Operator):
             return self._apply_recolor_by_size(rule, input_grid)
         if rule_type == "corner_fill":
             return self._apply_corner_fill(rule, input_grid)
+        if rule_type == "vertical_mirror":
+            return self._apply_vertical_mirror(rule, input_grid)
+        if rule_type == "fill_rect_by_size":
+            return self._apply_fill_rect_by_size(rule, input_grid)
+        if rule_type == "staircase_growth":
+            return self._apply_staircase_growth(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -869,6 +1124,96 @@ class PredictOperator(Operator):
             output[bl_r][bl_c] = bg_color
             output[br_r][br_c] = bg_color
 
+        return output
+
+    def _apply_vertical_mirror(self, rule, input_grid):
+        raw = input_grid.raw
+        output = [row[:] for row in raw]
+        for row in reversed(raw):
+            output.append(row[:])
+        return output
+
+    def _apply_fill_rect_by_size(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else 0
+        frame_color = rule["frame_color"]
+        size_to_color = {int(k): v for k, v in rule["size_to_color"].items()}
+
+        output = [row[:] for row in raw]
+        positions = [(r, c) for r in range(h) for c in range(w)
+                     if raw[r][c] == frame_color]
+        groups = self._group_positions(positions)
+
+        for group in groups:
+            rows = [r for r, c in group]
+            cols = [c for r, c in group]
+            r1, r2 = min(rows), max(rows)
+            c1, c2 = min(cols), max(cols)
+            int_h = r2 - r1 - 1
+            int_w = c2 - c1 - 1
+            if int_h < 1 or int_w < 1:
+                continue
+
+            # Verify it's a rectangular frame before filling
+            group_set = set(group)
+            is_frame = True
+            for r in range(r1, r2 + 1):
+                for c in range(c1, c2 + 1):
+                    is_border = (r == r1 or r == r2
+                                 or c == c1 or c == c2)
+                    if is_border and (r, c) not in group_set:
+                        is_frame = False
+                        break
+                    if not is_border and (r, c) in group_set:
+                        is_frame = False
+                        break
+                if not is_frame:
+                    break
+            if not is_frame:
+                continue
+
+            key = min(int_h, int_w)
+            fill_c = size_to_color.get(key)
+            if fill_c is None and size_to_color:
+                closest = min(size_to_color.keys(),
+                              key=lambda s: abs(s - key))
+                fill_c = size_to_color[closest]
+            if fill_c is None:
+                continue
+
+            for r in range(r1 + 1, r2):
+                for c in range(c1 + 1, c2):
+                    output[r][c] = fill_c
+
+        return output
+
+    def _apply_staircase_growth(self, rule, input_grid):
+        raw = input_grid.raw
+        if len(raw) != 1:
+            return [row[:] for row in raw]
+
+        row = raw[0]
+        w = len(row)
+
+        # Find color and count
+        color = None
+        start_count = 0
+        for c in range(w):
+            if row[c] != 0:
+                if color is None:
+                    color = row[c]
+                start_count += 1
+            else:
+                break
+
+        if color is None:
+            return [row[:]]
+
+        num_rows = w // 2
+        output = []
+        for r in range(num_rows):
+            count = start_count + r
+            output.append([color if c < count else 0 for c in range(w)])
         return output
 
     # ---- helpers ---------------------------------------------------------
