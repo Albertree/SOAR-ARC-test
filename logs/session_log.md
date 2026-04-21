@@ -475,3 +475,54 @@
 - Discovered: 2 new rules from pipeline
 - Time: 147s
 - Log: logs/learn_20260422_010305.log
+
+---
+## Learning Loop -- 2026-04-22 01:09
+
+- Split: training, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 115 -> 115 (+0 learned)
+- Stored rule hits: 40
+- Time: 148s
+- Log: logs/learn_20260422_010635.log
+
+---
+## Learning Loop -- 2026-04-22 01:14
+
+- Split: training, Tasks: 80 (expanded from 40)
+- Correct: 41 / 80 (51.2%)
+- Rules: 115 -> 119 (+4 learned)
+- Stored rule hits: 40
+- Errors: 5 (list index out of range in _apply_fractal_block_denoise)
+- Time: 291s
+- Log: logs/learn_20260422_010932.log
+
+---
+## Session 17 -- 2026-04-22 01:28
+
+### Bug Fixes
+- Fixed `_apply_fractal_block_denoise` crashes: added bounds checking for template
+  dimensions vs meta-grid dimensions and block range sizes. Eliminated all 5 ERROR
+  tasks (cdecee7f, c62e2108, 5168d44c, 845d6e51, b7cb93ac).
+
+### Strategies Added
+1. **self_tiling** (Strategy 37): NxN input → N²×N² output. Each non-zero cell in
+   the input is replaced by a full copy of the input; zero cells become all-zero
+   blocks. Fractal/self-referential zoom pattern. (solves 007bbfb7)
+2. **double_mirror** (Strategy 38): NxM input → 2N×2M output via horizontal then
+   vertical mirror (kaleidoscope). Each row becomes row+reversed(row), then rows
+   are mirrored vertically. (solves 62c24649, also generalizes to 67e8384a)
+3. **xor_comparison** (Strategy 39): Input has two sub-grids separated by a uniform-
+   color row. Output = XOR of the two halves: cells are color 3 where exactly one
+   half has a non-zero cell, 0 otherwise. (solves 99b1bc43)
+
+### Results
+- Split: training, Tasks: 80
+- Correct: 45 / 80 (56.2%) -- up from 41/80 (51.2%), errors eliminated
+- Solved (new): 007bbfb7 (self_tiling), 62c24649 (double_mirror), 67e8384a (double_mirror generalized), 99b1bc43 (xor_comparison)
+- Errors: 0 (down from 5)
+- Rules: 122 -> 124 (+2 learned)
+- Stored rule hits: 44
+- Time: 269s
+- Log: logs/learn_20260422_012355.log
+- Regression: 08ed6ac7 CORRECT

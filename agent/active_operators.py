@@ -458,6 +458,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_rotation_quadrant_tile_4x4(patterns, wm)
 
+        # Strategy 37: self-tiling (NxN → N²xN², each non-zero cell → copy of input)
+        if rule is None:
+            rule = self._try_self_tiling(patterns, wm)
+
+        # Strategy 38: double mirror / kaleidoscope (NxN → 2Nx2N)
+        if rule is None:
+            rule = self._try_double_mirror(patterns, wm)
+
+        # Strategy 39: XOR comparison (two halves separated by row of X → 3 where XOR)
+        if rule is None:
+            rule = self._try_xor_comparison(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -5058,6 +5070,204 @@ class GeneralizeOperator(Operator):
 
         return {"type": "rotation_quadrant_tile_4x4", "confidence": 1.0}
 
+    # ---- strategy: self-tiling (NxN input as its own tile template) ------
+
+    def _try_self_tiling(self, patterns, wm):
+        """
+        Detect: NxN input → N²xN² output. Each cell in the input maps to an
+        NxN block: if the cell is non-zero, the block is a copy of the input;
+        if zero, the block is all zeros. The input acts as its own template.
+        Category: fractal/self-referential zoom patterns.
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses:
+            return None
+
+        task = wm.task
+        if task is None:
+            return None
+
+        for idx, pair in enumerate(task.example_pairs):
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H_in = len(raw_in)
+            W_in = len(raw_in[0]) if raw_in else 0
+            H_out = len(raw_out)
+            W_out = len(raw_out[0]) if raw_out else 0
+
+            # Must be NxN input and N²xN² output
+            if H_in != W_in or H_in == 0:
+                return None
+            n = H_in
+            if H_out != n * n or W_out != n * n:
+                return None
+
+            # Verify each block
+            for br in range(n):
+                for bc in range(n):
+                    cell_val = raw_in[br][bc]
+                    for dr in range(n):
+                        for dc in range(n):
+                            out_val = raw_out[br * n + dr][bc * n + dc]
+                            if cell_val != 0:
+                                if out_val != raw_in[dr][dc]:
+                                    return None
+                            else:
+                                if out_val != 0:
+                                    return None
+
+        return {"type": "self_tiling", "confidence": 1.0}
+
+    # ---- strategy: double mirror / kaleidoscope --------------------------
+
+    def _try_double_mirror(self, patterns, wm):
+        """
+        Detect: NxM input → 2Nx2M output by mirroring horizontally then vertically.
+        Output = [[row + reversed(row)] for each row] + reversed version of that.
+        Category: reflection/symmetry expansion patterns.
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses:
+            return None
+
+        task = wm.task
+        if task is None:
+            return None
+
+        for idx, pair in enumerate(task.example_pairs):
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H_in = len(raw_in)
+            W_in = len(raw_in[0]) if raw_in else 0
+            H_out = len(raw_out)
+            W_out = len(raw_out[0]) if raw_out else 0
+
+            if H_out != 2 * H_in or W_out != 2 * W_in:
+                return None
+
+            # Build expected output
+            top_half = []
+            for r in range(H_in):
+                row = raw_in[r]
+                mirrored_row = list(row) + list(reversed(row))
+                top_half.append(mirrored_row)
+
+            expected = top_half + list(reversed(top_half))
+
+            for r in range(H_out):
+                for c in range(W_out):
+                    if raw_out[r][c] != expected[r][c]:
+                        return None
+
+        return {"type": "double_mirror", "confidence": 1.0}
+
+    # ---- strategy: XOR comparison (two halves, separator row) -----------
+
+    def _try_xor_comparison(self, patterns, wm):
+        """
+        Detect: input has two sub-grids separated by a row of uniform color.
+        Top uses color A on bg 0, bottom uses color B on bg 0.
+        Output = same dimensions as one half; cells are color 3 where exactly
+        one half has a non-zero cell (XOR), 0 otherwise.
+        Category: set operation / comparison patterns (XOR, AND, OR).
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses:
+            return None
+
+        task = wm.task
+        if task is None:
+            return None
+
+        # Detect consistent separator and XOR pattern across all pairs
+        sep_color = None
+        out_color = None
+
+        for idx, pair in enumerate(task.example_pairs):
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+
+            # Find separator row: a row where all cells are the same non-zero color
+            sep_row = None
+            sc = None
+            for r in range(H):
+                row = raw_in[r]
+                if len(set(row)) == 1 and row[0] != 0:
+                    sep_row = r
+                    sc = row[0]
+                    break
+
+            if sep_row is None:
+                return None
+
+            if sep_color is None:
+                sep_color = sc
+            elif sep_color != sc:
+                return None
+
+            top_h = sep_row
+            bot_h = H - sep_row - 1
+            if top_h != bot_h and top_h != len(raw_out) and bot_h != len(raw_out):
+                return None
+
+            # Determine which half matches output dimensions
+            out_h = len(raw_out)
+            out_w = len(raw_out[0]) if raw_out else 0
+            if out_w != W:
+                return None
+
+            if top_h == out_h:
+                top = [raw_in[r] for r in range(top_h)]
+                bot = [raw_in[r] for r in range(sep_row + 1, sep_row + 1 + top_h)]
+            elif bot_h == out_h:
+                top = [raw_in[r] for r in range(bot_h)]
+                bot = [raw_in[r] for r in range(sep_row + 1, sep_row + 1 + bot_h)]
+            else:
+                return None
+
+            half_h = out_h
+
+            # Verify XOR: output cell = X where exactly one of top/bot is non-zero
+            for r in range(half_h):
+                for c in range(W):
+                    t = top[r][c] != 0
+                    b = bot[r][c] != 0
+                    o = raw_out[r][c]
+                    if t != b:  # XOR = True
+                        if o == 0:
+                            return None
+                        if out_color is None:
+                            out_color = o
+                        elif o != out_color:
+                            return None
+                    else:  # XOR = False
+                        if o != 0:
+                            return None
+
+        if out_color is None:
+            return None
+
+        return {
+            "type": "xor_comparison",
+            "confidence": 1.0,
+            "sep_color": sep_color,
+            "out_color": out_color,
+        }
+
 
 class DescendOperator(Operator):
     """
@@ -5201,6 +5411,12 @@ class PredictOperator(Operator):
             return self._apply_separator_histogram(rule, input_grid)
         if rule_type == "rotation_quadrant_tile_4x4":
             return self._apply_rotation_quadrant_tile_4x4(rule, input_grid)
+        if rule_type == "self_tiling":
+            return self._apply_self_tiling(rule, input_grid)
+        if rule_type == "double_mirror":
+            return self._apply_double_mirror(rule, input_grid)
+        if rule_type == "xor_comparison":
+            return self._apply_xor_comparison(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6626,10 +6842,12 @@ class PredictOperator(Operator):
                 out[r][sc] = 0
 
         # Fill blocks based on self-similar rule
+        t_rows = len(template)
+        t_cols = len(template[0]) if template else 0
         for bi in range(n_block_rows):
             for bj in range(n_block_cols):
                 # Determine which block to place
-                if bi < block_h and bj < block_w:
+                if bi < t_rows and bj < t_cols:
                     if template[bi][bj] == minority_color:
                         source = template
                     else:
@@ -6639,9 +6857,12 @@ class PredictOperator(Operator):
 
                 r0, r1 = row_ranges[bi]
                 c0, c1 = col_ranges[bj]
-                for dr in range(block_h):
-                    for dc in range(block_w):
-                        out[r0 + dr][c0 + dc] = source[dr][dc]
+                actual_h = r1 - r0 + 1
+                actual_w = c1 - c0 + 1
+                for dr in range(min(actual_h, len(source))):
+                    for dc in range(min(actual_w, len(source[0]) if source else 0)):
+                        if r0 + dr < H and c0 + dc < W:
+                            out[r0 + dr][c0 + dc] = source[dr][dc]
 
         return out
 
@@ -6682,6 +6903,68 @@ class PredictOperator(Operator):
                 for r in range(n):
                     for c in range(n):
                         out[br * n + r][bc * n + c] = blk[r][c]
+        return out
+
+    # ---- apply: self-tiling (fractal zoom) ---------------------------------
+
+    def _apply_self_tiling(self, rule, input_grid):
+        raw = input_grid.raw
+        n = len(raw)
+        w = len(raw[0]) if raw else 0
+        if n == 0 or n != w:
+            return None
+        out_size = n * n
+        out = [[0] * out_size for _ in range(out_size)]
+        for br in range(n):
+            for bc in range(n):
+                if raw[br][bc] != 0:
+                    for dr in range(n):
+                        for dc in range(n):
+                            out[br * n + dr][bc * n + dc] = raw[dr][dc]
+        return out
+
+    # ---- apply: double mirror / kaleidoscope ----------------------------
+
+    def _apply_double_mirror(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        top_half = []
+        for r in range(H):
+            row = list(raw[r]) + list(reversed(raw[r]))
+            top_half.append(row)
+        return top_half + list(reversed(top_half))
+
+    # ---- apply: XOR comparison ------------------------------------------
+
+    def _apply_xor_comparison(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        sep_color = rule.get("sep_color")
+        out_color = rule.get("out_color", 3)
+
+        # Find separator row
+        sep_row = None
+        for r in range(H):
+            if len(set(raw[r])) == 1 and raw[r][0] == sep_color:
+                sep_row = r
+                break
+        if sep_row is None:
+            return [row[:] for row in raw]
+
+        top_h = sep_row
+        bot_start = sep_row + 1
+        bot_h = H - bot_start
+
+        half_h = min(top_h, bot_h)
+        out = [[0] * W for _ in range(half_h)]
+        for r in range(half_h):
+            for c in range(W):
+                t = raw[r][c] != 0
+                b = raw[bot_start + r][c] != 0
+                if t != b:
+                    out[r][c] = out_color
         return out
 
     # ---- helpers ---------------------------------------------------------
