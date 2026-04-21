@@ -339,3 +339,31 @@
 - Time: 141s
 - Log: logs/learn_20260421_224444.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 22:50
+
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 89 -> 93 (+4 learned)
+- Stored rule hits: 29
+- Time: 142s
+- Log: logs/learn_20260421_224807.log
+
+---
+## Session 13 -- 2026-04-21 23:09
+
+### Strategies Added
+1. **denoise_rectangles** -- grid has one fg color on bg 0; remove isolated single pixels and clean connected components to their largest inscribed rectangle (solves 7f4411dc)
+2. **color_substitution_template** -- input has a bordered rectangular template on bg 0 plus scattered 2-cell pairs; each pair maps one template interior color to a new color; output = extracted template with substitutions applied (solves e9b4f6fc)
+3. **cross_marker_duplicate** -- grid has cross patterns (center=4, same arm color X on all 4 orthogonal neighbors); one arm color appears in exactly 2 crosses; output = 1×1 grid with that color (solves 642d658d)
+
+### Learning Loop Results
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%) -- up from 29/40 (72.5%)
+- Solved (new): 7f4411dc (denoise_rectangles), e9b4f6fc (color_substitution_template), 642d658d (cross_marker_duplicate)
+- Rules: 93 -> 99 (+6 learned)
+- Stored rule hits: 29
+- Time: 141s
+- Log: logs/learn_20260421_230730.log
+- Regression: 08ed6ac7 CORRECT

@@ -318,6 +318,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_flood_fill_enclosed(patterns, wm)
 
+        # Strategy 6c: denoise rectangles (remove noise pixels, keep rect cores)
+        if rule is None:
+            rule = self._try_denoise_rectangles(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -413,6 +417,14 @@ class GeneralizeOperator(Operator):
         # Strategy 31: tile pattern upward (bottom pattern fills entire grid)
         if rule is None:
             rule = self._try_tile_pattern_upward(patterns, wm)
+
+        # Strategy 32: color substitution template (bordered rect + pair lookup)
+        if rule is None:
+            rule = self._try_color_substitution_template(patterns, wm)
+
+        # Strategy 33: cross marker duplicate detection (1×1 output)
+        if rule is None:
+            rule = self._try_cross_marker_duplicate(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -3701,6 +3713,347 @@ class GeneralizeOperator(Operator):
         return bg, counts
 
 
+    # ---- strategy: denoise rectangles (remove noise, keep rect cores) ------
+
+    def _try_denoise_rectangles(self, patterns, wm):
+        """
+        Detect: grid has one fg color on bg 0. Connected components include
+        solid rectangles + noise (isolated pixels or protrusions). Output
+        removes noise and keeps only the largest inscribed rectangle per component.
+        Category: noise removal / rectangle extraction.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            # Find non-zero colors in input
+            fg_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != 0:
+                        fg_colors.add(raw_in[r][c])
+
+            # Must have exactly one foreground color
+            if len(fg_colors) != 1:
+                return None
+            fg = next(iter(fg_colors))
+
+            # Output must only contain fg and 0
+            for r in range(h):
+                for c in range(w):
+                    if raw_out[r][c] != 0 and raw_out[r][c] != fg:
+                        return None
+
+            # Find connected components of fg in input
+            fg_cells = [(r, c) for r in range(h) for c in range(w)
+                        if raw_in[r][c] == fg]
+            components = self._cc_group(fg_cells)
+
+            # For each component, find largest inscribed rectangle
+            expected = [[0] * w for _ in range(h)]
+            for comp in components:
+                rect_cells = self._largest_inscribed_rect(comp)
+                for r, c in rect_cells:
+                    expected[r][c] = fg
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "denoise_rectangles", "confidence": 1.0}
+
+    # ---- strategy: color substitution template ----------------------------
+
+    def _try_color_substitution_template(self, patterns, wm):
+        """
+        Detect: input has a bordered rectangular template on bg 0 plus
+        scattered 2-cell pairs. Each pair maps one template interior color
+        to a new color. Output = extracted template with substitutions.
+        Category: color substitution / palette swap with lookup table.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        # Output must be smaller than input (extracted template)
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+
+            result = self._analyze_color_sub_template(raw_in)
+            if result is None:
+                return None
+
+            template_block, border_color, color_map = result
+
+            # Build expected output
+            expected = []
+            for row in template_block:
+                out_row = []
+                for c in row:
+                    if c == border_color:
+                        out_row.append(c)
+                    else:
+                        out_row.append(color_map.get(c, c))
+                expected.append(out_row)
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "color_substitution_template", "confidence": 1.0}
+
+    @staticmethod
+    def _analyze_color_sub_template(raw):
+        """Find the template rectangle, border color, and color mapping."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find all non-zero cells and group into connected components
+        non_zero = [(r, c) for r in range(h) for c in range(w) if raw[r][c] != 0]
+        if not non_zero:
+            return None
+
+        pos_set = set(non_zero)
+        visited = set()
+        components = []
+        for pos in non_zero:
+            if pos in visited:
+                continue
+            comp = []
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in pos_set:
+                    continue
+                visited.add(p)
+                comp.append(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in pos_set and nb not in visited:
+                        queue.append(nb)
+            components.append(comp)
+
+        if len(components) < 2:
+            return None
+
+        # Largest component is the template
+        components.sort(key=len, reverse=True)
+        template_comp = components[0]
+        pair_comps = components[1:]
+
+        if len(template_comp) < 6:
+            return None
+
+        # All non-template components must have exactly 2 cells
+        for pc in pair_comps:
+            if len(pc) != 2:
+                return None
+
+        # Extract template bounding box
+        min_r = min(r for r, c in template_comp)
+        max_r = max(r for r, c in template_comp)
+        min_c = min(c for r, c in template_comp)
+        max_c = max(c for r, c in template_comp)
+
+        # Template must fill its bounding box completely
+        template_set = set(template_comp)
+        for r in range(min_r, max_r + 1):
+            for c in range(min_c, max_c + 1):
+                if (r, c) not in template_set:
+                    return None
+
+        # Extract template block
+        template_block = [
+            [raw[r][c] for c in range(min_c, max_c + 1)]
+            for r in range(min_r, max_r + 1)
+        ]
+
+        # Border color = color at all 4 corners
+        corners = [
+            template_block[0][0],
+            template_block[0][-1],
+            template_block[-1][0],
+            template_block[-1][-1],
+        ]
+        if len(set(corners)) != 1:
+            return None
+        border_color = corners[0]
+
+        # Interior colors (non-border within template)
+        interior_colors = set()
+        for row in template_block:
+            for c in row:
+                if c != border_color:
+                    interior_colors.add(c)
+
+        # Build color mapping from pairs
+        color_map = {}
+        for pc in pair_comps:
+            c1 = raw[pc[0][0]][pc[0][1]]
+            c2 = raw[pc[1][0]][pc[1][1]]
+
+            if c1 in interior_colors and c2 not in interior_colors:
+                color_map[c1] = c2
+            elif c2 in interior_colors and c1 not in interior_colors:
+                color_map[c2] = c1
+            else:
+                return None
+
+        return template_block, border_color, color_map
+
+    # ---- strategy: cross marker duplicate detection -----------------------
+
+    def _try_cross_marker_duplicate(self, patterns, wm):
+        """
+        Detect: grid has background + cross patterns (center_color=4 with
+        same arm color X on all 4 orthogonal neighbors). One arm color X
+        appears in exactly 2 crosses. Output = 1×1 grid with that color.
+        Category: pattern counting / duplicate detection.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            # Output must be 1×1
+            if h_out != 1 or w_out != 1:
+                return None
+
+            expected_color = raw_out[0][0]
+
+            # Find cross patterns
+            crosses = self._find_cross_patterns(raw_in, 4)
+            if len(crosses) < 2:
+                return None
+
+            # Count arm colors
+            from collections import Counter
+            arm_counts = Counter(crosses.values())
+
+            # Find the arm color appearing exactly 2+ times
+            dup_color = None
+            for color, count in arm_counts.items():
+                if count >= 2:
+                    if dup_color is not None:
+                        return None  # Multiple duplicates
+                    dup_color = color
+
+            if dup_color is None or dup_color != expected_color:
+                return None
+
+        return {"type": "cross_marker_duplicate", "center_color": 4,
+                "confidence": 1.0}
+
+    @staticmethod
+    def _find_cross_patterns(raw, center_color):
+        """Find cross patterns: center_color at center, same color on 4 arms.
+        Returns dict: (row, col) -> arm_color."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        crosses = {}
+
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if raw[r][c] != center_color:
+                    continue
+                up = raw[r - 1][c]
+                down = raw[r + 1][c]
+                left = raw[r][c - 1]
+                right = raw[r][c + 1]
+                if up == down == left == right and up != center_color:
+                    crosses[(r, c)] = up
+
+        return crosses
+
+    # ---- shared helpers for generalize ------------------------------------
+
+    @staticmethod
+    def _cc_group(positions):
+        """Group (row, col) into 4-connected components."""
+        pos_set = set(positions)
+        visited = set()
+        groups = []
+        for pos in positions:
+            if pos in visited:
+                continue
+            group = []
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in pos_set:
+                    continue
+                visited.add(p)
+                group.append(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in pos_set and nb not in visited:
+                        queue.append(nb)
+            groups.append(group)
+        return groups
+
+    @staticmethod
+    def _largest_inscribed_rect(cells):
+        """Find the largest filled rectangle inscribed in a set of cells.
+        Returns set of (row, col) in that rectangle, or empty set if < 2 cells."""
+        if not cells:
+            return set()
+        cell_set = set(cells)
+        if len(cell_set) <= 1:
+            return set()
+
+        rows = sorted(set(r for r, c in cells))
+        cols = sorted(set(c for r, c in cells))
+        min_r, max_r = rows[0], rows[-1]
+        min_c, max_c = cols[0], cols[-1]
+
+        best_area = 0
+        best_rect = None
+
+        for r1 in range(min_r, max_r + 1):
+            for r2 in range(max_r, r1 - 1, -1):
+                max_possible = (r2 - r1 + 1) * (max_c - min_c + 1)
+                if max_possible <= best_area:
+                    break
+                for c1 in range(min_c, max_c + 1):
+                    for c2 in range(max_c, c1 - 1, -1):
+                        area = (r2 - r1 + 1) * (c2 - c1 + 1)
+                        if area <= best_area:
+                            break
+                        if all(
+                            (r, c) in cell_set
+                            for r in range(r1, r2 + 1)
+                            for c in range(c1, c2 + 1)
+                        ):
+                            best_area = area
+                            best_rect = (r1, r2, c1, c2)
+
+        if best_rect is None:
+            return set()
+
+        r1, r2, c1, c2 = best_rect
+        return {(r, c) for r in range(r1, r2 + 1) for c in range(c1, c2 + 1)}
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -3821,6 +4174,12 @@ class PredictOperator(Operator):
             return self._apply_frame_color_swap(rule, input_grid)
         if rule_type == "tile_pattern_upward":
             return self._apply_tile_pattern_upward(rule, input_grid)
+        if rule_type == "denoise_rectangles":
+            return self._apply_denoise_rectangles(rule, input_grid)
+        if rule_type == "color_substitution_template":
+            return self._apply_color_substitution_template(rule, input_grid)
+        if rule_type == "cross_marker_duplicate":
+            return self._apply_cross_marker_duplicate(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4955,6 +5314,79 @@ class PredictOperator(Operator):
             out[r] = pattern[pattern_idx][:]
 
         return out
+
+    # ---- apply: denoise rectangles ----------------------------------------
+
+    def _apply_denoise_rectangles(self, rule, input_grid):
+        """Remove noise pixels, keep only largest inscribed rectangles."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find foreground color (the single non-zero color)
+        fg = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    fg = raw[r][c]
+                    break
+            if fg is not None:
+                break
+        if fg is None:
+            return [row[:] for row in raw]
+
+        # Find connected components
+        fg_cells = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == fg]
+        components = self._group_positions(fg_cells)
+
+        # Build output with only rectangle cores
+        out = [[0] * w for _ in range(h)]
+        for comp in components:
+            rect = GeneralizeOperator._largest_inscribed_rect(comp)
+            for r, c in rect:
+                out[r][c] = fg
+
+        return out
+
+    # ---- apply: color substitution template --------------------------------
+
+    def _apply_color_substitution_template(self, rule, input_grid):
+        """Extract template, apply color substitution from scattered pairs."""
+        raw = input_grid.raw
+        result = GeneralizeOperator._analyze_color_sub_template(raw)
+        if result is None:
+            return [row[:] for row in raw]
+
+        template_block, border_color, color_map = result
+
+        out = []
+        for row in template_block:
+            out_row = []
+            for c in row:
+                if c == border_color:
+                    out_row.append(c)
+                else:
+                    out_row.append(color_map.get(c, c))
+            out.append(out_row)
+
+        return out
+
+    # ---- apply: cross marker duplicate -------------------------------------
+
+    def _apply_cross_marker_duplicate(self, rule, input_grid):
+        """Find cross patterns, return 1×1 grid with duplicated arm color."""
+        raw = input_grid.raw
+        center_color = rule.get("center_color", 4)
+        crosses = GeneralizeOperator._find_cross_patterns(raw, center_color)
+
+        from collections import Counter
+        arm_counts = Counter(crosses.values())
+
+        for color, count in arm_counts.items():
+            if count >= 2:
+                return [[color]]
+
+        return [[0]]
 
     # ---- helpers ---------------------------------------------------------
 
