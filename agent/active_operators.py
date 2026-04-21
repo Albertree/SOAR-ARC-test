@@ -302,6 +302,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_cross_grid_fill(patterns, wm)
 
+        # Strategy 3b: grid lines pattern (all-zero → 1 at even row/col positions)
+        if rule is None:
+            rule = self._try_grid_lines_pattern(patterns, wm)
+
         # Strategy 4: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -481,6 +485,14 @@ class GeneralizeOperator(Operator):
         # Strategy 42: grid separator max fill (fill cells with max non-zero count)
         if rule is None:
             rule = self._try_grid_separator_max_fill(patterns, wm)
+
+        # Strategy 44: column shadow tile (mark 0s in non-zero cols → 8, tile 2×2)
+        if rule is None:
+            rule = self._try_column_shadow_tile(patterns, wm)
+
+        # Strategy 45: concentric ring rotate (shift ring colors by 1 outward)
+        if rule is None:
+            rule = self._try_concentric_ring_rotate(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -719,6 +731,7 @@ class GeneralizeOperator(Operator):
         if len(task.example_pairs) < 2:
             return None
 
+        validated_any = False
         for pair in task.example_pairs:
             g0, g1 = pair.input_grid, pair.output_grid
             if g0 is None or g1 is None:
@@ -744,12 +757,15 @@ class GeneralizeOperator(Operator):
                 return None
 
             # For each color, find rects and isolated pixels
+            pair_had_bridge = False
             for color, cells in color_cells.items():
                 rects, isolates = self._find_rects_and_isolates(cells, color, raw_in, H, W, bg)
                 if not rects:
                     continue
                 if not isolates:
                     continue
+
+                pair_had_bridge = True
 
                 # Verify bridge pattern for each isolated pixel
                 predicted = [row[:] for row in raw_in]
@@ -762,6 +778,12 @@ class GeneralizeOperator(Operator):
                         if raw_in[r][c] == color or predicted[r][c] == color:
                             if predicted[r][c] != raw_out[r][c]:
                                 return None
+
+            if pair_had_bridge:
+                validated_any = True
+
+        if not validated_any:
+            return None
 
         return {
             "type": "rect_pixel_bridge",
@@ -5614,6 +5636,180 @@ class GeneralizeOperator(Operator):
             "sep_color": sep_color,
         }
 
+    # ---- strategy 43: grid lines pattern ---------------------------------
+
+    def _try_grid_lines_pattern(self, patterns, wm):
+        """
+        Detect: input is entirely one color (typically 0), output is same-size
+        grid with a second color at cells where row%2==0 OR col%2==0.
+        Category: uniform-input grid pattern generation.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+
+            # Input must be entirely one color
+            bg = raw_in[0][0]
+            if not all(raw_in[r][c] == bg for r in range(H) for c in range(W)):
+                return None
+
+            # Determine fill color from output
+            fill_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if raw_out[r][c] != bg:
+                        fill_colors.add(raw_out[r][c])
+            if len(fill_colors) != 1:
+                return None
+            fill_color = fill_colors.pop()
+
+            # Verify pattern: fill where r%2==0 or c%2==0
+            for r in range(H):
+                for c in range(W):
+                    on_grid = (r % 2 == 0) or (c % 2 == 0)
+                    expected = fill_color if on_grid else bg
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {
+            "type": "grid_lines_pattern",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 44: column shadow tile ---------------------------------
+
+    def _try_column_shadow_tile(self, patterns, wm):
+        """
+        Detect: output is 2× input dims; zero cells in columns that contain
+        any non-zero cell are replaced with shadow color (8), then the
+        modified grid is tiled 2×2.
+        Category: column-projection + tile expansion.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if patterns.get("grid_size_preserved"):
+            return None  # output must be different size
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            oH, oW = len(raw_out), len(raw_out[0])
+            if oH != 2 * H or oW != 2 * W:
+                return None
+
+            # Build shadow grid: replace 0s in non-zero columns with 8
+            shadow = [row[:] for row in raw_in]
+            for c in range(W):
+                has_nonzero = any(raw_in[r][c] != 0 for r in range(H))
+                if has_nonzero:
+                    for r in range(H):
+                        if shadow[r][c] == 0:
+                            shadow[r][c] = 8
+
+            # Verify 2×2 tiling
+            for r in range(oH):
+                for c in range(oW):
+                    if raw_out[r][c] != shadow[r % H][c % W]:
+                        return None
+
+        return {
+            "type": "column_shadow_tile",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 45: concentric ring color rotate -----------------------
+
+    def _try_concentric_ring_rotate(self, patterns, wm):
+        """
+        Detect: input has concentric rectangular rings of uniform color.
+        Output rotates the ring color sequence by 1 position outward
+        (innermost color becomes outermost).
+        Category: concentric ring permutation.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            if H < 2 or W < 2:
+                return None
+
+            # Extract ring colors (outer to inner)
+            ring_colors = self._extract_ring_colors(raw_in, H, W)
+            if ring_colors is None or len(ring_colors) < 2:
+                return None
+
+            # Build color mapping: rotate unique colors right by 1
+            unique_ordered = []
+            seen = set()
+            for c in ring_colors:
+                if c not in seen:
+                    unique_ordered.append(c)
+                    seen.add(c)
+            if len(unique_ordered) < 2:
+                return None
+
+            # Right rotate: [a, b, c] → [c, a, b]
+            rotated = [unique_ordered[-1]] + unique_ordered[:-1]
+            color_map = {}
+            for i, old_c in enumerate(unique_ordered):
+                color_map[old_c] = rotated[i]
+
+            # Verify output matches the color mapping
+            for r in range(H):
+                for c in range(W):
+                    expected = color_map.get(raw_in[r][c], raw_in[r][c])
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {
+            "type": "concentric_ring_rotate",
+            "confidence": 1.0,
+        }
+
+    def _extract_ring_colors(self, raw, H, W):
+        """Extract colors of concentric rectangular rings, outer to inner."""
+        ring_colors = []
+        max_rings = min(H, W) // 2 + (1 if min(H, W) % 2 else 0)
+        for ring in range(max_rings):
+            r0, c0 = ring, ring
+            r1, c1 = H - 1 - ring, W - 1 - ring
+            if r0 > r1 or c0 > c1:
+                break
+            # All cells on this ring should be the same color
+            color = raw[r0][c0]
+            for r in range(r0, r1 + 1):
+                for c in range(c0, c1 + 1):
+                    if r == r0 or r == r1 or c == c0 or c == c1:
+                        if raw[r][c] != color:
+                            return None
+            ring_colors.append(color)
+        return ring_colors if ring_colors else None
+
 
 class DescendOperator(Operator):
     """
@@ -5769,6 +5965,12 @@ class PredictOperator(Operator):
             return self._apply_inverse_tile(rule, input_grid)
         if rule_type == "grid_separator_max_fill":
             return self._apply_grid_separator_max_fill(rule, input_grid)
+        if rule_type == "grid_lines_pattern":
+            return self._apply_grid_lines_pattern(rule, input_grid)
+        if rule_type == "column_shadow_tile":
+            return self._apply_column_shadow_tile(rule, input_grid)
+        if rule_type == "concentric_ring_rotate":
+            return self._apply_concentric_ring_rotate(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7483,6 +7685,85 @@ class PredictOperator(Operator):
                     for r in range(rb[0], rb[1]):
                         for c in range(cb[0], cb[1]):
                             out[r][c] = cell_colors[ri][ci]
+        return out
+
+    # ---- apply: grid lines pattern ---------------------------------------
+
+    def _apply_grid_lines_pattern(self, rule, input_grid):
+        """All-zero NxN → 1 at cells where row%2==0 or col%2==0."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        bg = raw[0][0] if H > 0 and W > 0 else 0
+        # Determine fill color: use 1 (standard for this pattern)
+        fill = 1
+        out = [[bg] * W for _ in range(H)]
+        for r in range(H):
+            for c in range(W):
+                if r % 2 == 0 or c % 2 == 0:
+                    out[r][c] = fill
+        return out
+
+    # ---- apply: column shadow tile ---------------------------------------
+
+    def _apply_column_shadow_tile(self, rule, input_grid):
+        """Replace 0s in columns with non-zero cells with 8, tile 2×2."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        shadow = [row[:] for row in raw]
+        for c in range(W):
+            has_nonzero = any(raw[r][c] != 0 for r in range(H))
+            if has_nonzero:
+                for r in range(H):
+                    if shadow[r][c] == 0:
+                        shadow[r][c] = 8
+
+        # Tile 2×2
+        oH, oW = 2 * H, 2 * W
+        out = [[0] * oW for _ in range(oH)]
+        for r in range(oH):
+            for c in range(oW):
+                out[r][c] = shadow[r % H][c % W]
+        return out
+
+    # ---- apply: concentric ring rotate -----------------------------------
+
+    def _apply_concentric_ring_rotate(self, rule, input_grid):
+        """Rotate concentric ring colors by 1 position outward."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Extract ring colors
+        ring_colors = []
+        max_rings = min(H, W) // 2 + (1 if min(H, W) % 2 else 0)
+        for ring in range(max_rings):
+            r0, c0 = ring, ring
+            r1, c1 = H - 1 - ring, W - 1 - ring
+            if r0 > r1 or c0 > c1:
+                break
+            ring_colors.append(raw[r0][c0])
+
+        if len(ring_colors) < 2:
+            return [row[:] for row in raw]
+
+        # Build unique ordered color list, then rotate right
+        unique_ordered = []
+        seen = set()
+        for c in ring_colors:
+            if c not in seen:
+                unique_ordered.append(c)
+                seen.add(c)
+
+        rotated = [unique_ordered[-1]] + unique_ordered[:-1]
+        color_map = {}
+        for i, old_c in enumerate(unique_ordered):
+            color_map[old_c] = rotated[i]
+
+        out = [[color_map.get(raw[r][c], raw[r][c]) for c in range(W)]
+               for r in range(H)]
         return out
 
     # ---- helpers ---------------------------------------------------------

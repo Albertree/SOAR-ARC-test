@@ -596,3 +596,64 @@
 - Stored rule hits: 48
 - Time: 243s
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 02:08
+
+- Split: training, Tasks: 80
+- Correct: 49 / 80 (61.3%)
+- Rules: 138 -> 140 (+2 learned)
+- Stored rule hits: 48
+- Time: 243s
+- Log: logs/learn_20260422_020402.log
+
+---
+## Learning Loop -- 2026-04-22 02:22
+
+- Split: training, Tasks: 80
+- Correct: 51 / 80 (63.7%)
+- Rules: 140 -> 148 (+8 learned)
+- Stored rule hits: 48
+- Time: 208s
+- Log: logs/learn_20260422_021916.log
+
+---
+## Learning Loop -- 2026-04-22 02:26
+
+- Split: training, Tasks: 80
+- Correct: 51 / 80 (63.7%)
+- Rules: 148 -> 154 (+6 learned)
+- Stored rule hits: 50
+- Time: 208s
+- Log: logs/learn_20260422_022258.log
+
+---
+## Session 19 -- 2026-04-22 02:30
+
+### Bug Fix
+- Fixed `_try_rect_pixel_bridge` validation: was returning a valid rule even when no
+  example pair actually had rects+isolates to validate. Added `validated_any` flag so
+  the rule only returns when at least one pair actually validates the bridge pattern.
+  Eliminated 13 false positive matches (tasks now correctly fall to identity or other rules).
+
+### Strategies Added
+1. **grid_lines_pattern** (Strategy 43): Input is all-zero NxN grid; output fills cells
+   with 1 where row%2==0 OR col%2==0, creating a grid-line pattern. Placed before
+   recolor_sequential to avoid false match. (solves 332efdb3)
+2. **column_shadow_tile** (Strategy 44): Zero cells in columns containing any non-zero
+   cell are replaced with 8 (shadow), then the modified grid is tiled 2×2 to produce
+   output at 2× dimensions. (solves f5b8619d)
+3. **concentric_ring_rotate** (Strategy 45): Input has concentric rectangular rings of
+   uniform color. Output rotates the unique ring color sequence right by 1 position
+   (innermost color becomes outermost). (solves bda2d7a6)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 52 / 80 (65.0%) — up from 49/80 (61.3%), +3 tasks
+- Solved (new): 332efdb3 (grid_lines_pattern), f5b8619d (column_shadow_tile), bda2d7a6 (concentric_ring_rotate)
+- rect_pixel_bridge false positives: 13 → 0
+- Rules: 154 -> 161 (+7 learned)
+- Stored rule hits: 50
+- Time: 208s
+- Log: logs/learn_20260422_022716.log
+- Regression: 08ed6ac7 CORRECT
