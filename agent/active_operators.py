@@ -298,6 +298,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
+        # Strategy 3: uniform scaling (output = NxN blocks of input cells)
+        if rule is None:
+            rule = self._try_uniform_scale(patterns, wm)
+
+        # Strategy 4: recolor by connected-component size
+        if rule is None:
+            rule = self._try_recolor_by_size(patterns, wm)
+
+        # Strategy 5: corner-marker quadrant fill
+        if rule is None:
+            rule = self._try_corner_fill(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -397,6 +409,255 @@ class GeneralizeOperator(Operator):
 
         return None
 
+    # ---- strategy: uniform scaling --------------------------------------
+
+    def _try_uniform_scale(self, patterns, wm):
+        """
+        Detect pattern: output grid is an integer scale-up of input grid.
+        Each input cell becomes an NxN block of the same color in the output.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        scale_factors = set()
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            h_in, w_in = len(g0.raw), len(g0.raw[0]) if g0.raw else 0
+            h_out, w_out = len(g1.raw), len(g1.raw[0]) if g1.raw else 0
+            if h_in == 0 or w_in == 0:
+                return None
+            if h_out % h_in != 0 or w_out % w_in != 0:
+                return None
+            sh, sw = h_out // h_in, w_out // w_in
+            if sh != sw or sh < 2:
+                return None
+            scale_factors.add(sh)
+
+        if len(scale_factors) != 1:
+            return None
+        scale = scale_factors.pop()
+
+        # Verify: each input cell maps to a scale x scale block in output
+        for pair in task.example_pairs:
+            raw_in, raw_out = pair.input_grid.raw, pair.output_grid.raw
+            for r in range(len(raw_in)):
+                for c in range(len(raw_in[0])):
+                    expected = raw_in[r][c]
+                    for dr in range(scale):
+                        for dc in range(scale):
+                            if raw_out[r * scale + dr][c * scale + dc] != expected:
+                                return None
+
+        return {"type": "uniform_scale", "scale": scale, "confidence": 1.0}
+
+    # ---- strategy: recolor by component size ----------------------------
+
+    def _try_recolor_by_size(self, patterns, wm):
+        """
+        Detect pattern: all objects share one color; each connected component
+        is recolored based on its size (e.g., size 4 -> color 1, size 3 -> 2).
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        size_to_color = {}
+        source_color = None
+        bg_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h, w = len(raw_in), len(raw_in[0]) if raw_in else 0
+
+            # Detect background as most frequent color
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+            if bg_color is None:
+                bg_color = pair_bg
+            elif bg_color != pair_bg:
+                return None
+
+            # All non-background cells must share one source color
+            obj_positions = []
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg_color:
+                        if source_color is None:
+                            source_color = v
+                        elif v != source_color:
+                            return None
+                        obj_positions.append((r, c))
+
+            if not obj_positions:
+                return None
+
+            groups = PredictOperator._group_positions(obj_positions)
+
+            for group in groups:
+                size = len(group)
+                out_colors = set()
+                for r, c in group:
+                    out_colors.add(raw_out[r][c])
+                if len(out_colors) != 1:
+                    return None
+                oc = out_colors.pop()
+                if oc == bg_color:
+                    return None
+                if size in size_to_color:
+                    if size_to_color[size] != oc:
+                        return None
+                else:
+                    size_to_color[size] = oc
+
+            # Background cells must remain background
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] == bg_color and raw_out[r][c] != bg_color:
+                        return None
+
+        if not size_to_color or source_color is None:
+            return None
+
+        return {
+            "type": "recolor_by_size",
+            "source_color": source_color,
+            "bg_color": bg_color,
+            "size_to_color": size_to_color,
+            "confidence": 0.9,
+        }
+
+    # ---- strategy: corner-marker quadrant fill --------------------------
+
+    def _try_corner_fill(self, patterns, wm):
+        """
+        Detect pattern: rectangles of a fill color with 4 corner markers.
+        Output replaces each rectangle with quadrants colored by the corners.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        fill_color = None
+        bg_color = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h, w = len(raw_in), len(raw_in[0]) if raw_in else 0
+
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            pair_bg = max(freq, key=freq.get)
+            if bg_color is None:
+                bg_color = pair_bg
+            elif bg_color != pair_bg:
+                return None
+
+            # Find candidate fill colors that form rectangles with corners
+            color_positions = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg_color:
+                        color_positions.setdefault(v, []).append((r, c))
+
+            found_fill = None
+            for color, positions in color_positions.items():
+                groups = PredictOperator._group_positions(positions)
+                all_valid = True
+                for group in groups:
+                    rows = [r for r, c in group]
+                    cols = [c for r, c in group]
+                    r1, r2 = min(rows), max(rows)
+                    c1, c2 = min(cols), max(cols)
+                    rect_h = r2 - r1 + 1
+                    rect_w = c2 - c1 + 1
+                    if len(group) != rect_h * rect_w or rect_h < 2 or rect_w < 2:
+                        all_valid = False
+                        break
+                    corners = [
+                        (r1 - 1, c1 - 1), (r1 - 1, c2 + 1),
+                        (r2 + 1, c1 - 1), (r2 + 1, c2 + 1),
+                    ]
+                    for cr, cc in corners:
+                        if cr < 0 or cr >= h or cc < 0 or cc >= w:
+                            all_valid = False
+                            break
+                        cv = raw_in[cr][cc]
+                        if cv == bg_color or cv == color:
+                            all_valid = False
+                            break
+                    if not all_valid:
+                        break
+                if all_valid and groups:
+                    found_fill = color
+                    break
+
+            if found_fill is None:
+                return None
+            if fill_color is None:
+                fill_color = found_fill
+            elif fill_color != found_fill:
+                return None
+
+            # Verify output: quadrants filled, corners removed
+            positions = [(r, c) for r in range(h) for c in range(w)
+                         if raw_in[r][c] == fill_color]
+            groups = PredictOperator._group_positions(positions)
+            for group in groups:
+                rows = [r for r, c in group]
+                cols = [c for r, c in group]
+                r1, r2 = min(rows), max(rows)
+                c1, c2 = min(cols), max(cols)
+                rect_h = r2 - r1 + 1
+                rect_w = c2 - c1 + 1
+                mid_r = r1 + rect_h // 2
+                mid_c = c1 + rect_w // 2
+
+                tl = raw_in[r1 - 1][c1 - 1]
+                tr = raw_in[r1 - 1][c2 + 1]
+                bl = raw_in[r2 + 1][c1 - 1]
+                br = raw_in[r2 + 1][c2 + 1]
+
+                for r in range(r1, r2 + 1):
+                    for c in range(c1, c2 + 1):
+                        if r < mid_r and c < mid_c:
+                            expected = tl
+                        elif r < mid_r and c >= mid_c:
+                            expected = tr
+                        elif r >= mid_r and c < mid_c:
+                            expected = bl
+                        else:
+                            expected = br
+                        if raw_out[r][c] != expected:
+                            return None
+
+                for cr, cc in [(r1 - 1, c1 - 1), (r1 - 1, c2 + 1),
+                               (r2 + 1, c1 - 1), (r2 + 1, c2 + 1)]:
+                    if raw_out[cr][cc] != bg_color:
+                        return None
+
+        return {
+            "type": "corner_fill",
+            "fill_color": fill_color,
+            "bg_color": bg_color,
+            "confidence": 0.95,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -464,6 +725,12 @@ class PredictOperator(Operator):
             return self._apply_recolor_sequential(rule, input_grid)
         if rule_type == "color_mapping":
             return self._apply_color_mapping(rule, input_grid)
+        if rule_type == "uniform_scale":
+            return self._apply_uniform_scale(rule, input_grid)
+        if rule_type == "recolor_by_size":
+            return self._apply_recolor_by_size(rule, input_grid)
+        if rule_type == "corner_fill":
+            return self._apply_corner_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -515,6 +782,93 @@ class PredictOperator(Operator):
         output = []
         for row in raw:
             output.append([mapping.get(cell, cell) for cell in row])
+        return output
+
+    def _apply_uniform_scale(self, rule, input_grid):
+        raw = input_grid.raw
+        scale = rule["scale"]
+        output = []
+        for row in raw:
+            scaled_row = []
+            for cell in row:
+                scaled_row.extend([cell] * scale)
+            for _ in range(scale):
+                output.append(scaled_row[:])
+        return output
+
+    def _apply_recolor_by_size(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else 0
+        source_color = rule["source_color"]
+        size_to_color = {int(k): v for k, v in rule["size_to_color"].items()}
+
+        obj_positions = [(r, c) for r in range(h) for c in range(w)
+                         if raw[r][c] == source_color]
+        groups = self._group_positions(obj_positions)
+
+        output = [row[:] for row in raw]
+        for group in groups:
+            size = len(group)
+            color = size_to_color.get(size)
+            if color is None:
+                closest = min(size_to_color.keys(), key=lambda s: abs(s - size))
+                color = size_to_color[closest]
+            for r, c in group:
+                output[r][c] = color
+        return output
+
+    def _apply_corner_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0]) if raw else 0
+        fill_color = rule["fill_color"]
+        bg_color = rule.get("bg_color", 0)
+
+        output = [row[:] for row in raw]
+        positions = [(r, c) for r in range(h) for c in range(w)
+                     if raw[r][c] == fill_color]
+        groups = self._group_positions(positions)
+
+        for group in groups:
+            rows = [r for r, c in group]
+            cols = [c for r, c in group]
+            r1, r2 = min(rows), max(rows)
+            c1, c2 = min(cols), max(cols)
+            rect_h = r2 - r1 + 1
+            rect_w = c2 - c1 + 1
+
+            tl_r, tl_c = r1 - 1, c1 - 1
+            tr_r, tr_c = r1 - 1, c2 + 1
+            bl_r, bl_c = r2 + 1, c1 - 1
+            br_r, br_c = r2 + 1, c2 + 1
+
+            if (tl_r < 0 or tl_c < 0 or tr_c >= w or
+                    bl_r >= h or br_r >= h or br_c >= w):
+                continue
+
+            tl = raw[tl_r][tl_c]
+            tr = raw[tr_r][tr_c]
+            bl = raw[bl_r][bl_c]
+            br = raw[br_r][br_c]
+
+            mid_r = r1 + rect_h // 2
+            mid_c = c1 + rect_w // 2
+
+            for r in range(r1, r2 + 1):
+                for c in range(c1, c2 + 1):
+                    if r < mid_r and c < mid_c:
+                        output[r][c] = tl
+                    elif r < mid_r and c >= mid_c:
+                        output[r][c] = tr
+                    elif r >= mid_r and c < mid_c:
+                        output[r][c] = bl
+                    else:
+                        output[r][c] = br
+
+            output[tl_r][tl_c] = bg_color
+            output[tr_r][tr_c] = bg_color
+            output[bl_r][bl_c] = bg_color
+            output[br_r][br_c] = bg_color
+
         return output
 
     # ---- helpers ---------------------------------------------------------
