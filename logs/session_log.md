@@ -245,3 +245,31 @@
 - Time: 64s
 - Log: logs/learn_20260421_214141.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 21:44
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 34 -> 34 (+0 learned)
+- Stored rule hits: 20
+- Time: 64s
+- Log: logs/learn_20260421_214329.log
+
+---
+## Session 10 -- 2026-04-21 22:06
+
+### Strategies Added
+1. **rotate_tile_2x2** -- NxN input tiled into 2N×2N output as 4 rotations (original, 90°CCW, 180°, 90°CW) in a 2×2 arrangement (solves ed98d772)
+2. **diagonal_extend** -- 2×2 block of one color with diagonal tail pixels; each tail extends diagonally to the grid edge in the direction away from the block (solves 7ddcd7ec)
+3. **quadrant_diagonal_fill** -- 2×2 block of 4 distinct non-zero colors on zero background; 2×2 fills placed at each diagonal neighbor position (clipped to grid) with the diagonally opposite color (solves 93b581b8)
+
+### Learning Loop Results
+- Split: training, Tasks: 40 (expanded from 20)
+- Correct: 23 / 40 (57.5%) -- all 20 original tasks still correct, +3 new
+- Solved (new): ed98d772 (rotate_tile_2x2), 7ddcd7ec (diagonal_extend), 93b581b8 (quadrant_diagonal_fill)
+- Rules: 51 -> 57 (+6 learned)
+- Stored rule hits: 22
+- Time: 132s
+- Log: logs/learn_20260421_220443.log
+- Regression: 08ed6ac7 CORRECT

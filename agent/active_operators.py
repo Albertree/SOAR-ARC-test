@@ -378,6 +378,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_pixel_count_diamond(patterns, wm)
 
+        # Strategy 23: rotation tile 2×2 (NxM → 2N×2M by tiling 4 rotations)
+        if rule is None:
+            rule = self._try_rotate_tile_2x2(patterns, wm)
+
+        # Strategy 24: diagonal extend (2×2 block + diagonal tails → extend to edges)
+        if rule is None:
+            rule = self._try_diagonal_extend(patterns, wm)
+
+        # Strategy 25: quadrant diagonal fill (2×2 seed colors → fill corners)
+        if rule is None:
+            rule = self._try_quadrant_diagonal_fill(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2900,6 +2912,253 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: rotation tile 2×2 ------------------------------------
+
+    def _try_rotate_tile_2x2(self, patterns, wm):
+        """
+        Detect pattern: output is 2× the input dimensions, formed by tiling
+        4 rotations of the input (original, 90°CCW, 180°, 90°CW) in a 2×2
+        arrangement: TL=original, TR=90°CCW, BL=180°, BR=90°CW.
+
+        Category: tasks where a small grid is expanded by rotation tiling.
+        """
+        task = wm.task
+        if not task or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            if h_out != 2 * h_in or w_out != 2 * w_in:
+                return None
+
+            orig = [row[:] for row in raw_in]
+            ccw90 = self._rotate_ccw90(orig)
+            rot180 = self._rotate_180(orig)
+            cw90 = self._rotate_cw90(orig)
+
+            if not self._check_quadrant(raw_out, 0, 0, orig):
+                return None
+            if not self._check_quadrant(raw_out, 0, w_in, ccw90):
+                return None
+            if not self._check_quadrant(raw_out, h_in, 0, rot180):
+                return None
+            if not self._check_quadrant(raw_out, h_in, w_in, cw90):
+                return None
+
+        return {"type": "rotate_tile_2x2", "confidence": 1.0}
+
+    @staticmethod
+    def _rotate_cw90(grid):
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        return [[grid[h - 1 - c][r] for c in range(h)] for r in range(w)]
+
+    @staticmethod
+    def _rotate_ccw90(grid):
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        return [[grid[c][w - 1 - r] for c in range(h)] for r in range(w)]
+
+    @staticmethod
+    def _rotate_180(grid):
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        return [[grid[h - 1 - r][w - 1 - c] for c in range(w)] for r in range(h)]
+
+    @staticmethod
+    def _check_quadrant(output, row_off, col_off, expected):
+        h = len(expected)
+        w = len(expected[0]) if expected else 0
+        for r in range(h):
+            for c in range(w):
+                if output[row_off + r][col_off + c] != expected[r][c]:
+                    return False
+        return True
+
+    # ---- strategy: diagonal extend ---------------------------------------
+
+    def _try_diagonal_extend(self, patterns, wm):
+        """
+        Detect pattern: a 2×2 block of one color with diagonal 'tail' pixels
+        of the same color. Each tail is extended as a diagonal line from the
+        tail pixel to the grid edge, in the direction away from the block.
+
+        Category: tasks with a compact core that projects diagonal rays.
+        """
+        task = wm.task
+        if not task or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            # Find foreground color and positions
+            fg_color = None
+            fg_positions = []
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != 0:
+                        fg_positions.append((r, c))
+                        if fg_color is None:
+                            fg_color = raw_in[r][c]
+                        elif raw_in[r][c] != fg_color:
+                            return None
+
+            if fg_color is None or len(fg_positions) < 5:
+                return None
+
+            # Find the 2×2 block
+            block_pos = None
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    if (raw_in[r][c] == fg_color and raw_in[r][c + 1] == fg_color and
+                            raw_in[r + 1][c] == fg_color and raw_in[r + 1][c + 1] == fg_color):
+                        block_pos = (r, c)
+                        break
+                if block_pos:
+                    break
+
+            if block_pos is None:
+                return None
+
+            blk_r, blk_c = block_pos
+            block_cells = {(blk_r, blk_c), (blk_r, blk_c + 1),
+                           (blk_r + 1, blk_c), (blk_r + 1, blk_c + 1)}
+            tails = [p for p in fg_positions if p not in block_cells]
+            if not tails:
+                return None
+
+            # Each tail must be diagonally adjacent to a block corner
+            for tr, tc in tails:
+                is_diag = any(
+                    abs(tr - cr) == 1 and abs(tc - cc) == 1
+                    for cr, cc in block_cells
+                )
+                if not is_diag:
+                    return None
+
+            # Build expected output
+            expected = [[0] * w for _ in range(h)]
+            for r, c in fg_positions:
+                expected[r][c] = fg_color
+
+            center_r = blk_r + 0.5
+            center_c = blk_c + 0.5
+            for tr, tc in tails:
+                dr = 1 if tr > center_r else -1
+                dc = 1 if tc > center_c else -1
+                nr, nc = tr + dr, tc + dc
+                while 0 <= nr < h and 0 <= nc < w:
+                    expected[nr][nc] = fg_color
+                    nr += dr
+                    nc += dc
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "diagonal_extend", "confidence": 1.0}
+
+    # ---- strategy: quadrant diagonal fill --------------------------------
+
+    def _try_quadrant_diagonal_fill(self, patterns, wm):
+        """
+        Detect pattern: grid with a 2×2 block of 4 distinct non-zero colors
+        on a zero background. Output fills each corner region (relative to
+        the 2×2 block) with the diagonally opposite color from the block.
+
+        Category: tasks with a colored seed block that projects corner fills.
+        """
+        task = wm.task
+        if not task or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            # Find 2×2 block of 4 distinct non-zero colors
+            block_pos = None
+            block_colors = None
+            for r in range(h - 1):
+                for c in range(w - 1):
+                    tl = raw_in[r][c]
+                    tr = raw_in[r][c + 1]
+                    bl = raw_in[r + 1][c]
+                    br = raw_in[r + 1][c + 1]
+                    if tl != 0 and tr != 0 and bl != 0 and br != 0:
+                        if len({tl, tr, bl, br}) == 4:
+                            block_pos = (r, c)
+                            block_colors = (tl, tr, bl, br)
+                            break
+                if block_pos:
+                    break
+
+            if block_pos is None:
+                return None
+
+            blk_r, blk_c = block_pos
+            tl_c, tr_c, bl_c, br_c = block_colors
+
+            # All other input cells should be 0
+            for r in range(h):
+                for c in range(w):
+                    if (r, c) in {(blk_r, blk_c), (blk_r, blk_c + 1),
+                                  (blk_r + 1, blk_c), (blk_r + 1, blk_c + 1)}:
+                        continue
+                    if raw_in[r][c] != 0:
+                        return None
+
+            # Build expected output: place 2×2 fills at diagonal neighbors,
+            # clipped to grid boundaries
+            expected = [row[:] for row in raw_in]
+            # TL fill: rows [blk_r-2, blk_r), cols [blk_c-2, blk_c)
+            for r in range(max(0, blk_r - 2), blk_r):
+                for c in range(max(0, blk_c - 2), blk_c):
+                    expected[r][c] = br_c
+            # TR fill: rows [blk_r-2, blk_r), cols [blk_c+2, blk_c+4)
+            for r in range(max(0, blk_r - 2), blk_r):
+                for c in range(blk_c + 2, min(w, blk_c + 4)):
+                    expected[r][c] = bl_c
+            # BL fill: rows [blk_r+2, blk_r+4), cols [blk_c-2, blk_c)
+            for r in range(blk_r + 2, min(h, blk_r + 4)):
+                for c in range(max(0, blk_c - 2), blk_c):
+                    expected[r][c] = tr_c
+            # BR fill: rows [blk_r+2, blk_r+4), cols [blk_c+2, blk_c+4)
+            for r in range(blk_r + 2, min(h, blk_r + 4)):
+                for c in range(blk_c + 2, min(w, blk_c + 4)):
+                    expected[r][c] = tl_c
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "quadrant_diagonal_fill", "confidence": 1.0}
+
     @staticmethod
     def _count_non_bg(raw):
         """Find background color (most frequent) and count non-bg colors."""
@@ -3017,6 +3276,12 @@ class PredictOperator(Operator):
             return self._apply_template_stamp_rotate(rule, input_grid)
         if rule_type == "pixel_count_diamond":
             return self._apply_pixel_count_diamond(rule, input_grid)
+        if rule_type == "rotate_tile_2x2":
+            return self._apply_rotate_tile_2x2(rule, input_grid)
+        if rule_type == "diagonal_extend":
+            return self._apply_diagonal_extend(rule, input_grid)
+        if rule_type == "quadrant_diagonal_fill":
+            return self._apply_quadrant_diagonal_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3789,6 +4054,122 @@ class PredictOperator(Operator):
                 grid[r][right_col] = 4
 
         return grid
+
+    def _apply_rotate_tile_2x2(self, rule, input_grid):
+        """Tile 4 rotations of input into 2×2 output grid."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0 or h != w:
+            return None
+        orig = [row[:] for row in raw]
+        ccw90 = GeneralizeOperator._rotate_ccw90(orig)
+        rot180 = GeneralizeOperator._rotate_180(orig)
+        cw90 = GeneralizeOperator._rotate_cw90(orig)
+
+        out = [[0] * (2 * w) for _ in range(2 * h)]
+        for r in range(h):
+            for c in range(w):
+                out[r][c] = orig[r][c]
+                out[r][w + c] = ccw90[r][c]
+                out[h + r][c] = rot180[r][c]
+                out[h + r][w + c] = cw90[r][c]
+        return out
+
+    def _apply_diagonal_extend(self, rule, input_grid):
+        """Extend diagonal tails from 2×2 block to grid edges."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+
+        fg_color = None
+        fg_positions = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    fg_positions.append((r, c))
+                    if fg_color is None:
+                        fg_color = raw[r][c]
+
+        if fg_color is None:
+            return out
+
+        block_pos = None
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (raw[r][c] == fg_color and raw[r][c + 1] == fg_color and
+                        raw[r + 1][c] == fg_color and raw[r + 1][c + 1] == fg_color):
+                    block_pos = (r, c)
+                    break
+            if block_pos:
+                break
+
+        if block_pos is None:
+            return out
+
+        blk_r, blk_c = block_pos
+        block_cells = {(blk_r, blk_c), (blk_r, blk_c + 1),
+                       (blk_r + 1, blk_c), (blk_r + 1, blk_c + 1)}
+        tails = [(r, c) for r, c in fg_positions if (r, c) not in block_cells]
+
+        center_r = blk_r + 0.5
+        center_c = blk_c + 0.5
+        for tr, tc in tails:
+            dr = 1 if tr > center_r else -1
+            dc = 1 if tc > center_c else -1
+            nr, nc = tr + dr, tc + dc
+            while 0 <= nr < h and 0 <= nc < w:
+                out[nr][nc] = fg_color
+                nr += dr
+                nc += dc
+
+        return out
+
+    def _apply_quadrant_diagonal_fill(self, rule, input_grid):
+        """Fill corner regions with diagonally opposite colors from 2×2 seed."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+
+        block_pos = None
+        block_colors = None
+        for r in range(h - 1):
+            for c in range(w - 1):
+                tl = raw[r][c]
+                tr = raw[r][c + 1]
+                bl = raw[r + 1][c]
+                br = raw[r + 1][c + 1]
+                if tl != 0 and tr != 0 and bl != 0 and br != 0:
+                    if len({tl, tr, bl, br}) == 4:
+                        block_pos = (r, c)
+                        block_colors = (tl, tr, bl, br)
+                        break
+            if block_pos:
+                break
+
+        if block_pos is None:
+            return out
+
+        blk_r, blk_c = block_pos
+        tl_c, tr_c, bl_c, br_c = block_colors
+
+        # Place 2×2 fills at diagonal neighbors, clipped to grid boundaries
+        for r in range(max(0, blk_r - 2), blk_r):
+            for c in range(max(0, blk_c - 2), blk_c):
+                out[r][c] = br_c
+        for r in range(max(0, blk_r - 2), blk_r):
+            for c in range(blk_c + 2, min(w, blk_c + 4)):
+                out[r][c] = bl_c
+        for r in range(blk_r + 2, min(h, blk_r + 4)):
+            for c in range(max(0, blk_c - 2), blk_c):
+                out[r][c] = tr_c
+        for r in range(blk_r + 2, min(h, blk_r + 4)):
+            for c in range(blk_c + 2, min(w, blk_c + 4)):
+                out[r][c] = tl_c
+
+        return out
 
     # ---- helpers ---------------------------------------------------------
 
