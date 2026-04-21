@@ -387,6 +387,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_tile_grid_recolor(patterns, wm)
 
+        # Strategy 64: largest blob color (noisy grid + solid patches → 3×3 of largest CC color)
+        if rule is None:
+            rule = self._try_largest_blob_color(patterns, wm)
+
+        # Strategy 66: spiral from seed (3-pixel center → rectangular spiral, 2s are obstacles)
+        if rule is None:
+            rule = self._try_spiral_from_seed(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -7613,6 +7621,263 @@ class GeneralizeOperator(Operator):
                 "bg_color": 7, "bar_color_pos": 8, "bar_color_neg": 2, "fill_color": 5}
 
 
+    # ---- strategy 64: largest blob color -----------------------------------
+
+    def _try_largest_blob_color(self, patterns, wm):
+        """Noisy grid with solid-colored patches; output = 3×3 grid of
+        the color with the largest connected component.
+        Category: object detection / largest CC identification."""
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H_out, W_out = len(raw_out), len(raw_out[0])
+            # Output must be small uniform grid (e.g. 3×3)
+            if H_out > 5 or W_out > 5:
+                return None
+            # Output must be uniform (all same color)
+            out_color = raw_out[0][0]
+            if not all(raw_out[r][c] == out_color for r in range(H_out) for c in range(W_out)):
+                return None
+            # Find largest CC in input
+            best_color = self._find_largest_cc_color(raw_in)
+            if best_color != out_color:
+                return None
+
+        return {"type": "largest_blob_color", "confidence": 1.0,
+                "out_rows": H_out, "out_cols": W_out}
+
+    @staticmethod
+    def _find_largest_cc_color(raw):
+        """Return color of largest connected patch in a noisy grid.
+        Patches are colors where ALL cells form a single connected component
+        (largest_cc == total_count). Among those, return the one with the
+        most cells. Noise colors are fragmented and filtered out."""
+        from collections import Counter
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        counts = Counter()
+        for r in range(H):
+            for c in range(W):
+                counts[raw[r][c]] += 1
+        # For each color, find its largest CC
+        visited = [[False] * W for _ in range(H)]
+        largest_cc = {}  # color -> max cc size
+        for r in range(H):
+            for c in range(W):
+                if visited[r][c]:
+                    continue
+                color = raw[r][c]
+                queue = [(r, c)]
+                visited[r][c] = True
+                size = 0
+                while queue:
+                    cr, cc = queue.pop(0)
+                    size += 1
+                    for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < H and 0 <= nc < W and not visited[nr][nc] and raw[nr][nc] == color:
+                            visited[nr][nc] = True
+                            queue.append((nr, nc))
+                largest_cc[color] = max(largest_cc.get(color, 0), size)
+        # Filter: patch colors have largest_cc == total count (fully connected)
+        # and at least 4 cells
+        best_size = 0
+        best_color = 0
+        for color, cc_size in largest_cc.items():
+            if cc_size == counts[color] and cc_size >= 4:
+                if cc_size > best_size:
+                    best_size = cc_size
+                    best_color = color
+        return best_color
+
+    # ---- strategy 65: shape stamp fill ------------------------------------
+
+    def _try_shape_stamp_fill(self, patterns, wm):
+        """Grid of 0s and 5s with some 2-cells forming a shape template.
+        All groups of 0-cells matching the same shape get filled with 2.
+        Uses progressive matching (earlier matches block later ones) and
+        checks that interior holes of the shape are non-0.
+        Category: template matching / shape stamping."""
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            # Grid must have exactly 3 colors: 0, 5, and 2
+            colors_in = set()
+            for r in range(H):
+                for c in range(W):
+                    colors_in.add(raw_in[r][c])
+            if 2 not in colors_in or 5 not in colors_in or 0 not in colors_in:
+                return None
+            if len(colors_in) > 3:
+                return None
+            expected = self._stamp_fill_grid(raw_in)
+            if expected != raw_out:
+                return None
+
+        return {"type": "shape_stamp_fill", "confidence": 1.0}
+
+    @staticmethod
+    def _stamp_fill_grid(raw_in):
+        """Apply shape stamp fill: find 2-template, match 0-regions, fill.
+        A match is valid only if the shape's 0-cells don't connect to any
+        0-cells outside the shape (each cell's non-shape 4-neighbors must
+        be non-0 in the input)."""
+        H, W = len(raw_in), len(raw_in[0])
+        template_cells = []
+        for r in range(H):
+            for c in range(W):
+                if raw_in[r][c] == 2:
+                    template_cells.append((r, c))
+        if not template_cells:
+            return [row[:] for row in raw_in]
+        min_r = min(r for r, c in template_cells)
+        min_c = min(c for r, c in template_cells)
+        shape = frozenset((r - min_r, c - min_c) for r, c in template_cells)
+        shape_h = max(r for r, c in shape) + 1
+        shape_w = max(c for r, c in shape) + 1
+        # Check if template itself is "isolated" (cells don't leak to outside 0s)
+        # If the template isn't isolated, skip the isolation check
+        tmpl_set = set(template_cells)
+        tmpl_isolated = True
+        for tr, tc in template_cells:
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                nr, nc = tr + dr, tc + dc
+                if 0 <= nr < H and 0 <= nc < W:
+                    if (nr, nc) not in tmpl_set and raw_in[nr][nc] == 0:
+                        tmpl_isolated = False
+                        break
+            if not tmpl_isolated:
+                break
+        output = [row[:] for row in raw_in]
+        for r in range(H - shape_h + 1):
+            for c in range(W - shape_w + 1):
+                cells = [(r + dr, c + dc) for dr, dc in shape]
+                # All shape cells must be 0
+                if not all(raw_in[cr][cc] == 0 for cr, cc in cells):
+                    continue
+                # If template is isolated, require match to also be isolated
+                if tmpl_isolated:
+                    cell_set = set(cells)
+                    isolated = True
+                    for cr, cc in cells:
+                        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < H and 0 <= nc < W:
+                                if (nr, nc) not in cell_set and raw_in[nr][nc] == 0:
+                                    isolated = False
+                                    break
+                        if not isolated:
+                            break
+                    if not isolated:
+                        continue
+                for cr, cc in cells:
+                    output[cr][cc] = 2
+        return output
+
+    # ---- strategy 66: spiral from seed ------------------------------------
+
+    def _try_spiral_from_seed(self, patterns, wm):
+        """Grid with a single color-3 pixel (seed) and color-2 obstacles on
+        bg 0. Output draws a rectangular spiral of 3s outward from the seed.
+        Arm lengths: 2,2,4,4,6,6,... Directions: up,right,down,left.
+        Stops entire spiral when hitting a 2 or an already-drawn cell from
+        a non-adjacent arm. 2-pixels preserved unchanged.
+        Category: geometric construction / rectangular spiral."""
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            # Find seed (single 3-pixel)
+            seeds = [(r, c) for r in range(H) for c in range(W) if raw_in[r][c] == 3]
+            if len(seeds) != 1:
+                return None
+            # Check that non-seed, non-obstacle cells are 0
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] not in (0, 2, 3):
+                        return None
+            # Generate spiral and compare
+            expected = self._generate_spiral(raw_in, seeds[0], H, W)
+            if expected != raw_out:
+                return None
+
+        return {"type": "spiral_from_seed", "confidence": 1.0}
+
+    @staticmethod
+    def _generate_spiral(raw_in, seed, H, W):
+        """Generate the rectangular spiral output.
+        Arms: length 2,2,4,4,6,6,... Dirs: up,right,down,left.
+        OOB cells are skipped but cursor still moves theoretically.
+        Stops on obstacle (2) or self-collision."""
+        grid = [row[:] for row in raw_in]
+        sr, sc = seed
+        grid[sr][sc] = 3
+        drawn = set()
+        drawn.add((sr, sc))
+
+        dirs = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+        cr, cc = sr, sc
+        arm_idx = 0
+        consecutive_no_draw = 0
+
+        while arm_idx < 200:
+            arm_len = 2 * ((arm_idx // 2) + 1)
+            d = arm_idx % 4
+            dr, dc = dirs[d]
+            drew_any = False
+            hit_stop = False
+
+            for step in range(arm_len):
+                nr, nc = cr + dr, cc + dc
+                if 0 <= nr < H and 0 <= nc < W:
+                    if raw_in[nr][nc] == 2:
+                        hit_stop = True
+                        break
+                    if (nr, nc) in drawn:
+                        hit_stop = True
+                        break
+                    grid[nr][nc] = 3
+                    drawn.add((nr, nc))
+                    drew_any = True
+                # Always advance cursor (even if OOB/skipped)
+                cr, cc = nr, nc
+
+            if hit_stop:
+                break
+            if drew_any:
+                consecutive_no_draw = 0
+            else:
+                consecutive_no_draw += 1
+                if consecutive_no_draw >= 8:
+                    break
+            arm_idx += 1
+
+        return grid
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -7809,6 +8074,12 @@ class PredictOperator(Operator):
             return self._apply_shape_template_catalog(rule, input_grid)
         if rule_type == "bar_chart_balance":
             return self._apply_bar_chart_balance(rule, input_grid)
+        if rule_type == "largest_blob_color":
+            return self._apply_largest_blob_color(rule, input_grid)
+        if rule_type == "shape_stamp_fill":
+            return self._apply_shape_stamp_fill(rule, input_grid)
+        if rule_type == "spiral_from_seed":
+            return self._apply_spiral_from_seed(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -10558,6 +10829,30 @@ class PredictOperator(Operator):
                 if 0 <= r < H:
                     output[r][target_col] = fill_color
         return output
+
+    # ---- strategy 64: apply largest blob color ----------------------------
+
+    def _apply_largest_blob_color(self, rule, input_grid):
+        raw = input_grid.raw
+        best_color = GeneralizeOperator._find_largest_cc_color(raw)
+        out_rows = rule.get("out_rows", 3)
+        out_cols = rule.get("out_cols", 3)
+        return [[best_color] * out_cols for _ in range(out_rows)]
+
+    # ---- strategy 65: apply shape stamp fill ------------------------------
+
+    def _apply_shape_stamp_fill(self, rule, input_grid):
+        return GeneralizeOperator._stamp_fill_grid(input_grid.raw)
+
+    # ---- strategy 66: apply spiral from seed ------------------------------
+
+    def _apply_spiral_from_seed(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        seeds = [(r, c) for r in range(H) for c in range(W) if raw[r][c] == 3]
+        if len(seeds) != 1:
+            return [row[:] for row in raw]
+        return GeneralizeOperator._generate_spiral(raw, seeds[0], H, W)
 
     # ---- helpers ---------------------------------------------------------
 

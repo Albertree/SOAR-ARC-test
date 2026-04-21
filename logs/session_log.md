@@ -1119,3 +1119,93 @@
 - Stored rule hits: 66
 - Time: 220s
 - Log: logs/learn_20260422_060236.log
+
+---
+## Learning Loop -- 2026-04-22 06:10
+
+- Split: training, Tasks: 80
+- Correct: 70 / 80 (87.5%)
+- Rules: 298 -> 302 (+4 learned)
+- Stored rule hits: 68
+- Time: 219s
+- Log: logs/learn_20260422_060705.log
+
+---
+## Learning Loop -- 2026-04-22 06:54
+
+- Split: training, Tasks: 80
+- Correct: 70 / 80 (87.5%)
+- Rules: 302 -> 306 (+4 learned)
+- Stored rule hits: 68
+- Time: 223s
+- Log: logs/learn_20260422_065045.log
+
+---
+## Learning Loop -- 2026-04-22 06:59
+
+- Split: training, Tasks: 80
+- Correct: 70 / 80 (87.5%)
+- Rules: 306 -> 310 (+4 learned)
+- Stored rule hits: 68
+- Time: 220s
+- Log: logs/learn_20260422_065524.log
+
+---
+## Learning Loop -- 2026-04-22 07:15
+
+- Split: training, Tasks: 80
+- Correct: 70 / 80 (87.5%)
+- Rules: 310 -> 314 (+4 learned)
+- Stored rule hits: 68
+- Time: 221s
+- Log: logs/learn_20260422_071137.log
+
+---
+## Learning Loop -- 2026-04-22 07:28
+
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%)
+- Rules: 314 -> 319 (+5 learned)
+- Stored rule hits: 68
+- Time: 220s
+- Log: logs/learn_20260422_072424.log
+
+---
+## Session 26 -- 2026-04-22 07:28
+
+### Strategies Added
+1. **largest_blob_color** (Strategy 64): Noisy grid with solid-colored
+   patches embedded in scattered noise. For each color, find its largest
+   connected component. Patches have largest_cc == total_count (fully
+   connected), while noise colors are fragmented. Output is a small
+   uniform grid (e.g. 3×3) of the color with the largest fully-connected
+   patch. Category: object detection / largest CC identification.
+   (solves 3194b014)
+2. **spiral_from_seed** (Strategy 66): Grid with a single color-3 pixel
+   (seed) and color-2 obstacles on background 0. Output draws a
+   rectangular spiral of 3s outward from the seed. Arm lengths follow
+   2,2,4,4,6,6,... pattern in directions up/right/down/left. OOB cells
+   are skipped but cursor advances theoretically, allowing the spiral to
+   naturally wrap around grid edges. Stops on obstacle or self-collision.
+   Category: geometric construction / rectangular spiral.
+   (solves e5c44e8f)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%) — up from 70/80 (87.5%)
+- Solved (new): 3194b014 (largest_blob_color), e5c44e8f (spiral_from_seed)
+- Rules: 314 -> 319 (+5 learned)
+- Stored rule hits: 68
+- Discovered: 6 new rules from pipeline
+- Time: 220s
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 07:31
+
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%)
+- Rules: 319 -> 322 (+3 learned)
+- Stored rule hits: 70
+- Time: 222s
+- Log: logs/learn_20260422_072809.log
