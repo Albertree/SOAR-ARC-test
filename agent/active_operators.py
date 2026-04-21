@@ -494,6 +494,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_concentric_ring_rotate(patterns, wm)
 
+        # Strategy 46: wedge expansion (seed line → triangle up/down)
+        if rule is None:
+            rule = self._try_wedge_expansion(patterns, wm)
+
+        # Strategy 47: mirror row tile (each row → rev+row, tiled 2×)
+        if rule is None:
+            rule = self._try_mirror_row_tile(patterns, wm)
+
+        # Strategy 48: larger interior rect (two rects → 2×2 of larger interior color)
+        if rule is None:
+            rule = self._try_larger_interior_rect(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -5811,6 +5823,259 @@ class GeneralizeOperator(Operator):
         return ring_colors if ring_colors else None
 
 
+    # ---- strategy: wedge expansion ----------------------------------------
+
+    def _try_wedge_expansion(self, patterns, wm):
+        """
+        Detect: input has a single horizontal line of color K (e.g. 2)
+        starting from col 0. Output expands upward with color 3 (each row
+        adds +1 cell) and contracts downward with color 1 (each row removes
+        -1 cell).
+        Category: triangular/wedge expansion from a seed line.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            oH, oW = len(raw_out), len(raw_out[0])
+            if H != oH or W != oW:
+                return None
+
+            # Find the seed row: exactly one row with non-zero cells,
+            # all the same color, starting from column 0, contiguous
+            seed_row = None
+            seed_color = None
+            seed_len = None
+            for r in range(H):
+                nz = [(c, raw_in[r][c]) for c in range(W) if raw_in[r][c] != 0]
+                if nz:
+                    if seed_row is not None:
+                        return None  # multiple non-zero rows
+                    # Check contiguous from col 0, same color
+                    cols = [c for c, v in nz]
+                    colors = set(v for c, v in nz)
+                    if len(colors) != 1:
+                        return None
+                    if cols != list(range(len(cols))):
+                        return None
+                    seed_row = r
+                    seed_color = nz[0][1]
+                    seed_len = len(cols)
+
+            if seed_row is None or seed_len is None:
+                return None
+
+            # Verify output pattern:
+            # Above seed: row (seed_row - d) has (seed_len + d) cells of up_color
+            # Below seed: row (seed_row + d) has (seed_len - d) cells of down_color
+            # Seed row itself: same as input
+            up_color = None
+            down_color = None
+
+            for r in range(H):
+                if r == seed_row:
+                    # Should match input
+                    for c in range(W):
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+                    continue
+
+                d_up = seed_row - r  # positive if above seed
+                d_down = r - seed_row  # positive if below seed
+
+                if d_up > 0:
+                    expected_len = seed_len + d_up
+                    if expected_len > W:
+                        expected_len = W
+                    # Check row has expected_len cells of some color from col 0
+                    nz = [(c, raw_out[r][c]) for c in range(W) if raw_out[r][c] != 0]
+                    if not nz and expected_len <= 0:
+                        continue
+                    if len(nz) != expected_len:
+                        return None
+                    row_color = nz[0][1]
+                    if row_color == seed_color:
+                        return None
+                    if up_color is None:
+                        up_color = row_color
+                    elif row_color != up_color:
+                        return None
+                    cols = [c for c, v in nz]
+                    if cols != list(range(expected_len)):
+                        return None
+
+                elif d_down > 0:
+                    expected_len = seed_len - d_down
+                    if expected_len <= 0:
+                        # Row should be all zeros
+                        if any(raw_out[r][c] != 0 for c in range(W)):
+                            return None
+                        continue
+                    nz = [(c, raw_out[r][c]) for c in range(W) if raw_out[r][c] != 0]
+                    if len(nz) != expected_len:
+                        return None
+                    row_color = nz[0][1]
+                    if row_color == seed_color:
+                        return None
+                    if down_color is None:
+                        down_color = row_color
+                    elif row_color != down_color:
+                        return None
+                    cols = [c for c, v in nz]
+                    if cols != list(range(expected_len)):
+                        return None
+
+        if up_color is None or down_color is None:
+            return None
+
+        return {
+            "type": "wedge_expansion",
+            "seed_color": seed_color,
+            "up_color": up_color,
+            "down_color": down_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: mirror row tile ----------------------------------------
+
+    def _try_mirror_row_tile(self, patterns, wm):
+        """
+        Detect: output width = 4 × input width, same height.
+        Each output row = (reversed(row) + row) repeated 2×.
+        Category: row-wise horizontal mirror and tile.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            oH, oW = len(raw_out), len(raw_out[0])
+
+            if oH != H or oW != 4 * W:
+                return None
+
+            # Verify each row
+            for r in range(H):
+                row = raw_in[r]
+                rev = list(reversed(row))
+                unit = rev + row  # 2W wide
+                expected = unit + unit  # 4W wide
+                if raw_out[r] != expected:
+                    return None
+
+        return {
+            "type": "mirror_row_tile",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: larger interior rect ------------------------------------
+
+    def _try_larger_interior_rect(self, patterns, wm):
+        """
+        Detect: input has two hollow rectangles on bg 0, output is 2×2
+        filled with the color of the rectangle having the larger interior.
+        Category: rectangle comparison by interior area.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            oH, oW = len(raw_out), len(raw_out[0])
+
+            # Output must be 2×2 with uniform color
+            if oH != 2 or oW != 2:
+                return None
+            out_color = raw_out[0][0]
+            if not all(raw_out[r][c] == out_color for r in range(2) for c in range(2)):
+                return None
+
+            # Find rectangles in input
+            rects = self._find_hollow_rects(raw_in)
+            if len(rects) != 2:
+                return None
+
+            # Compute interior areas
+            areas = []
+            for color, r0, c0, r1, c1 in rects:
+                int_h = r1 - r0 - 1
+                int_w = c1 - c0 - 1
+                area = max(0, int_h) * max(0, int_w)
+                areas.append((area, color))
+
+            # The color with larger interior should match output
+            areas.sort(reverse=True)
+            if areas[0][1] != out_color:
+                return None
+
+        return {
+            "type": "larger_interior_rect",
+            "confidence": 1.0,
+        }
+
+    def _find_hollow_rects(self, raw):
+        """Find hollow or solid rectangles of non-zero colors on bg 0."""
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        visited = [[False] * W for _ in range(H)]
+        rects = []
+
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0 and not visited[r][c]:
+                    color = raw[r][c]
+                    # BFS to find all connected cells of this color
+                    cells = set()
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        cells.add((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < H and 0 <= nc < W and not visited[nr][nc] and raw[nr][nc] == color:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+
+                    # Check if cells form a rectangle border
+                    min_r = min(cr for cr, cc in cells)
+                    max_r = max(cr for cr, cc in cells)
+                    min_c = min(cc for cr, cc in cells)
+                    max_c = max(cc for cr, cc in cells)
+
+                    # All border cells must be present
+                    is_rect = True
+                    for br in range(min_r, max_r + 1):
+                        for bc in range(min_c, max_c + 1):
+                            on_border = (br == min_r or br == max_r or
+                                         bc == min_c or bc == max_c)
+                            if on_border and (br, bc) not in cells:
+                                is_rect = False
+                                break
+                        if not is_rect:
+                            break
+
+                    if is_rect:
+                        rects.append((color, min_r, min_c, max_r, max_c))
+
+        return rects
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -5971,6 +6236,12 @@ class PredictOperator(Operator):
             return self._apply_column_shadow_tile(rule, input_grid)
         if rule_type == "concentric_ring_rotate":
             return self._apply_concentric_ring_rotate(rule, input_grid)
+        if rule_type == "wedge_expansion":
+            return self._apply_wedge_expansion(rule, input_grid)
+        if rule_type == "mirror_row_tile":
+            return self._apply_mirror_row_tile(rule, input_grid)
+        if rule_type == "larger_interior_rect":
+            return self._apply_larger_interior_rect(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -7765,6 +8036,105 @@ class PredictOperator(Operator):
         out = [[color_map.get(raw[r][c], raw[r][c]) for c in range(W)]
                for r in range(H)]
         return out
+
+    # ---- apply: wedge expansion --------------------------------------------
+
+    def _apply_wedge_expansion(self, rule, input_grid):
+        """Expand seed line into triangle above (up_color) and below (down_color)."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        seed_color = rule["seed_color"]
+        up_color = rule["up_color"]
+        down_color = rule["down_color"]
+
+        # Find seed row
+        seed_row = None
+        seed_len = 0
+        for r in range(H):
+            nz = [c for c in range(W) if raw[r][c] != 0]
+            if nz:
+                seed_row = r
+                seed_len = len(nz)
+                break
+
+        if seed_row is None:
+            return [row[:] for row in raw]
+
+        out = [[0] * W for _ in range(H)]
+
+        for r in range(H):
+            if r == seed_row:
+                out[r] = raw[r][:]
+            elif r < seed_row:
+                d = seed_row - r
+                fill_len = min(seed_len + d, W)
+                for c in range(fill_len):
+                    out[r][c] = up_color
+            else:
+                d = r - seed_row
+                fill_len = seed_len - d
+                if fill_len > 0:
+                    for c in range(fill_len):
+                        out[r][c] = down_color
+
+        return out
+
+    # ---- apply: mirror row tile -------------------------------------------
+
+    def _apply_mirror_row_tile(self, rule, input_grid):
+        """Each row → reversed(row) + row, tiled 2×."""
+        raw = input_grid.raw
+        H = len(raw)
+        out = []
+        for r in range(H):
+            row = raw[r]
+            rev = list(reversed(row))
+            unit = rev + row
+            out.append(unit + unit)
+        return out
+
+    # ---- apply: larger interior rect --------------------------------------
+
+    def _apply_larger_interior_rect(self, rule, input_grid):
+        """Find two rects, output 2×2 with color of larger interior."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Find rectangles
+        visited = [[False] * W for _ in range(H)]
+        rects = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0 and not visited[r][c]:
+                    color = raw[r][c]
+                    cells = set()
+                    queue = [(r, c)]
+                    visited[r][c] = True
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        cells.add((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < H and 0 <= nc < W and not visited[nr][nc] and raw[nr][nc] == color:
+                                visited[nr][nc] = True
+                                queue.append((nr, nc))
+                    min_r = min(cr for cr, cc in cells)
+                    max_r = max(cr for cr, cc in cells)
+                    min_c = min(cc for cr, cc in cells)
+                    max_c = max(cc for cr, cc in cells)
+                    int_h = max_r - min_r - 1
+                    int_w = max_c - min_c - 1
+                    area = max(0, int_h) * max(0, int_w)
+                    rects.append((area, color))
+
+        if not rects:
+            return [[0, 0], [0, 0]]
+
+        rects.sort(reverse=True)
+        winner = rects[0][1]
+        return [[winner, winner], [winner, winner]]
 
     # ---- helpers ---------------------------------------------------------
 

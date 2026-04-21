@@ -657,3 +657,59 @@
 - Time: 208s
 - Log: logs/learn_20260422_022716.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 02:34
+
+- Split: training, Tasks: 80
+- Correct: 52 / 80 (65.0%)
+- Rules: 161 -> 167 (+6 learned)
+- Stored rule hits: 51
+- Time: 209s
+- Log: logs/learn_20260422_023124.log
+
+---
+## Session 20 -- 2026-04-22 02:47
+
+### Strategies Added
+1. **wedge_expansion** (Strategy 46): Input has a single horizontal line of color 2
+   starting from col 0. Output expands upward with color 3 (each row adds +1 cell
+   from col 0) and contracts downward with color 1 (each row removes -1 cell).
+   Triangular/wedge expansion from a seed line. (solves a65b410d)
+2. **mirror_row_tile** (Strategy 47): Output width = 4× input width, same height.
+   Each row becomes reversed(row) + row (horizontal palindrome), then tiled 2×.
+   Row-wise horizontal mirror and tile pattern. (solves 59341089)
+3. **larger_interior_rect** (Strategy 48): Input has two hollow rectangles on bg 0.
+   Output is 2×2 grid filled with the color of the rectangle having the larger
+   interior area. Rectangle comparison by interior size. (solves 445eab21)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 55 / 80 (68.8%) — up from 52/80 (65.0%)
+- Solved (new): a65b410d (wedge_expansion), 59341089 (mirror_row_tile), 445eab21 (larger_interior_rect)
+- Rules: 167 -> 176 (+9 learned)
+- Stored rule hits: 51
+- Discovered: 10 new rules from pipeline
+- Time: 212s
+- Log: logs/learn_20260422_024354.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 02:51
+
+- Split: training, Tasks: 80
+- Correct: 55 / 80 (68.8%)
+- Rules: 176 -> 182 (+6 learned)
+- Stored rule hits: 54
+- Time: 210s
+- Log: logs/learn_20260422_024731.log
+
+---
+## Learning Loop -- 2026-04-22 02:51
+
+- Split: training, Tasks: 80
+- Correct: 55 / 80 (68.8%)
+- Rules: 176 -> 182 (+6 learned)
+- Stored rule hits: 54
+- Time: 210s
+- Log: logs/learn_20260422_024731.log
