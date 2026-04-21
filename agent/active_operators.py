@@ -579,11 +579,727 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_bar_chart_balance(patterns, wm)
 
+        # Strategy 67: panel hole classify (3 panels with optional 2x2 holes → color code)
+        if rule is None:
+            rule = self._try_panel_hole_classify(patterns, wm)
+
+        # Strategy 68: grid panel decode (N×M panel matrix → merge pattern+color)
+        if rule is None:
+            rule = self._try_grid_panel_decode(patterns, wm)
+
+        # Strategy 69: shape gravity sort (objects reorder by enclosed vs open shape)
+        if rule is None:
+            rule = self._try_shape_gravity_sort(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- strategy 67: panel hole classify --------------------------------
+
+    def _try_panel_hole_classify(self, patterns, wm):
+        """
+        Detect: input is a 4-row grid with 3 panels (4 cols each) separated by
+        single-column dividers of 0. Each panel is filled with color 5 but may
+        have a 2×2 block of 0s at a specific position. Output is 3×3 where each
+        row's color encodes the hole position of the corresponding panel.
+        Category: grid panel feature classification / spatial encoding.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        # Check: all examples have 4-row input and 3-row output with 3 cols
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g0.raw) != 4:
+                return None
+            if len(g1.raw) != 3 or (g1.raw and len(g1.raw[0]) != 3):
+                return None
+
+        # Check: input has column dividers of 0 at cols 4 and 9
+        for pair in task.example_pairs:
+            raw = pair.input_grid.raw
+            w = len(raw[0]) if raw else 0
+            if w != 14:
+                return None
+            for r in range(4):
+                if raw[r][4] != 0 or raw[r][9] != 0:
+                    return None
+
+        # Build the position→color mapping from training examples
+        pos_color_map = {}  # maps hole_position_key → output_color
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            # Extract 3 panels: cols 0-3, 5-8, 10-13
+            panel_starts = [0, 5, 10]
+            for pidx, pc in enumerate(panel_starts):
+                panel = []
+                for r in range(4):
+                    row = []
+                    for c in range(pc, pc + 4):
+                        row.append(raw_in[r][c])
+                    panel.append(row)
+                # Find hole position (2×2 block of 0s within the 4×4 panel)
+                hole_key = self._panel_hole_key(panel)
+                out_color = raw_out[pidx][0]  # all 3 cols same color
+                # Verify all cols same
+                if not all(raw_out[pidx][c] == out_color for c in range(3)):
+                    return None
+                if hole_key in pos_color_map:
+                    if pos_color_map[hole_key] != out_color:
+                        return None
+                else:
+                    pos_color_map[hole_key] = out_color
+
+        if not pos_color_map:
+            return None
+
+        return {
+            "type": "panel_hole_classify",
+            "pos_color_map": pos_color_map,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _panel_hole_key(panel):
+        """Return a string key describing the hole position in a 4×4 panel."""
+        # Find all 0-positions
+        zeros = []
+        for r in range(4):
+            for c in range(4):
+                if panel[r][c] == 0:
+                    zeros.append((r, c))
+        if not zeros:
+            return "none"
+        # Sort and create a canonical key
+        zeros.sort()
+        return str(zeros)
+
+    # ---- strategy 68: grid panel decode ----------------------------------
+
+    def _try_grid_panel_decode(self, patterns, wm):
+        """
+        Detect: input is a grid of NxM panels separated by lines of a separator
+        color (e.g. 8). Each panel has a 1-border. Within each column of panels,
+        exactly one panel is solid-filled with a non-pattern color, and the rest
+        have a 2/bg pattern. The output merges each column's pattern with its
+        solid color, using the solid panel's row-label as border color.
+        Category: grid panel key/pattern merge / lookup table.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        # Work from the first example pair
+        pair0 = task.example_pairs[0]
+        g0, g1 = pair0.input_grid, pair0.output_grid
+        if not g0 or not g1:
+            return None
+        raw = g0.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        if H < 7 or W < 7:
+            return None
+
+        # Find separator color: the color of row 0 (should be uniform)
+        sep = raw[0][0]
+        if not all(raw[0][c] == sep for c in range(W)):
+            return None
+
+        # Find horizontal separator rows (entire row == sep)
+        h_seps = []
+        for r in range(H):
+            if all(raw[r][c] == sep for c in range(W)):
+                h_seps.append(r)
+
+        # Find vertical separator cols (entire col == sep)
+        v_seps = []
+        for c in range(W):
+            if all(raw[r][c] == sep for r in range(H)):
+                v_seps.append(c)
+
+        if len(h_seps) < 2 or len(v_seps) < 1:
+            return None
+
+        # Extract panel row bands and column bands
+        row_bands = []  # list of (start_row, end_row) exclusive
+        for i in range(len(h_seps) - 1):
+            r0 = h_seps[i] + 1
+            r1 = h_seps[i + 1]
+            if r1 > r0:
+                row_bands.append((r0, r1))
+
+        col_bands = []
+        # Add bands between vertical separators
+        all_v = sorted(set(v_seps))
+        # Find contiguous separator groups
+        v_groups = []
+        i = 0
+        while i < len(all_v):
+            start = all_v[i]
+            while i + 1 < len(all_v) and all_v[i + 1] == all_v[i] + 1:
+                i += 1
+            v_groups.append((start, all_v[i]))
+            i += 1
+
+        # Column bands are between consecutive v_groups (and edges)
+        prev_end = -1
+        for vg_start, vg_end in v_groups:
+            if vg_start > prev_end + 1:
+                col_bands.append((prev_end + 1, vg_start))
+            prev_end = vg_end
+        # Last band after the last v_group
+        if prev_end < W - 1:
+            col_bands.append((prev_end + 1, W))
+
+        if len(row_bands) < 2 or len(col_bands) < 2:
+            return None
+
+        # Extract row labels (first non-sep column in each panel row)
+        row_labels = []
+        for r0, r1 in row_bands:
+            # The label is typically the color in column 0 of each row band
+            label = None
+            for r in range(r0, r1):
+                c0_val = raw[r][0]
+                if c0_val != sep:
+                    label = c0_val
+                    break
+            row_labels.append(label)
+
+        # Each panel has a 1-border; extract interior
+        def get_panel_interior(r0, r1, c0, c1):
+            """Extract the interior of a panel (skip 1-cell border of 1s)."""
+            # Find the border color (typically 1)
+            border_r0 = r0
+            border_c0 = c0
+            # Check if first col is a label column (non-1, non-sep)
+            first_col_val = raw[border_r0][border_c0]
+            if first_col_val != 1 and first_col_val != sep:
+                border_c0 += 1  # skip label column
+
+            # Now find the 1-border region
+            # The interior is surrounded by 1s
+            interior = []
+            for r in range(border_r0 + 1, r1 - 1):
+                row = []
+                for c in range(border_c0 + 1, c1 - 1):
+                    row.append(raw[r][c])
+                if row:
+                    interior.append(row)
+            return interior
+
+        # For each column of panels, identify solid vs pattern panels
+        n_rows = len(row_bands)
+        n_cols = len(col_bands)
+
+        panel_grid = []
+        for ri, (r0, r1) in enumerate(row_bands):
+            panel_row = []
+            for ci, (c0, c1) in enumerate(col_bands):
+                interior = get_panel_interior(r0, r1, c0, c1)
+                panel_row.append(interior)
+            panel_grid.append(panel_row)
+
+        # For each column, find which panel is solid (all same non-bg color)
+        col_info = []
+        pattern_color = None  # the color used in patterns (typically 2)
+        for ci in range(n_cols):
+            solid_ri = None
+            solid_color = None
+            pattern_interior = None
+            for ri in range(n_rows):
+                interior = panel_grid[ri][ci]
+                if not interior or not interior[0]:
+                    continue
+                # Check if all cells are the same non-sep, non-pattern color
+                colors = set()
+                for row in interior:
+                    for v in row:
+                        colors.add(v)
+                if len(colors) == 1:
+                    c_val = colors.pop()
+                    if c_val != sep:
+                        solid_ri = ri
+                        solid_color = c_val
+                else:
+                    # This is a pattern panel - should contain 2 and bg
+                    pattern_interior = interior
+                    for row in interior:
+                        for v in row:
+                            if v != sep and pattern_color is None:
+                                # First non-sep in pattern is the pattern color
+                                pass
+                    # Detect pattern color (the non-sep color in patterns)
+                    for row in interior:
+                        for v in row:
+                            if v != sep:
+                                pattern_color = v
+                                break
+                        if pattern_color is not None:
+                            break
+
+            if solid_ri is None or pattern_interior is None:
+                return None
+            col_info.append({
+                "solid_ri": solid_ri,
+                "solid_color": solid_color,
+                "pattern": pattern_interior,
+                "label": row_labels[solid_ri],
+            })
+
+        if not col_info or pattern_color is None:
+            return None
+
+        # Verify against output of first example
+        out_raw = g1.raw
+        out_H = len(out_raw)
+        out_W = len(out_raw[0]) if out_raw else 0
+
+        # Output should be one row of panels
+        # Each output panel: border = label color, interior = pattern with pattern_color → solid_color
+        # Verify by reconstruction
+        expected = self._build_grid_panel_decode_output(col_info, pattern_color, sep, raw, row_bands, col_bands)
+        if expected is None:
+            return None
+
+        if len(expected) != out_H or (expected and len(expected[0]) != out_W):
+            return None
+        for r in range(out_H):
+            for c in range(out_W):
+                if expected[r][c] != out_raw[r][c]:
+                    return None
+
+        # Verify all examples
+        for pair in task.example_pairs[1:]:
+            gi, go = pair.input_grid, pair.output_grid
+            if not gi or not go:
+                return None
+            test_result = self._decode_grid_panels(gi.raw)
+            if test_result is None:
+                return None
+            exp = test_result
+            if len(exp) != len(go.raw):
+                return None
+            for r in range(len(exp)):
+                if len(exp[r]) != len(go.raw[r]):
+                    return None
+                for c in range(len(exp[r])):
+                    if exp[r][c] != go.raw[r][c]:
+                        return None
+
+        return {
+            "type": "grid_panel_decode",
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _decode_grid_panels(raw):
+        """Full decode of a grid-panel-matrix input → merged output."""
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        if H < 7 or W < 7:
+            return None
+
+        sep = raw[0][0]
+        if not all(raw[0][c] == sep for c in range(W)):
+            return None
+
+        h_seps = [r for r in range(H) if all(raw[r][c] == sep for c in range(W))]
+        v_seps = [c for c in range(W) if all(raw[r][c] == sep for r in range(H))]
+        if len(h_seps) < 2 or len(v_seps) < 1:
+            return None
+
+        row_bands = []
+        for i in range(len(h_seps) - 1):
+            r0, r1 = h_seps[i] + 1, h_seps[i + 1]
+            if r1 > r0:
+                row_bands.append((r0, r1))
+
+        all_v = sorted(set(v_seps))
+        v_groups = []
+        i = 0
+        while i < len(all_v):
+            start = all_v[i]
+            while i + 1 < len(all_v) and all_v[i + 1] == all_v[i] + 1:
+                i += 1
+            v_groups.append((start, all_v[i]))
+            i += 1
+
+        col_bands = []
+        prev_end = -1
+        for vg_start, vg_end in v_groups:
+            if vg_start > prev_end + 1:
+                col_bands.append((prev_end + 1, vg_start))
+            prev_end = vg_end
+        if prev_end < W - 1:
+            col_bands.append((prev_end + 1, W))
+
+        if len(row_bands) < 2 or len(col_bands) < 2:
+            return None
+
+        row_labels = []
+        for r0, r1 in row_bands:
+            label = None
+            for r in range(r0, r1):
+                if raw[r][0] != sep:
+                    label = raw[r][0]
+                    break
+            row_labels.append(label)
+
+        n_rows = len(row_bands)
+        n_cols = len(col_bands)
+
+        def get_interior(r0, r1, c0, c1):
+            bc0 = c0
+            if raw[r0][bc0] != 1 and raw[r0][bc0] != sep:
+                bc0 += 1
+            interior = []
+            for r in range(r0 + 1, r1 - 1):
+                row = []
+                for c in range(bc0 + 1, c1 - 1):
+                    row.append(raw[r][c])
+                if row:
+                    interior.append(row)
+            return interior
+
+        panel_grid = []
+        for ri, (r0, r1) in enumerate(row_bands):
+            panel_row = []
+            for ci, (c0, c1) in enumerate(col_bands):
+                panel_row.append(get_interior(r0, r1, c0, c1))
+            panel_grid.append(panel_row)
+
+        col_info = []
+        for ci in range(n_cols):
+            solid_ri = None
+            solid_color = None
+            pattern_interior = None
+            for ri in range(n_rows):
+                interior = panel_grid[ri][ci]
+                if not interior or not interior[0]:
+                    continue
+                colors = set()
+                for row in interior:
+                    for v in row:
+                        colors.add(v)
+                if len(colors) == 1:
+                    c_val = colors.pop()
+                    if c_val != sep:
+                        solid_ri = ri
+                        solid_color = c_val
+                else:
+                    pattern_interior = interior
+
+            if solid_ri is None or pattern_interior is None:
+                return None
+            col_info.append({
+                "solid_ri": solid_ri,
+                "solid_color": solid_color,
+                "pattern": pattern_interior,
+                "label": row_labels[solid_ri],
+            })
+
+        if not col_info:
+            return None
+
+        # Detect pattern color (non-sep color appearing in pattern interiors)
+        pattern_color = None
+        for ci_data in col_info:
+            for row in ci_data["pattern"]:
+                for v in row:
+                    if v != sep:
+                        pattern_color = v
+                        break
+                if pattern_color is not None:
+                    break
+            if pattern_color is not None:
+                break
+
+        if pattern_color is None:
+            return None
+
+        # Build output: one row of panels separated by sep columns
+        # Each panel = border of label + interior with pattern_color → solid_color
+        panel_h = len(col_info[0]["pattern"])
+        panel_w = len(col_info[0]["pattern"][0]) if col_info[0]["pattern"] else 0
+
+        out_panel_h = panel_h + 2  # with border
+        out_panel_w = panel_w + 2
+
+        out_W = n_cols * out_panel_w + (n_cols - 1)  # panels + sep cols
+        out_H = out_panel_h
+        output = [[sep] * out_W for _ in range(out_H)]
+
+        for ci, ci_data in enumerate(col_info):
+            label = ci_data["label"]
+            solid_color = ci_data["solid_color"]
+            pat = ci_data["pattern"]
+            oc = ci * (out_panel_w + 1)  # output column start
+
+            # Draw border
+            for r in range(out_panel_h):
+                for c in range(out_panel_w):
+                    if r == 0 or r == out_panel_h - 1 or c == 0 or c == out_panel_w - 1:
+                        output[r][oc + c] = label
+            # Draw interior
+            for r in range(panel_h):
+                for c in range(panel_w):
+                    val = pat[r][c]
+                    if val == pattern_color:
+                        output[1 + r][oc + 1 + c] = solid_color
+                    else:
+                        output[1 + r][oc + 1 + c] = val
+
+        return output
+
+    @staticmethod
+    def _build_grid_panel_decode_output(col_info, pattern_color, sep, raw, row_bands, col_bands):
+        """Build expected output from decoded panel info."""
+        n_cols = len(col_info)
+        if not col_info:
+            return None
+        panel_h = len(col_info[0]["pattern"])
+        panel_w = len(col_info[0]["pattern"][0]) if col_info[0]["pattern"] else 0
+
+        out_panel_h = panel_h + 2
+        out_panel_w = panel_w + 2
+        out_W = n_cols * out_panel_w + (n_cols - 1)
+        out_H = out_panel_h
+        output = [[sep] * out_W for _ in range(out_H)]
+
+        for ci, ci_data in enumerate(col_info):
+            label = ci_data["label"]
+            solid_color = ci_data["solid_color"]
+            pat = ci_data["pattern"]
+            oc = ci * (out_panel_w + 1)
+
+            for r in range(out_panel_h):
+                for c in range(out_panel_w):
+                    if r == 0 or r == out_panel_h - 1 or c == 0 or c == out_panel_w - 1:
+                        output[r][oc + c] = label
+            for r in range(panel_h):
+                for c in range(panel_w):
+                    val = pat[r][c]
+                    if val == pattern_color:
+                        output[1 + r][oc + 1 + c] = solid_color
+                    else:
+                        output[1 + r][oc + 1 + c] = val
+
+        return output
+
+    # ---- strategy 69: shape gravity sort ---------------------------------
+
+    def _try_shape_gravity_sort(self, patterns, wm):
+        """
+        Detect: input has multiple distinct colored shapes on a bg=0 grid.
+        Shapes are categorized as 'enclosed' (rectangles with interior holes)
+        vs 'open' (crosses, lines). Enclosed shapes move to top, open shapes
+        to bottom. The grid size stays the same.
+        Category: shape classification / spatial reorganization.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        # Verify grid sizes preserved
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g0.raw) != len(g1.raw):
+                return None
+            if len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+
+        # Quick check: first example must have >=3 objects with both enclosed and open
+        raw_in = task.example_pairs[0].input_grid.raw
+        objects_in = self._find_colored_objects(raw_in)
+        if len(objects_in) < 3:
+            return None
+
+        has_enclosed = False
+        has_open = False
+        for obj in objects_in:
+            cells = obj["cells"]
+            cell_set = set(cells)
+            rows = [r for r, c in cells]
+            cols = [c for r, c in cells]
+            min_r, max_r = min(rows), max(rows)
+            min_c, max_c = min(cols), max(cols)
+            is_enc = False
+            for r in range(min_r, max_r + 1):
+                for c in range(min_c, max_c + 1):
+                    if (r, c) not in cell_set:
+                        if self._is_interior_cell(r, c, cell_set, min_r, max_r, min_c, max_c):
+                            is_enc = True
+                            break
+                if is_enc:
+                    break
+            if is_enc:
+                has_enclosed = True
+            else:
+                has_open = True
+
+        if not has_enclosed or not has_open:
+            return None
+
+        # Verify by applying to ALL examples
+        for pair in task.example_pairs:
+            result = self._apply_shape_gravity_sort_grid(pair.input_grid.raw)
+            if result is None:
+                return None
+            out = pair.output_grid.raw
+            if len(result) != len(out):
+                return None
+            for r in range(len(result)):
+                if result[r] != out[r]:
+                    return None
+
+        return {
+            "type": "shape_gravity_sort",
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_colored_objects(grid):
+        """Find connected components of non-zero cells, grouped by color."""
+        H = len(grid)
+        W = len(grid[0]) if grid else 0
+        visited = set()
+        objects = []
+
+        for r in range(H):
+            for c in range(W):
+                if grid[r][c] != 0 and (r, c) not in visited:
+                    color = grid[r][c]
+                    # BFS to find all connected cells of same color
+                    cells = []
+                    queue = [(r, c)]
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        if (cr, cc) in visited:
+                            continue
+                        if cr < 0 or cr >= H or cc < 0 or cc >= W:
+                            continue
+                        if grid[cr][cc] != color:
+                            continue
+                        visited.add((cr, cc))
+                        cells.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < H and 0 <= nc < W and (nr, nc) not in visited:
+                                queue.append((nr, nc))
+                    objects.append({"color": color, "cells": cells})
+        return objects
+
+    @staticmethod
+    def _is_interior_cell(r, c, cell_set, min_r, max_r, min_c, max_c):
+        """Check if (r,c) is enclosed by cell_set (can't reach bbox boundary through 0s)."""
+        visited = set()
+        queue = [(r, c)]
+        while queue:
+            cr, cc = queue.pop(0)
+            if (cr, cc) in visited:
+                continue
+            if (cr, cc) in cell_set:
+                continue
+            visited.add((cr, cc))
+            if cr <= min_r or cr >= max_r or cc <= min_c or cc >= max_c:
+                return False  # reached boundary = not interior
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = cr + dr, cc + dc
+                if (nr, nc) not in visited:
+                    queue.append((nr, nc))
+        return True
+
+    def _apply_shape_gravity_sort_grid(self, raw):
+        """Apply shape gravity sort to a grid.
+        Enclosed shapes pack to top, open shapes pack to bottom.
+        Column positions preserved; shapes stack when columns overlap."""
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        objects = self._find_colored_objects(raw)
+        if len(objects) < 3:
+            return None
+
+        # Classify
+        enclosed = []
+        open_objs = []
+        for obj in objects:
+            cells = obj["cells"]
+            cell_set = set(cells)
+            rows = [r for r, c in cells]
+            cols = [c for r, c in cells]
+            min_r, max_r = min(rows), max(rows)
+            min_c, max_c = min(cols), max(cols)
+            is_enc = False
+            for r in range(min_r, max_r + 1):
+                for c in range(min_c, max_c + 1):
+                    if (r, c) not in cell_set:
+                        if self._is_interior_cell(r, c, cell_set, min_r, max_r, min_c, max_c):
+                            is_enc = True
+                            break
+                if is_enc:
+                    break
+            if is_enc:
+                enclosed.append(obj)
+            else:
+                open_objs.append(obj)
+
+        if not enclosed or not open_objs:
+            return None
+
+        output = [[0] * W for _ in range(H)]
+
+        # Sort by original top-row
+        enclosed.sort(key=lambda o: min(r for r, c in o["cells"]))
+        open_objs.sort(key=lambda o: min(r for r, c in o["cells"]))
+
+        # Pack enclosed objects from top using column height map
+        col_height = [0] * W  # next available row for each column
+        for obj in enclosed:
+            cells = obj["cells"]
+            min_r = min(r for r, c in cells)
+            cols_used = set(c for r, c in cells)
+            # Find the offset: the object needs to start at the max of col_height
+            # for all columns it occupies
+            start_row = max(col_height[c] for c in cols_used)
+            shift = start_row - min_r
+            for r, c in cells:
+                nr = r + shift
+                if 0 <= nr < H and 0 <= c < W:
+                    output[nr][c] = obj["color"]
+            # Update height map
+            for r, c in cells:
+                nr = r + shift
+                col_height[c] = max(col_height[c], nr + 1)
+
+        # Pack open objects from bottom using column floor map
+        col_floor = [H - 1] * W  # lowest available row for each column
+        for obj in reversed(open_objs):
+            cells = obj["cells"]
+            max_r = max(r for r, c in cells)
+            cols_used = set(c for r, c in cells)
+            # Object bottom edge needs to be at min of col_floor
+            end_row = min(col_floor[c] for c in cols_used)
+            shift = end_row - max_r
+            for r, c in cells:
+                nr = r + shift
+                if 0 <= nr < H and 0 <= c < W:
+                    output[nr][c] = obj["color"]
+            # Update floor map
+            for r, c in cells:
+                nr = r + shift
+                col_floor[c] = min(col_floor[c], nr - 1)
+
+        return output
 
     # ---- strategy 52: pixel collect snake --------------------------------
 
@@ -8080,6 +8796,12 @@ class PredictOperator(Operator):
             return self._apply_shape_stamp_fill(rule, input_grid)
         if rule_type == "spiral_from_seed":
             return self._apply_spiral_from_seed(rule, input_grid)
+        if rule_type == "panel_hole_classify":
+            return self._apply_panel_hole_classify(rule, input_grid)
+        if rule_type == "grid_panel_decode":
+            return self._apply_grid_panel_decode(rule, input_grid)
+        if rule_type == "shape_gravity_sort":
+            return self._apply_shape_gravity_sort(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -10882,6 +11604,50 @@ class PredictOperator(Operator):
             groups.append(group)
 
         return groups
+
+    # ---- apply: panel hole classify --------------------------------------
+
+    def _apply_panel_hole_classify(self, rule, input_grid):
+        """Apply panel hole classification rule."""
+        raw = input_grid.raw
+        if len(raw) != 4:
+            return None
+        W = len(raw[0]) if raw else 0
+        if W != 14:
+            return None
+
+        pos_color_map = rule.get("pos_color_map", {})
+        panel_starts = [0, 5, 10]
+        output = []
+
+        for pc in panel_starts:
+            panel = []
+            for r in range(4):
+                row = []
+                for c in range(pc, pc + 4):
+                    row.append(raw[r][c])
+                panel.append(row)
+            hole_key = GeneralizeOperator._panel_hole_key(panel)
+            color = pos_color_map.get(hole_key)
+            if color is None:
+                return None
+            output.append([color, color, color])
+
+        return output
+
+    # ---- apply: grid panel decode ----------------------------------------
+
+    def _apply_grid_panel_decode(self, rule, input_grid):
+        """Apply grid panel decode rule."""
+        return GeneralizeOperator._decode_grid_panels(input_grid.raw)
+
+    # ---- apply: shape gravity sort ---------------------------------------
+
+    def _apply_shape_gravity_sort(self, rule, input_grid):
+        """Apply shape gravity sort rule."""
+        return GeneralizeOperator._apply_shape_gravity_sort_grid(
+            GeneralizeOperator, input_grid.raw
+        )
 
 
 # ======================================================================

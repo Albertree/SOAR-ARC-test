@@ -1209,3 +1209,53 @@
 - Stored rule hits: 70
 - Time: 222s
 - Log: logs/learn_20260422_072809.log
+
+---
+## Learning Loop -- 2026-04-22 07:36
+
+- Split: training, Tasks: 80
+- Correct: 72 / 80 (90.0%)
+- Rules: 322 -> 325 (+3 learned)
+- Stored rule hits: 70
+- Time: 221s
+- Log: logs/learn_20260422_073259.log
+
+---
+## Learning Loop -- 2026-04-22 08:00
+
+- Split: training, Tasks: 80
+- Correct: 73 / 80 (91.2%)
+- Rules: 325 -> 329 (+4 learned)
+- Stored rule hits: 70
+- Time: 223s
+- Log: logs/learn_20260422_075703.log
+
+---
+## Learning Loop -- 2026-04-22 08:04
+
+- Split: training, Tasks: 80
+- Correct: 73 / 80 (91.2%)
+- Rules: 329 -> 332 (+3 learned)
+- Stored rule hits: 71
+- Time: 222s
+- Log: logs/learn_20260422_080051.log
+
+---
+## Session 27 -- 2026-04-22 08:20
+
+### Strategies Added
+1. **panel_hole_classify** — 4-row grid with 3 panels separated by 0-columns; each panel's 2×2 hole position maps to a color in a 3×3 output (solves 995c5fa3)
+2. **grid_panel_decode** — N×M panel matrix separated by lines of separator color; each column has one solid-color panel and pattern panels; output merges pattern with color, using solid panel's row-label as border (solves 15660dd6)
+3. **shape_gravity_sort** — multiple colored shapes on bg=0; enclosed shapes (with interior holes) pack to top of grid, open shapes (crosses, lines) pack to bottom; column positions preserved, shapes stack to avoid overlap (solves ac2e8ecf)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 75 / 80 (93.8%) — up from 72/80 (90.0%)
+- Solved: 995c5fa3 (panel_hole_classify), 15660dd6 (grid_panel_decode), ac2e8ecf (shape_gravity_sort)
+- Still failing: 7d7772cc, 985ae207, b7cb93ac, e5062a87, 1acc24af
+- Rules: 332 -> 337 (+5 learned)
+- Stored rule hits: 71
+- Discovered: 6 new rules from pipeline
+- Time: 220s
+- Log: logs/learn_20260422_081659.log
+- Regression: 08ed6ac7 CORRECT
