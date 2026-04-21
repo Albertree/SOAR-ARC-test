@@ -367,3 +367,41 @@
 - Time: 141s
 - Log: logs/learn_20260421_230730.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 23:23
+
+- Split: training, Tasks: 40
+- Correct: 32 / 40 (80.0%)
+- Rules: 99 -> 102 (+3 learned)
+- Stored rule hits: 32
+- Time: 153s
+- Log: logs/learn_20260421_232035.log
+
+---
+## Learning Loop -- 2026-04-21 23:47
+
+- Split: training, Tasks: 40
+- Correct: 33 / 40 (82.5%)
+- Rules: 102 -> 106 (+4 learned)
+- Stored rule hits: 32
+- Time: 162s
+- Log: logs/learn_20260421_234507.log
+
+---
+## Session 14 -- 2026-04-21 23:55
+
+### Strategies Added
+1. **border_flood_fill** -- grid has a 'source' color (e.g. 0) separated into two regions by wall colors; source cells reachable from grid border via 4-connected path → border_color (e.g. 2), interior source cells → interior_color (e.g. 5) (solves 84db8fc4)
+2. **corner_mark_square** -- background grid with rectangular shapes (frames or solid blocks); square shapes (W=H, side ≥ 2) get mark-color cells placed at each corner's outward-projecting neighbor (1 cell out perpendicular to each edge meeting at that corner) (solves 14b8e18c)
+3. **cross_center_mark** -- grid has bg + fg domino pairs (2-cell segments); when 4 pairs form a symmetric cross (1 gap cell + 2 pair cells in each of 4 directions from center), the center cell becomes mark color (solves 9f5f939b)
+
+### Learning Loop Results
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%) -- up from 32/40 (80.0%)
+- Solved (new): 84db8fc4 (border_flood_fill), 14b8e18c (corner_mark_square), 9f5f939b (cross_center_mark)
+- Rules: 106 -> 109 (+3 learned)
+- Stored rule hits: 33
+- Time: 157s
+- Log: logs/learn_20260421_235300.log
+- Regression: 08ed6ac7 CORRECT

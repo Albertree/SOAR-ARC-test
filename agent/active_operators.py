@@ -322,6 +322,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_denoise_rectangles(patterns, wm)
 
+        # Strategy 6d: corner mark square (project marks from square shape corners)
+        if rule is None:
+            rule = self._try_corner_mark_square(patterns, wm)
+
+        # Strategy 6e: cross center mark (4 equidistant domino pairs → mark center)
+        if rule is None:
+            rule = self._try_cross_center_mark(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -425,6 +433,10 @@ class GeneralizeOperator(Operator):
         # Strategy 33: cross marker duplicate detection (1×1 output)
         if rule is None:
             rule = self._try_cross_marker_duplicate(patterns, wm)
+
+        # Strategy 34: border flood fill (border-connected → color A, interior → B)
+        if rule is None:
+            rule = self._try_border_flood_fill(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -3984,6 +3996,267 @@ class GeneralizeOperator(Operator):
 
         return crosses
 
+    # ---- strategy: border flood fill (interior/exterior classification) ----
+
+    def _try_border_flood_fill(self, patterns, wm):
+        """
+        Detect: grid has a 'source' color replaced by two new colors:
+        source cells reachable from grid border via source-color path → border_color,
+        source cells NOT reachable from border → interior_color.
+        Category: flood fill / inside-outside classification.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        source_color = None
+        border_color = None
+        interior_color = None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            in_colors = set()
+            out_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    in_colors.add(raw_in[r][c])
+                    out_colors.add(raw_out[r][c])
+
+            source_cands = in_colors - out_colors
+            new_cands = out_colors - in_colors
+            if len(source_cands) != 1 or len(new_cands) != 2:
+                return None
+
+            sc = source_cands.pop()
+            new_list = sorted(new_cands)
+
+            reachable = self._bfs_border(raw_in, sc, h, w)
+
+            matched = False
+            for bc, ic in [(new_list[0], new_list[1]), (new_list[1], new_list[0])]:
+                expected = [row[:] for row in raw_in]
+                for r in range(h):
+                    for c in range(w):
+                        if raw_in[r][c] == sc:
+                            expected[r][c] = bc if reachable[r][c] else ic
+                if expected == raw_out:
+                    if source_color is None:
+                        source_color, border_color, interior_color = sc, bc, ic
+                    elif sc != source_color or bc != border_color or ic != interior_color:
+                        return None
+                    matched = True
+                    break
+            if not matched:
+                return None
+
+        return {"type": "border_flood_fill", "source_color": source_color,
+                "border_color": border_color, "interior_color": interior_color,
+                "confidence": 1.0}
+
+    @staticmethod
+    def _bfs_border(raw, source, h, w):
+        """BFS from border cells of source color. Returns reachable grid."""
+        reachable = [[False] * w for _ in range(h)]
+        queue = []
+        for r in range(h):
+            for c in range(w):
+                if (r == 0 or r == h - 1 or c == 0 or c == w - 1) and raw[r][c] == source:
+                    reachable[r][c] = True
+                    queue.append((r, c))
+        qi = 0
+        while qi < len(queue):
+            r, c = queue[qi]
+            qi += 1
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < h and 0 <= nc < w and not reachable[nr][nc] and raw[nr][nc] == source:
+                    reachable[nr][nc] = True
+                    queue.append((nr, nc))
+        return reachable
+
+    # ---- strategy: corner mark square (project marks from square shapes) ----
+
+    def _try_corner_mark_square(self, patterns, wm):
+        """
+        Detect: bg grid with rectangular shapes (frames or solid blocks).
+        Square shapes (W=H, side >= 2) get mark-color cells at each corner's
+        outward-projecting neighbors (1 cell out perpendicular to each edge).
+        Category: shape detection / corner marking.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        mark_color = None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            from collections import Counter
+            counts = Counter()
+            for r in range(h):
+                for c in range(w):
+                    counts[raw_in[r][c]] += 1
+            bg = counts.most_common(1)[0][0]
+
+            in_colors = set(raw_in[r][c] for r in range(h) for c in range(w))
+            out_colors = set(raw_out[r][c] for r in range(h) for c in range(w))
+            new_colors = out_colors - in_colors
+            if len(new_colors) != 1:
+                return None
+            mc = new_colors.pop()
+
+            if mark_color is None:
+                mark_color = mc
+            elif mc != mark_color:
+                return None
+
+            expected = self._build_corner_marks(raw_in, bg, mc, h, w)
+            if expected != raw_out:
+                return None
+
+        return {"type": "corner_mark_square", "mark_color": mark_color,
+                "confidence": 1.0}
+
+    def _build_corner_marks(self, raw, bg, mc, h, w):
+        """Build output by marking corners of square components."""
+        non_bg = [(r, c) for r in range(h) for c in range(w) if raw[r][c] != bg]
+        groups = self._cc_group(non_bg)
+
+        out = [row[:] for row in raw]
+        for group in groups:
+            if len(group) < 4:
+                continue
+            group_set = set(group)
+            rows_g = [r for r, c in group]
+            cols_g = [c for r, c in group]
+            r1, r2 = min(rows_g), max(rows_g)
+            c1, c2 = min(cols_g), max(cols_g)
+            bh = r2 - r1 + 1
+            bw = c2 - c1 + 1
+            if bh != bw or bh < 2:
+                continue
+            if not all((r, c) in group_set
+                       for r, c in [(r1, c1), (r1, c2), (r2, c1), (r2, c2)]):
+                continue
+            for cr, cc in [(r1, c1), (r1, c2), (r2, c1), (r2, c2)]:
+                dr = -1 if cr == r1 else 1
+                dc = -1 if cc == c1 else 1
+                nr = cr + dr
+                if 0 <= nr < h:
+                    out[nr][cc] = mc
+                nc = cc + dc
+                if 0 <= nc < w:
+                    out[cr][nc] = mc
+        return out
+
+    # ---- strategy: cross center mark (4 equidistant domino pairs) ----------
+
+    def _try_cross_center_mark(self, patterns, wm):
+        """
+        Detect: grid has bg + fg domino pairs (2-cell segments). When 4 pairs
+        form a symmetric cross (1 gap cell + 2 pair cells in each of 4
+        directions from a center), the center cell becomes mark color.
+        Category: spatial symmetry / cross pattern detection.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        bg = None
+        fg = None
+        mark = None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            in_colors = set()
+            out_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    in_colors.add(raw_in[r][c])
+                    out_colors.add(raw_out[r][c])
+            if len(in_colors) != 2:
+                return None
+            new_colors = out_colors - in_colors
+            if len(new_colors) != 1:
+                return None
+
+            mk = new_colors.pop()
+
+            from collections import Counter
+            cc = Counter()
+            for r in range(h):
+                for c in range(w):
+                    cc[raw_in[r][c]] += 1
+            sorted_c = cc.most_common()
+            bg_c, fg_c = sorted_c[0][0], sorted_c[1][0]
+
+            if bg is None:
+                bg, fg, mark = bg_c, fg_c, mk
+            elif bg_c != bg or fg_c != fg or mk != mark:
+                return None
+
+            centers = self._find_domino_cross_centers(raw_in, bg, fg, h, w)
+            if not centers:
+                return None
+
+            expected = [row[:] for row in raw_in]
+            for r, c in centers:
+                expected[r][c] = mark
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "cross_center_mark", "bg": bg, "fg": fg, "mark": mark,
+                "confidence": 1.0}
+
+    @staticmethod
+    def _find_domino_cross_centers(raw, bg, fg, h, w):
+        """Find cells that are centers of 4-directional domino cross patterns.
+        Pattern per arm: center(bg) - gap(bg) - near(fg) - far(fg)."""
+        centers = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != bg:
+                    continue
+                valid = True
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    gr, gc = r + dr, c + dc
+                    if not (0 <= gr < h and 0 <= gc < w) or raw[gr][gc] != bg:
+                        valid = False
+                        break
+                    nr, nc = r + 2 * dr, c + 2 * dc
+                    if not (0 <= nr < h and 0 <= nc < w) or raw[nr][nc] != fg:
+                        valid = False
+                        break
+                    fr, fc = r + 3 * dr, c + 3 * dc
+                    if not (0 <= fr < h and 0 <= fc < w) or raw[fr][fc] != fg:
+                        valid = False
+                        break
+                if valid:
+                    centers.append((r, c))
+        return centers
+
     # ---- shared helpers for generalize ------------------------------------
 
     @staticmethod
@@ -4180,6 +4453,12 @@ class PredictOperator(Operator):
             return self._apply_color_substitution_template(rule, input_grid)
         if rule_type == "cross_marker_duplicate":
             return self._apply_cross_marker_duplicate(rule, input_grid)
+        if rule_type == "border_flood_fill":
+            return self._apply_border_flood_fill(rule, input_grid)
+        if rule_type == "corner_mark_square":
+            return self._apply_corner_mark_square(rule, input_grid)
+        if rule_type == "cross_center_mark":
+            return self._apply_cross_center_mark(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5387,6 +5666,86 @@ class PredictOperator(Operator):
                 return [[color]]
 
         return [[0]]
+
+    # ---- apply: border flood fill ------------------------------------------
+
+    def _apply_border_flood_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        sc = rule["source_color"]
+        bc = rule["border_color"]
+        ic = rule["interior_color"]
+
+        out = [row[:] for row in raw]
+        reachable = GeneralizeOperator._bfs_border(raw, sc, h, w)
+
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == sc:
+                    out[r][c] = bc if reachable[r][c] else ic
+        return out
+
+    # ---- apply: corner mark square -----------------------------------------
+
+    def _apply_corner_mark_square(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        mc = rule["mark_color"]
+
+        from collections import Counter
+        counts = Counter()
+        for r in range(h):
+            for c in range(w):
+                counts[raw[r][c]] += 1
+        bg = counts.most_common(1)[0][0]
+
+        non_bg = [(r, c) for r in range(h) for c in range(w) if raw[r][c] != bg]
+        groups = GeneralizeOperator._cc_group(non_bg)
+
+        out = [row[:] for row in raw]
+        for group in groups:
+            if len(group) < 4:
+                continue
+            group_set = set(group)
+            rows_g = [r for r, c in group]
+            cols_g = [c for r, c in group]
+            r1, r2 = min(rows_g), max(rows_g)
+            c1, c2 = min(cols_g), max(cols_g)
+            bh = r2 - r1 + 1
+            bw = c2 - c1 + 1
+            if bh != bw or bh < 2:
+                continue
+            if not all((r, c) in group_set
+                       for r, c in [(r1, c1), (r1, c2), (r2, c1), (r2, c2)]):
+                continue
+            for cr, cc in [(r1, c1), (r1, c2), (r2, c1), (r2, c2)]:
+                dr = -1 if cr == r1 else 1
+                dc = -1 if cc == c1 else 1
+                nr = cr + dr
+                if 0 <= nr < h:
+                    out[nr][cc] = mc
+                nc = cc + dc
+                if 0 <= nc < w:
+                    out[cr][nc] = mc
+        return out
+
+    # ---- apply: cross center mark ------------------------------------------
+
+    def _apply_cross_center_mark(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        fg = rule["fg"]
+        mark = rule["mark"]
+
+        out = [row[:] for row in raw]
+        centers = GeneralizeOperator._find_domino_cross_centers(raw, bg, fg, h, w)
+        for r, c in centers:
+            out[r][c] = mark
+        return out
 
     # ---- helpers ---------------------------------------------------------
 
