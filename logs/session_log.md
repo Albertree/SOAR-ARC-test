@@ -219,3 +219,29 @@
 - Time: 65s
 - Log: logs/learn_20260421_212918.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 21:32
+
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%)
+- Rules: 33 -> 33 (+0 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260421_213122.log
+
+---
+## Session 9 -- 2026-04-21 21:41
+
+### Strategies Added
+1. **pixel_count_diamond** — input has background + 2 scattered non-bg colors; count each color → larger count = rectangle width, smaller = height; output is 16×16 with a bottom-left rectangle filled with color 2 and two diagonal lines (color 4) from bottom corners forming V/X/diamond (solves 878187ab)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%) — up from 19/20 (95.0%)
+- Solved: all 20 tasks (c9680e90, 878187ab, e5790162, e9ac8c9e, 0e206a2e, 825aa9e9, 1c56ad9f, c0f76784, 60a26a3e, 8be77c9e, 332202d5, d23f8c26, 6e82a1ae, 9f669b64, afe3afe9, 85c4e7cd, c59eb873, 13f06aa5, bbc9ae5d, 5a719d11)
+- Rules: 33 -> 34 (+1 learned)
+- Stored rule hits: 19
+- Time: 64s
+- Log: logs/learn_20260421_214141.log
+- Regression: 08ed6ac7 CORRECT

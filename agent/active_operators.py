@@ -374,6 +374,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_template_stamp_rotate(patterns, wm)
 
+        # Strategy 22: pixel count diamond (count two colors → rectangle dims, draw X)
+        if rule is None:
+            rule = self._try_pixel_count_diamond(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2822,6 +2826,95 @@ class GeneralizeOperator(Operator):
         return (output, body_color, marker_colors)
 
 
+    # ---- strategy: pixel count diamond (count colors → rectangle + X) ----
+
+    def _try_pixel_count_diamond(self, patterns, wm):
+        """
+        Detect pattern: input has background + exactly 2 non-background colors.
+        Output is a fixed-size grid (16×16) with a bottom-left rectangle filled
+        with color 2, and two diagonal lines (color 4) from the bottom corners
+        forming a V / X / diamond shape.
+
+        Width of rectangle = count of the more frequent non-bg color.
+        Height of rectangle = count of the less frequent non-bg color.
+
+        Category: tasks where pixel counts of scattered dots determine the
+        dimensions of a geometric output pattern.
+        """
+        task = wm.task
+        if not task or len(task.example_pairs) < 1:
+            return None
+
+        # Verify across all training examples
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            # Output must be 16×16
+            if h_out != 16 or w_out != 16:
+                return None
+
+            # Count non-background colors in input
+            bg, counts = self._count_non_bg(raw_in)
+            if bg is None or len(counts) != 2:
+                return None
+
+            colors_sorted = sorted(counts.keys(), key=lambda c: counts[c], reverse=True)
+            width = counts[colors_sorted[0]]
+            height = counts[colors_sorted[1]]
+
+            if width < 1 or height < 1 or width > 16 or height > 16:
+                return None
+
+            # Verify output structure: bottom-left rectangle of 2+4, rest is bg
+            start_row = 16 - height
+            for r in range(16):
+                for c in range(16):
+                    v = raw_out[r][c]
+                    in_rect = (r >= start_row and c < width)
+                    if in_rect:
+                        if v not in (2, 4):
+                            return None
+                    else:
+                        if v != bg:
+                            return None
+
+            # Verify diagonal pattern inside rectangle
+            for r in range(start_row, 16):
+                d = 15 - r
+                left_col = d
+                right_col = (width - 1) - d
+                for c in range(width):
+                    expected = 4 if (c == left_col or c == right_col) else 2
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {
+            "type": "pixel_count_diamond",
+            "bg": bg,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _count_non_bg(raw):
+        """Find background color (most frequent) and count non-bg colors."""
+        from collections import Counter
+        freq = Counter()
+        for row in raw:
+            for v in row:
+                freq[v] += 1
+        if not freq:
+            return None, {}
+        bg = freq.most_common(1)[0][0]
+        counts = {c: n for c, n in freq.items() if c != bg}
+        return bg, counts
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -2922,6 +3015,8 @@ class PredictOperator(Operator):
             return self._apply_block_grid_bar_chart(rule, input_grid)
         if rule_type == "template_stamp_rotate":
             return self._apply_template_stamp_rotate(rule, input_grid)
+        if rule_type == "pixel_count_diamond":
+            return self._apply_pixel_count_diamond(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3645,6 +3740,55 @@ class PredictOperator(Operator):
         if result is not None:
             return result[0]
         return [row[:] for row in raw]
+
+    def _apply_pixel_count_diamond(self, rule, input_grid):
+        """
+        Count two non-bg colors in input. Larger count = width, smaller = height.
+        Create 16×16 grid with bottom-left rectangle (filled with 2) and
+        diagonal X lines from bottom corners (drawn with 4).
+        """
+        raw = input_grid.raw
+        bg = rule.get("bg", 7)
+
+        # Count non-background colors
+        from collections import Counter
+        freq = Counter()
+        for row in raw:
+            for v in row:
+                if v != bg:
+                    freq[v] += 1
+
+        if len(freq) != 2:
+            return [[bg] * 16 for _ in range(16)]
+
+        counts = sorted(freq.values(), reverse=True)
+        width = counts[0]
+        height = counts[1]
+
+        # Clamp to 16×16
+        width = min(width, 16)
+        height = min(height, 16)
+
+        out_size = 16
+        grid = [[bg] * out_size for _ in range(out_size)]
+
+        start_row = out_size - height
+
+        for r in range(start_row, out_size):
+            for c in range(width):
+                grid[r][c] = 2
+
+        # Draw diagonal lines from bottom corners
+        for r in range(start_row, out_size):
+            d = (out_size - 1) - r  # distance from bottom row
+            left_col = d
+            right_col = (width - 1) - d
+            if 0 <= left_col < width:
+                grid[r][left_col] = 4
+            if 0 <= right_col < width:
+                grid[r][right_col] = 4
+
+        return grid
 
     # ---- helpers ---------------------------------------------------------
 
