@@ -370,6 +370,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_accelerating_sequence(patterns, wm)
 
+        # Strategy 55: cross pair lines (pixel pairs → lines, vertical wins)
+        if rule is None:
+            rule = self._try_cross_pair_lines(patterns, wm)
+
+        # Strategy 56: multi-layer overlay (stacked layers merged with priority)
+        if rule is None:
+            rule = self._try_multi_layer_overlay(patterns, wm)
+
+        # Strategy 57: tile grid recolor (5-colored tiles + key matrix → recolor)
+        if rule is None:
+            rule = self._try_tile_grid_recolor(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -6660,6 +6672,310 @@ class GeneralizeOperator(Operator):
 
         return rects
 
+    # ---- strategy 55: cross pair lines ------------------------------------
+
+    def _try_cross_pair_lines(self, patterns, wm):
+        """
+        Detect: bg-0 grid with scattered pixels; each non-zero color appears
+        exactly twice forming a horizontal pair (same row) or vertical pair
+        (same column). Output draws filled lines between each pair's endpoints.
+        Vertical lines overwrite horizontal lines at crossings.
+        Category: pair-based line drawing / crosshatch.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            H, W = len(inp), len(inp[0])
+            if len(out) != H or len(out[0]) != W:
+                return None
+
+            # Collect non-zero pixels by color
+            color_pos = {}
+            for r in range(H):
+                for c in range(W):
+                    v = inp[r][c]
+                    if v != 0:
+                        color_pos.setdefault(v, []).append((r, c))
+
+            if len(color_pos) < 2:
+                return None
+
+            # Each color must appear exactly 2 times
+            for color, positions in color_pos.items():
+                if len(positions) != 2:
+                    return None
+
+            # Each pair must be aligned (same row or same column)
+            h_lines = []
+            v_lines = []
+            for color, positions in color_pos.items():
+                (r1, c1), (r2, c2) = positions
+                if r1 == r2:
+                    h_lines.append((r1, min(c1, c2), max(c1, c2), color))
+                elif c1 == c2:
+                    v_lines.append((c1, min(r1, r2), max(r1, r2), color))
+                else:
+                    return None
+
+            if not h_lines and not v_lines:
+                return None
+
+            # Verify output: draw horizontal first, then vertical overwrites
+            expected = [[0] * W for _ in range(H)]
+            for row, c_min, c_max, color in h_lines:
+                for c in range(c_min, c_max + 1):
+                    expected[row][c] = color
+            for col, r_min, r_max, color in v_lines:
+                for r in range(r_min, r_max + 1):
+                    expected[r][col] = color
+
+            if expected != out:
+                return None
+
+        return {"type": "cross_pair_lines", "confidence": 1.0}
+
+    # ---- strategy 56: multi-layer overlay ---------------------------------
+
+    def _try_multi_layer_overlay(self, patterns, wm):
+        """
+        Detect: input is N stacked layers of the same dimensions, each with
+        one non-zero color and 0s (binary mask per color). Output merges all
+        layers into a single layer. Where multiple layers overlap, the winner
+        is determined by a priority learned from training examples.
+        Category: layer compositing / z-order merge.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        first_pair = task.example_pairs[0]
+        g0, g1 = first_pair.input_grid, first_pair.output_grid
+        if g0 is None or g1 is None:
+            return None
+        inp0, out0 = g0.raw, g1.raw
+        H_in = len(inp0)
+        W = len(inp0[0])
+        H_out = len(out0)
+        W_out = len(out0[0])
+
+        if W != W_out or H_in == H_out:
+            return None
+        if H_in % H_out != 0:
+            return None
+
+        N = H_in // H_out
+        if N < 2 or N > 10:
+            return None
+
+        # Determine layer colors from first pair
+        layer_colors = []
+        for li in range(N):
+            sr = li * H_out
+            colors = set()
+            for r in range(sr, sr + H_out):
+                for c in range(W):
+                    if inp0[r][c] != 0:
+                        colors.add(inp0[r][c])
+            if len(colors) != 1:
+                return None
+            layer_colors.append(colors.pop())
+
+        if len(set(layer_colors)) != N:
+            return None
+
+        # Verify structure across all example pairs
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            if len(inp) != H_in or len(inp[0]) != W:
+                return None
+            if len(out) != H_out or len(out[0]) != W_out:
+                return None
+            for li in range(N):
+                sr = li * H_out
+                for r in range(sr, sr + H_out):
+                    for c in range(W):
+                        v = inp[r][c]
+                        if v != 0 and v != layer_colors[li]:
+                            return None
+
+        # Learn priority from pairwise wins
+        wins_over = set()
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            inp, out = g0.raw, g1.raw
+            for r in range(H_out):
+                for c in range(W_out):
+                    out_val = out[r][c]
+                    non_zero = []
+                    for li in range(N):
+                        if inp[li * H_out + r][c] != 0:
+                            non_zero.append(layer_colors[li])
+                    if out_val == 0:
+                        if non_zero:
+                            return None
+                    elif len(non_zero) > 1:
+                        if out_val not in non_zero:
+                            return None
+                        for loser in non_zero:
+                            if loser != out_val:
+                                if (loser, out_val) in wins_over:
+                                    return None  # contradiction
+                                wins_over.add((out_val, loser))
+                    elif len(non_zero) == 1:
+                        if out_val != non_zero[0]:
+                            return None
+
+        # Sort by win count (most wins = highest priority)
+        priority = sorted(
+            layer_colors,
+            key=lambda c: sum(1 for (w, _l) in wins_over if w == c),
+            reverse=True,
+        )
+
+        # Final verification against all example pairs
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            inp, out = g0.raw, g1.raw
+            for r in range(H_out):
+                for c in range(W_out):
+                    exp = 0
+                    for color in priority:
+                        li = layer_colors.index(color)
+                        if inp[li * H_out + r][c] != 0:
+                            exp = color
+                            break
+                    if exp != out[r][c]:
+                        return None
+
+        return {
+            "type": "multi_layer_overlay",
+            "confidence": 1.0,
+            "num_layers": N,
+            "layer_height": H_out,
+            "layer_colors": layer_colors,
+            "priority": priority,
+        }
+
+    # ---- strategy 57: tile grid recolor -----------------------------------
+
+    def _try_tile_grid_recolor(self, patterns, wm):
+        """
+        Detect: grid has a regular array of tiles (color 5) arranged in
+        rows/cols separated by 0-gaps, plus a separate key matrix (non-0,
+        non-5 rectangular block) whose dimensions match the tile grid.
+        Output replaces each tile's 5-cells with the corresponding key color.
+        Category: template coloring / lookup table.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            inp, out = g0.raw, g1.raw
+            H, W = len(inp), len(inp[0])
+            if len(out) != H or len(out[0]) != W:
+                return None
+
+            # Find 5-cells (tiles)
+            five_cells = set()
+            for r in range(H):
+                for c in range(W):
+                    if inp[r][c] == 5:
+                        five_cells.add((r, c))
+            if not five_cells:
+                return None
+
+            # Find key cells (non-0, non-5)
+            key_cells = {}
+            for r in range(H):
+                for c in range(W):
+                    v = inp[r][c]
+                    if v != 0 and v != 5:
+                        key_cells[(r, c)] = v
+            if not key_cells:
+                return None
+
+            # Check key forms a dense rectangle
+            kr_min = min(r for r, c in key_cells)
+            kr_max = max(r for r, c in key_cells)
+            kc_min = min(c for r, c in key_cells)
+            kc_max = max(c for r, c in key_cells)
+            for r in range(kr_min, kr_max + 1):
+                for c in range(kc_min, kc_max + 1):
+                    if (r, c) not in key_cells:
+                        return None
+            key_h = kr_max - kr_min + 1
+            key_w = kc_max - kc_min + 1
+
+            # Group 5-cells into tile row-bands and column-sections
+            tile_rows = sorted(set(r for r, c in five_cells))
+            tile_cols = sorted(set(c for r, c in five_cells))
+            if not tile_rows or not tile_cols:
+                return None
+
+            row_bands = []
+            cur = [tile_rows[0]]
+            for i in range(1, len(tile_rows)):
+                if tile_rows[i] == cur[-1] + 1:
+                    cur.append(tile_rows[i])
+                else:
+                    row_bands.append(cur)
+                    cur = [tile_rows[i]]
+            row_bands.append(cur)
+
+            col_sections = []
+            cur = [tile_cols[0]]
+            for i in range(1, len(tile_cols)):
+                if tile_cols[i] == cur[-1] + 1:
+                    cur.append(tile_cols[i])
+                else:
+                    col_sections.append(cur)
+                    cur = [tile_cols[i]]
+            col_sections.append(cur)
+
+            # Key dimensions must match tile grid dimensions
+            if len(row_bands) != key_h or len(col_sections) != key_w:
+                return None
+
+            # Verify output: tiles recolored, everything else unchanged
+            for tr in range(len(row_bands)):
+                for tc in range(len(col_sections)):
+                    key_color = key_cells[(kr_min + tr, kc_min + tc)]
+                    for r in row_bands[tr]:
+                        for c in col_sections[tc]:
+                            if inp[r][c] == 5:
+                                if out[r][c] != key_color:
+                                    return None
+                            elif out[r][c] != inp[r][c]:
+                                return None
+
+            # Non-tile, non-key cells must be unchanged
+            tile_region = set()
+            for band in row_bands:
+                for sec in col_sections:
+                    for r in band:
+                        for c in sec:
+                            tile_region.add((r, c))
+            for r in range(H):
+                for c in range(W):
+                    if (r, c) not in tile_region and (r, c) not in key_cells:
+                        if out[r][c] != inp[r][c]:
+                            return None
+
+        return {"type": "tile_grid_recolor", "confidence": 1.0, "tile_color": 5}
+
 
 class DescendOperator(Operator):
     """
@@ -6839,6 +7155,12 @@ class PredictOperator(Operator):
             return self._apply_frame_scale_pattern(rule, input_grid)
         if rule_type == "box_slide_trail":
             return self._apply_box_slide_trail(rule, input_grid)
+        if rule_type == "cross_pair_lines":
+            return self._apply_cross_pair_lines(rule, input_grid)
+        if rule_type == "multi_layer_overlay":
+            return self._apply_multi_layer_overlay(rule, input_grid)
+        if rule_type == "tile_grid_recolor":
+            return self._apply_tile_grid_recolor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -9032,6 +9354,135 @@ class PredictOperator(Operator):
                 else:
                     output[new_box_r + drr][new_box_c + dcc] = border_val
 
+        return output
+
+    # ---- apply: cross pair lines ------------------------------------------
+
+    def _apply_cross_pair_lines(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Collect pixel pairs by color
+        color_pos = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                if v != 0:
+                    color_pos.setdefault(v, []).append((r, c))
+
+        output = [[0] * W for _ in range(H)]
+
+        h_lines = []
+        v_lines = []
+        for color, positions in color_pos.items():
+            if len(positions) != 2:
+                continue
+            (r1, c1), (r2, c2) = positions
+            if r1 == r2:
+                h_lines.append((r1, min(c1, c2), max(c1, c2), color))
+            elif c1 == c2:
+                v_lines.append((c1, min(r1, r2), max(r1, r2), color))
+
+        # Draw horizontal lines first
+        for row, c_min, c_max, color in h_lines:
+            for c in range(c_min, c_max + 1):
+                output[row][c] = color
+
+        # Vertical lines overwrite at crossings
+        for col, r_min, r_max, color in v_lines:
+            for r in range(r_min, r_max + 1):
+                output[r][col] = color
+
+        return output
+
+    # ---- apply: multi-layer overlay ---------------------------------------
+
+    def _apply_multi_layer_overlay(self, rule, input_grid):
+        raw = input_grid.raw
+        H_in = len(raw)
+        W = len(raw[0])
+        N = rule["num_layers"]
+        H_out = rule["layer_height"]
+        layer_colors = rule["layer_colors"]
+        priority = rule["priority"]
+
+        if H_in != N * H_out:
+            return [row[:] for row in raw]
+
+        output = [[0] * W for _ in range(H_out)]
+        for r in range(H_out):
+            for c in range(W):
+                for color in priority:
+                    li = layer_colors.index(color)
+                    if raw[li * H_out + r][c] != 0:
+                        output[r][c] = color
+                        break
+        return output
+
+    # ---- apply: tile grid recolor -----------------------------------------
+
+    def _apply_tile_grid_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Find 5-cells
+        five_cells = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == 5:
+                    five_cells.add((r, c))
+
+        if not five_cells:
+            return [row[:] for row in raw]
+
+        # Find key cells (non-0, non-5)
+        key_cells = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                if v != 0 and v != 5:
+                    key_cells[(r, c)] = v
+
+        if not key_cells:
+            return [row[:] for row in raw]
+
+        kr_min = min(r for r, c in key_cells)
+        kc_min = min(c for r, c in key_cells)
+
+        # Find tile structure
+        tile_rows = sorted(set(r for r, c in five_cells))
+        tile_cols = sorted(set(c for r, c in five_cells))
+
+        row_bands = []
+        cur = [tile_rows[0]]
+        for i in range(1, len(tile_rows)):
+            if tile_rows[i] == cur[-1] + 1:
+                cur.append(tile_rows[i])
+            else:
+                row_bands.append(cur)
+                cur = [tile_rows[i]]
+        row_bands.append(cur)
+
+        col_sections = []
+        cur = [tile_cols[0]]
+        for i in range(1, len(tile_cols)):
+            if tile_cols[i] == cur[-1] + 1:
+                cur.append(tile_cols[i])
+            else:
+                col_sections.append(cur)
+                cur = [tile_cols[i]]
+        col_sections.append(cur)
+
+        output = [row[:] for row in raw]
+        for tr in range(len(row_bands)):
+            for tc in range(len(col_sections)):
+                kr = kr_min + tr
+                kc = kc_min + tc
+                key_color = key_cells.get((kr, kc), 0)
+                for r in row_bands[tr]:
+                    for c in col_sections[tc]:
+                        if raw[r][c] == 5:
+                            output[r][c] = key_color
         return output
 
     # ---- helpers ---------------------------------------------------------

@@ -860,3 +860,117 @@
 - Stored rule hits: 60
 - Time: 219s
 - Log: logs/learn_20260422_035653.log
+
+---
+## Learning Loop -- 2026-04-22 04:05
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 233 -> 237 (+4 learned)
+- Stored rule hits: 60
+- Time: 218s
+- Log: logs/learn_20260422_040142.log
+
+---
+## Learning Loop -- 2026-04-22 04:24
+
+- Split: training, Tasks: 80
+- Correct: 60 / 80 (75.0%)
+- Rules: 237 -> 237 (+0 learned)
+- Stored rule hits: 60
+- Time: 217s
+- Log: logs/learn_20260422_042037.log
+
+---
+## Learning Loop -- 2026-04-22 04:28
+
+- Split: training, Tasks: 80
+- Correct: 60 / 80 (75.0%)
+- Rules: 237 -> 237 (+0 learned)
+- Stored rule hits: 60
+- Time: 218s
+- Log: logs/learn_20260422_042430.log
+
+---
+## Learning Loop -- 2026-04-22 04:37
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 237 -> 241 (+4 learned)
+- Stored rule hits: 60
+- Time: 220s
+- Log: logs/learn_20260422_043323.log
+
+---
+## Learning Loop -- 2026-04-22 04:40
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 241 -> 245 (+4 learned)
+- Stored rule hits: 60
+- Time: 222s
+- Log: logs/learn_20260422_043711.log
+
+---
+## Learning Loop -- 2026-04-22 04:44
+
+- Split: training, Tasks: 80
+- Correct: 61 / 80 (76.2%)
+- Rules: 245 -> 249 (+4 learned)
+- Stored rule hits: 60
+- Time: 219s
+- Log: logs/learn_20260422_044108.log
+
+---
+## Learning Loop -- 2026-04-22 04:49
+
+- Split: training, Tasks: 80
+- Correct: 64 / 80 (80.0%)
+- Rules: 249 -> 256 (+7 learned)
+- Stored rule hits: 60
+- Time: 219s
+- Log: logs/learn_20260422_044617.log
+
+---
+## Session 23 -- 2026-04-22 04:50
+
+### Strategies Added
+1. **cross_pair_lines** (Strategy 55): Grid with scattered pixel pairs; each
+   non-zero color appears exactly twice, forming a horizontal pair (same row)
+   or vertical pair (same column). Output draws filled lines between endpoints.
+   Vertical lines overwrite horizontal lines at crossings.
+   Category: pair-based line drawing. (solves 070dd51e)
+2. **multi_layer_overlay** (Strategy 56): Input is N stacked layers of same
+   dimensions, each with one non-zero color and 0s (binary mask per color).
+   Output merges layers into one grid. Priority learned from training examples
+   via pairwise comparison. Category: layer compositing / z-order merge.
+   (solves 3d31c5b3)
+3. **tile_grid_recolor** (Strategy 57): Grid has a regular array of tiles
+   (color 5) in rows/cols separated by 0-gaps, plus a key matrix (non-0,
+   non-5 rectangular block) whose dimensions match the tile count. Output
+   replaces each tile's 5-cells with the corresponding key color.
+   Category: template coloring / lookup table. (solves 33b52de3)
+
+### Bug Fix
+- Fixed AttributeError in all three new strategies: Task object uses
+  `example_pairs` not `train_pairs`.
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 64 / 80 (80.0%) — up from 61/80 (76.2%)
+- Solved (new): 070dd51e (cross_pair_lines), 3d31c5b3 (multi_layer_overlay), 33b52de3 (tile_grid_recolor)
+- Rules: 249 -> 256 (+7 learned)
+- Stored rule hits: 60
+- Discovered: 8 new rules from pipeline
+- Time: 219s
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 04:53
+
+- Split: training, Tasks: 80
+- Correct: 64 / 80 (80.0%)
+- Rules: 256 -> 260 (+4 learned)
+- Stored rule hits: 63
+- Time: 220s
+- Log: logs/learn_20260422_045002.log
