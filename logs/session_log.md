@@ -191,3 +191,31 @@
 - Time: 64s
 - Log: logs/learn_20260421_205315.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 20:56
+
+- Split: training, Tasks: 20
+- Correct: 17 / 20 (85.0%)
+- Rules: 31 -> 31 (+0 learned)
+- Stored rule hits: 17
+- Time: 65s
+- Log: logs/learn_20260421_205532.log
+
+---
+## Session 8 -- 2026-04-21 21:30
+
+### Strategies Added
+1. **block_grid_bar_chart** — large grid of 3×3 block tiles (one section colored, one section 8) with a divider row/column of 1s at one edge; output is a small bar chart where each bar stacks colored-count + eight-count cells, aligned relative to the divider direction (solves afe3afe9)
+2. **template_stamp_rotate** — template shapes (body color + marker colors) and groups of scattered marker pixels; output places rotated/reflected template body at each marker group position, determined by finding the rigid transformation (from 8 possible rotations/reflections) that maps template markers to anchor markers (solves 0e206a2e)
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 19 / 20 (95.0%) — up from 17/20 (85.0%)
+- Solved: c9680e90, e5790162, e9ac8c9e, 825aa9e9, 1c56ad9f, c0f76784, 60a26a3e, 8be77c9e, 332202d5, d23f8c26, 6e82a1ae, 9f669b64, 85c4e7cd, c59eb873, 13f06aa5, bbc9ae5d, 5a719d11 (stored), afe3afe9 (block_grid_bar_chart), 0e206a2e (template_stamp_rotate)
+- Still failing: 878187ab (complex noise/diamond pattern)
+- Rules: 32 -> 33 (+1 learned)
+- Stored rule hits: 18
+- Time: 65s
+- Log: logs/learn_20260421_212918.log
+- Regression: 08ed6ac7 CORRECT

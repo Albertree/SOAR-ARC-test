@@ -366,6 +366,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_block_wedge_split(patterns, wm)
 
+        # Strategy 20: block grid bar chart (meta-grid of 3x3 blocks → bar chart)
+        if rule is None:
+            rule = self._try_block_grid_bar_chart(patterns, wm)
+
+        # Strategy 21: template stamp with rotation/reflection
+        if rule is None:
+            rule = self._try_template_stamp_rotate(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -2398,6 +2406,421 @@ class GeneralizeOperator(Operator):
 
         return block_infos, mid_info
 
+    # ---- strategy: block grid bar chart ------------------------------------
+
+    def _try_block_grid_bar_chart(self, patterns, wm):
+        """
+        Detect pattern: large grid with 3x3 block tiles arranged in a meta-grid.
+        One section has 8-tiles, another has colored tiles. A divider row/column
+        of 1s at one edge indicates orientation. Output is a small bar chart
+        summary where each bar length = colored-count + eight-count.
+        """
+        task = wm.task
+        if not task:
+            return None
+        if patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            predicted = GeneralizeOperator._solve_bar_chart(g0.raw)
+            if predicted is None or predicted != g1.raw:
+                return None
+
+        return {"type": "block_grid_bar_chart", "confidence": 1.0}
+
+    @staticmethod
+    def _solve_bar_chart(raw):
+        """Parse block-grid input and produce bar chart output."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 10 or w < 10:
+            return None
+
+        # Find divider (edge row/col of all 1s)
+        divider = None
+        if all(raw[0][c] == 1 for c in range(w)):
+            divider = 'top'
+        elif all(raw[h - 1][c] == 1 for c in range(w)):
+            divider = 'bottom'
+        elif all(raw[r][0] == 1 for r in range(h)):
+            divider = 'left'
+        elif all(raw[r][w - 1] == 1 for r in range(h)):
+            divider = 'right'
+        if divider is None:
+            return None
+
+        # Scan ranges excluding divider
+        if divider == 'top':
+            rr, cr = range(1, h), range(w)
+        elif divider == 'bottom':
+            rr, cr = range(h - 1), range(w)
+        elif divider == 'left':
+            rr, cr = range(h), range(1, w)
+        else:
+            rr, cr = range(h), range(w - 1)
+
+        # Find row-groups (consecutive rows with non-0 content)
+        active_rows = set()
+        for r in rr:
+            for c in cr:
+                if raw[r][c] != 0:
+                    active_rows.add(r)
+                    break
+        row_groups = GeneralizeOperator._group_consecutive(sorted(active_rows))
+        if not row_groups or any(e - s + 1 != 3 for s, e in row_groups):
+            return None
+
+        # Find col-slots (consecutive cols with non-0 content)
+        active_cols = set()
+        for c in cr:
+            for r in rr:
+                if raw[r][c] != 0:
+                    active_cols.add(c)
+                    break
+        col_slots = GeneralizeOperator._group_consecutive(sorted(active_cols))
+        if not col_slots or any(e - s + 1 != 3 for s, e in col_slots):
+            return None
+
+        n_rg = len(row_groups)
+        n_cs = len(col_slots)
+
+        # Build meta-grid: each cell = block color or 0
+        meta = [[0] * n_cs for _ in range(n_rg)]
+        for ri, (rs, re) in enumerate(row_groups):
+            for ci, (cs, ce) in enumerate(col_slots):
+                bc = None
+                for r in range(rs, re + 1):
+                    for c in range(cs, ce + 1):
+                        v = raw[r][c]
+                        if v != 0:
+                            if bc is None:
+                                bc = v
+                            elif v != bc:
+                                return None
+                meta[ri][ci] = bc if bc else 0
+
+        if divider in ('top', 'bottom'):
+            # Horizontal bars — compare column positions of 8 vs colored
+            e_avg, e_cnt, c_avg, c_cnt = 0, 0, 0, 0
+            for ci in range(n_cs):
+                for ri in range(n_rg):
+                    v = meta[ri][ci]
+                    if v == 8:
+                        e_avg += ci; e_cnt += 1
+                    elif v != 0:
+                        c_avg += ci; c_cnt += 1
+            if e_cnt == 0 or c_cnt == 0:
+                return None
+            eight_first = (e_avg / e_cnt) < (c_avg / c_cnt)
+
+            rows_out = []
+            for ri in range(n_rg):
+                cc, ec, rc = 0, 0, 0
+                for ci in range(n_cs):
+                    v = meta[ri][ci]
+                    if v == 8:
+                        ec += 1
+                    elif v != 0:
+                        cc += 1; rc = v
+                rows_out.append((cc, ec, rc))
+
+            out_w = max(x + y for x, y, _ in rows_out)
+            if out_w == 0:
+                return None
+            output = []
+            for cc, ec, rc in rows_out:
+                pad = out_w - cc - ec
+                if eight_first:
+                    bar = [8] * ec + ([rc] * cc if cc else [])
+                else:
+                    bar = ([rc] * cc if cc else []) + [8] * ec
+                if divider == 'top':
+                    output.append([0] * pad + bar)
+                else:
+                    output.append(bar + [0] * pad)
+            return output
+
+        else:  # left / right — vertical bars
+            e_avg, e_cnt, c_avg, c_cnt = 0, 0, 0, 0
+            for ri in range(n_rg):
+                for ci in range(n_cs):
+                    v = meta[ri][ci]
+                    if v == 8:
+                        e_avg += ri; e_cnt += 1
+                    elif v != 0:
+                        c_avg += ri; c_cnt += 1
+            if e_cnt == 0 or c_cnt == 0:
+                return None
+            eight_first = (e_avg / e_cnt) < (c_avg / c_cnt)
+
+            cols_out = []
+            for ci in range(n_cs):
+                ec, cc, col_c = 0, 0, 0
+                for ri in range(n_rg):
+                    v = meta[ri][ci]
+                    if v == 8:
+                        ec += 1
+                    elif v != 0:
+                        cc += 1; col_c = v
+                cols_out.append((ec, cc, col_c))
+
+            out_h = max(e + c for e, c, _ in cols_out)
+            if out_h == 0:
+                return None
+            output = [[0] * n_cs for _ in range(out_h)]
+            for ci, (ec, cc, col_c) in enumerate(cols_out):
+                pad = out_h - ec - cc
+                if eight_first:
+                    cells = [8] * ec + ([col_c] * cc if cc else [])
+                else:
+                    cells = ([col_c] * cc if cc else []) + [8] * ec
+                if divider == 'left':
+                    for i, v in enumerate(cells):
+                        output[i][ci] = v
+                else:
+                    for i, v in enumerate(cells):
+                        output[pad + i][ci] = v
+            return output
+
+    @staticmethod
+    def _group_consecutive(sorted_vals):
+        """Group consecutive integers into (start, end) ranges."""
+        if not sorted_vals:
+            return []
+        groups = []
+        i = 0
+        while i < len(sorted_vals):
+            s = sorted_vals[i]
+            e = s
+            while i + 1 < len(sorted_vals) and sorted_vals[i + 1] == e + 1:
+                i += 1
+                e = sorted_vals[i]
+            groups.append((s, e))
+            i += 1
+        return groups
+
+    # ---- strategy: template stamp with rotation/reflection ------------------
+
+    def _try_template_stamp_rotate(self, patterns, wm):
+        """
+        Detect pattern: template shapes (body color + marker colors) and groups
+        of scattered marker pixels. Output places rotated/reflected template
+        body at each marker group, erasing the originals. Body and marker
+        colors may vary between pairs.
+        """
+        task = wm.task
+        if not task or not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            freq = {}
+            for r in range(h):
+                for c in range(w):
+                    freq[raw_in[r][c]] = freq.get(raw_in[r][c], 0) + 1
+            bg = max(freq, key=freq.get)
+
+            result = GeneralizeOperator._solve_template_stamp(raw_in, bg, h, w)
+            if result is None:
+                return None
+            predicted = result[0]
+            if predicted != raw_out:
+                return None
+
+        return {"type": "template_stamp_rotate", "confidence": 1.0}
+
+    @staticmethod
+    def _solve_template_stamp(raw, bg, h, w):
+        """
+        Find templates and marker groups, match, transform, and build output.
+        Returns (output_grid, body_color, marker_colors) or None.
+        """
+        # 8 rigid transformations: (a,b,c,d) maps (dr,dc) -> (a*dr+b*dc, c*dr+d*dc)
+        TRANSFORMS = [
+            (1, 0, 0, 1), (0, 1, -1, 0), (-1, 0, 0, -1), (0, -1, 1, 0),
+            (1, 0, 0, -1), (-1, 0, 0, 1), (0, 1, 1, 0), (0, -1, -1, 0),
+        ]
+
+        # Find connected components of non-bg cells
+        non_bg = {}
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != bg:
+                    non_bg[(r, c)] = v
+        if not non_bg:
+            return None
+
+        visited = set()
+        components = []
+        for pos in sorted(non_bg):
+            if pos in visited:
+                continue
+            comp = set()
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited:
+                    continue
+                visited.add(p)
+                comp.add(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in non_bg and nb not in visited:
+                        queue.append(nb)
+            components.append(comp)
+
+        # Classify: template (multi-cell, >=3 colors) vs marker (single cell)
+        templates = []
+        markers = []
+        body_color = None
+        marker_colors = None
+
+        for comp in components:
+            if len(comp) == 1:
+                markers.append(list(comp)[0])
+                continue
+            colors = {}
+            for p in comp:
+                v = non_bg[p]
+                colors[v] = colors.get(v, 0) + 1
+            if len(colors) < 3:
+                return None
+            bc = max(colors, key=colors.get)
+            mc = frozenset(c for c in colors if c != bc)
+            if not all(colors[c] == 1 for c in mc) or len(mc) < 2:
+                return None
+            if body_color is None:
+                body_color = bc
+                marker_colors = mc
+            elif bc != body_color or mc != marker_colors:
+                return None
+            templates.append({
+                'body': {p for p in comp if non_bg[p] == bc},
+                'markers': {non_bg[p]: p for p in comp if non_bg[p] != bc},
+            })
+
+        if not templates or marker_colors is None:
+            return None
+
+        # Group scattered markers (filter to marker colors only)
+        marker_by_color = {}
+        for pos in markers:
+            c = non_bg[pos]
+            if c in marker_colors:
+                marker_by_color.setdefault(c, []).append(pos)
+
+        if len(marker_by_color) != len(marker_colors):
+            return None
+        counts = [len(v) for v in marker_by_color.values()]
+        if len(set(counts)) != 1:
+            return None
+        n_groups = counts[0]
+        if n_groups != len(templates):
+            return None
+
+        # Form marker groups by proximity
+        colors_list = sorted(marker_colors)
+        ref_color = colors_list[0]
+        other_colors = colors_list[1:]
+        groups = []
+        used = {c: set() for c in other_colors}
+
+        for ref_pos in sorted(marker_by_color[ref_color]):
+            group = {ref_color: ref_pos}
+            for oc in other_colors:
+                best, best_d = None, float('inf')
+                for pos in marker_by_color[oc]:
+                    if pos in used[oc]:
+                        continue
+                    d = abs(pos[0] - ref_pos[0]) + abs(pos[1] - ref_pos[1])
+                    if d < best_d:
+                        best_d = d
+                        best = pos
+                if best is None:
+                    return None
+                group[oc] = best
+                used[oc].add(best)
+            groups.append(group)
+
+        # Match templates to groups via transformation search
+        def find_transform(t, g):
+            t_ref = t['markers'][ref_color]
+            a_ref = g[ref_color]
+            for trans in TRANSFORMS:
+                a, b, c, d = trans
+                ok = True
+                for mc in colors_list[1:]:
+                    dr = t['markers'][mc][0] - t_ref[0]
+                    dc = t['markers'][mc][1] - t_ref[1]
+                    er = a_ref[0] + a * dr + b * dc
+                    ec = a_ref[1] + c * dr + d * dc
+                    if (er, ec) != g[mc]:
+                        ok = False
+                        break
+                if ok:
+                    return trans
+            return None
+
+        # Try all permutations (max 2 templates)
+        if n_groups == 1:
+            perms = [(0,)]
+        elif n_groups == 2:
+            perms = [(0, 1), (1, 0)]
+        else:
+            return None
+
+        assignment = None
+        for perm in perms:
+            matches = []
+            ok = True
+            for ti, gi in enumerate(perm):
+                trans = find_transform(templates[ti], groups[gi])
+                if trans is None:
+                    ok = False
+                    break
+                matches.append((ti, gi, trans))
+            if ok:
+                assignment = matches
+                break
+
+        if assignment is None:
+            return None
+
+        # Build output
+        output = [[bg] * w for _ in range(h)]
+        for ti, gi, trans in assignment:
+            t = templates[ti]
+            g = groups[gi]
+            a, b, c, d = trans
+            t_ref = t['markers'][ref_color]
+            a_ref = g[ref_color]
+
+            # Place markers at anchor positions
+            for mc, pos in g.items():
+                output[pos[0]][pos[1]] = mc
+
+            # Place transformed body
+            for bp in t['body']:
+                dr = bp[0] - t_ref[0]
+                dc = bp[1] - t_ref[1]
+                nr = a_ref[0] + a * dr + b * dc
+                nc = a_ref[1] + c * dr + d * dc
+                if 0 <= nr < h and 0 <= nc < w:
+                    output[nr][nc] = body_color
+
+        return (output, body_color, marker_colors)
+
 
 class DescendOperator(Operator):
     """
@@ -2495,6 +2918,10 @@ class PredictOperator(Operator):
             return self._apply_quadrant_pattern_swap(rule, input_grid)
         if rule_type == "block_wedge_split":
             return self._apply_block_wedge_split(rule, input_grid)
+        if rule_type == "block_grid_bar_chart":
+            return self._apply_block_grid_bar_chart(rule, input_grid)
+        if rule_type == "template_stamp_rotate":
+            return self._apply_template_stamp_rotate(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3200,6 +3627,24 @@ class PredictOperator(Operator):
                     output[nr][nc] = b_mid["color"]
 
         return output
+
+    def _apply_block_grid_bar_chart(self, rule, input_grid):
+        result = GeneralizeOperator._solve_bar_chart(input_grid.raw)
+        return result if result is not None else [row[:] for row in input_grid.raw]
+
+    def _apply_template_stamp_rotate(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        freq = {}
+        for r in range(h):
+            for c in range(w):
+                freq[raw[r][c]] = freq.get(raw[r][c], 0) + 1
+        bg = max(freq, key=freq.get)
+        result = GeneralizeOperator._solve_template_stamp(raw, bg, h, w)
+        if result is not None:
+            return result[0]
+        return [row[:] for row in raw]
 
     # ---- helpers ---------------------------------------------------------
 
