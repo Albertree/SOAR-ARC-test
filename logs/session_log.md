@@ -405,3 +405,42 @@
 - Time: 157s
 - Log: logs/learn_20260421_235300.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 23:59
+
+- Split: training, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 109 -> 110 (+1 learned)
+- Stored rule hits: 35
+- Time: 155s
+- Log: logs/learn_20260421_235633.log
+
+---
+## Session 15 -- 2026-04-22 00:48
+
+### Strategies Added
+1. **mirror_symmetry_recolor** -- grid has bg=0 and one fg color (e.g. 5); for each row, fg cells with a symmetric partner across the vertical center axis become a new color (e.g. 1), unpaired fg cells stay unchanged (solves ce039d91)
+2. **rect_pixel_bridge** -- bg grid has colored solid rectangles and isolated single pixels of the same color; each isolated pixel connects to its nearest same-color rect edge via a bridge line, the pixel shifts 1 cell further away, and perpendicular marks appear at bridge start and pixel original position (solves a2d730bd)
+3. **fractal_block_denoise** -- grid divided by 0-separator lines into NxM blocks; color 5 is noise; blocks form a self-similar pattern where the meta-grid mirrors the template: blocks at template's minority-color positions show the template, others are pure dominant-color fill (solves 6350f1f4)
+
+### Learning Loop Results
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%) -- up from 35/40 (87.5%)
+- Solved (new): ce039d91 (mirror_symmetry_recolor), a2d730bd (rect_pixel_bridge), 6350f1f4 (fractal_block_denoise)
+- Still failing: 5daaa586, cf5fd0ad
+- Rules: 110 -> 113 (+3 learned)
+- Stored rule hits: 35
+- Time: 153s
+- Log: logs/learn_20260422_004557.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 00:48
+
+- Split: training, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 110 -> 113 (+3 learned)
+- Stored rule hits: 35
+- Time: 153s
+- Log: logs/learn_20260422_004557.log

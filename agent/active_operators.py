@@ -330,6 +330,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_cross_center_mark(patterns, wm)
 
+        # Strategy 6f: mirror symmetry recolor (symmetric fg pairs → color 1)
+        if rule is None:
+            rule = self._try_mirror_symmetry_recolor(patterns, wm)
+
+        # Strategy 6g: rect-pixel bridge (connect rect to isolated pixel)
+        if rule is None:
+            rule = self._try_rect_pixel_bridge(patterns, wm)
+
+        # Strategy 6h: fractal block denoise (self-similar block grid repair)
+        if rule is None:
+            rule = self._try_fractal_block_denoise(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -593,6 +605,474 @@ class GeneralizeOperator(Operator):
                             return None
 
         return {"type": "keep_center_column", "bg_color": bg_color, "confidence": 0.9}
+
+    # ---- strategy: mirror symmetry recolor --------------------------------
+
+    def _try_mirror_symmetry_recolor(self, patterns, wm):
+        """
+        Detect pattern: grid has bg=0 and one fg color (e.g. 5). For each row,
+        fg cells that have a symmetric partner across the vertical center axis
+        become a new color (e.g. 1), while unpaired fg cells stay unchanged.
+        Category: symmetric-pair detection tasks.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+
+            # Detect: exactly 2 non-bg colors in input, same grid size
+            colors_in = set()
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] != 0:
+                        colors_in.add(raw_in[r][c])
+            if len(colors_in) != 1:
+                return None
+            fg_color = colors_in.pop()
+
+            # Output should have fg_color and exactly one new_color (not in input)
+            colors_out = set()
+            for r in range(H):
+                for c in range(W):
+                    v = raw_out[r][c]
+                    if v != 0 and v != fg_color:
+                        colors_out.add(v)
+            if len(colors_out) != 1:
+                return None
+            new_color = colors_out.pop()
+
+            # Verify the mirror symmetry rule: paired fg cells → new_color
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] == fg_color:
+                        mirror_c = W - 1 - c
+                        has_partner = raw_in[r][mirror_c] == fg_color
+                        expected = new_color if has_partner else fg_color
+                        if raw_out[r][c] != expected:
+                            return None
+
+        return {
+            "type": "mirror_symmetry_recolor",
+            "fg_color": fg_color,
+            "new_color": new_color,
+            "confidence": 0.95,
+        }
+
+    # ---- strategy: rect-pixel bridge connection ----------------------------
+
+    def _try_rect_pixel_bridge(self, patterns, wm):
+        """
+        Detect pattern: bg grid has colored rectangles (solid blocks) and
+        isolated single pixels of the same color. Each isolated pixel connects
+        to the nearest edge of its same-color rect via a bridge line, the pixel
+        shifts 1 cell further, and perpendicular marks appear at bridge start
+        and pixel original position.
+        Category: object connection/attraction tasks.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        # Need at least 2 examples to validate
+        if len(task.example_pairs) < 2:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if len(raw_out) != H or len(raw_out[0]) != W:
+                return None
+
+            bg = self._rect_pixel_detect_bg(raw_in, H, W)
+            if bg is None:
+                return None
+
+            # Find all non-bg colors
+            color_cells = {}
+            for r in range(H):
+                for c in range(W):
+                    v = raw_in[r][c]
+                    if v != bg:
+                        color_cells.setdefault(v, []).append((r, c))
+
+            if not color_cells:
+                return None
+
+            # For each color, find rects and isolated pixels
+            for color, cells in color_cells.items():
+                rects, isolates = self._find_rects_and_isolates(cells, color, raw_in, H, W, bg)
+                if not rects:
+                    continue
+                if not isolates:
+                    continue
+
+                # Verify bridge pattern for each isolated pixel
+                predicted = [row[:] for row in raw_in]
+                for iso_r, iso_c in isolates:
+                    self._draw_bridge(predicted, rects, iso_r, iso_c, color, bg, H, W)
+
+                # Check if predicted matches output for this color's changes
+                for r in range(H):
+                    for c in range(W):
+                        if raw_in[r][c] == color or predicted[r][c] == color:
+                            if predicted[r][c] != raw_out[r][c]:
+                                return None
+
+        return {
+            "type": "rect_pixel_bridge",
+            "confidence": 0.95,
+        }
+
+    def _rect_pixel_detect_bg(self, raw, H, W):
+        """Find background color (most common)."""
+        from collections import Counter
+        counts = Counter()
+        for r in range(H):
+            for c in range(W):
+                counts[raw[r][c]] += 1
+        if counts:
+            return counts.most_common(1)[0][0]
+        return None
+
+    def _find_rects_and_isolates(self, cells, color, raw, H, W, bg):
+        """Separate cells of one color into rectangular blocks vs isolated pixels."""
+        cell_set = set(cells)
+        visited = set()
+        components = []
+
+        for cell in cells:
+            if cell in visited:
+                continue
+            # BFS to find connected component
+            comp = []
+            queue = [cell]
+            visited.add(cell)
+            while queue:
+                cr, cc = queue.pop(0)
+                comp.append((cr, cc))
+                for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                    nr, nc = cr+dr, cc+dc
+                    if (nr, nc) in cell_set and (nr, nc) not in visited:
+                        visited.add((nr, nc))
+                        queue.append((nr, nc))
+            components.append(comp)
+
+        rects = []
+        isolates = []
+        for comp in components:
+            if len(comp) == 1:
+                isolates.append(comp[0])
+            else:
+                # Check if it forms a solid rectangle
+                rows = [p[0] for p in comp]
+                cols = [p[1] for p in comp]
+                r0, r1 = min(rows), max(rows)
+                c0, c1 = min(cols), max(cols)
+                expected_size = (r1 - r0 + 1) * (c1 - c0 + 1)
+                if len(comp) == expected_size:
+                    rects.append((r0, r1, c0, c1))
+
+        return rects, isolates
+
+    def _draw_bridge(self, grid, rects, iso_r, iso_c, color, bg, H, W):
+        """Draw bridge from nearest rect edge to isolated pixel."""
+        # Find nearest rect edge point
+        best_dist = float('inf')
+        best_edge = None
+        best_axis = None  # 'h' for horizontal, 'v' for vertical
+        best_direction = 0
+
+        for r0, r1, c0, c1 in rects:
+            # Check if pixel is in the rect's row range → horizontal connection
+            if r0 <= iso_r <= r1:
+                # Left side
+                if iso_c < c0:
+                    dist = c0 - iso_c
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_edge = (iso_r, c0)
+                        best_axis = 'h'
+                        best_direction = -1  # pixel is to the left
+                # Right side
+                elif iso_c > c1:
+                    dist = iso_c - c1
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_edge = (iso_r, c1)
+                        best_axis = 'h'
+                        best_direction = 1  # pixel is to the right
+
+            # Check if pixel is in the rect's col range → vertical connection
+            if c0 <= iso_c <= c1:
+                # Above
+                if iso_r < r0:
+                    dist = r0 - iso_r
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_edge = (r0, iso_c)
+                        best_axis = 'v'
+                        best_direction = -1  # pixel is above
+                # Below
+                elif iso_r > r1:
+                    dist = iso_r - r1
+                    if dist < best_dist:
+                        best_dist = dist
+                        best_edge = (r1, iso_c)
+                        best_axis = 'v'
+                        best_direction = 1  # pixel is below
+
+        if best_edge is None or best_dist < 2:
+            return
+
+        er, ec = best_edge
+
+        if best_axis == 'h':
+            # Horizontal bridge along iso_r
+            step = best_direction  # +1 = pixel to the right, -1 = left
+            # Bridge cells: from edge+1 to pixel-1
+            bridge_c_start = ec + step
+            bridge_c_end = iso_c - step  # one before pixel
+            c_lo = min(bridge_c_start, bridge_c_end)
+            c_hi = max(bridge_c_start, bridge_c_end)
+            for bc in range(c_lo, c_hi + 1):
+                if 0 <= bc < W:
+                    grid[iso_r][bc] = color
+            # Remove pixel from original position
+            grid[iso_r][iso_c] = bg
+            # Shifted pixel
+            new_c = iso_c + step
+            if 0 <= new_c < W:
+                grid[iso_r][new_c] = color
+            # Perpendicular marks at bridge start (edge+step) on rows ±1
+            mark_c_bridge = ec + step
+            for dr in [-1, 1]:
+                nr = iso_r + dr
+                if 0 <= nr < H and 0 <= mark_c_bridge < W:
+                    grid[nr][mark_c_bridge] = color
+            # Perpendicular marks at original pixel position on rows ±1
+            for dr in [-1, 1]:
+                nr = iso_r + dr
+                if 0 <= nr < H:
+                    grid[nr][iso_c] = color
+        else:
+            # Vertical bridge along iso_c
+            step = best_direction  # +1 = pixel below, -1 = above
+            bridge_r_start = er + step
+            bridge_r_end = iso_r - step
+            r_lo = min(bridge_r_start, bridge_r_end)
+            r_hi = max(bridge_r_start, bridge_r_end)
+            for br in range(r_lo, r_hi + 1):
+                if 0 <= br < H:
+                    grid[br][iso_c] = color
+            # Remove pixel from original position
+            grid[iso_r][iso_c] = bg
+            # Shifted pixel
+            new_r = iso_r + step
+            if 0 <= new_r < H:
+                grid[new_r][iso_c] = color
+            # Perpendicular marks at bridge start on cols ±1
+            mark_r_bridge = er + step
+            for dc in [-1, 1]:
+                nc = iso_c + dc
+                if 0 <= mark_r_bridge < H and 0 <= nc < W:
+                    grid[mark_r_bridge][nc] = color
+            # Perpendicular marks at original pixel position on cols ±1
+            for dc in [-1, 1]:
+                nc = iso_c + dc
+                if 0 <= nc < W and 0 <= iso_r < H:
+                    grid[iso_r][nc] = color
+
+    # ---- strategy: fractal block denoise -----------------------------------
+
+    def _try_fractal_block_denoise(self, patterns, wm):
+        """
+        Detect pattern: grid divided by 0-separator lines into NxM blocks.
+        Color 5 is noise. Each block is either a template pattern (2 colors)
+        or a pure fill. The meta-grid of blocks mirrors the template itself:
+        blocks at template's minority-color positions show the template,
+        blocks at dominant-color positions are pure dominant.
+        Category: self-similar / fractal grid denoising tasks.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+
+            # Find separator rows and columns (all 0 or all 5→0)
+            sep_rows = self._find_separator_lines(raw_in, H, W, axis='row')
+            sep_cols = self._find_separator_lines(raw_in, H, W, axis='col')
+
+            if not sep_rows or not sep_cols:
+                return None
+
+            # Extract blocks
+            row_ranges = self._get_ranges(sep_rows, H)
+            col_ranges = self._get_ranges(sep_cols, W)
+
+            if not row_ranges or not col_ranges:
+                return None
+
+            # All blocks must be same size
+            block_h = row_ranges[0][1] - row_ranges[0][0] + 1
+            block_w = col_ranges[0][1] - col_ranges[0][0] + 1
+            for rr in row_ranges:
+                if rr[1] - rr[0] + 1 != block_h:
+                    return None
+            for cr in col_ranges:
+                if cr[1] - cr[0] + 1 != block_w:
+                    return None
+
+            n_block_rows = len(row_ranges)
+            n_block_cols = len(col_ranges)
+
+            # Extract all blocks, removing noise (5)
+            blocks_in = []
+            for ri, (r0, r1) in enumerate(row_ranges):
+                row_blocks = []
+                for ci, (c0, c1) in enumerate(col_ranges):
+                    block = []
+                    for r in range(r0, r1 + 1):
+                        row_data = []
+                        for c in range(c0, c1 + 1):
+                            v = raw_in[r][c]
+                            row_data.append(v)
+                        block.append(row_data)
+                    row_blocks.append(block)
+                blocks_in.append(row_blocks)
+
+            # Extract output blocks
+            blocks_out = []
+            for ri, (r0, r1) in enumerate(row_ranges):
+                row_blocks = []
+                for ci, (c0, c1) in enumerate(col_ranges):
+                    block = []
+                    for r in range(r0, r1 + 1):
+                        row_data = []
+                        for c in range(c0, c1 + 1):
+                            row_data.append(raw_out[r][c])
+                        block.append(row_data)
+                    row_blocks.append(block)
+                blocks_out.append(row_blocks)
+
+            # Find the template: the most common non-pure block in the output
+            # (output has no noise)
+            template = None
+            dominant_color = None
+            for ri in range(n_block_rows):
+                for ci in range(n_block_cols):
+                    block = blocks_out[ri][ci]
+                    colors = set()
+                    for row in block:
+                        for v in row:
+                            colors.add(v)
+                    if len(colors) == 2:
+                        template = block
+                        # Dominant = more frequent color in template
+                        from collections import Counter
+                        cnt = Counter()
+                        for row in block:
+                            for v in row:
+                                cnt[v] += 1
+                        dominant_color = cnt.most_common(1)[0][0]
+                        break
+                if template is not None:
+                    break
+
+            if template is None:
+                return None
+
+            minority_colors = set()
+            for row in template:
+                for v in row:
+                    if v != dominant_color:
+                        minority_colors.add(v)
+            if len(minority_colors) != 1:
+                return None
+            minority_color = minority_colors.pop()
+
+            # Build the meta-pattern from the template
+            # Position (bi, bj) in the template's block gives dominant or minority
+            # At template level: position (tr, tc) → dominant_color or minority_color
+            # Meta-grid: block at (bi, bj) → if template[bi][bj] == minority_color → show template
+            #                                → if template[bi][bj] == dominant_color → pure dominant
+            # But block rows/cols don't necessarily match template rows/cols 1:1
+            # Template has block_h rows and block_w cols; meta-grid has n_block_rows × n_block_cols
+            # These must match!
+            if n_block_rows != block_h or n_block_cols != block_w:
+                return None
+
+            # Verify the self-similar rule
+            pure_block = [[dominant_color]*block_w for _ in range(block_h)]
+
+            for bi in range(n_block_rows):
+                for bj in range(n_block_cols):
+                    if template[bi][bj] == minority_color:
+                        expected = template
+                    else:
+                        expected = pure_block
+                    if blocks_out[bi][bj] != expected:
+                        return None
+
+            # Verify output separators are all 0
+            for sr in sep_rows:
+                for c in range(W):
+                    if raw_out[sr][c] != 0:
+                        return None
+            for sc in sep_cols:
+                for r in range(H):
+                    if raw_out[r][sc] != 0:
+                        return None
+
+        return {
+            "type": "fractal_block_denoise",
+            "confidence": 0.95,
+        }
+
+    def _find_separator_lines(self, raw, H, W, axis):
+        """Find rows or columns that are all 0 (ignoring noise value 5)."""
+        seps = []
+        if axis == 'row':
+            for r in range(H):
+                if all(raw[r][c] == 0 or raw[r][c] == 5 for c in range(W)):
+                    seps.append(r)
+        else:
+            for c in range(W):
+                if all(raw[r][c] == 0 or raw[r][c] == 5 for r in range(H)):
+                    seps.append(c)
+        return seps
+
+    def _get_ranges(self, seps, total):
+        """Given separator positions, return ranges of non-separator segments."""
+        ranges = []
+        prev = -1
+        for s in sorted(seps):
+            if s > prev + 1:
+                ranges.append((prev + 1, s - 1))
+            prev = s
+        if prev < total - 1:
+            ranges.append((prev + 1, total - 1))
+        return ranges
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -4459,6 +4939,12 @@ class PredictOperator(Operator):
             return self._apply_corner_mark_square(rule, input_grid)
         if rule_type == "cross_center_mark":
             return self._apply_cross_center_mark(rule, input_grid)
+        if rule_type == "mirror_symmetry_recolor":
+            return self._apply_mirror_symmetry_recolor(rule, input_grid)
+        if rule_type == "rect_pixel_bridge":
+            return self._apply_rect_pixel_bridge(rule, input_grid)
+        if rule_type == "fractal_block_denoise":
+            return self._apply_fractal_block_denoise(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5745,6 +6231,162 @@ class PredictOperator(Operator):
         centers = GeneralizeOperator._find_domino_cross_centers(raw, bg, fg, h, w)
         for r, c in centers:
             out[r][c] = mark
+        return out
+
+    def _apply_mirror_symmetry_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        fg_color = rule["fg_color"]
+        new_color = rule["new_color"]
+
+        out = [row[:] for row in raw]
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == fg_color:
+                    mirror_c = W - 1 - c
+                    if raw[r][mirror_c] == fg_color:
+                        out[r][c] = new_color
+        return out
+
+    def _apply_rect_pixel_bridge(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Detect bg
+        from collections import Counter
+        counts = Counter()
+        for r in range(H):
+            for c in range(W):
+                counts[raw[r][c]] += 1
+        bg = counts.most_common(1)[0][0]
+
+        out = [row[:] for row in raw]
+
+        # Find all non-bg colors
+        color_cells = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                if v != bg:
+                    color_cells.setdefault(v, []).append((r, c))
+
+        for color, cells in color_cells.items():
+            rects, isolates = GeneralizeOperator._find_rects_and_isolates(
+                None, cells, color, raw, H, W, bg
+            )
+            if not rects or not isolates:
+                continue
+            for iso_r, iso_c in isolates:
+                GeneralizeOperator._draw_bridge(
+                    None, out, rects, iso_r, iso_c, color, bg, H, W
+                )
+        return out
+
+    def _apply_fractal_block_denoise(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Find separator lines
+        sep_rows = GeneralizeOperator._find_separator_lines(None, raw, H, W, 'row')
+        sep_cols = GeneralizeOperator._find_separator_lines(None, raw, H, W, 'col')
+
+        row_ranges = GeneralizeOperator._get_ranges(None, sep_rows, H)
+        col_ranges = GeneralizeOperator._get_ranges(None, sep_cols, W)
+
+        if not row_ranges or not col_ranges:
+            return [row[:] for row in raw]
+
+        block_h = row_ranges[0][1] - row_ranges[0][0] + 1
+        block_w = col_ranges[0][1] - col_ranges[0][0] + 1
+        n_block_rows = len(row_ranges)
+        n_block_cols = len(col_ranges)
+
+        # Extract blocks, clean noise (5 → ignore)
+        blocks_clean = []
+        for ri, (r0, r1) in enumerate(row_ranges):
+            row_blocks = []
+            for ci, (c0, c1) in enumerate(col_ranges):
+                block = []
+                for r in range(r0, r1 + 1):
+                    row_data = []
+                    for c in range(c0, c1 + 1):
+                        v = raw[r][c]
+                        row_data.append(v if v != 5 else None)
+                    block.append(row_data)
+                row_blocks.append(block)
+            blocks_clean.append(row_blocks)
+
+        # Find template: block with exactly 2 non-zero, non-5 colors and no None/5
+        # Try to find a clean block first
+        template = None
+        dominant_color = None
+        minority_color = None
+
+        for ri in range(n_block_rows):
+            for ci in range(n_block_cols):
+                block = blocks_clean[ri][ci]
+                colors = set()
+                has_none = False
+                for row in block:
+                    for v in row:
+                        if v is None:
+                            has_none = True
+                        elif v != 5:
+                            colors.add(v)
+                if has_none:
+                    continue
+                if len(colors) == 2:
+                    from collections import Counter
+                    cnt = Counter()
+                    for row in block:
+                        for v in row:
+                            if v is not None:
+                                cnt[v] += 1
+                    dominant_color = cnt.most_common(1)[0][0]
+                    colors.discard(dominant_color)
+                    minority_color = colors.pop()
+                    template = [row[:] for row in block]
+                    break
+            if template is not None:
+                break
+
+        if template is None or dominant_color is None:
+            return [row[:] for row in raw]
+
+        # Build output
+        pure_block = [[dominant_color]*block_w for _ in range(block_h)]
+
+        out = [[0]*W for _ in range(H)]
+
+        # Fill separator lines with 0
+        for sr in sep_rows:
+            for c in range(W):
+                out[sr][c] = 0
+        for sc in sep_cols:
+            for r in range(H):
+                out[r][sc] = 0
+
+        # Fill blocks based on self-similar rule
+        for bi in range(n_block_rows):
+            for bj in range(n_block_cols):
+                # Determine which block to place
+                if bi < block_h and bj < block_w:
+                    if template[bi][bj] == minority_color:
+                        source = template
+                    else:
+                        source = pure_block
+                else:
+                    source = pure_block
+
+                r0, r1 = row_ranges[bi]
+                c0, c1 = col_ranges[bj]
+                for dr in range(block_h):
+                    for dc in range(block_w):
+                        out[r0 + dr][c0 + dc] = source[dr][dc]
+
         return out
 
     # ---- helpers ---------------------------------------------------------
