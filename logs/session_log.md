@@ -311,3 +311,31 @@
 - Stored rule hits: 25
 - Time: 136s
 - Log: logs/learn_20260421_222124.log
+
+---
+## Learning Loop -- 2026-04-21 22:26
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 74 -> 78 (+4 learned)
+- Stored rule hits: 26
+- Time: 136s
+- Log: logs/learn_20260421_222439.log
+
+---
+## Session 12 -- 2026-04-21 22:47
+
+### Strategies Added
+1. **grid_intersection_summary** -- large grid divided by separator lines; extract colored marks at separator intersections, produce (N-1)×(M-1) summary where each cell = color if all 4 surrounding corners match, else 0 (solves 7837ac64)
+2. **frame_color_swap** -- single rectangle (border_color surrounding interior_color) on black background; output extracts the rectangle with colors swapped (solves b94a9452)
+3. **tile_pattern_upward** -- input has background at top, pattern at bottom; output tiles the bottom pattern upward to fill the entire grid (solves 9b30e358)
+
+### Learning Loop Results
+- Split: training, Tasks: 40
+- Correct: 29 / 40 (72.5%) -- up from 26/40 (65.0%)
+- Solved (new): 7837ac64 (grid_intersection_summary), b94a9452 (frame_color_swap), 9b30e358 (tile_pattern_upward)
+- Rules: 84 -> 89 (+5 learned)
+- Stored rule hits: 28
+- Time: 141s
+- Log: logs/learn_20260421_224444.log
+- Regression: 08ed6ac7 CORRECT

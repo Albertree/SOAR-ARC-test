@@ -402,6 +402,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_count_fill_grid(patterns, wm)
 
+        # Strategy 29: grid intersection summary (large grid → small summary)
+        if rule is None:
+            rule = self._try_grid_intersection_summary(patterns, wm)
+
+        # Strategy 30: frame color swap (extract rectangle, swap border/interior)
+        if rule is None:
+            rule = self._try_frame_color_swap(patterns, wm)
+
+        # Strategy 31: tile pattern upward (bottom pattern fills entire grid)
+        if rule is None:
+            rule = self._try_tile_pattern_upward(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -3374,6 +3386,306 @@ class GeneralizeOperator(Operator):
 
         return {"type": "count_fill_grid", "confidence": 1.0}
 
+    # ---- strategy: grid intersection summary --------------------------------
+
+    def _try_grid_intersection_summary(self, patterns, wm):
+        """
+        Detect: input is a large grid divided by separator lines of one color.
+        Some separator intersections have non-grid colors forming rectangular
+        regions. Output is a small (N-1)x(M-1) grid where each cell is the
+        color if the four surrounding intersection corners share that color,
+        else 0.
+
+        Category: tasks with regular grids and colored intersection markers.
+        """
+        task = wm.task
+        if task is None or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            # Must shrink significantly
+            if h_out >= h or w_out >= w or h < 10 or w < 10:
+                return None
+
+            # Detect grid separator color and spacing
+            info = self._detect_grid_separators(raw_in)
+            if info is None:
+                return None
+
+            grid_color, sep_rows, sep_cols = info
+
+            # Extract intersection values
+            int_grid = []
+            for sr in sep_rows:
+                row_vals = []
+                for sc in sep_cols:
+                    row_vals.append(raw_in[sr][sc])
+                int_grid.append(row_vals)
+
+            # Find bounding box of non-grid intersections
+            marked_rows = []
+            marked_cols = []
+            for ri, sr in enumerate(sep_rows):
+                for ci, sc in enumerate(sep_cols):
+                    if int_grid[ri][ci] != grid_color:
+                        marked_rows.append(ri)
+                        marked_cols.append(ci)
+
+            if not marked_rows:
+                return None
+
+            min_ri = min(marked_rows)
+            max_ri = max(marked_rows)
+            min_ci = min(marked_cols)
+            max_ci = max(marked_cols)
+
+            n_rows = max_ri - min_ri + 1
+            n_cols = max_ci - min_ci + 1
+
+            if n_rows < 2 or n_cols < 2:
+                return None
+
+            # Output should be (n_rows-1) x (n_cols-1)
+            if h_out != n_rows - 1 or w_out != n_cols - 1:
+                return None
+
+            # Build expected output: each cell (i,j) = color if all 4 corners
+            # at (i,j), (i,j+1), (i+1,j), (i+1,j+1) share same non-grid color
+            expected = []
+            for i in range(n_rows - 1):
+                row = []
+                for j in range(n_cols - 1):
+                    tl = int_grid[min_ri + i][min_ci + j]
+                    tr = int_grid[min_ri + i][min_ci + j + 1]
+                    bl = int_grid[min_ri + i + 1][min_ci + j]
+                    br = int_grid[min_ri + i + 1][min_ci + j + 1]
+                    if (tl == tr == bl == br) and tl != grid_color:
+                        row.append(tl)
+                    else:
+                        row.append(0)
+                expected.append(row)
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "grid_intersection_summary", "confidence": 1.0}
+
+    @staticmethod
+    def _detect_grid_separators(raw):
+        """Detect uniform grid separator lines and their color/positions."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 5 or w < 5:
+            return None
+
+        from collections import Counter
+
+        # Find the separator color by looking for rows that are nearly uniform.
+        # For each row, find its dominant color and how dominant it is.
+        row_dominant = {}  # color -> list of rows where it dominates
+        for r in range(h):
+            row_freq = Counter(raw[r][c] for c in range(w))
+            dom_color, dom_count = row_freq.most_common(1)[0]
+            if dom_count >= w * 0.8:
+                row_dominant.setdefault(dom_color, []).append(r)
+
+        # Try each candidate separator color
+        for grid_color, sep_rows_candidate in sorted(
+            row_dominant.items(), key=lambda x: -len(x[1])
+        ):
+            if len(sep_rows_candidate) < 3:
+                continue
+
+            # Check regular spacing
+            row_diffs = [sep_rows_candidate[i+1] - sep_rows_candidate[i]
+                         for i in range(len(sep_rows_candidate)-1)]
+            if len(set(row_diffs)) != 1:
+                continue
+
+            # Find separator cols for this color
+            sep_cols = []
+            for c in range(w):
+                gc_count = sum(1 for r in range(h) if raw[r][c] == grid_color)
+                if gc_count >= h * 0.8:
+                    sep_cols.append(c)
+
+            if len(sep_cols) < 3:
+                continue
+
+            col_diffs = [sep_cols[i+1] - sep_cols[i]
+                         for i in range(len(sep_cols)-1)]
+            if len(set(col_diffs)) != 1:
+                continue
+
+            return grid_color, sep_rows_candidate, sep_cols
+
+        return None
+
+    # ---- strategy: frame color swap -----------------------------------------
+
+    def _try_frame_color_swap(self, patterns, wm):
+        """
+        Detect: input is mostly 0 with a single rectangle of border_color
+        surrounding interior cells of interior_color. Output is just the
+        rectangle extracted with colors swapped (border↔interior).
+
+        Category: tasks with bordered rectangles on black backgrounds.
+        """
+        task = wm.task
+        if task is None or len(task.example_pairs) < 1:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+
+            # Find non-zero bounding box
+            nz_positions = []
+            for r in range(h_in):
+                for c in range(w_in):
+                    if raw_in[r][c] != 0:
+                        nz_positions.append((r, c))
+            if len(nz_positions) < 4:
+                return None
+
+            min_r = min(r for r, c in nz_positions)
+            max_r = max(r for r, c in nz_positions)
+            min_c = min(c for r, c in nz_positions)
+            max_c = max(c for r, c in nz_positions)
+
+            rect_h = max_r - min_r + 1
+            rect_w = max_c - min_c + 1
+
+            if rect_h < 3 or rect_w < 3:
+                return None
+
+            # Output must match rectangle dimensions
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+            if h_out != rect_h or w_out != rect_w:
+                return None
+
+            # Extract rectangle from input
+            rect = []
+            for r in range(min_r, max_r + 1):
+                rect.append([raw_in[r][c] for c in range(min_c, max_c + 1)])
+
+            # Find border color (on the rectangle border) and interior color
+            border_color = rect[0][0]
+            if border_color == 0:
+                return None
+
+            # All border cells must be border_color
+            interior_color = None
+            for r in range(rect_h):
+                for c in range(rect_w):
+                    on_border = (r == 0 or r == rect_h - 1 or c == 0 or c == rect_w - 1)
+                    if on_border:
+                        if rect[r][c] != border_color:
+                            return None
+                    else:
+                        if rect[r][c] != border_color:
+                            if interior_color is None:
+                                interior_color = rect[r][c]
+                            elif rect[r][c] != interior_color:
+                                return None
+
+            if interior_color is None:
+                return None
+
+            # Verify output is the swapped version
+            expected = []
+            for r in range(rect_h):
+                row = []
+                for c in range(rect_w):
+                    if rect[r][c] == border_color:
+                        row.append(interior_color)
+                    elif rect[r][c] == interior_color:
+                        row.append(border_color)
+                    else:
+                        row.append(rect[r][c])
+                expected.append(row)
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "frame_color_swap", "confidence": 1.0}
+
+    # ---- strategy: tile pattern upward --------------------------------------
+
+    def _try_tile_pattern_upward(self, patterns, wm):
+        """
+        Detect: input has background at top and a pattern at the bottom.
+        Output tiles the bottom pattern upward to fill the entire grid.
+
+        Category: tasks where a pattern at one edge repeats to fill the grid.
+        """
+        task = wm.task
+        if task is None or len(task.example_pairs) < 1:
+            return None
+
+        if not patterns.get("grid_size_preserved"):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if h < 4 or w < 2:
+                return None
+
+            # Find background color (the color of the top-left cell)
+            bg = raw_in[0][0]
+
+            # Verify top rows are uniform bg
+            first_non_bg_row = None
+            for r in range(h):
+                if any(raw_in[r][c] != bg for c in range(w)):
+                    first_non_bg_row = r
+                    break
+
+            if first_non_bg_row is None or first_non_bg_row == 0:
+                return None
+
+            # Pattern is from first_non_bg_row to end
+            pattern_rows = h - first_non_bg_row
+            if pattern_rows < 2 or pattern_rows >= h:
+                return None
+
+            # Extract the pattern
+            pattern = [raw_in[r][:] for r in range(first_non_bg_row, h)]
+
+            # Verify output is the pattern tiled from bottom upward
+            for r in range(h):
+                # Map output row r to pattern row, tiling from bottom
+                pattern_idx = (h - 1 - r) % pattern_rows
+                # Since we tile from bottom, the bottom of output = bottom of pattern
+                expected_row_idx = pattern_rows - 1 - pattern_idx
+                if raw_out[r] != pattern[expected_row_idx]:
+                    return None
+
+        return {"type": "tile_pattern_upward", "confidence": 1.0}
+
     @staticmethod
     def _count_non_bg(raw):
         """Find background color (most frequent) and count non-bg colors."""
@@ -3503,6 +3815,12 @@ class PredictOperator(Operator):
             return self._apply_flood_fill_enclosed(rule, input_grid)
         if rule_type == "count_fill_grid":
             return self._apply_count_fill_grid(rule, input_grid)
+        if rule_type == "grid_intersection_summary":
+            return self._apply_grid_intersection_summary(rule, input_grid)
+        if rule_type == "frame_color_swap":
+            return self._apply_frame_color_swap(rule, input_grid)
+        if rule_type == "tile_pattern_upward":
+            return self._apply_tile_pattern_upward(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4493,6 +4811,148 @@ class PredictOperator(Operator):
                 if filled < inside_count:
                     out[r][c] = signal_color
                     filled += 1
+
+        return out
+
+    def _apply_grid_intersection_summary(self, rule, input_grid):
+        """Extract grid intersection colors and produce summary grid."""
+        raw = input_grid.raw
+        info = GeneralizeOperator._detect_grid_separators(raw)
+        if info is None:
+            return [row[:] for row in raw]
+
+        grid_color, sep_rows, sep_cols = info
+
+        # Build intersection grid
+        int_grid = []
+        for sr in sep_rows:
+            row_vals = []
+            for sc in sep_cols:
+                row_vals.append(raw[sr][sc])
+            int_grid.append(row_vals)
+
+        # Find bounding box of non-grid intersections
+        marked_rows = []
+        marked_cols = []
+        for ri in range(len(sep_rows)):
+            for ci in range(len(sep_cols)):
+                if int_grid[ri][ci] != grid_color:
+                    marked_rows.append(ri)
+                    marked_cols.append(ci)
+
+        if not marked_rows:
+            return [[0]]
+
+        min_ri = min(marked_rows)
+        max_ri = max(marked_rows)
+        min_ci = min(marked_cols)
+        max_ci = max(marked_cols)
+
+        n_rows = max_ri - min_ri + 1
+        n_cols = max_ci - min_ci + 1
+
+        # Build output: (n_rows-1) x (n_cols-1)
+        out = []
+        for i in range(n_rows - 1):
+            row = []
+            for j in range(n_cols - 1):
+                tl = int_grid[min_ri + i][min_ci + j]
+                tr = int_grid[min_ri + i][min_ci + j + 1]
+                bl = int_grid[min_ri + i + 1][min_ci + j]
+                br = int_grid[min_ri + i + 1][min_ci + j + 1]
+                if (tl == tr == bl == br) and tl != grid_color:
+                    row.append(tl)
+                else:
+                    row.append(0)
+            out.append(row)
+
+        return out if out else [[0]]
+
+    def _apply_frame_color_swap(self, rule, input_grid):
+        """Extract rectangle, swap border and interior colors."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find non-zero bounding box
+        nz = [(r, c) for r in range(h) for c in range(w) if raw[r][c] != 0]
+        if not nz:
+            return [row[:] for row in raw]
+
+        min_r = min(r for r, c in nz)
+        max_r = max(r for r, c in nz)
+        min_c = min(c for r, c in nz)
+        max_c = max(c for r, c in nz)
+
+        rect_h = max_r - min_r + 1
+        rect_w = max_c - min_c + 1
+
+        # Extract rectangle
+        rect = []
+        for r in range(min_r, max_r + 1):
+            rect.append([raw[r][c] for c in range(min_c, max_c + 1)])
+
+        border_color = rect[0][0]
+
+        # Find interior color
+        interior_color = None
+        for r in range(rect_h):
+            for c in range(rect_w):
+                on_border = (r == 0 or r == rect_h - 1 or c == 0 or c == rect_w - 1)
+                if not on_border and rect[r][c] != border_color:
+                    interior_color = rect[r][c]
+                    break
+            if interior_color is not None:
+                break
+
+        if interior_color is None:
+            return rect
+
+        # Swap colors
+        out = []
+        for r in range(rect_h):
+            row = []
+            for c in range(rect_w):
+                if rect[r][c] == border_color:
+                    row.append(interior_color)
+                elif rect[r][c] == interior_color:
+                    row.append(border_color)
+                else:
+                    row.append(rect[r][c])
+            out.append(row)
+
+        return out
+
+    def _apply_tile_pattern_upward(self, rule, input_grid):
+        """Tile bottom pattern upward to fill entire grid."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find background color
+        bg = raw[0][0]
+
+        # Find first non-bg row
+        first_non_bg_row = None
+        for r in range(h):
+            if any(raw[r][c] != bg for c in range(w)):
+                first_non_bg_row = r
+                break
+
+        if first_non_bg_row is None or first_non_bg_row == 0:
+            return [row[:] for row in raw]
+
+        # Extract pattern
+        pattern = [raw[r][:] for r in range(first_non_bg_row, h)]
+        pattern_len = len(pattern)
+
+        # Tile from bottom upward
+        out = [[0] * w for _ in range(h)]
+        for r in range(h):
+            # Distance from bottom
+            dist_from_bottom = h - 1 - r
+            pattern_idx = pattern_len - 1 - (dist_from_bottom % pattern_len)
+            out[r] = pattern[pattern_idx][:]
 
         return out
 
