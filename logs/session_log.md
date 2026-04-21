@@ -273,3 +273,41 @@
 - Time: 132s
 - Log: logs/learn_20260421_220443.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 22:10
+
+- Split: training, Tasks: 40
+- Correct: 23 / 40 (57.5%)
+- Rules: 57 -> 62 (+5 learned)
+- Stored rule hits: 23
+- Time: 132s
+- Log: logs/learn_20260421_220752.log
+
+---
+## Session 11 -- 2026-04-21 22:18
+
+### Strategies Added
+1. **corner_ray** -- each isolated non-zero pixel on a zero background shoots L-shaped rays (horizontal + vertical) toward the nearest grid corner by Manhattan distance (solves 705a3229)
+2. **flood_fill_enclosed** -- grid has non-zero frame color forming closed shapes; any 0-cell not reachable from the grid border via 0-connected path becomes color 1 (solves a5313dff)
+3. **count_fill_grid** -- input has a 1-bordered rectangle with signal-colored pixels inside; output is 3��3 grid with N cells filled in reading order, where N = count of signal pixels inside the rectangle (solves c8b7cc0f)
+
+### Learning Loop Results
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%) -- up from 23/40 (57.5%)
+- Solved (new): 705a3229 (corner_ray), a5313dff (flood_fill_enclosed), c8b7cc0f (count_fill_grid)
+- Rules: 69 -> 74 (+5 learned)
+- Stored rule hits: 25
+- Time: 136s
+- Log: logs/learn_20260421_222124.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-21 22:23
+
+- Split: training, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 69 -> 74 (+5 learned)
+- Stored rule hits: 25
+- Time: 136s
+- Log: logs/learn_20260421_222124.log

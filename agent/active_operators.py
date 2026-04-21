@@ -314,6 +314,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_keep_center_column(patterns, wm)
 
+        # Strategy 6b: flood fill enclosed regions with color 1
+        if rule is None:
+            rule = self._try_flood_fill_enclosed(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -389,6 +393,14 @@ class GeneralizeOperator(Operator):
         # Strategy 25: quadrant diagonal fill (2×2 seed colors → fill corners)
         if rule is None:
             rule = self._try_quadrant_diagonal_fill(patterns, wm)
+
+        # Strategy 26: corner ray projection to nearest grid corner
+        if rule is None:
+            rule = self._try_corner_ray(patterns, wm)
+
+        # Strategy 28: count signal pixels in 1-bordered rect → fill 3×3
+        if rule is None:
+            rule = self._try_count_fill_grid(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -3159,6 +3171,209 @@ class GeneralizeOperator(Operator):
 
         return {"type": "quadrant_diagonal_fill", "confidence": 1.0}
 
+    # ---- strategy: corner ray projection -----------------------------------
+
+    def _try_corner_ray(self, patterns, wm):
+        """
+        Detect: sparse grid (mostly 0s) with isolated non-zero pixels.
+        Each pixel shoots L-shaped rays toward the nearest grid corner.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            # Collect non-zero pixels from input
+            pixels = []
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != 0:
+                        pixels.append((r, c, raw_in[r][c]))
+
+            if not pixels:
+                return None
+
+            # Must be sparse (mostly background)
+            if len(pixels) > h * w * 0.3:
+                return None
+
+            # Build expected output
+            expected = [[0] * w for _ in range(h)]
+            for r, c, color in pixels:
+                corners = [
+                    (0, 0, r + c),
+                    (0, w - 1, r + (w - 1 - c)),
+                    (h - 1, 0, (h - 1 - r) + c),
+                    (h - 1, w - 1, (h - 1 - r) + (w - 1 - c)),
+                ]
+                corners.sort(key=lambda x: x[2])
+                cr, cc, _ = corners[0]
+
+                # Vertical ray toward corner row
+                for rr in range(min(r, cr), max(r, cr) + 1):
+                    expected[rr][c] = color
+                # Horizontal ray toward corner col
+                for cc2 in range(min(c, cc), max(c, cc) + 1):
+                    expected[r][cc2] = color
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "corner_ray", "confidence": 1.0}
+
+    # ---- strategy: flood fill enclosed regions ------------------------------
+
+    def _try_flood_fill_enclosed(self, patterns, wm):
+        """
+        Detect: grid has non-zero frame color forming closed shapes on 0 bg.
+        Enclosed 0-cells (not reachable from grid border via 0-path) become 1.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+
+            if len(raw_out) != h or (raw_out and len(raw_out[0]) != w):
+                return None
+
+            # Input must have only 0 and frame color(s)
+            # Output introduces color 1 for enclosed cells
+            has_one_in = any(raw_in[r][c] == 1 for r in range(h) for c in range(w))
+            has_one_out = any(raw_out[r][c] == 1 for r in range(h) for c in range(w))
+            if has_one_in or not has_one_out:
+                return None
+
+            # Flood fill from border: find all 0-cells reachable from border
+            reachable = [[False] * w for _ in range(h)]
+            queue = []
+            for r in range(h):
+                for c in range(w):
+                    if (r == 0 or r == h - 1 or c == 0 or c == w - 1) and raw_in[r][c] == 0:
+                        if not reachable[r][c]:
+                            reachable[r][c] = True
+                            queue.append((r, c))
+
+            qi = 0
+            while qi < len(queue):
+                r, c = queue[qi]
+                qi += 1
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < h and 0 <= nc < w and not reachable[nr][nc] and raw_in[nr][nc] == 0:
+                        reachable[nr][nc] = True
+                        queue.append((nr, nc))
+
+            # Build expected output
+            expected = [row[:] for row in raw_in]
+            enclosed_count = 0
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] == 0 and not reachable[r][c]:
+                        expected[r][c] = 1
+                        enclosed_count += 1
+
+            if enclosed_count == 0:
+                return None
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "flood_fill_enclosed", "confidence": 1.0}
+
+    # ---- strategy: count signal pixels in rect → fill 3×3 -----------------
+
+    def _try_count_fill_grid(self, patterns, wm):
+        """
+        Detect: input has 1-bordered rectangle + signal-colored pixels.
+        Output is 3×3 grid, N cells filled in reading order with signal color,
+        where N = count of signal pixels inside the rectangle.
+        """
+        task = wm.task
+        if task is None:
+            return None
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+
+            # Output must be 3×3
+            if h_out != 3 or w_out != 3:
+                return None
+
+            # Find 1-bordered rectangle in input
+            ones = [(r, c) for r in range(h_in) for c in range(w_in) if raw_in[r][c] == 1]
+            if not ones:
+                return None
+
+            min_r = min(r for r, c in ones)
+            max_r = max(r for r, c in ones)
+            min_c = min(c for r, c in ones)
+            max_c = max(c for r, c in ones)
+
+            # Verify rectangle border is all 1s
+            border_ok = True
+            for r in range(min_r, max_r + 1):
+                for c in range(min_c, max_c + 1):
+                    on_border = (r == min_r or r == max_r or c == min_c or c == max_c)
+                    if on_border and raw_in[r][c] != 1:
+                        border_ok = False
+                        break
+                if not border_ok:
+                    break
+            if not border_ok:
+                return None
+
+            # Find signal color (non-0, non-1)
+            signal_color = None
+            for r in range(h_in):
+                for c in range(w_in):
+                    v = raw_in[r][c]
+                    if v != 0 and v != 1:
+                        signal_color = v
+                        break
+                if signal_color is not None:
+                    break
+            if signal_color is None:
+                return None
+
+            # Count signal pixels inside the rectangle (not on border)
+            inside_count = 0
+            for r in range(min_r + 1, max_r):
+                for c in range(min_c + 1, max_c):
+                    if raw_in[r][c] == signal_color:
+                        inside_count += 1
+
+            # Build expected 3×3 output
+            expected = [[0, 0, 0] for _ in range(3)]
+            filled = 0
+            for r in range(3):
+                for c in range(3):
+                    if filled < inside_count:
+                        expected[r][c] = signal_color
+                        filled += 1
+
+            if expected != raw_out:
+                return None
+
+        return {"type": "count_fill_grid", "confidence": 1.0}
+
     @staticmethod
     def _count_non_bg(raw):
         """Find background color (most frequent) and count non-bg colors."""
@@ -3282,6 +3497,12 @@ class PredictOperator(Operator):
             return self._apply_diagonal_extend(rule, input_grid)
         if rule_type == "quadrant_diagonal_fill":
             return self._apply_quadrant_diagonal_fill(rule, input_grid)
+        if rule_type == "corner_ray":
+            return self._apply_corner_ray(rule, input_grid)
+        if rule_type == "flood_fill_enclosed":
+            return self._apply_flood_fill_enclosed(rule, input_grid)
+        if rule_type == "count_fill_grid":
+            return self._apply_count_fill_grid(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4168,6 +4389,110 @@ class PredictOperator(Operator):
         for r in range(blk_r + 2, min(h, blk_r + 4)):
             for c in range(blk_c + 2, min(w, blk_c + 4)):
                 out[r][c] = tl_c
+
+        return out
+
+    # ---- apply: corner ray projection --------------------------------------
+
+    def _apply_corner_ray(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [[0] * w for _ in range(h)]
+
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    color = raw[r][c]
+                    corners = [
+                        (0, 0, r + c),
+                        (0, w - 1, r + (w - 1 - c)),
+                        (h - 1, 0, (h - 1 - r) + c),
+                        (h - 1, w - 1, (h - 1 - r) + (w - 1 - c)),
+                    ]
+                    corners.sort(key=lambda x: x[2])
+                    cr, cc, _ = corners[0]
+
+                    for rr in range(min(r, cr), max(r, cr) + 1):
+                        out[rr][c] = color
+                    for cc2 in range(min(c, cc), max(c, cc) + 1):
+                        out[r][cc2] = color
+
+        return out
+
+    # ---- apply: flood fill enclosed regions --------------------------------
+
+    def _apply_flood_fill_enclosed(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+
+        reachable = [[False] * w for _ in range(h)]
+        queue = []
+        for r in range(h):
+            for c in range(w):
+                if (r == 0 or r == h - 1 or c == 0 or c == w - 1) and raw[r][c] == 0:
+                    if not reachable[r][c]:
+                        reachable[r][c] = True
+                        queue.append((r, c))
+
+        qi = 0
+        while qi < len(queue):
+            r, c = queue[qi]
+            qi += 1
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if 0 <= nr < h and 0 <= nc < w and not reachable[nr][nc] and raw[nr][nc] == 0:
+                    reachable[nr][nc] = True
+                    queue.append((nr, nc))
+
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 0 and not reachable[r][c]:
+                    out[r][c] = 1
+
+        return out
+
+    # ---- apply: count fill grid (3×3) --------------------------------------
+
+    def _apply_count_fill_grid(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        ones = [(r, c) for r in range(h) for c in range(w) if raw[r][c] == 1]
+        if not ones:
+            return [[0, 0, 0] for _ in range(3)]
+
+        min_r = min(r for r, c in ones)
+        max_r = max(r for r, c in ones)
+        min_c = min(c for r, c in ones)
+        max_c = max(c for r, c in ones)
+
+        signal_color = 0
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v != 0 and v != 1:
+                    signal_color = v
+                    break
+            if signal_color:
+                break
+
+        inside_count = 0
+        for r in range(min_r + 1, max_r):
+            for c in range(min_c + 1, max_c):
+                if raw[r][c] == signal_color:
+                    inside_count += 1
+
+        out = [[0, 0, 0] for _ in range(3)]
+        filled = 0
+        for r in range(3):
+            for c in range(3):
+                if filled < inside_count:
+                    out[r][c] = signal_color
+                    filled += 1
 
         return out
 
