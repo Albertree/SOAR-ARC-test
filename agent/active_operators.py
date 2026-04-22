@@ -203,10 +203,12 @@ class ExtractPatternOperator(Operator):
             input_colors = set()
             output_colors = set()
             positions = []
+            cells = []
             for cell in group_cells:
                 input_colors.add(cell["input_color"])
                 output_colors.add(cell["output_color"])
                 positions.append((cell["row"], cell["col"]))
+                cells.append(cell)
 
             top_row = min(r for r, c in positions)
             top_col = min(c for r, c in positions)
@@ -217,6 +219,7 @@ class ExtractPatternOperator(Operator):
                 "top_row": top_row,
                 "top_col": top_col,
                 "cell_count": len(group_cells),
+                "cells": cells,
             })
 
         return {
@@ -415,7 +418,19 @@ class GeneralizeOperator(Operator):
                     "confidence": 1.0,
                 }
             else:
-                return None  # ambiguous color
+                # Colors disagree — if there's exactly one non-source color, use it
+                all_src = set(src_colors)
+                non_src = set(dst_colors) - all_src
+                if len(non_src) == 1:
+                    return {
+                        "type": "pixel_relocate",
+                        "mode": "fixed",
+                        "dest_row": dr,
+                        "dest_col": dc,
+                        "color_mode": "fixed",
+                        "fixed_color": non_src.pop(),
+                        "confidence": 0.8,
+                    }
 
         # --- Try color-conditional mode (group by input color) ---
         color_groups = {}
@@ -426,14 +441,64 @@ class GeneralizeOperator(Operator):
             color_groups[c].append(r)
 
         if len(color_groups) < 2:
-            return None  # same color but different dests -> ambiguous
+            # Same color but different dests — try source-position-conditional
+            src_positions = set(
+                (r["src_row"], r["src_col"]) for r in relocations
+            )
+            if len(src_positions) == len(relocations) and len(src_positions) > 1:
+                # Each pair has a unique source position — build position lookup
+                pos_rules = {}
+                for rel in relocations:
+                    key = f"{rel['src_row']},{rel['src_col']}"
+                    pos_rules[key] = {
+                        "dest_row": rel["dst_row"],
+                        "dest_col": rel["dst_col"],
+                        "output_color": rel["dst_color"],
+                    }
+                return {
+                    "type": "pixel_relocate",
+                    "mode": "source_conditional",
+                    "position_rules": pos_rules,
+                    "confidence": 0.8,
+                }
+            # Fallback: use first pair's relocation
+            return {
+                "type": "pixel_relocate",
+                "mode": "multi_exemplar",
+                "relocations": relocations,
+                "confidence": 0.6,
+            }
 
         color_rules = {}
         for c, group in color_groups.items():
             dests = set((r["dst_row"], r["dst_col"]) for r in group)
             ocolors = set(r["dst_color"] for r in group)
             if len(dests) != 1 or len(ocolors) != 1:
-                return None  # inconsistent within same color
+                # Inconsistent — try source-position-conditional
+                src_positions = set(
+                    (r["src_row"], r["src_col"]) for r in relocations
+                )
+                if len(src_positions) == len(relocations) and len(src_positions) > 1:
+                    pos_rules = {}
+                    for rel in relocations:
+                        key = f"{rel['src_row']},{rel['src_col']}"
+                        pos_rules[key] = {
+                            "dest_row": rel["dst_row"],
+                            "dest_col": rel["dst_col"],
+                            "output_color": rel["dst_color"],
+                        }
+                    return {
+                        "type": "pixel_relocate",
+                        "mode": "source_conditional",
+                        "position_rules": pos_rules,
+                        "confidence": 0.8,
+                    }
+                return {
+                    "type": "pixel_relocate",
+                    "mode": "multi_exemplar",
+                    "relocations": relocations,
+                    "confidence": 0.6,
+                }
             dr, dc = dests.pop()
             oc = ocolors.pop()
             color_rules[c] = {"dest_row": dr, "dest_col": dc, "output_color": oc}
@@ -451,34 +516,69 @@ class GeneralizeOperator(Operator):
         From a pair analysis, extract source and destination of a single-pixel
         relocation.  Returns dict with src_row/col/color, dst_row/col/color
         or None if the pattern doesn't match.
+
+        Handles two cases:
+          - 2 groups of 1 cell each (source/dest non-adjacent)
+          - 1 group of 2 cells (source/dest are adjacent)
         """
-        if analysis["num_groups"] != 2 or analysis["total_changes"] != 2:
+        if analysis["total_changes"] != 2:
             return None
 
-        source = dest = None
-        for g in analysis["groups"]:
-            if g["cell_count"] != 1:
-                return None
-            if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
-                return None
-            ic, oc = g["input_colors"][0], g["output_colors"][0]
-            if ic != 0 and oc == 0:
-                source = g
-            elif ic == 0 and oc != 0:
-                dest = g
-            else:
-                return None
+        if analysis["num_groups"] == 2:
+            source = dest = None
+            for g in analysis["groups"]:
+                if g["cell_count"] != 1:
+                    return None
+                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
+                    return None
+                ic, oc = g["input_colors"][0], g["output_colors"][0]
+                if ic != 0 and oc == 0:
+                    source = g
+                elif ic == 0 and oc != 0:
+                    dest = g
+                else:
+                    return None
 
-        if source is None or dest is None:
-            return None
-        return {
-            "src_row": source["top_row"],
-            "src_col": source["top_col"],
-            "src_color": source["input_colors"][0],
-            "dst_row": dest["top_row"],
-            "dst_col": dest["top_col"],
-            "dst_color": dest["output_colors"][0],
-        }
+            if source is None or dest is None:
+                return None
+            return {
+                "src_row": source["top_row"],
+                "src_col": source["top_col"],
+                "src_color": source["input_colors"][0],
+                "dst_row": dest["top_row"],
+                "dst_col": dest["top_col"],
+                "dst_color": dest["output_colors"][0],
+            }
+
+        if analysis["num_groups"] == 1:
+            g = analysis["groups"][0]
+            if g["cell_count"] != 2:
+                return None
+            # Adjacent source/dest: one cell nonzero->0, other 0->nonzero
+            cells = g.get("cells", [])
+            if len(cells) != 2:
+                return None
+            source = dest = None
+            for cell in cells:
+                ic, oc = cell["input_color"], cell["output_color"]
+                if ic != 0 and oc == 0:
+                    source = cell
+                elif ic == 0 and oc != 0:
+                    dest = cell
+                else:
+                    return None
+            if source is None or dest is None:
+                return None
+            return {
+                "src_row": source["row"],
+                "src_col": source["col"],
+                "src_color": source["input_color"],
+                "dst_row": dest["row"],
+                "dst_col": dest["col"],
+                "dst_color": dest["output_color"],
+            }
+
+        return None
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -636,10 +736,12 @@ class PredictOperator(Operator):
 
         # Find the single non-zero pixel in the input
         src_color = None
+        src_r = src_c = None
         for r in range(h):
             for c in range(w):
                 if raw[r][c] != 0:
                     src_color = raw[r][c]
+                    src_r, src_c = r, c
                     break
             if src_color is not None:
                 break
@@ -671,6 +773,27 @@ class PredictOperator(Operator):
             else:
                 # Unseen color: fall back to identity
                 return [row[:] for row in raw]
+
+        elif mode == "source_conditional":
+            pos_rules = rule.get("position_rules", {})
+            key = f"{src_r},{src_c}"
+            pr = pos_rules.get(key)
+            if pr is not None:
+                dr, dc = pr["dest_row"], pr["dest_col"]
+                out_color = pr["output_color"]
+                if 0 <= dr < h and 0 <= dc < w:
+                    output[dr][dc] = out_color
+            else:
+                return [row[:] for row in raw]
+
+        elif mode == "multi_exemplar":
+            relocations = rule.get("relocations", [])
+            if relocations:
+                rel = relocations[0]
+                dr, dc = rel["dst_row"], rel["dst_col"]
+                out_color = rel["dst_color"]
+                if 0 <= dr < h and 0 <= dc < w:
+                    output[dr][dc] = out_color
 
         return output
 
