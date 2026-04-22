@@ -664,6 +664,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_diagonal_ring_fill(patterns, wm)
 
+        # Strategy 88: denoise isolated pixels (remove 8-isolated single pixels)
+        if rule is None:
+            rule = self._try_denoise_isolated(patterns, wm)
+
+        # Strategy 89: L-shape diagonal ray (shoot diagonal from missing 2x2 corner)
+        if rule is None:
+            rule = self._try_l_diagonal_ray(patterns, wm)
+
+        # Strategy 90: nest rectangles by size (scattered rects → concentric nested output)
+        if rule is None:
+            rule = self._try_nest_rectangles(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -11068,6 +11080,232 @@ class GeneralizeOperator(Operator):
 
         return {"type": "diagonal_ring_fill", "confidence": 1.0}
 
+    # ---- strategy 88: denoise isolated pixels --------------------------------
+
+    def _try_denoise_isolated(self, patterns, wm):
+        """
+        Detect: grid has one non-zero color scattered on bg=0. Output removes
+        all pixels that are 8-isolated (no same-color neighbor in any of 8 dirs).
+        Only 8-connected components of size >= 2 survive.
+        Category: noise removal / 8-connected component filtering.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        # Must preserve grid size
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g0.raw) != len(g1.raw):
+                return None
+            if len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+        # Must have exactly one non-zero color (or possibly bg=0 + 1 fg color)
+        for pair in task.example_pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            H = len(ri)
+            W = len(ri[0])
+            fg_colors_in = set()
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] != 0:
+                        fg_colors_in.add(ri[r][c])
+            if len(fg_colors_in) != 1:
+                return None
+            fg = list(fg_colors_in)[0]
+            # Output should only have bg=0 and this same fg color
+            for r in range(H):
+                for c in range(W):
+                    if ro[r][c] != 0 and ro[r][c] != fg:
+                        return None
+            # Validate: output == input with 8-isolated pixels removed
+            for r in range(H):
+                for c in range(W):
+                    has_neighbor = False
+                    if ri[r][c] == fg:
+                        for dr in (-1, 0, 1):
+                            for dc in (-1, 0, 1):
+                                if dr == 0 and dc == 0:
+                                    continue
+                                nr, nc = r + dr, c + dc
+                                if 0 <= nr < H and 0 <= nc < W and ri[nr][nc] == fg:
+                                    has_neighbor = True
+                                    break
+                            if has_neighbor:
+                                break
+                        expected = fg if has_neighbor else 0
+                    else:
+                        expected = 0
+                    if ro[r][c] != expected:
+                        return None
+        return {"type": "denoise_isolated", "confidence": 1.0}
+
+    # ---- strategy 89: L-shape diagonal ray -----------------------------------
+
+    def _try_l_diagonal_ray(self, patterns, wm):
+        """
+        Detect: grid has L-shaped groups of 3 cells (each forming 3 of 4 cells
+        of a 2x2 box) of a single fg color on bg=0. Output keeps the L-shapes
+        and shoots a diagonal ray from the missing corner outward (away from
+        the filled opposite corner) until hitting the grid edge.
+        Category: geometric projection / L-shape diagonal extension.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g0.raw) != len(g1.raw) or len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+        # Validate on each example
+        for pair in task.example_pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            H = len(ri)
+            W = len(ri[0])
+            # Find fg color
+            fg_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] != 0:
+                        fg_colors.add(ri[r][c])
+            if len(fg_colors) != 1:
+                return None
+            fg = list(fg_colors)[0]
+            # Find 8-connected components
+            visited = [[False]*W for _ in range(H)]
+            comps = []
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] == fg and not visited[r][c]:
+                        comp = []
+                        stack = [(r, c)]
+                        while stack:
+                            cr, cc = stack.pop()
+                            if visited[cr][cc]:
+                                continue
+                            visited[cr][cc] = True
+                            comp.append((cr, cc))
+                            for dr in (-1, 0, 1):
+                                for dc in (-1, 0, 1):
+                                    if dr == 0 and dc == 0:
+                                        continue
+                                    nr, nc = cr + dr, cc + dc
+                                    if 0 <= nr < H and 0 <= nc < W and ri[nr][nc] == fg and not visited[nr][nc]:
+                                        stack.append((nr, nc))
+                        comps.append(comp)
+            # Each component should be an L-shape (3 cells of a 2x2 box)
+            predicted = [row[:] for row in ri]
+            for comp in comps:
+                if len(comp) != 3:
+                    return None  # not all components are 3-cell L-shapes
+                cs = set(comp)
+                # Find the 2x2 box containing all 3
+                min_r = min(r for r, c in cs)
+                max_r = max(r for r, c in cs)
+                min_c = min(c for r, c in cs)
+                max_c = max(c for r, c in cs)
+                if max_r - min_r != 1 or max_c - min_c != 1:
+                    return None  # doesn't fit in a 2x2 box
+                # Find missing corner
+                missing = None
+                for br in (min_r, max_r):
+                    for bc in (min_c, max_c):
+                        if (br, bc) not in cs:
+                            missing = (br, bc)
+                if missing is None:
+                    return None
+                # Opposite corner (diagonally across)
+                opp_r = min_r if missing[0] == max_r else max_r
+                opp_c = min_c if missing[1] == max_c else max_c
+                # Direction from opposite to missing
+                dr = missing[0] - opp_r  # +1 or -1
+                dc = missing[1] - opp_c  # +1 or -1
+                # Shoot ray from missing corner outward
+                cr, cc = missing[0] + dr, missing[1] + dc
+                while 0 <= cr < H and 0 <= cc < W:
+                    predicted[cr][cc] = fg
+                    cr += dr
+                    cc += dc
+            # Validate predicted matches output
+            if predicted != ro:
+                return None
+        return {"type": "l_diagonal_ray", "confidence": 1.0}
+
+    # ---- strategy 90: nest rectangles by size --------------------------------
+
+    def _try_nest_rectangles(self, patterns, wm):
+        """
+        Detect: input has several colored rectangular shapes (hollow frames or
+        solid blocks) scattered on bg=0, each a different color. Output is a
+        single nested concentric rectangle where colors are layered from
+        outermost (largest input rect) to innermost (smallest).
+        Output dims = innermost_dim + 2*(n_colors-1) for each axis.
+        Category: shape assembly / rectangle nesting by size.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g1.raw) > len(g0.raw) or len(g1.raw[0]) > len(g0.raw[0]):
+                return None
+        for pair in task.example_pairs:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            H = len(ri)
+            W = len(ri[0])
+            oH = len(ro)
+            oW = len(ro[0])
+            color_cells = {}
+            for r in range(H):
+                for c in range(W):
+                    v = ri[r][c]
+                    if v != 0:
+                        if v not in color_cells:
+                            color_cells[v] = []
+                        color_cells[v].append((r, c))
+            if len(color_cells) < 2:
+                return None
+            rects = []
+            for color, cells in color_cells.items():
+                min_r = min(r for r, c in cells)
+                max_r = max(r for r, c in cells)
+                min_c = min(c for r, c in cells)
+                max_c = max(c for r, c in cells)
+                h = max_r - min_r + 1
+                w = max_c - min_c + 1
+                rects.append((color, h, w, h * w))
+            rects.sort(key=lambda x: -x[3])
+            n = len(rects)
+            # Innermost rect determines center fill
+            inner_h = rects[-1][1]
+            inner_w = rects[-1][2]
+            exp_h = inner_h + 2 * (n - 1)
+            exp_w = inner_w + 2 * (n - 1)
+            if oH != exp_h or oW != exp_w:
+                return None
+            expected = [[0]*oW for _ in range(oH)]
+            for ci, (color, _, _, _) in enumerate(rects):
+                t, b, l, rr2 = ci, oH - 1 - ci, ci, oW - 1 - ci
+                if t > b or l > rr2:
+                    break
+                for c in range(l, rr2 + 1):
+                    expected[t][c] = color
+                    expected[b][c] = color
+                for r in range(t, b + 1):
+                    expected[r][l] = color
+                    expected[r][rr2] = color
+            if expected != ro:
+                return None
+        return {"type": "nest_rectangles", "confidence": 1.0}
+
 
 class DescendOperator(Operator):
     """
@@ -11313,6 +11551,12 @@ class PredictOperator(Operator):
             return self._apply_nested_rect_color_reverse(rule, input_grid)
         if rule_type == "diagonal_ring_fill":
             return self._apply_diagonal_ring_fill(rule, input_grid)
+        if rule_type == "denoise_isolated":
+            return self._apply_denoise_isolated(rule, input_grid)
+        if rule_type == "l_diagonal_ray":
+            return self._apply_l_diagonal_ray(rule, input_grid)
+        if rule_type == "nest_rectangles":
+            return self._apply_nest_rectangles(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -14978,6 +15222,146 @@ class PredictOperator(Operator):
             l += 1
             rr -= 1
 
+        return output
+
+    # ---- apply: denoise isolated pixels --------------------------------------
+
+    def _apply_denoise_isolated(self, rule, input_grid):
+        """Remove all 8-isolated pixels (no same-color neighbor in 8 dirs)."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        output = [[0]*W for _ in range(H)]
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                if v == 0:
+                    continue
+                has_neighbor = False
+                for dr in (-1, 0, 1):
+                    for dc in (-1, 0, 1):
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < H and 0 <= nc < W and raw[nr][nc] == v:
+                            has_neighbor = True
+                            break
+                    if has_neighbor:
+                        break
+                if has_neighbor:
+                    output[r][c] = v
+        return output
+
+    # ---- apply: L-shape diagonal ray -----------------------------------------
+
+    def _apply_l_diagonal_ray(self, rule, input_grid):
+        """For each 3-cell L-shape, shoot diagonal ray from missing 2x2 corner."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        output = [row[:] for row in raw]
+        # Find fg color
+        fg = 0
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0:
+                    fg = raw[r][c]
+                    break
+            if fg:
+                break
+        if not fg:
+            return output
+        # Find 8-connected components
+        visited = [[False]*W for _ in range(H)]
+        comps = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == fg and not visited[r][c]:
+                    comp = []
+                    stack = [(r, c)]
+                    while stack:
+                        cr, cc = stack.pop()
+                        if visited[cr][cc]:
+                            continue
+                        visited[cr][cc] = True
+                        comp.append((cr, cc))
+                        for dr2 in (-1, 0, 1):
+                            for dc2 in (-1, 0, 1):
+                                if dr2 == 0 and dc2 == 0:
+                                    continue
+                                nr, nc = cr + dr2, cc + dc2
+                                if 0 <= nr < H and 0 <= nc < W and raw[nr][nc] == fg and not visited[nr][nc]:
+                                    stack.append((nr, nc))
+                    comps.append(comp)
+        for comp in comps:
+            if len(comp) != 3:
+                continue
+            cs = set(comp)
+            min_r = min(r for r, c in cs)
+            max_r = max(r for r, c in cs)
+            min_c = min(c for r, c in cs)
+            max_c = max(c for r, c in cs)
+            if max_r - min_r != 1 or max_c - min_c != 1:
+                continue
+            missing = None
+            for br in (min_r, max_r):
+                for bc in (min_c, max_c):
+                    if (br, bc) not in cs:
+                        missing = (br, bc)
+            if missing is None:
+                continue
+            opp_r = min_r if missing[0] == max_r else max_r
+            opp_c = min_c if missing[1] == max_c else max_c
+            dr = missing[0] - opp_r
+            dc = missing[1] - opp_c
+            cr, cc = missing[0] + dr, missing[1] + dc
+            while 0 <= cr < H and 0 <= cc < W:
+                output[cr][cc] = fg
+                cr += dr
+                cc += dc
+        return output
+
+    # ---- apply: nest rectangles by size --------------------------------------
+
+    def _apply_nest_rectangles(self, rule, input_grid):
+        """Detect rect shapes, sort by size, build nested concentric output."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        color_cells = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                if v != 0:
+                    if v not in color_cells:
+                        color_cells[v] = []
+                    color_cells[v].append((r, c))
+        rects = []
+        for color, cells in color_cells.items():
+            min_r = min(r for r, c in cells)
+            max_r = max(r for r, c in cells)
+            min_c = min(c for r, c in cells)
+            max_c = max(c for r, c in cells)
+            h = max_r - min_r + 1
+            w = max_c - min_c + 1
+            rects.append((color, h, w, h * w))
+        rects.sort(key=lambda x: -x[3])
+        n = len(rects)
+        inner_h = rects[-1][1]
+        inner_w = rects[-1][2]
+        oH = inner_h + 2 * (n - 1)
+        oW = inner_w + 2 * (n - 1)
+        output = [[0]*oW for _ in range(oH)]
+        for ci, (color, _, _, _) in enumerate(rects):
+            t, b, l, rr2 = ci, oH - 1 - ci, ci, oW - 1 - ci
+            if t > b or l > rr2:
+                break
+            for c in range(l, rr2 + 1):
+                output[t][c] = color
+                output[b][c] = color
+            for r in range(t, b + 1):
+                output[r][l] = color
+                output[r][rr2] = color
         return output
 
 

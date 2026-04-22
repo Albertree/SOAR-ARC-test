@@ -1720,3 +1720,72 @@
 - Time: 2160s
 - Log: logs/learn_20260422_223924.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 23:53
+
+- Split: training, Tasks: 160
+- Correct: 97 / 160 (60.6%)
+- Rules: 398 -> 399 (+1 learned)
+- Stored rule hits: 94
+- Time: 2042s
+- Log: logs/learn_20260422_231939.log
+
+---
+## Session 36 -- 2026-04-23 01:33
+
+### Strategies Added
+1. **denoise_isolated** (Strategy 88): Grid has one non-zero color on bg=0.
+   Remove all pixels that are 8-isolated (no same-color neighbor in any of
+   8 directions). Only 8-connected components of size >= 2 survive.
+   Category: noise removal / 8-connected component filtering.
+   (solves 42a50994)
+2. **l_diagonal_ray** (Strategy 89): Grid has L-shaped groups of 3 cells
+   (forming 3 of 4 cells of a 2x2 box). Output keeps L-shapes and shoots
+   a diagonal ray from the missing corner outward (away from the filled
+   opposite corner) until hitting the grid edge.
+   Category: geometric projection / L-shape diagonal extension.
+   (solves 6e19193c)
+3. **nest_rectangles** (Strategy 90): Input has several colored rectangular
+   shapes (hollow frames or solid blocks) scattered on bg=0. Output is a
+   single nested concentric rectangle with colors layered outermost (largest)
+   to innermost (smallest). Output size = innermost_dim + 2*(n_colors-1).
+   Category: shape assembly / rectangle nesting by size.
+   (solves c658a4bd)
+
+### Bug Fix
+- Fixed `_try_nest_rectangles` output size calculation: was using largest
+  rect bbox dims, but output dims are actually innermost_dim + 2*(n-1)
+  because each ring is 1 cell thick regardless of input rect size.
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 100 / 160 (62.5%) — up from 97/160 (60.6%)
+- Solved (new): 42a50994 (denoise_isolated), 6e19193c (l_diagonal_ray), c658a4bd (nest_rectangles)
+- Errors: 0
+- Rules: 402 -> 404 (+2 learned)
+- Stored rule hits: 96
+- Discovered: 6 new rules from pipeline
+- Time: 2098s (13.1s/task)
+- Log: logs/learn_20260423_005823.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 00:38
+
+- Split: training, Tasks: 160
+- Correct: 99 / 160 (61.9%)
+- Rules: 399 -> 402 (+3 learned)
+- Stored rule hits: 94
+- Time: 2101s
+- Log: logs/learn_20260423_000315.log
+
+---
+## Learning Loop -- 2026-04-23 01:33
+
+- Split: training, Tasks: 160
+- Correct: 100 / 160 (62.5%)
+- Rules: 402 -> 404 (+2 learned)
+- Stored rule hits: 96
+- Time: 2098s
+- Log: logs/learn_20260423_005823.log
