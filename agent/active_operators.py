@@ -294,7 +294,11 @@ class GeneralizeOperator(Operator):
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         rule = self._try_recolor_sequential(patterns)
 
-        # Strategy 2: simple 1:1 color mapping
+        # Strategy 2: single-pixel relocation
+        if rule is None:
+            rule = self._try_pixel_relocate(patterns)
+
+        # Strategy 3: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -360,6 +364,121 @@ class GeneralizeOperator(Operator):
             if colors != list(range(colors[0], colors[0] + len(colors))):
                 return False
         return True
+
+    # ---- strategy: single-pixel relocation -------------------------------
+
+    def _try_pixel_relocate(self, patterns):
+        """
+        Detect pattern: each training pair has exactly one non-bg pixel that
+        moves to a new position (possibly with a color change).  Two sub-modes:
+          fixed        -- all pairs share the same destination position
+          conditional  -- destination depends on input pixel color
+        """
+        pair_analyses = patterns.get("pair_analyses", [])
+        if not pair_analyses or not patterns.get("grid_size_preserved"):
+            return None
+
+        relocations = []  # (src_row, src_col, src_color, dst_row, dst_col, dst_color)
+        for analysis in pair_analyses:
+            info = self._extract_relocation(analysis)
+            if info is None:
+                return None
+            relocations.append(info)
+
+        # --- Try fixed-destination mode (all pairs same dest) ---
+        dest_positions = set((r["dst_row"], r["dst_col"]) for r in relocations)
+        if len(dest_positions) == 1:
+            dr, dc = dest_positions.pop()
+            # Determine color mode
+            dst_colors = [r["dst_color"] for r in relocations]
+            src_colors = [r["src_color"] for r in relocations]
+            if len(set(dst_colors)) == 1:
+                # All output colors identical -> fixed color
+                return {
+                    "type": "pixel_relocate",
+                    "mode": "fixed",
+                    "dest_row": dr,
+                    "dest_col": dc,
+                    "color_mode": "fixed",
+                    "fixed_color": dst_colors[0],
+                    "confidence": 1.0,
+                }
+            elif all(d == s for d, s in zip(dst_colors, src_colors)):
+                # Output color matches input color -> preserve
+                return {
+                    "type": "pixel_relocate",
+                    "mode": "fixed",
+                    "dest_row": dr,
+                    "dest_col": dc,
+                    "color_mode": "preserve",
+                    "fixed_color": None,
+                    "confidence": 1.0,
+                }
+            else:
+                return None  # ambiguous color
+
+        # --- Try color-conditional mode (group by input color) ---
+        color_groups = {}
+        for r in relocations:
+            c = r["src_color"]
+            if c not in color_groups:
+                color_groups[c] = []
+            color_groups[c].append(r)
+
+        if len(color_groups) < 2:
+            return None  # same color but different dests -> ambiguous
+
+        color_rules = {}
+        for c, group in color_groups.items():
+            dests = set((r["dst_row"], r["dst_col"]) for r in group)
+            ocolors = set(r["dst_color"] for r in group)
+            if len(dests) != 1 or len(ocolors) != 1:
+                return None  # inconsistent within same color
+            dr, dc = dests.pop()
+            oc = ocolors.pop()
+            color_rules[c] = {"dest_row": dr, "dest_col": dc, "output_color": oc}
+
+        return {
+            "type": "pixel_relocate",
+            "mode": "conditional",
+            "color_rules": color_rules,
+            "confidence": 0.9,
+        }
+
+    @staticmethod
+    def _extract_relocation(analysis):
+        """
+        From a pair analysis, extract source and destination of a single-pixel
+        relocation.  Returns dict with src_row/col/color, dst_row/col/color
+        or None if the pattern doesn't match.
+        """
+        if analysis["num_groups"] != 2 or analysis["total_changes"] != 2:
+            return None
+
+        source = dest = None
+        for g in analysis["groups"]:
+            if g["cell_count"] != 1:
+                return None
+            if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
+                return None
+            ic, oc = g["input_colors"][0], g["output_colors"][0]
+            if ic != 0 and oc == 0:
+                source = g
+            elif ic == 0 and oc != 0:
+                dest = g
+            else:
+                return None
+
+        if source is None or dest is None:
+            return None
+        return {
+            "src_row": source["top_row"],
+            "src_col": source["top_col"],
+            "src_color": source["input_colors"][0],
+            "dst_row": dest["top_row"],
+            "dst_col": dest["top_col"],
+            "dst_color": dest["output_colors"][0],
+        }
 
     # ---- strategy: simple color mapping ---------------------------------
 
@@ -462,6 +581,8 @@ class PredictOperator(Operator):
         rule_type = rule.get("type")
         if rule_type == "recolor_sequential":
             return self._apply_recolor_sequential(rule, input_grid)
+        if rule_type == "pixel_relocate":
+            return self._apply_pixel_relocate(rule, input_grid)
         if rule_type == "color_mapping":
             return self._apply_color_mapping(rule, input_grid)
         if rule_type == "identity":
@@ -505,6 +626,51 @@ class PredictOperator(Operator):
             new_color = start_color + idx
             for r, c in group:
                 output[r][c] = new_color
+
+        return output
+
+    def _apply_pixel_relocate(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find the single non-zero pixel in the input
+        src_color = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != 0:
+                    src_color = raw[r][c]
+                    break
+            if src_color is not None:
+                break
+
+        if src_color is None:
+            return [row[:] for row in raw]
+
+        output = [[0] * w for _ in range(h)]
+        mode = rule.get("mode")
+
+        if mode == "fixed":
+            dr = rule["dest_row"]
+            dc = rule["dest_col"]
+            if rule.get("color_mode") == "preserve":
+                out_color = src_color
+            else:
+                out_color = rule.get("fixed_color", src_color)
+            if 0 <= dr < h and 0 <= dc < w:
+                output[dr][dc] = out_color
+
+        elif mode == "conditional":
+            color_rules = rule.get("color_rules", {})
+            cr = color_rules.get(src_color)
+            if cr is not None:
+                dr, dc = cr["dest_row"], cr["dest_col"]
+                out_color = cr["output_color"]
+                if 0 <= dr < h and 0 <= dc < w:
+                    output[dr][dc] = out_color
+            else:
+                # Unseen color: fall back to identity
+                return [row[:] for row in raw]
 
         return output
 
