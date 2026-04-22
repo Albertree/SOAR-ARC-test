@@ -1298,3 +1298,81 @@
 - Time: 220s
 - Log: logs/learn_20260422_090533.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 09:18
+
+- Split: training, Tasks: 80
+- Correct: 76 / 80 (95.0%)
+- Rules: 345 -> 346 (+1 learned)
+- Stored rule hits: 74
+- Time: 220s
+- Log: logs/learn_20260422_091512.log
+
+---
+## Learning Loop -- 2026-04-22 10:50
+
+- Split: training, Tasks: 80
+- Correct: 76 / 80 (95.0%)
+- Rules: 346 -> 348 (+2 learned)
+- Stored rule hits: 73
+- Time: 221s
+- Log: logs/learn_20260422_104623.log
+
+---
+## Learning Loop -- 2026-04-22 10:54
+
+- Split: training, Tasks: 80
+- Correct: 76 / 80 (95.0%)
+- Rules: 348 -> 349 (+1 learned)
+- Stored rule hits: 74
+- Time: 216s
+- Log: logs/learn_20260422_105101.log
+
+---
+## Learning Loop -- 2026-04-22 11:02
+
+- Split: training, Tasks: 80
+- Correct: 76 / 80 (95.0%)
+- Rules: 349 -> 351 (+2 learned)
+- Stored rule hits: 74
+- Time: 217s
+- Log: logs/learn_20260422_105842.log
+
+---
+## Session 29 -- 2026-04-22 11:09
+
+### Strategies Added
+1. **stamp_tile_toward_bar** (Strategy 71): Grid bg=8 with 3×3 "stamps"
+   (uniform border color B, center color C≠B) and large solid-color rectangular
+   "bars". Each stamp's center color matches a bar's color. The stamp tiles
+   repeatedly from its position toward the matching bar, stopping when the
+   latest copy reaches the bar's near edge. Supports all 4 directions
+   (left/right/up/down) based on relative stamp-bar positioning.
+   Category: directional pattern tiling / stamp-bar association.
+   (solves 985ae207)
+2. **shape_jigsaw_assemble** (Strategy 72): Input has several small colored
+   shapes scattered on bg=0. Output is a compact filled rectangle (no zeros)
+   containing all shapes packed together like jigsaw pieces. Shapes may be
+   rotated/reflected to fit. Solver sorts shapes by size (largest first, then
+   by color for tie-breaking), tries all 8 orientations, and uses backtracking.
+   Category: shape assembly / exact cover / jigsaw packing.
+   (solves b7cb93ac)
+
+### Bug Fix
+- Fixed `_shape_orientations` to handle both `(r, c)` 2-tuples (used by
+  shape_template_catalog) and `(r, c, v)` 3-tuples (used by jigsaw). The
+  change in tuple format caused a regression in 845d6e51 (shape_template_catalog)
+  which was fixed by detecting tuple width at runtime.
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 78 / 80 (97.5%) — up from 76/80 (95.0%)
+- Solved (new): 985ae207 (stamp_tile_toward_bar), b7cb93ac (shape_jigsaw_assemble)
+- Still failing: e5062a87 (identity), 1acc24af (identity)
+- Rules: 351 -> 352 (+1 learned)
+- Stored rule hits: 76
+- Discovered: 2 new rules from pipeline
+- Time: 219s
+- Log: logs/learn_20260422_110542.log
+- Regression: 08ed6ac7 CORRECT

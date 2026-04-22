@@ -599,6 +599,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_shape_gravity_sort(patterns, wm)
 
+        # Strategy 71: stamp tile toward bar (3×3 stamp tiles toward matching color bar)
+        if rule is None:
+            rule = self._try_stamp_tile_toward_bar(patterns, wm)
+
+        # Strategy 72: shape jigsaw assemble (scattered shapes → compact rectangle)
+        if rule is None:
+            rule = self._try_shape_jigsaw_assemble(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -8803,6 +8811,523 @@ class GeneralizeOperator(Operator):
 
         return out
 
+    # ---- strategy 71: stamp tile toward bar --------------------------------
+
+    def _try_stamp_tile_toward_bar(self, patterns, wm):
+        """
+        Detect: bg-colored grid with 3×3 'stamps' (uniform border color B,
+        different center color C) and large solid-color rectangular 'bars'.
+        Each stamp's center color matches a bar's color. The stamp tiles
+        repeatedly from its position toward the matching bar, stopping when
+        a copy reaches the bar's near edge.
+        Category: directional pattern tiling / stamp-bar association.
+        """
+        try:
+            return self._try_stamp_tile_toward_bar_inner(patterns, wm)
+        except Exception:
+            return None
+
+    def _try_stamp_tile_toward_bar_inner(self, patterns, wm):
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        # Verify size preserved
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            if len(g0.raw) != len(g1.raw) or len(g0.raw[0]) != len(g1.raw[0]):
+                return None
+
+        raw0 = task.example_pairs[0].input_grid.raw
+        H, W = len(raw0), len(raw0[0])
+        if H < 6 or W < 6:
+            return None
+
+        # Find bg color
+        color_counts = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw0[r][c]
+                color_counts[v] = color_counts.get(v, 0) + 1
+        bg = max(color_counts, key=color_counts.get)
+
+        # Find stamps: 3×3 with uniform non-bg border and different non-bg center
+        stamps = self._find_stamps(raw0, bg)
+        if not stamps:
+            return None
+
+        # Find bars: large rectangular solid-color regions (non-bg)
+        bars = self._find_bars(raw0, bg, stamps)
+        if not bars:
+            return None
+
+        # Match stamps to bars (center color = bar color)
+        matched = []
+        for stamp in stamps:
+            for bar in bars:
+                if stamp['center_color'] == bar['color']:
+                    matched.append((stamp, bar))
+                    break
+
+        if len(matched) != len(stamps):
+            return None
+
+        # Validate on all training examples
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            predicted = self._apply_stamp_tile_grid(g0.raw)
+            if predicted is None or predicted != g1.raw:
+                return None
+
+        return {"type": "stamp_tile_toward_bar", "confidence": 1.0}
+
+    def _find_stamps(self, raw, bg):
+        """Find all 3×3 stamps with uniform border and different center."""
+        H, W = len(raw), len(raw[0])
+        stamps = []
+        used = set()
+        for r in range(H - 2):
+            for c in range(W - 2):
+                border_cells = [
+                    raw[r][c], raw[r][c+1], raw[r][c+2],
+                    raw[r+1][c], raw[r+1][c+2],
+                    raw[r+2][c], raw[r+2][c+1], raw[r+2][c+2],
+                ]
+                center = raw[r+1][c+1]
+                if center == bg:
+                    continue
+                border_color = border_cells[0]
+                if border_color == bg or border_color == center:
+                    continue
+                if all(b == border_color for b in border_cells):
+                    key = (r, c)
+                    if key not in used:
+                        used.add(key)
+                        stamps.append({
+                            'row': r, 'col': c,
+                            'border_color': border_color,
+                            'center_color': center,
+                        })
+        return stamps
+
+    def _find_bars(self, raw, bg, stamps):
+        """Find large solid-color rectangular regions (bars)."""
+        H, W = len(raw), len(raw[0])
+        # Mark stamp cells to exclude
+        stamp_cells = set()
+        for s in stamps:
+            for dr in range(3):
+                for dc in range(3):
+                    stamp_cells.add((s['row'] + dr, s['col'] + dc))
+
+        # Find connected components of each non-bg color (excluding stamp cells)
+        color_cells = {}
+        for r in range(H):
+            for c in range(W):
+                if (r, c) in stamp_cells:
+                    continue
+                v = raw[r][c]
+                if v == bg:
+                    continue
+                color_cells.setdefault(v, []).append((r, c))
+
+        bars = []
+        for color, cells in color_cells.items():
+            if len(cells) < 4:
+                continue
+            # Check if cells form a rectangle
+            rows = [r for r, c in cells]
+            cols = [c for r, c in cells]
+            r_min, r_max = min(rows), max(rows)
+            c_min, c_max = min(cols), max(cols)
+            expected = (r_max - r_min + 1) * (c_max - c_min + 1)
+            if expected == len(cells):
+                bars.append({
+                    'color': color,
+                    'r_min': r_min, 'r_max': r_max,
+                    'c_min': c_min, 'c_max': c_max,
+                })
+        return bars
+
+    @staticmethod
+    def _apply_stamp_tile_grid(raw):
+        """Apply stamp-tile-toward-bar transformation to a raw grid."""
+        H, W = len(raw), len(raw[0])
+        # Find bg
+        cc = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                cc[v] = cc.get(v, 0) + 1
+        bg = max(cc, key=cc.get)
+
+        # Find stamps
+        stamps = []
+        for r in range(H - 2):
+            for c in range(W - 2):
+                border_cells = [
+                    raw[r][c], raw[r][c+1], raw[r][c+2],
+                    raw[r+1][c], raw[r+1][c+2],
+                    raw[r+2][c], raw[r+2][c+1], raw[r+2][c+2],
+                ]
+                center = raw[r+1][c+1]
+                if center == bg:
+                    continue
+                bc = border_cells[0]
+                if bc == bg or bc == center:
+                    continue
+                if all(b == bc for b in border_cells):
+                    stamps.append({
+                        'row': r, 'col': c,
+                        'border_color': bc,
+                        'center_color': center,
+                        'pattern': [
+                            [raw[r][c], raw[r][c+1], raw[r][c+2]],
+                            [raw[r+1][c], raw[r+1][c+1], raw[r+1][c+2]],
+                            [raw[r+2][c], raw[r+2][c+1], raw[r+2][c+2]],
+                        ],
+                    })
+        if not stamps:
+            return None
+
+        # Find bars
+        stamp_cells = set()
+        for s in stamps:
+            for dr in range(3):
+                for dc in range(3):
+                    stamp_cells.add((s['row'] + dr, s['col'] + dc))
+
+        color_cells = {}
+        for r in range(H):
+            for c in range(W):
+                if (r, c) in stamp_cells:
+                    continue
+                v = raw[r][c]
+                if v == bg:
+                    continue
+                color_cells.setdefault(v, []).append((r, c))
+
+        bars = []
+        for color, cells in color_cells.items():
+            if len(cells) < 4:
+                continue
+            rows_l = [r for r, c in cells]
+            cols_l = [c for r, c in cells]
+            r_min, r_max = min(rows_l), max(rows_l)
+            c_min, c_max = min(cols_l), max(cols_l)
+            expected = (r_max - r_min + 1) * (c_max - c_min + 1)
+            if expected == len(cells):
+                bars.append({
+                    'color': color,
+                    'r_min': r_min, 'r_max': r_max,
+                    'c_min': c_min, 'c_max': c_max,
+                })
+
+        if not bars:
+            return None
+
+        # Build output
+        out = [row[:] for row in raw]
+
+        for stamp in stamps:
+            # Find matching bar
+            bar = None
+            for b in bars:
+                if b['color'] == stamp['center_color']:
+                    bar = b
+                    break
+            if bar is None:
+                continue
+
+            sr, sc = stamp['row'], stamp['col']
+            pat = stamp['pattern']
+
+            # Determine direction
+            # Check if bar is to the right, left, below, or above
+            if bar['c_min'] > sc + 2:
+                # Bar to the right → tile right
+                direction = 'right'
+            elif bar['c_max'] < sc:
+                # Bar to the left → tile left
+                direction = 'left'
+            elif bar['r_min'] > sr + 2:
+                # Bar below → tile down
+                direction = 'down'
+            elif bar['r_max'] < sr:
+                # Bar above → tile up
+                direction = 'up'
+            else:
+                continue
+
+            if direction == 'right':
+                # Tile from stamp col rightward until copy covers bar left edge
+                col = sc
+                while col + 2 < bar['c_min']:
+                    col += 3
+                # Now tile from sc to col+2
+                c = sc
+                while c <= col + 2:
+                    idx = (c - sc) % 3
+                    for dr in range(3):
+                        if 0 <= sr + dr < H and 0 <= c < W:
+                            out[sr + dr][c] = pat[dr][idx]
+                    c += 1
+            elif direction == 'left':
+                # Tile from stamp col leftward until copy covers bar right edge
+                col = sc
+                while col > bar['c_max']:
+                    col -= 3
+                # Now tile from col to sc+2
+                c = col
+                while c <= sc + 2:
+                    idx = (c - sc) % 3
+                    if idx < 0:
+                        idx += 3
+                    for dr in range(3):
+                        if 0 <= sr + dr < H and 0 <= c < W:
+                            out[sr + dr][c] = pat[dr][idx]
+                    c += 1
+            elif direction == 'down':
+                # Tile from stamp row downward until copy covers bar top row
+                row = sr
+                while row + 2 < bar['r_min']:
+                    row += 3
+                r = sr
+                while r <= row + 2:
+                    idx = (r - sr) % 3
+                    for dc in range(3):
+                        if 0 <= r < H and 0 <= sc + dc < W:
+                            out[r][sc + dc] = pat[idx][dc]
+                    r += 1
+            elif direction == 'up':
+                # Tile from stamp row upward until copy covers bar bottom row
+                row = sr
+                while row > bar['r_max']:
+                    row -= 3
+                r = row
+                while r <= sr + 2:
+                    idx = (r - sr) % 3
+                    if idx < 0:
+                        idx += 3
+                    for dc in range(3):
+                        if 0 <= r < H and 0 <= sc + dc < W:
+                            out[r][sc + dc] = pat[idx][dc]
+                    r += 1
+
+        return out
+
+    # ---- strategy 72: shape jigsaw assemble --------------------------------
+
+    def _try_shape_jigsaw_assemble(self, patterns, wm):
+        """
+        Detect: input has several small colored shapes on bg=0. The output
+        is a compact filled rectangle containing all shapes assembled together
+        (like jigsaw pieces). Shapes may be rotated to fit.
+        Category: shape assembly / jigsaw packing.
+        """
+        try:
+            return self._try_shape_jigsaw_assemble_inner(patterns, wm)
+        except Exception:
+            return None
+
+    def _try_shape_jigsaw_assemble_inner(self, patterns, wm):
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+
+            # Input must be larger than output
+            if len(raw_in) * len(raw_in[0]) <= len(raw_out) * len(raw_out[0]):
+                return None
+
+            # Output must be fully filled (no bg=0 cells)
+            for row in raw_out:
+                for v in row:
+                    if v == 0:
+                        return None
+
+            # Count non-zero cells in input must equal output area
+            nz_count = sum(1 for r in raw_in for v in r if v != 0)
+            out_area = len(raw_out) * len(raw_out[0])
+            if nz_count != out_area:
+                return None
+
+        # Validate: try solving each training example
+        for pair in task.example_pairs:
+            result = self._solve_jigsaw(pair.input_grid.raw)
+            if result is None or result != pair.output_grid.raw:
+                return None
+
+        return {"type": "shape_jigsaw_assemble", "confidence": 1.0}
+
+    @staticmethod
+    def _extract_shapes(raw):
+        """Extract connected components of non-zero colors."""
+        H, W = len(raw), len(raw[0])
+        visited = set()
+        shapes = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0 and (r, c) not in visited:
+                    # BFS to find connected component
+                    color = raw[r][c]
+                    component = []
+                    queue = [(r, c)]
+                    visited.add((r, c))
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        component.append((cr, cc, raw[cr][cc]))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if 0 <= nr < H and 0 <= nc < W and (nr, nc) not in visited and raw[nr][nc] != 0:
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                    # Normalize: relative to top-left corner
+                    min_r = min(p[0] for p in component)
+                    min_c = min(p[1] for p in component)
+                    shape = [(p[0] - min_r, p[1] - min_c, p[2]) for p in component]
+                    shapes.append(shape)
+        return shapes
+
+    @staticmethod
+    def _shape_orientations(shape):
+        """Generate all 8 orientations (4 rotations × 2 reflections).
+        Original orientation is first in the returned list.
+        Accepts either (r, c) or (r, c, v) tuples."""
+        # Detect tuple width
+        sample = next(iter(shape))
+        has_value = len(sample) == 3
+
+        seen = set()
+        result = []
+
+        if has_value:
+            def normalize(cells):
+                min_r = min(r for r, c, v in cells)
+                min_c = min(c for r, c, v in cells)
+                return tuple(sorted((r - min_r, c - min_c, v) for r, c, v in cells))
+
+            def rotate90(cells):
+                return [(c, -r, v) for r, c, v in cells]
+
+            def reflect(cells):
+                return [(-r, c, v) for r, c, v in cells]
+        else:
+            def normalize(cells):
+                min_r = min(r for r, c in cells)
+                min_c = min(c for r, c in cells)
+                return frozenset((r - min_r, c - min_c) for r, c in cells)
+
+            def rotate90(cells):
+                return [(c, -r) for r, c in cells]
+
+            def reflect(cells):
+                return [(-r, c) for r, c in cells]
+
+        current = list(shape)
+        for _ in range(4):
+            n = normalize(current)
+            if n not in seen:
+                seen.add(n)
+                result.append(list(n) if has_value else n)
+            n2 = normalize(reflect(current))
+            if n2 not in seen:
+                seen.add(n2)
+                result.append(list(n2) if has_value else n2)
+            current = rotate90(current)
+
+        return result
+
+    @staticmethod
+    def _solve_jigsaw(raw):
+        """Solve the jigsaw assembly problem."""
+        shapes = GeneralizeOperator._extract_shapes(raw)
+        if not shapes:
+            return None
+
+        # Sort shapes by size descending (largest first for better pruning),
+        # then by minimum color ascending (deterministic tie-breaking)
+        shapes.sort(key=lambda s: (-len(s), min(v for _, _, v in s)))
+
+        total_cells = sum(len(s) for s in shapes)
+
+        # Determine possible output dimensions
+        dims = []
+        for h in range(1, total_cells + 1):
+            if total_cells % h == 0:
+                w = total_cells // h
+                dims.append((h, w))
+
+        # Generate all orientations for each shape (original first)
+        all_orientations = []
+        for shape in shapes:
+            orients = GeneralizeOperator._shape_orientations(shape)
+            all_orientations.append(orients)
+
+        # Try each dimension
+        for out_h, out_w in dims:
+            # Backtracking search
+            grid = [[0] * out_w for _ in range(out_h)]
+            result = GeneralizeOperator._backtrack_jigsaw(
+                grid, out_h, out_w, all_orientations, 0
+            )
+            if result is not None:
+                return result
+
+        return None
+
+    @staticmethod
+    def _backtrack_jigsaw(grid, H, W, all_orientations, shape_idx):
+        """Backtracking to place shapes into grid."""
+        if shape_idx == len(all_orientations):
+            # All shapes placed, check grid is fully filled
+            for r in range(H):
+                for c in range(W):
+                    if grid[r][c] == 0:
+                        return None
+            return [row[:] for row in grid]
+
+        for orient in all_orientations[shape_idx]:
+            # Get bounding box of this orientation
+            max_r = max(r for r, c, v in orient)
+            max_c = max(c for r, c, v in orient)
+
+            # Try each position
+            for pr in range(H - max_r):
+                for pc in range(W - max_c):
+                    # Check if shape fits
+                    fits = True
+                    for r, c, v in orient:
+                        if grid[pr + r][pc + c] != 0:
+                            fits = False
+                            break
+                    if not fits:
+                        continue
+
+                    # Place shape
+                    for r, c, v in orient:
+                        grid[pr + r][pc + c] = v
+
+                    result = GeneralizeOperator._backtrack_jigsaw(
+                        grid, H, W, all_orientations, shape_idx + 1
+                    )
+                    if result is not None:
+                        return result
+
+                    # Undo placement
+                    for r, c, v in orient:
+                        grid[pr + r][pc + c] = 0
+
+        return None
+
 
 class DescendOperator(Operator):
     """
@@ -9014,6 +9539,10 @@ class PredictOperator(Operator):
             return self._apply_shape_gravity_sort(rule, input_grid)
         if rule_type == "separator_sequence_reflect":
             return self._apply_separator_sequence_reflect(rule, input_grid)
+        if rule_type == "stamp_tile_toward_bar":
+            return self._apply_stamp_tile_toward_bar(rule, input_grid)
+        if rule_type == "shape_jigsaw_assemble":
+            return self._apply_shape_jigsaw_assemble(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -11869,6 +12398,18 @@ class PredictOperator(Operator):
         if detect_result is None:
             return [row[:] for row in input_grid.raw]
         return GeneralizeOperator._apply_sep_reflect(input_grid.raw, detect_result)
+
+    # ---- apply: stamp tile toward bar ------------------------------------
+
+    def _apply_stamp_tile_toward_bar(self, rule, input_grid):
+        """Apply stamp-tile-toward-bar rule."""
+        return GeneralizeOperator._apply_stamp_tile_grid(input_grid.raw)
+
+    # ---- apply: shape jigsaw assemble ------------------------------------
+
+    def _apply_shape_jigsaw_assemble(self, rule, input_grid):
+        """Apply shape jigsaw assembly rule."""
+        return GeneralizeOperator._solve_jigsaw(input_grid.raw)
 
 
 # ======================================================================
