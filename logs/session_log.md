@@ -130,3 +130,13 @@ and a 1-group/2-cell handler. Fixed: easy0012.
 - Stored rule hits: 8
 - Time: 1s
 - Log: logs/learn_20260422_154052.log
+
+---
+## Learning Loop -- 2026-04-22 15:41
+
+- Split: training, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 47 -> 51 (+4 learned)
+- Stored rule hits: 8
+- Time: 1s
+- Log: logs/learn_20260422_154110.log
