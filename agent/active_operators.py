@@ -739,6 +739,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_rect_frame_gap_ray(patterns, wm)
 
+        # Strategy 93: asymmetric block select (3 stacked NxN blocks, select the non-diagonal-symmetric one)
+        if rule is None:
+            rule = self._try_asymmetric_block_select(patterns, wm)
+
+        # Strategy 94: seed pixel stamp (isolated seed pixels → 3×3 diamond stamp)
+        if rule is None:
+            rule = self._try_seed_pixel_stamp(patterns, wm)
+
+        # Strategy 95: color count expand (NxN input → each cell expands to KxK block, K=unique colors)
+        if rule is None:
+            rule = self._try_color_count_expand(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -11531,6 +11543,203 @@ class GeneralizeOperator(Operator):
         }
 
 
+    # ---- strategy 93: asymmetric block select -----------------------------
+
+    def _try_asymmetric_block_select(self, patterns, wm):
+        """
+        Detect: input is K stacked NxN blocks (total rows = K*N, cols = N).
+        Exactly one block is NOT symmetric about the main diagonal (A[r][c] != A[c][r]).
+        Output = that asymmetric block.
+        Category: block selection by structural symmetry property.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            oH = len(raw_out)
+            oW = len(raw_out[0]) if raw_out else 0
+            if W == 0 or oW != W or oH != W:
+                return None
+            N = W
+            if H % N != 0:
+                return None
+            K = H // N
+            if K < 2:
+                return None
+
+            # Extract blocks and find the non-diagonal-symmetric one
+            found = None
+            for bi in range(K):
+                block = [raw_in[bi * N + r][:N] for r in range(N)]
+                is_sym = True
+                for r in range(N):
+                    for c in range(r + 1, N):
+                        if block[r][c] != block[c][r]:
+                            is_sym = False
+                            break
+                    if not is_sym:
+                        break
+                if not is_sym:
+                    if found is not None:
+                        return None  # more than one asymmetric block
+                    found = block
+
+            if found is None:
+                return None
+            if found != raw_out:
+                return None
+
+        return {
+            "type": "asymmetric_block_select",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 94: seed pixel stamp -----------------------------------
+
+    def _try_seed_pixel_stamp(self, patterns, wm):
+        """
+        Detect: sparse grid on bg 0 with isolated single-color seed pixels.
+        Each seed gets a 3×3 stamp centered on it. The stamp pattern is
+        learned from examples.
+        Category: pixel expansion / stamp generation from seeds.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        pair0 = task.example_pairs[0]
+        g0, g1 = pair0.input_grid, pair0.output_grid
+        if not g0 or not g1:
+            return None
+        raw_in = g0.raw
+        raw_out = g1.raw
+        H = len(raw_in)
+        W = len(raw_in[0]) if raw_in else 0
+
+        # Find seed color (non-zero, sparse, isolated single pixels)
+        from collections import Counter
+        freq = Counter()
+        for r in range(H):
+            for c in range(W):
+                if raw_in[r][c] != 0:
+                    freq[raw_in[r][c]] += 1
+        if not freq:
+            return None
+        # Should be exactly one non-zero color in input
+        if len(freq) != 1:
+            return None
+        seed_color = list(freq.keys())[0]
+        seeds = [(r, c) for r in range(H) for c in range(W) if raw_in[r][c] == seed_color]
+        if len(seeds) < 2:
+            return None
+
+        # Check seeds are isolated (no two adjacent)
+        seed_set = set(seeds)
+        for r, c in seeds:
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                if (r + dr, c + dc) in seed_set:
+                    return None
+
+        # Learn the stamp from the first seed
+        sr, sc = seeds[0]
+        stamp = {}
+        for dr in range(-1, 2):
+            for dc in range(-1, 2):
+                nr, nc = sr + dr, sc + dc
+                if 0 <= nr < H and 0 <= nc < W:
+                    stamp[(dr, dc)] = raw_out[nr][nc]
+
+        # Verify stamp is consistent across all seeds in all examples
+        for pair in task.example_pairs:
+            raw_i = pair.input_grid.raw
+            raw_o = pair.output_grid.raw
+            pH = len(raw_i)
+            pW = len(raw_i[0]) if raw_i else 0
+            p_seeds = [(r, c) for r in range(pH) for c in range(pW) if raw_i[r][c] == seed_color]
+
+            # Build expected output
+            expected = [[0] * pW for _ in range(pH)]
+            for sr2, sc2 in p_seeds:
+                for (dr, dc), val in stamp.items():
+                    nr, nc = sr2 + dr, sc2 + dc
+                    if 0 <= nr < pH and 0 <= nc < pW:
+                        expected[nr][nc] = val
+            if expected != raw_o:
+                return None
+
+        # Serialize stamp
+        stamp_list = {f"{dr},{dc}": v for (dr, dc), v in stamp.items()}
+        return {
+            "type": "seed_pixel_stamp",
+            "seed_color": seed_color,
+            "stamp": stamp_list,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 95: color count expand ---------------------------------
+
+    def _try_color_count_expand(self, patterns, wm):
+        """
+        Detect: small NxM input grid. Output = each cell expanded to KxK block
+        where K = number of unique colors in the input. Output dims = N*K x M*K.
+        If K=1, output = input unchanged.
+        Category: block expansion / scaling by color diversity.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            iH = len(raw_in)
+            iW = len(raw_in[0]) if raw_in else 0
+            oH = len(raw_out)
+            oW = len(raw_out[0]) if raw_out else 0
+            if iH == 0 or iW == 0:
+                return None
+
+            # Count unique colors
+            colors = set()
+            for r in range(iH):
+                for c in range(iW):
+                    colors.add(raw_in[r][c])
+            K = len(colors)
+            if K == 0:
+                return None
+
+            # Check output dimensions match
+            if oH != iH * K or oW != iW * K:
+                return None
+
+            # Verify each cell expanded to KxK block
+            for r in range(iH):
+                for c in range(iW):
+                    val = raw_in[r][c]
+                    for dr in range(K):
+                        for dc in range(K):
+                            if raw_out[r * K + dr][c * K + dc] != val:
+                                return None
+
+        return {
+            "type": "color_count_expand",
+            "confidence": 1.0,
+        }
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -11785,6 +11994,12 @@ class PredictOperator(Operator):
             return self._apply_column_rank_recolor(rule, input_grid)
         if rule_type == "rect_frame_gap_ray":
             return self._apply_rect_frame_gap_ray(rule, input_grid)
+        if rule_type == "asymmetric_block_select":
+            return self._apply_asymmetric_block_select(rule, input_grid)
+        if rule_type == "seed_pixel_stamp":
+            return self._apply_seed_pixel_stamp(rule, input_grid)
+        if rule_type == "color_count_expand":
+            return self._apply_color_count_expand(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -15639,6 +15854,78 @@ class PredictOperator(Operator):
             elif gap_side == "right":
                 for c in range(gap_c + 1, W):
                     out[gap_r][c] = fill_color
+        return out
+
+
+    # ---- apply: asymmetric_block_select -----------------------------------
+
+    def _apply_asymmetric_block_select(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        N = W
+        if N == 0 or H % N != 0:
+            return [row[:] for row in raw]
+        K = H // N
+        for bi in range(K):
+            block = [raw[bi * N + r][:N] for r in range(N)]
+            is_sym = True
+            for r in range(N):
+                for c in range(r + 1, N):
+                    if block[r][c] != block[c][r]:
+                        is_sym = False
+                        break
+                if not is_sym:
+                    break
+            if not is_sym:
+                return block
+        # Fallback: return first block
+        return [raw[r][:N] for r in range(N)]
+
+    # ---- apply: seed_pixel_stamp -----------------------------------------
+
+    def _apply_seed_pixel_stamp(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        seed_color = rule["seed_color"]
+        stamp_raw = rule["stamp"]
+        stamp = {}
+        for k, v in stamp_raw.items():
+            dr, dc = map(int, k.split(","))
+            stamp[(dr, dc)] = v
+
+        seeds = [(r, c) for r in range(H) for c in range(W) if raw[r][c] == seed_color]
+        out = [[0] * W for _ in range(H)]
+        for sr, sc in seeds:
+            for (dr, dc), val in stamp.items():
+                nr, nc = sr + dr, sc + dc
+                if 0 <= nr < H and 0 <= nc < W:
+                    out[nr][nc] = val
+        return out
+
+    # ---- apply: color_count_expand ---------------------------------------
+
+    def _apply_color_count_expand(self, rule, input_grid):
+        raw = input_grid.raw
+        iH = len(raw)
+        iW = len(raw[0]) if raw else 0
+        colors = set()
+        for r in range(iH):
+            for c in range(iW):
+                colors.add(raw[r][c])
+        K = len(colors)
+        if K <= 1:
+            return [row[:] for row in raw]
+        oH = iH * K
+        oW = iW * K
+        out = [[0] * oW for _ in range(oH)]
+        for r in range(iH):
+            for c in range(iW):
+                val = raw[r][c]
+                for dr in range(K):
+                    for dc in range(K):
+                        out[r * K + dr][c * K + dc] = val
         return out
 
 

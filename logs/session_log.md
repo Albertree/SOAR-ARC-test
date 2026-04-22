@@ -1817,3 +1817,32 @@
 - Time: 2146s
 - Log: logs/learn_20260423_023324.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 03:49
+
+- Split: training, Tasks: 160
+- Correct: 102 / 160 (63.7%)
+- Rules: 408 -> 409 (+1 learned)
+- Stored rule hits: 99
+- Time: 2072s
+- Log: logs/learn_20260423_031458.log
+
+---
+## Session 38 -- 2026-04-23 03:57
+
+### Strategies Added
+1. **asymmetric_block_select** — input is K stacked NxN blocks; select the one NOT symmetric about the main diagonal (A[r][c] ≠ A[c][r]) (solves 662c240a)
+2. **seed_pixel_stamp** — isolated seed pixels on sparse background each get a learned 3×3 stamp pattern centered on them (solves b60334d2)
+3. **color_count_expand** — small NxM grid where each cell expands to KxK block, K = number of unique colors in input (solves d4b1c2b1)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 105 / 160 (65.6%) — up from 102/160 (63.7%)
+- Solved: 662c240a (asymmetric_block_select), b60334d2 (seed_pixel_stamp), d4b1c2b1 (color_count_expand)
+- Rules: 409 -> 413 (+4 learned)
+- Stored rule hits: 99
+- Discovered: 8 new rules from pipeline
+- Time: 2091s
+- Log: logs/learn_20260423_035729.log
+- Regression: 08ed6ac7 CORRECT
