@@ -1259,3 +1259,42 @@
 - Time: 220s
 - Log: logs/learn_20260422_081659.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 08:25
+
+- Split: training, Tasks: 80
+- Correct: 75 / 80 (93.8%)
+- Rules: 337 -> 340 (+3 learned)
+- Stored rule hits: 73
+- Time: 220s
+- Log: logs/learn_20260422_082145.log
+
+---
+## Learning Loop -- 2026-04-22 08:56
+
+- Split: training, Tasks: 80
+- Correct: 76 / 80 (95.0%)
+- Rules: 340 -> 344 (+4 learned)
+- Stored rule hits: 73
+- Time: 224s
+- Log: logs/learn_20260422_085253.log
+
+---
+## Session 28 -- 2026-04-22 09:09
+
+### Strategies Added
+1. **separator_sequence_reflect** — grid divided by a full-row/column separator with dot sequences on each side; dots compared pairwise: matches reflect adjacent to separator, differences to far edge (solves 7d7772cc)
+2. **shape_stamp_fill** (wired up) — existing strategy was implemented but never called from effect(); now activated before color_mapping (solves category of 0/5/2 grid stamping)
+3. **color_mapping fix** — added full-grid validation to prevent false positives where pattern-only analysis shows 1:1 mapping but actual grids show inconsistencies (fixes e5062a87 and 1acc24af false matches)
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 76 / 80 (95.0%) — up from 75/80 (93.8%)
+- Newly solved: 7d7772cc (separator_sequence_reflect)
+- Still failing: 985ae207 (identity), b7cb93ac (identity), e5062a87 (identity), 1acc24af (identity)
+- Rules: 344 -> 345 (+1 learned)
+- Stored rule hits: 74
+- Time: 220s
+- Log: logs/learn_20260422_090533.log
+- Regression: 08ed6ac7 CORRECT

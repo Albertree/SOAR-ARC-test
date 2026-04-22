@@ -395,9 +395,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_spiral_from_seed(patterns, wm)
 
+        # Strategy 65: shape stamp fill (0/5 grid with 2-template → stamp matching regions)
+        if rule is None:
+            rule = self._try_shape_stamp_fill(patterns, wm)
+
+        # Strategy 70: separator sequence reflect (compare dot lines across separator)
+        if rule is None:
+            rule = self._try_separator_sequence_reflect(patterns, wm)
+
         # Strategy 7: simple 1:1 color mapping
         if rule is None:
-            rule = self._try_color_mapping(patterns)
+            rule = self._try_color_mapping(patterns, wm)
 
         # Strategy 8: uniform scaling (output = NxN blocks of input cells)
         if rule is None:
@@ -2269,7 +2277,7 @@ class GeneralizeOperator(Operator):
 
     # ---- strategy: simple color mapping ---------------------------------
 
-    def _try_color_mapping(self, patterns):
+    def _try_color_mapping(self, patterns, wm=None):
         """
         Detect pattern: each input color consistently maps to one output color.
         """
@@ -2294,12 +2302,28 @@ class GeneralizeOperator(Operator):
                 return None
             simple_map[ic] = list(ocs)[0]
 
-        if simple_map:
-            return {
-                "type": "color_mapping",
-                "mapping": simple_map,
-                "confidence": 0.8,
-            }
+        if not simple_map:
+            return None
+
+        # Validate mapping against full grids (patterns only show diffs)
+        if wm and wm.task:
+            for pair in wm.task.example_pairs:
+                if pair.input_grid and pair.output_grid:
+                    ri, ro = pair.input_grid.raw, pair.output_grid.raw
+                    for r in range(len(ri)):
+                        for c in range(len(ri[0])):
+                            ic = ri[r][c]
+                            oc = ro[r][c]
+                            if ic in simple_map and simple_map[ic] != oc:
+                                return None
+                            if ic not in simple_map and ic != oc:
+                                return None
+
+        return {
+            "type": "color_mapping",
+            "mapping": simple_map,
+            "confidence": 0.8,
+        }
 
         return None
 
@@ -8593,6 +8617,192 @@ class GeneralizeOperator(Operator):
 
         return grid
 
+    # ---- strategy 70: separator sequence reflect ----------------------------
+
+    def _try_separator_sequence_reflect(self, patterns, wm):
+        """Grid divided by a full-row or full-column separator. Each side has
+        a line of colored dots. The 'moving' side's dots get redistributed:
+        matching dots → adjacent to separator, differing → far edge.
+        Category: sequence comparison / spatial reflection."""
+        task = wm.task
+        if task is None:
+            return None
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                return None
+            raw_in, raw_out = g0.raw, g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != len(raw_out) or W != len(raw_out[0]):
+                return None
+            info = self._detect_sep_reflect(raw_in)
+            if info is None:
+                return None
+            expected = self._apply_sep_reflect(raw_in, info)
+            if expected != raw_out:
+                return None
+        return {"type": "separator_sequence_reflect", "confidence": 1.0}
+
+    @staticmethod
+    def _detect_sep_reflect(raw):
+        """Detect a separator (full row/col of one color) with dot lines on
+        each side. Returns detection info dict or None."""
+        H, W = len(raw), len(raw[0])
+        from collections import Counter
+
+        def section_bg(rows, cols, exclude):
+            cnt = Counter()
+            for r in rows:
+                for c in cols:
+                    v = raw[r][c]
+                    if v not in exclude:
+                        cnt[v] += 1
+            return cnt.most_common(1)[0][0] if cnt else None
+
+        def dot_line_row(rows, cols, bg, exclude):
+            found = []
+            for r in rows:
+                for c in cols:
+                    v = raw[r][c]
+                    if v != bg and v not in exclude:
+                        found.append(r)
+                        break
+            return found[0] if len(found) == 1 else None
+
+        def dot_line_col(rows, cols, bg, exclude):
+            found = []
+            for c in cols:
+                for r in rows:
+                    v = raw[r][c]
+                    if v != bg and v not in exclude:
+                        found.append(c)
+                        break
+            return found[0] if len(found) == 1 else None
+
+        def dots_in_row(row, cols, bg, exclude):
+            d = {}
+            for c in cols:
+                v = raw[row][c]
+                if v != bg and v not in exclude:
+                    d[c] = v
+            return d
+
+        def dots_in_col(col, rows, bg, exclude):
+            d = {}
+            for r in rows:
+                v = raw[r][col]
+                if v != bg and v not in exclude:
+                    d[r] = v
+            return d
+
+        # Try row separators
+        for r in range(1, H - 1):
+            if len(set(raw[r])) != 1:
+                continue
+            sc = raw[r][0]
+            tr, br = list(range(0, r)), list(range(r + 1, H))
+            ac = list(range(W))
+            tb = section_bg(tr, ac, {sc})
+            bb = section_bg(br, ac, {sc})
+            if tb is None or bb is None:
+                continue
+            tdr = dot_line_row(tr, ac, tb, {sc})
+            bdr = dot_line_row(br, ac, bb, {sc})
+            if tdr is None or bdr is None:
+                continue
+            td = dots_in_row(tdr, ac, tb, {sc})
+            bd = dots_in_row(bdr, ac, bb, {sc})
+            if not td or not bd or set(td.keys()) != set(bd.keys()):
+                continue
+            tdist, bdist = r - tdr, bdr - r
+            if tdist > bdist:
+                mv = 'a'
+            elif bdist > tdist:
+                mv = 'b'
+            else:
+                mv = 'a' if r <= H - r - 1 else 'b'
+            return {
+                'axis': 'row', 'sep': r, 'sc': sc,
+                'a': {'bg': tb, 'dl': tdr, 'dots': td,
+                      'near': r - 1, 'far': 0},
+                'b': {'bg': bb, 'dl': bdr, 'dots': bd,
+                      'near': r + 1, 'far': H - 1},
+                'mv': mv,
+            }
+
+        # Try column separators
+        for c in range(1, W - 1):
+            if len(set(raw[r][c] for r in range(H))) != 1:
+                continue
+            sc = raw[0][c]
+            lc, rc = list(range(0, c)), list(range(c + 1, W))
+            ar = list(range(H))
+            lb = section_bg(ar, lc, {sc})
+            rb = section_bg(ar, rc, {sc})
+            if lb is None or rb is None:
+                continue
+            ldc = dot_line_col(ar, lc, lb, {sc})
+            rdc = dot_line_col(ar, rc, rb, {sc})
+            if ldc is None or rdc is None:
+                continue
+            ld = dots_in_col(ldc, ar, lb, {sc})
+            rd = dots_in_col(rdc, ar, rb, {sc})
+            if not ld or not rd or set(ld.keys()) != set(rd.keys()):
+                continue
+            ldist, rdist = c - ldc, rdc - c
+            if ldist > rdist:
+                mv = 'a'
+            elif rdist > ldist:
+                mv = 'b'
+            else:
+                mv = 'a' if c <= W - c - 1 else 'b'
+            return {
+                'axis': 'col', 'sep': c, 'sc': sc,
+                'a': {'bg': lb, 'dl': ldc, 'dots': ld,
+                      'near': c - 1, 'far': 0},
+                'b': {'bg': rb, 'dl': rdc, 'dots': rd,
+                      'near': c + 1, 'far': W - 1},
+                'mv': mv,
+            }
+
+        return None
+
+    @staticmethod
+    def _apply_sep_reflect(raw, info):
+        """Apply the separator sequence reflect transformation."""
+        H, W = len(raw), len(raw[0])
+        out = [row[:] for row in raw]
+        ms = info[info['mv']]          # moving side
+        fs = info['b' if info['mv'] == 'a' else 'a']  # fixed side
+        bg = ms['bg']
+        near, far = ms['near'], ms['far']
+        m_dots, f_dots = ms['dots'], fs['dots']
+
+        if info['axis'] == 'row':
+            dl = ms['dl']
+            for c in range(W):
+                if out[dl][c] != info['sc']:
+                    out[dl][c] = bg
+            for pos, mv in m_dots.items():
+                fv = f_dots.get(pos)
+                if mv == fv:
+                    out[near][pos] = mv
+                else:
+                    out[far][pos] = mv
+        else:
+            dl = ms['dl']
+            for r in range(H):
+                if out[r][dl] != info['sc']:
+                    out[r][dl] = bg
+            for pos, mv in m_dots.items():
+                fv = f_dots.get(pos)
+                if mv == fv:
+                    out[pos][near] = mv
+                else:
+                    out[pos][far] = mv
+
+        return out
+
 
 class DescendOperator(Operator):
     """
@@ -8802,6 +9012,8 @@ class PredictOperator(Operator):
             return self._apply_grid_panel_decode(rule, input_grid)
         if rule_type == "shape_gravity_sort":
             return self._apply_shape_gravity_sort(rule, input_grid)
+        if rule_type == "separator_sequence_reflect":
+            return self._apply_separator_sequence_reflect(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -11648,6 +11860,15 @@ class PredictOperator(Operator):
         return GeneralizeOperator._apply_shape_gravity_sort_grid(
             GeneralizeOperator, input_grid.raw
         )
+
+    # ---- strategy 70: apply separator sequence reflect ----------------------
+
+    def _apply_separator_sequence_reflect(self, rule, input_grid):
+        """Apply separator sequence reflect rule."""
+        detect_result = GeneralizeOperator._detect_sep_reflect(input_grid.raw)
+        if detect_result is None:
+            return [row[:] for row in input_grid.raw]
+        return GeneralizeOperator._apply_sep_reflect(input_grid.raw, detect_result)
 
 
 # ======================================================================
