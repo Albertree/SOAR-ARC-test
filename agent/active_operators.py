@@ -611,6 +611,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_frame_hole_recolor(patterns, wm)
 
+        # Strategy 75: L-shape corner complete (mark missing corner of 3-cell L-shapes)
+        if rule is None:
+            rule = self._try_l_corner_complete(patterns, wm)
+
+        # Strategy 76: quadrant locator (4x4 grid, find target color → fill its 2x2 quadrant)
+        if rule is None:
+            rule = self._try_quadrant_locator(patterns, wm)
+
+        # Strategy 77: periodic pattern extend (remove border, extend repeating tile shifted +1 col)
+        if rule is None:
+            rule = self._try_periodic_pattern_extend(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -9738,6 +9750,331 @@ class GeneralizeOperator(Operator):
         return False
 
 
+    # ------------------------------------------------------------------
+    # Strategy 75: L-shape corner complete
+    # ------------------------------------------------------------------
+    def _try_l_corner_complete(self, patterns, wm):
+        """
+        Detect: grid with bg=0 and L-shaped groups of 3 cells (one fg color).
+        Each L occupies 3 cells of a 2x2 bounding box, leaving 1 corner empty.
+        Output fills that empty corner with a mark color.
+        Category: structural completion / L-shape corner detection.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if not examples:
+            return None
+
+        raw_in = examples[0].input_grid.raw
+        raw_out = examples[0].output_grid.raw
+        H, W = len(raw_in), len(raw_in[0])
+
+        # Same dimensions
+        if len(raw_out) != H or len(raw_out[0]) != W:
+            return None
+
+        # Find fg color (non-zero) and mark color (added in output)
+        in_colors = set()
+        out_colors = set()
+        for r in range(H):
+            for c in range(W):
+                if raw_in[r][c] != 0:
+                    in_colors.add(raw_in[r][c])
+                if raw_out[r][c] != 0:
+                    out_colors.add(raw_out[r][c])
+
+        if len(in_colors) != 1:
+            return None
+        fg_color = in_colors.pop()
+        new_colors = out_colors - {fg_color}
+        if len(new_colors) != 1:
+            return None
+        mark_color = new_colors.pop()
+
+        # All fg cells must be preserved
+        for r in range(H):
+            for c in range(W):
+                if raw_in[r][c] == fg_color and raw_out[r][c] != fg_color:
+                    return None
+
+        def find_l_corners(raw, fg):
+            """Find connected components of fg, filter to L-shapes, return missing corners."""
+            h, w = len(raw), len(raw[0])
+            visited = [[False]*w for _ in range(h)]
+            corners = []
+            for sr in range(h):
+                for sc in range(w):
+                    if raw[sr][sc] == fg and not visited[sr][sc]:
+                        # BFS to find component
+                        comp = []
+                        stack = [(sr, sc)]
+                        visited[sr][sc] = True
+                        while stack:
+                            cr, cc = stack.pop()
+                            comp.append((cr, cc))
+                            for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                                nr, nc = cr+dr, cc+dc
+                                if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == fg:
+                                    visited[nr][nc] = True
+                                    stack.append((nr, nc))
+                        if len(comp) == 3:
+                            # Check if it's an L in a 2x2 box
+                            min_r = min(r for r,c in comp)
+                            max_r = max(r for r,c in comp)
+                            min_c = min(c for r,c in comp)
+                            max_c = max(c for r,c in comp)
+                            if max_r - min_r == 1 and max_c - min_c == 1:
+                                comp_set = set(comp)
+                                for cr in [min_r, max_r]:
+                                    for cc in [min_c, max_c]:
+                                        if (cr, cc) not in comp_set:
+                                            corners.append((cr, cc))
+            return corners
+
+        # Validate on all examples
+        for ex in examples:
+            ri = ex.input_grid.raw
+            ro = ex.output_grid.raw
+            corners = find_l_corners(ri, fg_color)
+            if not corners:
+                return None
+            # Check each corner becomes mark_color in output
+            for cr, cc in corners:
+                if ro[cr][cc] != mark_color:
+                    return None
+            # Check no other changes
+            for r in range(len(ri)):
+                for c in range(len(ri[0])):
+                    if ri[r][c] != ro[r][c]:
+                        if (r, c) not in corners:
+                            return None
+
+        return {"type": "l_corner_complete", "fg_color": fg_color, "mark_color": mark_color}
+
+    # ------------------------------------------------------------------
+    # Strategy 76: Quadrant locator
+    # ------------------------------------------------------------------
+    def _try_quadrant_locator(self, patterns, wm):
+        """
+        Detect: small grid (e.g. 4x4) mostly filled with bg_color, with scattered
+        non-bg values including a target_color that appears exactly once. Output fills
+        the 2x2 quadrant containing target_color with that color, rest becomes bg.
+        Category: spatial localization / quadrant expansion.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if not examples:
+            return None
+
+        raw_in0 = examples[0].input_grid.raw
+        raw_out0 = examples[0].output_grid.raw
+        H, W = len(raw_in0), len(raw_in0[0])
+
+        # Must be same dimensions, even rows and cols (for quadrant split)
+        if len(raw_out0) != H or len(raw_out0[0]) != W:
+            return None
+        if H % 2 != 0 or W % 2 != 0:
+            return None
+
+        # Output must have exactly 2 colors: bg_color filling 3 quadrants, target filling 1
+        out_colors = set()
+        for r in range(H):
+            for c in range(W):
+                out_colors.add(raw_out0[r][c])
+        if len(out_colors) != 2:
+            return None
+
+        # Identify which color fills 3 quadrants (bg) vs 1 (target)
+        half_r, half_c = H // 2, W // 2
+        quadrant_colors = []
+        for qr_start in [0, half_r]:
+            for qc_start in [0, half_c]:
+                qcolor = raw_out0[qr_start][qc_start]
+                # Check quadrant is uniform
+                uniform = True
+                for r in range(qr_start, qr_start + half_r):
+                    for c in range(qc_start, qc_start + half_c):
+                        if raw_out0[r][c] != qcolor:
+                            uniform = False
+                            break
+                    if not uniform:
+                        break
+                if not uniform:
+                    return None
+                quadrant_colors.append(qcolor)
+
+        from collections import Counter
+        qc_count = Counter(quadrant_colors)
+        if len(qc_count) != 2:
+            return None
+        bg_color = qc_count.most_common(1)[0][0]
+        target_color = [c for c in qc_count if c != bg_color][0]
+        if qc_count[bg_color] != 3 or qc_count[target_color] != 1:
+            return None
+
+        # Validate on all examples
+        for ex in examples:
+            ri = ex.input_grid.raw
+            ro = ex.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if h != H or w != W:
+                return None
+            # Find target_color position in input
+            target_pos = None
+            for r in range(h):
+                for c in range(w):
+                    if ri[r][c] == target_color:
+                        if target_pos is not None:
+                            return None  # target must appear exactly once
+                        target_pos = (r, c)
+            if target_pos is None:
+                return None
+            # Determine which quadrant
+            tr, tc = target_pos
+            qr = 0 if tr < half_r else half_r
+            qc = 0 if tc < half_c else half_c
+            # Verify output matches
+            for r in range(h):
+                for c in range(w):
+                    expected = target_color if (qr <= r < qr + half_r and qc <= c < qc + half_c) else bg_color
+                    if ro[r][c] != expected:
+                        return None
+
+        return {"type": "quadrant_locator", "bg_color": bg_color, "target_color": target_color,
+                "half_r": half_r, "half_c": half_c}
+
+    # ------------------------------------------------------------------
+    # Strategy 77: Periodic pattern extend
+    # ------------------------------------------------------------------
+    def _try_periodic_pattern_extend(self, patterns, wm):
+        """
+        Detect: grid with a repeating tile pattern occupying most of the area,
+        with a uniform border color filling the remaining edge (right cols,
+        bottom rows, or L-shaped right+bottom). Output is same dimensions with
+        the repeating tile extended to fill everything, shifted +1 column.
+        Category: pattern completion / periodic fill.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if not examples:
+            return None
+
+        def detect_border_and_tile(raw):
+            """Detect border color, strip it, extract repeating tile. Returns (tile, border_color) or None."""
+            h, w = len(raw), len(raw[0])
+
+            # Find border color by checking right col and bottom row
+            # Border must be a single uniform color on at least one edge
+            border_color = None
+
+            # Check rightmost column
+            right_col = set(raw[r][w-1] for r in range(h))
+            bottom_row = set(raw[h-1][c] for c in range(w))
+
+            if len(right_col) == 1 and len(bottom_row) == 1 and right_col == bottom_row:
+                border_color = right_col.pop()
+            elif len(right_col) == 1:
+                border_color = right_col.pop()
+            elif len(bottom_row) == 1:
+                border_color = bottom_row.pop()
+            else:
+                return None
+
+            # Strip border columns from right
+            core_w = w
+            for c in range(w - 1, -1, -1):
+                if all(raw[r][c] == border_color for r in range(h)):
+                    core_w = c
+                else:
+                    break
+            # Strip border rows from bottom
+            core_h = h
+            for r in range(h - 1, -1, -1):
+                if all(raw[r][c] == border_color for c in range(w)):
+                    core_h = r
+                else:
+                    break
+
+            if core_h < 1 or core_w < 1:
+                return None
+
+            # The core is raw[0:core_h][0:core_w]
+            core = [row[:core_w] for row in raw[:core_h]]
+
+            # Border color must not appear in core
+            for r in range(core_h):
+                for c in range(core_w):
+                    if core[r][c] == border_color:
+                        return None
+
+            # Detect column period from first row
+            row0 = core[0]
+            col_period = None
+            for p in range(1, core_w + 1):
+                if all(row0[c] == row0[c % p] for c in range(core_w)):
+                    col_period = p
+                    break
+            if col_period is None:
+                return None
+
+            # Detect row period (how many rows before the column-start pattern repeats)
+            row_period = None
+            for rp in range(1, core_h + 1):
+                match = True
+                for r in range(core_h):
+                    for c in range(core_w):
+                        if core[r][c] != core[r % rp][c]:
+                            match = False
+                            break
+                    if not match:
+                        break
+                if match:
+                    row_period = rp
+                    break
+            if row_period is None:
+                return None
+
+            tile = [core[r][:col_period] for r in range(row_period)]
+            return tile, border_color
+
+        # Try to detect on first example
+        result = detect_border_and_tile(examples[0].input_grid.raw)
+        if result is None:
+            return None
+        tile, border_color = result
+        tile_h = len(tile)
+        tile_w = len(tile[0])
+
+        # Validate: each example must have a border+tile, and output must match shifted tile
+        for ex in examples:
+            ri = ex.input_grid.raw
+            ro = ex.output_grid.raw
+            h, w = len(ri), len(ri[0])
+            if len(ro) != h or len(ro[0]) != w:
+                return None
+            # Re-detect tile for this example (border color and tile dims may vary)
+            res = detect_border_and_tile(ri)
+            if res is None:
+                return None
+            ex_tile, ex_bc = res
+            ex_th = len(ex_tile)
+            ex_tw = len(ex_tile[0])
+            # Verify output matches shifted tile
+            for r in range(h):
+                for c in range(w):
+                    expected = ex_tile[r % ex_th][(c + 1) % ex_tw]
+                    if ro[r][c] != expected:
+                        return None
+
+        return {"type": "periodic_pattern_extend"}
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -9956,6 +10293,12 @@ class PredictOperator(Operator):
             return self._apply_stamp_shape_match(rule, input_grid)
         if rule_type == "frame_hole_recolor":
             return self._apply_frame_hole_recolor(rule, input_grid)
+        if rule_type == "l_corner_complete":
+            return self._apply_l_corner_complete(rule, input_grid)
+        if rule_type == "quadrant_locator":
+            return self._apply_quadrant_locator(rule, input_grid)
+        if rule_type == "periodic_pattern_extend":
+            return self._apply_periodic_pattern_extend(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -12950,6 +13293,149 @@ class PredictOperator(Operator):
                 for r, c in group:
                     out[r][c] = 2
 
+        return out
+
+    # ------------------------------------------------------------------
+    # _apply_l_corner_complete
+    # ------------------------------------------------------------------
+    def _apply_l_corner_complete(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        fg_color = rule["fg_color"]
+        mark_color = rule["mark_color"]
+        out = [row[:] for row in raw]
+
+        visited = [[False]*w for _ in range(h)]
+        for sr in range(h):
+            for sc in range(w):
+                if raw[sr][sc] == fg_color and not visited[sr][sc]:
+                    comp = []
+                    stack = [(sr, sc)]
+                    visited[sr][sc] = True
+                    while stack:
+                        cr, cc = stack.pop()
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:
+                            nr, nc = cr+dr, cc+dc
+                            if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] and raw[nr][nc] == fg_color:
+                                visited[nr][nc] = True
+                                stack.append((nr, nc))
+                    if len(comp) == 3:
+                        min_r = min(r for r,c in comp)
+                        max_r = max(r for r,c in comp)
+                        min_c = min(c for r,c in comp)
+                        max_c = max(c for r,c in comp)
+                        if max_r - min_r == 1 and max_c - min_c == 1:
+                            comp_set = set(comp)
+                            for cr in [min_r, max_r]:
+                                for cc in [min_c, max_c]:
+                                    if (cr, cc) not in comp_set:
+                                        if 0 <= cr < h and 0 <= cc < w:
+                                            out[cr][cc] = mark_color
+        return out
+
+    # ------------------------------------------------------------------
+    # _apply_quadrant_locator
+    # ------------------------------------------------------------------
+    def _apply_quadrant_locator(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+        bg_color = rule["bg_color"]
+        target_color = rule["target_color"]
+        half_r = rule["half_r"]
+        half_c = rule["half_c"]
+
+        # Find target_color position
+        target_pos = None
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == target_color:
+                    target_pos = (r, c)
+                    break
+            if target_pos:
+                break
+        if target_pos is None:
+            return [row[:] for row in raw]
+
+        tr, tc = target_pos
+        qr = 0 if tr < half_r else half_r
+        qc = 0 if tc < half_c else half_c
+
+        out = [[bg_color]*w for _ in range(h)]
+        for r in range(qr, min(qr + half_r, h)):
+            for c in range(qc, min(qc + half_c, w)):
+                out[r][c] = target_color
+        return out
+
+    # ------------------------------------------------------------------
+    # _apply_periodic_pattern_extend
+    # ------------------------------------------------------------------
+    def _apply_periodic_pattern_extend(self, rule, input_grid):
+        raw = input_grid.raw
+        h, w = len(raw), len(raw[0])
+
+        # Detect border color from edges
+        right_col = set(raw[r][w-1] for r in range(h))
+        bottom_row = set(raw[h-1][c] for c in range(w))
+        border_color = None
+        if len(right_col) == 1 and len(bottom_row) == 1 and right_col == bottom_row:
+            border_color = right_col.pop()
+        elif len(right_col) == 1:
+            border_color = right_col.pop()
+        elif len(bottom_row) == 1:
+            border_color = bottom_row.pop()
+        if border_color is None:
+            return [row[:] for row in raw]
+
+        # Strip border to find core
+        core_w = w
+        for c in range(w - 1, -1, -1):
+            if all(raw[r][c] == border_color for r in range(h)):
+                core_w = c
+            else:
+                break
+        core_h = h
+        for r in range(h - 1, -1, -1):
+            if all(raw[r][c] == border_color for c in range(w)):
+                core_h = r
+            else:
+                break
+        if core_h < 1 or core_w < 1:
+            return [row[:] for row in raw]
+
+        core = [row[:core_w] for row in raw[:core_h]]
+
+        # Detect column period
+        row0 = core[0]
+        col_period = 1
+        for p in range(1, core_w + 1):
+            if all(row0[c] == row0[c % p] for c in range(core_w)):
+                col_period = p
+                break
+
+        # Detect row period
+        row_period = 1
+        for rp in range(1, core_h + 1):
+            ok = True
+            for r in range(core_h):
+                for c in range(core_w):
+                    if core[r][c] != core[r % rp][c]:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if ok:
+                row_period = rp
+                break
+
+        tile = [core[r][:col_period] for r in range(row_period)]
+        tile_h, tile_w = len(tile), len(tile[0])
+
+        # Fill output with shifted tile
+        out = [[0]*w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                out[r][c] = tile[r % tile_h][(c + 1) % tile_w]
         return out
 
 

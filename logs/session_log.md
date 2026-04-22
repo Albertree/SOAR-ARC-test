@@ -1476,3 +1476,64 @@
 - Time: 187s
 - Log: logs/learn_20260422_143647.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 14:43
+
+- Split: training, Tasks: 80
+- Correct: 80 / 80 (100.0%)
+- Rules: 361 -> 362 (+1 learned)
+- Stored rule hits: 78
+- Time: 198s
+- Log: logs/learn_20260422_144032.log
+
+---
+## Session 32 -- 2026-04-22 15:39
+
+### Strategies Added
+1. **l_corner_complete** (Strategy 75): Grid has L-shaped groups of 3 cells
+   (single fg color on bg=0), each forming 3 of 4 cells of a 2×2 box. Output
+   marks the missing corner cell with a mark color. Detects components via
+   flood-fill, filters to 3-cell L-shapes, fills missing 2×2 corner.
+   Category: structural completion / L-shape corner detection.
+   (solves 3aa6fb7a)
+2. **quadrant_locator** (Strategy 76): Small even-dimensioned grid (e.g. 4×4)
+   mostly filled with bg_color, with scattered non-bg values including a
+   target_color appearing exactly once. Output fills the 2×2 quadrant
+   containing target_color with that color, rest becomes bg.
+   Category: spatial localization / quadrant expansion.
+   (solves 87ab05b8)
+3. **periodic_pattern_extend** (Strategy 77): Grid has a repeating tile pattern
+   occupying most of the area, with a uniform border color filling the remaining
+   edge (right cols, bottom rows, or L-shaped right+bottom). Each example may
+   have a different border color and tile dimensions. Output extends the repeating
+   tile to fill the entire grid, shifted by +1 column in the cycle.
+   Category: pattern completion / periodic fill.
+   (solves 50a16a69)
+
+### Bug Fix
+- Fixed `_try_periodic_pattern_extend` validation: was requiring border_color
+  and tile dimensions to match across all training examples, but this task uses
+  different border colors (1, 8, 4) and tile sizes (2×2, 2×4, 2×3) per example.
+  Fixed to validate each example independently (border+tile detected per-input,
+  only the shift rule must be consistent).
+
+### Learning Loop Results
+- Split: training, Tasks: 160 (expanded from 80; run hung at task 130, 129 completed)
+- Correct: 87 / 129 (67.4%) — first 80 tasks: 80/80 (100.0%), new tasks: 7/49
+- Solved (new): 3aa6fb7a (l_corner_complete), 87ab05b8 (quadrant_locator), 50a16a69 (periodic_pattern_extend)
+- Errors: 1 (662c240a: list index out of range)
+- Rules: 371 -> 379 (+8 learned)
+- Time: ~370s (partial, 129/160 tasks)
+- Log: logs/learn_20260422_153925.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 15:39
+
+- Split: training, Tasks: 80
+- Correct: 80 / 80 (100.0%)
+- Rules: 370 -> 371 (+1 learned)
+- Stored rule hits: 78
+- Time: 219s
+- Log: logs/learn_20260422_153538.log
