@@ -28,7 +28,7 @@ export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:$
 
 MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
-TASKS_PER_SESSION=20
+TASKS_PER_SESSION=16
 MAX_TASKS=1000
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -98,7 +98,7 @@ while true; do
 
     # ── 1. Agent solves tasks, accumulates memory ────────────
     log "Agent solving $TASKS_PER_SESSION tasks..."
-    LEARN_OUTPUT=$(python run_learn.py --limit "$TASKS_PER_SESSION" --shuffle 2>&1)
+    LEARN_OUTPUT=$(python run_learn.py --limit "$TASKS_PER_SESSION" 2>&1)
     echo "$LEARN_OUTPUT" | tee -a "$PIPELINE_LOG"
 
     SCORE_LINE=$(echo "$LEARN_OUTPUT" | grep "Correct:" | tail -1)

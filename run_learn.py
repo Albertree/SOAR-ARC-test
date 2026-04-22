@@ -35,7 +35,15 @@ def parse_args():
 
 
 def get_task_list(split, data_root="data"):
-    """Get sorted list of task hex codes for a split."""
+    """Get sorted list of task IDs for a split.
+
+    If data/ARC_easy/ exists, use it directly (ignoring split).
+    Otherwise fall back to data/ARC_AGI/<split>/.
+    """
+    easy_dir = os.path.join(data_root, "ARC_easy")
+    if os.path.isdir(easy_dir):
+        return sorted(f.replace(".json", "") for f in os.listdir(easy_dir) if f.endswith(".json"))
+
     split_dir = os.path.join(data_root, "ARC_AGI", split)
     if not os.path.isdir(split_dir):
         print(f"[!] Directory not found: {split_dir}")
