@@ -1,0 +1,10 @@
+{
+  "id": 3,
+  "rule": {
+    "type": "frame_extract",
+    "edge_color": 5
+  },
+  "source_task": "3f7978a0",
+  "created_at": "2026-04-22T16:47:50.573500",
+  "times_reused": 1
+}

@@ -1537,3 +1537,68 @@
 - Stored rule hits: 78
 - Time: 219s
 - Log: logs/learn_20260422_153538.log
+
+---
+## Learning Loop -- 2026-04-22 16:26
+
+- Split: training, Tasks: 160
+- Correct: 87 / 160 (54.4%)
+- Rules: 373 -> 376 (+3 learned)
+- Stored rule hits: 85
+- Time: 2030s
+- Log: logs/learn_20260422_155259.log
+
+---
+## Session 33 -- 2026-04-22 17:31
+
+### Bug Fixes
+- Fixed `_apply_half_grid_boolean` crash: added bounds check when `bot_start + top_h > H`
+  for grids that don't have equal halves below the separator row. Eliminated
+  ERROR on task 662c240a.
+- Fixed `_try_frame_hole_recolor` crash: added early return when input/output
+  grid sizes differ. This was silently crashing the entire GeneralizeOperator
+  for all tasks with different I/O dimensions, blocking the pipeline from
+  reaching any strategies (including identity fallback). This fix unblocks
+  all size-changing tasks.
+
+### Strategies Added
+1. **cluster_bbox_border** (Strategy 78): Scattered pixels of one color
+   (marker) on background 0. Connected components (4-connected) of size >= 2
+   get a rectangular border of border_color drawn 1 cell outside their
+   bounding box. Isolated single pixels remain unchanged.
+   Category: cluster detection / bounding box annotation.
+   (solves b27ca6d3)
+2. **crop_rect_flip** (Strategy 79): Input has a solid-colored rectangle
+   (dominant color + minority pattern) on a zero background. Output = the
+   rectangle cropped and horizontally flipped.
+   Category: rectangle extraction + horizontal mirror.
+   (solves 7468f01a)
+3. **frame_extract** (Strategy 80): Input has a rectangular frame with
+   corner_color at corners and edge_color on vertical edges, plus noise
+   corner_color pixels scattered outside. Output = the frame rectangle
+   cropped out, ignoring noise.
+   Category: framed object extraction / noise removal.
+   (solves 3f7978a0)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 90 / 160 (56.2%) — up from 87/160 (54.4%)
+- Errors: 0 (down from 1)
+- Solved (new): b27ca6d3 (cluster_bbox_border), 7468f01a (crop_rect_flip), 3f7978a0 (frame_extract)
+- Bug fix: 662c240a no longer ERROR (now INCORRECT identity)
+- Rules: 377 -> 381 (+4 learned)
+- Stored rule hits: 86
+- Discovered: 6 new rules from pipeline
+- Time: 2603s (16.3s/task)
+- Log: logs/learn_20260422_164805.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 17:47
+
+- Split: training, Tasks: 160
+- Correct: 90 / 160 (56.2%)
+- Rules: 380 -> 381 (+1 learned)
+- Stored rule hits: 88
+- Time: 2477s
+- Log: logs/learn_20260422_170554.log

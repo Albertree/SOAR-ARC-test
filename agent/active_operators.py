@@ -287,7 +287,8 @@ class GeneralizeOperator(Operator):
     def effect(self, wm):
         patterns = wm.s1.get("patterns")
         if not patterns:
-            return
+            patterns = {}
+            wm.s1["patterns"] = patterns
 
         rule = None
 
@@ -622,6 +623,18 @@ class GeneralizeOperator(Operator):
         # Strategy 77: periodic pattern extend (remove border, extend repeating tile shifted +1 col)
         if rule is None:
             rule = self._try_periodic_pattern_extend(patterns, wm)
+
+        # Strategy 78: cluster bounding box border (connected 2-clusters get 3-border)
+        if rule is None:
+            rule = self._try_cluster_bbox_border(patterns, wm)
+
+        # Strategy 79: crop solid rect + horizontal flip
+        if rule is None:
+            rule = self._try_crop_rect_flip(patterns, wm)
+
+        # Strategy 80: frame extract (extract 5/8 framed rectangle from noisy grid)
+        if rule is None:
+            rule = self._try_frame_extract(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -9544,6 +9557,11 @@ class GeneralizeOperator(Operator):
         raw_in = examples[0].input_grid.raw
         raw_out = examples[0].output_grid.raw
         H, W = len(raw_in), len(raw_in[0])
+        oH, oW = len(raw_out), len(raw_out[0]) if raw_out else 0
+
+        # Input/output must be same size
+        if H != oH or W != oW:
+            return None
 
         # Must have colors 0, 1, 5 in input and 0, 1, 2, 5 in output
         colors_in = set()
@@ -10074,6 +10092,266 @@ class GeneralizeOperator(Operator):
 
         return {"type": "periodic_pattern_extend"}
 
+    # ---- strategy 78: cluster bbox border ------------------------------------
+
+    def _try_cluster_bbox_border(self, patterns, wm):
+        """
+        Detect: scattered pixels of one color (marker_color) on background 0.
+        Connected components (4-connected) of size >= 2 get a border of
+        border_color drawn around their bounding box (1 cell outward, clipped).
+        Isolated single pixels remain unchanged.
+        Category: cluster detection / bounding box annotation.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+
+        marker_color = None
+        border_color = None
+
+        for pair in examples:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            H, W = len(ri), len(ri[0])
+
+            # Find non-zero colors in input
+            in_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] != 0:
+                        in_colors.add(ri[r][c])
+
+            # Must have exactly one non-zero color in input
+            if len(in_colors) != 1:
+                return None
+            mc = in_colors.pop()
+
+            # Output must have exactly 2 non-zero colors (marker + border)
+            out_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if ro[r][c] != 0:
+                        out_colors.add(ro[r][c])
+            if mc not in out_colors or len(out_colors) != 2:
+                return None
+            bc = (out_colors - {mc}).pop()
+
+            if marker_color is None:
+                marker_color = mc
+                border_color = bc
+            elif mc != marker_color or bc != border_color:
+                return None
+
+            # Validate: find connected components of marker_color
+            positions = set()
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] == marker_color:
+                        positions.add((r, c))
+
+            clusters = self._flood_components(positions)
+
+            # Build expected output
+            expected = [row[:] for row in ri]
+            for cluster in clusters:
+                if len(cluster) < 2:
+                    continue
+                min_r = min(r for r, c in cluster)
+                max_r = max(r for r, c in cluster)
+                min_c = min(c for r, c in cluster)
+                max_c = max(c for r, c in cluster)
+                # Draw border 1 cell outside bbox
+                br0 = max(0, min_r - 1)
+                br1 = min(H - 1, max_r + 1)
+                bc0 = max(0, min_c - 1)
+                bc1 = min(W - 1, max_c + 1)
+                for r in range(br0, br1 + 1):
+                    for c in range(bc0, bc1 + 1):
+                        if expected[r][c] == 0:
+                            # Only fill border ring, not interior
+                            if r == br0 or r == br1 or c == bc0 or c == bc1:
+                                expected[r][c] = border_color
+
+            if expected != ro:
+                return None
+
+        return {"type": "cluster_bbox_border",
+                "marker_color": marker_color,
+                "border_color": border_color}
+
+    def _flood_components(self, positions):
+        """Find 4-connected components from a set of (r,c) positions."""
+        remaining = set(positions)
+        components = []
+        while remaining:
+            start = next(iter(remaining))
+            comp = set()
+            queue = [start]
+            while queue:
+                pos = queue.pop()
+                if pos in comp:
+                    continue
+                if pos not in remaining:
+                    continue
+                comp.add(pos)
+                remaining.discard(pos)
+                r, c = pos
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in remaining:
+                        queue.append(nb)
+            components.append(comp)
+        return components
+
+    # ---- strategy 79: crop solid rect + flip ---------------------------------
+
+    def _try_crop_rect_flip(self, patterns, wm):
+        """
+        Detect: input has a solid-colored rectangle (dominant color) with a
+        minority pattern inside, on a zero background. Output = that rectangle
+        cropped and horizontally flipped.
+        Category: rectangle extraction + horizontal mirror.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if len(examples) < 2:
+            return None
+
+        for pair in examples:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+
+            # Find bounding box of all non-zero cells
+            non_zero = [(r, c) for r in range(H) for c in range(W) if ri[r][c] != 0]
+            if not non_zero:
+                return None
+            min_r = min(r for r, c in non_zero)
+            max_r = max(r for r, c in non_zero)
+            min_c = min(c for r, c in non_zero)
+            max_c = max(c for r, c in non_zero)
+
+            crop_h = max_r - min_r + 1
+            crop_w = max_c - min_c + 1
+
+            if crop_h != oH or crop_w != oW:
+                return None
+
+            # The cropped region must be a solid rectangle (all cells non-zero)
+            cropped = [ri[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+            all_filled = all(cropped[r][c] != 0
+                            for r in range(crop_h) for c in range(crop_w))
+            if not all_filled:
+                return None
+
+            # Must have exactly 2 non-zero colors in the rectangle
+            rect_colors = set()
+            for row in cropped:
+                for v in row:
+                    if v != 0:
+                        rect_colors.add(v)
+            if len(rect_colors) != 2:
+                return None
+
+            # Output should be horizontal flip of cropped
+            flipped = [row[::-1] for row in cropped]
+            if flipped != ro:
+                return None
+
+        return {"type": "crop_rect_flip"}
+
+    # ---- strategy 80: frame extract ------------------------------------------
+
+    def _try_frame_extract(self, patterns, wm):
+        """
+        Detect: input has a rectangular frame on a zero background.
+        The frame has corner_color at corners and edge_color on edges (vertical
+        sides). Noise pixels of corner_color may be scattered outside.
+        Output = the frame rectangle cropped out.
+        Category: framed object extraction / noise removal.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if len(examples) < 2:
+            return None
+
+        edge_color = None
+
+        for pair in examples:
+            ri = pair.input_grid.raw
+            ro = pair.output_grid.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+
+            # Find cells with edge_color candidates (non-zero, non-dominant)
+            # The edge color appears only on the frame edges, not as noise
+            color_counts = {}
+            for r in range(H):
+                for c in range(W):
+                    v = ri[r][c]
+                    if v != 0:
+                        color_counts[v] = color_counts.get(v, 0) + 1
+
+            if len(color_counts) < 2:
+                return None
+
+            # Edge color should appear less than corner color (it's only on sides)
+            # Try each non-zero color as edge color
+            found = False
+            for ec in color_counts:
+                # Find bounding box of edge-color cells
+                ec_cells = [(r, c) for r in range(H) for c in range(W) if ri[r][c] == ec]
+                if len(ec_cells) < 2:
+                    continue
+
+                ec_min_r = min(r for r, c in ec_cells)
+                ec_max_r = max(r for r, c in ec_cells)
+                ec_min_c = min(c for r, c in ec_cells)
+                ec_max_c = max(c for r, c in ec_cells)
+
+                # Edge cells should all be in 2 columns (left and right edges)
+                ec_cols = set(c for r, c in ec_cells)
+                if len(ec_cols) != 2:
+                    continue
+                left_c, right_c = min(ec_cols), max(ec_cols)
+
+                # Frame rectangle: corners are 1 row above/below edge rows
+                frame_min_r = ec_min_r - 1
+                frame_max_r = ec_max_r + 1
+                frame_min_c = left_c
+                frame_max_c = right_c
+
+                if frame_min_r < 0 or frame_max_r >= H:
+                    continue
+
+                crop_h = frame_max_r - frame_min_r + 1
+                crop_w = frame_max_c - frame_min_c + 1
+
+                if crop_h != oH or crop_w != oW:
+                    continue
+
+                # Verify output matches cropped frame
+                cropped = [ri[r][frame_min_c:frame_max_c + 1]
+                           for r in range(frame_min_r, frame_max_r + 1)]
+                if cropped == ro:
+                    if edge_color is None:
+                        edge_color = ec
+                    elif ec != edge_color:
+                        return None
+                    found = True
+                    break
+
+            if not found:
+                return None
+
+        return {"type": "frame_extract", "edge_color": edge_color}
+
 
 class DescendOperator(Operator):
     """
@@ -10299,6 +10577,12 @@ class PredictOperator(Operator):
             return self._apply_quadrant_locator(rule, input_grid)
         if rule_type == "periodic_pattern_extend":
             return self._apply_periodic_pattern_extend(rule, input_grid)
+        if rule_type == "cluster_bbox_border":
+            return self._apply_cluster_bbox_border(rule, input_grid)
+        if rule_type == "crop_rect_flip":
+            return self._apply_crop_rect_flip(rule, input_grid)
+        if rule_type == "frame_extract":
+            return self._apply_frame_extract(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -11873,6 +12157,8 @@ class PredictOperator(Operator):
                 return [row[:] for row in raw]
             top_h = sep_row
             bot_start = sep_row + 1
+            if bot_start + top_h > H:
+                return [row[:] for row in raw]
             half_a = [raw[r] for r in range(top_h)]
             half_b = [raw[r] for r in range(bot_start, bot_start + top_h)]
             out_h, out_w = top_h, W
@@ -13437,6 +13723,94 @@ class PredictOperator(Operator):
             for c in range(w):
                 out[r][c] = tile[r % tile_h][(c + 1) % tile_w]
         return out
+
+    # ------------------------------------------------------------------
+    # _apply_cluster_bbox_border
+    # ------------------------------------------------------------------
+    def _apply_cluster_bbox_border(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        marker_color = rule["marker_color"]
+        border_color = rule["border_color"]
+
+        positions = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == marker_color:
+                    positions.add((r, c))
+
+        clusters = GeneralizeOperator(None)._flood_components(positions)
+
+        out = [row[:] for row in raw]
+        for cluster in clusters:
+            if len(cluster) < 2:
+                continue
+            min_r = min(r for r, c in cluster)
+            max_r = max(r for r, c in cluster)
+            min_c = min(c for r, c in cluster)
+            max_c = max(c for r, c in cluster)
+            br0 = max(0, min_r - 1)
+            br1 = min(H - 1, max_r + 1)
+            bc0 = max(0, min_c - 1)
+            bc1 = min(W - 1, max_c + 1)
+            for r in range(br0, br1 + 1):
+                for c in range(bc0, bc1 + 1):
+                    if out[r][c] == 0:
+                        if r == br0 or r == br1 or c == bc0 or c == bc1:
+                            out[r][c] = border_color
+        return out
+
+    # ------------------------------------------------------------------
+    # _apply_crop_rect_flip
+    # ------------------------------------------------------------------
+    def _apply_crop_rect_flip(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        non_zero = [(r, c) for r in range(H) for c in range(W) if raw[r][c] != 0]
+        if not non_zero:
+            return [row[:] for row in raw]
+        min_r = min(r for r, c in non_zero)
+        max_r = max(r for r, c in non_zero)
+        min_c = min(c for r, c in non_zero)
+        max_c = max(c for r, c in non_zero)
+
+        cropped = [raw[r][min_c:max_c + 1] for r in range(min_r, max_r + 1)]
+        return [row[::-1] for row in cropped]
+
+    # ------------------------------------------------------------------
+    # _apply_frame_extract
+    # ------------------------------------------------------------------
+    def _apply_frame_extract(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        edge_color = rule["edge_color"]
+
+        ec_cells = [(r, c) for r in range(H) for c in range(W)
+                    if raw[r][c] == edge_color]
+        if not ec_cells:
+            return [row[:] for row in raw]
+
+        ec_cols = set(c for r, c in ec_cells)
+        if len(ec_cols) != 2:
+            return [row[:] for row in raw]
+
+        left_c, right_c = min(ec_cols), max(ec_cols)
+        ec_min_r = min(r for r, c in ec_cells)
+        ec_max_r = max(r for r, c in ec_cells)
+
+        frame_min_r = ec_min_r - 1
+        frame_max_r = ec_max_r + 1
+        frame_min_c = left_c
+        frame_max_c = right_c
+
+        if frame_min_r < 0:
+            frame_min_r = 0
+        if frame_max_r >= H:
+            frame_max_r = H - 1
+
+        return [raw[r][frame_min_c:frame_max_c + 1]
+                for r in range(frame_min_r, frame_max_r + 1)]
 
 
 # ======================================================================

@@ -1,0 +1,11 @@
+{
+  "id": 1,
+  "rule": {
+    "type": "cluster_bbox_border",
+    "marker_color": 2,
+    "border_color": 3
+  },
+  "source_task": "b27ca6d3",
+  "created_at": "2026-04-22T16:47:47.523903",
+  "times_reused": 0
+}
