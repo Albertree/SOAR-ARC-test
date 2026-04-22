@@ -1672,3 +1672,51 @@
 - Time: 2067s
 - Log: logs/learn_20260422_203159.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 22:01
+
+- Split: training, Tasks: 160
+- Correct: 94 / 160 (58.8%)
+- Rules: 391 -> 392 (+1 learned)
+- Stored rule hits: 91
+- Time: 2052s
+- Log: logs/learn_20260422_212727.log
+
+---
+## Learning Loop -- 2026-04-22 22:49
+
+- Split: training, Tasks: 160
+- Correct: 95 / 160 (59.4%)
+- Rules: 392 -> 398 (+6 learned)
+- Stored rule hits: 91
+- Time: 2538s
+- Log: logs/learn_20260422_220649.log
+
+---
+## Learning Loop -- 2026-04-22 23:00
+
+- Split: training, Tasks: 160
+- Correct: 95 / 160 (59.4%)
+- Rules: 395 -> 398 (+3 learned)
+- Stored rule hits: 92
+- Time: 2479s
+- Log: logs/learn_20260422_221859.log
+
+---
+## Session 35 -- 2026-04-22 23:15
+
+### Strategies Added
+1. **point_reflect_tile** — NxM input → 2Nx2M output via 4-quadrant tiling with rot180/vflip/hflip/orig to create point symmetry (solves 0c786b71)
+2. **nested_rect_color_reverse** — concentric rectangular layers have their unique color sequence reversed: outermost↔innermost via color remapping (solves 8dae5dfc)
+3. **diagonal_ring_fill** — diagonal color markers at (0,0),(1,1),... plus hollow rect of 1s → fill interior with concentric rings using diagonal colors (solves 99306f82)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 97 / 160 (60.6%) — up from 94/160 (58.8%)
+- Solved: 0c786b71 (point_reflect_tile), 8dae5dfc (nested_rect_color_reverse), 99306f82 (diagonal_ring_fill)
+- Rules: 397 -> 398 (+1 learned)
+- Stored rule hits: 94
+- Time: 2160s
+- Log: logs/learn_20260422_223924.log
+- Regression: 08ed6ac7 CORRECT

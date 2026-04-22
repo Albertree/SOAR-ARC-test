@@ -652,6 +652,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_self_ref_grid_fill(patterns, wm)
 
+        # Strategy 85: point reflect tile (NxM → 2Nx2M via rot180/vflip/hflip/orig quadrants)
+        if rule is None:
+            rule = self._try_point_reflect_tile(patterns, wm)
+
+        # Strategy 86: nested rect color reverse (reverse color order of concentric rect layers)
+        if rule is None:
+            rule = self._try_nested_rect_color_reverse(patterns, wm)
+
+        # Strategy 87: diagonal ring fill (diagonal color sequence fills rect interior as concentric rings)
+        if rule is None:
+            rule = self._try_diagonal_ring_fill(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -10802,6 +10814,261 @@ class GeneralizeOperator(Operator):
         return {"type": "self_ref_grid_fill"}
 
 
+    # ---- strategy 85: point reflect tile ------------------------------------
+
+    def _try_point_reflect_tile(self, patterns, wm):
+        """
+        Detect: NxM input → 2Nx2M output by placing 4 reflected copies to
+        create point symmetry (180° rotational symmetry about the center).
+        Layout: [rot180 | vflip] / [hflip | orig]
+        Category: symmetry expansion / reflection tiling patterns.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            ig, og = pair.input_grid, pair.output_grid
+            if not ig or not og:
+                return None
+            ri, ro = ig.raw, og.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+
+            if oH != 2 * H or oW != 2 * W:
+                return None
+
+            # Build expected: top-left=rot180, top-right=vflip,
+            #                 bottom-left=hflip, bottom-right=orig
+            for r in range(H):
+                for c in range(W):
+                    # rot180 in top-left quadrant
+                    if ro[r][c] != ri[H - 1 - r][W - 1 - c]:
+                        return None
+                    # vflip in top-right quadrant
+                    if ro[r][W + c] != ri[H - 1 - r][c]:
+                        return None
+                    # hflip in bottom-left quadrant
+                    if ro[H + r][c] != ri[r][W - 1 - c]:
+                        return None
+                    # orig in bottom-right quadrant
+                    if ro[H + r][W + c] != ri[r][c]:
+                        return None
+
+        return {"type": "point_reflect_tile", "confidence": 1.0}
+
+    # ---- strategy 86: nested rect color reverse ------------------------------
+
+    def _try_nested_rect_color_reverse(self, patterns, wm):
+        """
+        Detect: grid contains one or more nested rectangular structures
+        (concentric rect layers, each a uniform non-zero color). The output
+        reverses the color sequence: outermost gets innermost color, etc.
+        Category: concentric shape / color permutation patterns.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            ig, og = pair.input_grid, pair.output_grid
+            if not ig or not og:
+                return None
+            ri, ro = ig.raw, og.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+            if H != oH or W != oW:
+                return None
+
+            # Find all non-zero connected rectangular objects
+            visited = [[False] * W for _ in range(H)]
+            objects = []  # list of (bounding_box, layer_colors)
+
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] != 0 and not visited[r][c]:
+                        # BFS to find connected component of non-zero cells
+                        color = ri[r][c]
+                        stack = [(r, c)]
+                        cells = set()
+                        while stack:
+                            cr, cc = stack.pop()
+                            if cr < 0 or cr >= H or cc < 0 or cc >= W:
+                                continue
+                            if (cr, cc) in cells or visited[cr][cc]:
+                                continue
+                            if ri[cr][cc] == 0:
+                                continue
+                            cells.add((cr, cc))
+                            visited[cr][cc] = True
+                            stack.extend([(cr+1, cc), (cr-1, cc), (cr, cc+1), (cr, cc-1)])
+
+                        if not cells:
+                            continue
+
+                        min_r = min(cr for cr, cc in cells)
+                        max_r = max(cr for cr, cc in cells)
+                        min_c = min(cc for cr, cc in cells)
+                        max_c = max(cc for cr, cc in cells)
+
+                        # Check that the bounding box is fully filled with non-zero
+                        is_rect = True
+                        for br in range(min_r, max_r + 1):
+                            for bc in range(min_c, max_c + 1):
+                                if ri[br][bc] == 0:
+                                    is_rect = False
+                                    break
+                            if not is_rect:
+                                break
+                        if not is_rect:
+                            return None
+
+                        # Extract concentric layer colors (outside→inside)
+                        layer_colors = []
+                        tr, br, lc, rc = min_r, max_r, min_c, max_c
+                        while tr <= br and lc <= rc:
+                            c_val = ri[tr][lc]
+                            layer_colors.append(c_val)
+                            # Verify all cells on this ring are same color
+                            for bc2 in range(lc, rc + 1):
+                                if ri[tr][bc2] != c_val or ri[br][bc2] != c_val:
+                                    return None
+                            for br2 in range(tr, br + 1):
+                                if ri[br2][lc] != c_val or ri[br2][rc] != c_val:
+                                    return None
+                            tr += 1
+                            br -= 1
+                            lc += 1
+                            rc -= 1
+
+                        if len(layer_colors) < 2:
+                            return None
+
+                        # Build unique color sequence (preserve order, deduplicate)
+                        unique_colors = []
+                        for cv in layer_colors:
+                            if not unique_colors or unique_colors[-1] != cv:
+                                unique_colors.append(cv)
+                        if len(unique_colors) < 2:
+                            return None
+
+                        # Build color mapping: reverse the unique sequence
+                        rev_unique = list(reversed(unique_colors))
+                        color_map = {}
+                        for uc, rc2 in zip(unique_colors, rev_unique):
+                            color_map[uc] = rc2
+
+                        # Verify output matches mapped colors for this object
+                        for br2 in range(min_r, max_r + 1):
+                            for bc2 in range(min_c, max_c + 1):
+                                expected = color_map.get(ri[br2][bc2])
+                                if expected is None or ro[br2][bc2] != expected:
+                                    return None
+
+                        objects.append((min_r, max_r, min_c, max_c, layer_colors))
+
+            if not objects:
+                return None
+
+        return {"type": "nested_rect_color_reverse", "confidence": 1.0}
+
+    # ---- strategy 87: diagonal ring fill ------------------------------------
+
+    def _try_diagonal_ring_fill(self, patterns, wm):
+        """
+        Detect: diagonal color markers at (0,0), (1,1), (2,2), ... plus a
+        hollow rectangle outlined in color 1. Output fills the rect interior
+        with concentric rings using the diagonal color sequence.
+        Category: concentric ring fill / sequence-driven patterns.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            ig, og = pair.input_grid, pair.output_grid
+            if not ig or not og:
+                return None
+            ri, ro = ig.raw, og.raw
+            H, W = len(ri), len(ri[0])
+            if H != len(ro) or W != len(ro[0]):
+                return None
+
+            # Extract diagonal color sequence
+            diag_colors = []
+            for i in range(min(H, W)):
+                v = ri[i][i]
+                if v == 0 or v == 1:
+                    break
+                diag_colors.append(v)
+
+            if len(diag_colors) < 1:
+                return None
+
+            # Find the rectangle outlined in color 1
+            rect_top = rect_bot = rect_left = rect_right = None
+            border_color = 1
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] == border_color:
+                        if rect_top is None or r < rect_top:
+                            rect_top = r
+                        if rect_bot is None or r > rect_bot:
+                            rect_bot = r
+                        if rect_left is None or c < rect_left:
+                            rect_left = c
+                        if rect_right is None or c > rect_right:
+                            rect_right = c
+
+            if rect_top is None:
+                return None
+
+            # Verify the border is a proper rectangle of 1s
+            for c in range(rect_left, rect_right + 1):
+                if ri[rect_top][c] != border_color or ri[rect_bot][c] != border_color:
+                    return None
+            for r in range(rect_top, rect_bot + 1):
+                if ri[r][rect_left] != border_color or ri[r][rect_right] != border_color:
+                    return None
+
+            # Verify the interior is all 0 in input
+            for r in range(rect_top + 1, rect_bot):
+                for c in range(rect_left + 1, rect_right):
+                    if ri[r][c] != 0:
+                        return None
+
+            # Check output: border unchanged, interior filled with concentric rings
+            # using diag_colors in order (outermost ring = diag_colors[0])
+            int_top = rect_top + 1
+            int_bot = rect_bot - 1
+            int_left = rect_left + 1
+            int_right = rect_right - 1
+
+            t, b, l, rr = int_top, int_bot, int_left, int_right
+            ci = 0
+            while t <= b and l <= rr:
+                # Use next color, or repeat last color if sequence exhausted
+                if ci < len(diag_colors):
+                    expected = diag_colors[ci]
+                else:
+                    expected = diag_colors[-1]
+                # Check top and bottom rows of this ring
+                for c in range(l, rr + 1):
+                    if ro[t][c] != expected or ro[b][c] != expected:
+                        return None
+                # Check left and right columns of this ring
+                for r in range(t, b + 1):
+                    if ro[r][l] != expected or ro[r][rr] != expected:
+                        return None
+                t += 1
+                b -= 1
+                l += 1
+                rr -= 1
+                ci += 1
+
+        return {"type": "diagonal_ring_fill", "confidence": 1.0}
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -11040,6 +11307,12 @@ class PredictOperator(Operator):
             return self._apply_unique_quadrant_extract(rule, input_grid)
         if rule_type == "self_ref_grid_fill":
             return self._apply_self_ref_grid_fill(rule, input_grid)
+        if rule_type == "point_reflect_tile":
+            return self._apply_point_reflect_tile(rule, input_grid)
+        if rule_type == "nested_rect_color_reverse":
+            return self._apply_nested_rect_color_reverse(rule, input_grid)
+        if rule_type == "diagonal_ring_fill":
+            return self._apply_diagonal_ring_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -14542,6 +14815,168 @@ class PredictOperator(Operator):
                                 output[rs + lr][cs + lc] = 0
                             else:
                                 output[rs + lr][cs + lc] = fg_color
+
+        return output
+
+
+    # ---- apply: point reflect tile -----------------------------------------
+
+    def _apply_point_reflect_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        out = [[0] * (2 * W) for _ in range(2 * H)]
+        for r in range(H):
+            for c in range(W):
+                v = raw[r][c]
+                # rot180 in top-left
+                out[r][c] = raw[H - 1 - r][W - 1 - c]
+                # vflip in top-right
+                out[r][W + c] = raw[H - 1 - r][c]
+                # hflip in bottom-left
+                out[H + r][c] = raw[r][W - 1 - c]
+                # orig in bottom-right
+                out[H + r][W + c] = v
+        return out
+
+    # ---- apply: nested rect color reverse -----------------------------------
+
+    def _apply_nested_rect_color_reverse(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        output = [row[:] for row in raw]
+
+        # Find all connected non-zero rectangular objects
+        visited = [[False] * W for _ in range(H)]
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0 and not visited[r][c]:
+                    # BFS to find connected non-zero region
+                    stack = [(r, c)]
+                    cells = set()
+                    while stack:
+                        cr, cc = stack.pop()
+                        if cr < 0 or cr >= H or cc < 0 or cc >= W:
+                            continue
+                        if (cr, cc) in cells or visited[cr][cc]:
+                            continue
+                        if raw[cr][cc] == 0:
+                            continue
+                        cells.add((cr, cc))
+                        visited[cr][cc] = True
+                        stack.extend([(cr+1, cc), (cr-1, cc), (cr, cc+1), (cr, cc-1)])
+
+                    if not cells:
+                        continue
+
+                    min_r = min(cr for cr, cc in cells)
+                    max_r = max(cr for cr, cc in cells)
+                    min_c = min(cc for cr, cc in cells)
+                    max_c = max(cc for cr, cc in cells)
+
+                    # Extract concentric layer colors
+                    layer_colors = []
+                    tr, br, lc, rc = min_r, max_r, min_c, max_c
+                    while tr <= br and lc <= rc:
+                        layer_colors.append(raw[tr][lc])
+                        tr += 1
+                        br -= 1
+                        lc += 1
+                        rc -= 1
+
+                    if len(layer_colors) < 2:
+                        continue
+
+                    # Build unique color sequence and reverse mapping
+                    unique_colors = []
+                    for cv in layer_colors:
+                        if not unique_colors or unique_colors[-1] != cv:
+                            unique_colors.append(cv)
+                    if len(unique_colors) < 2:
+                        continue
+
+                    rev_unique = list(reversed(unique_colors))
+                    color_map = {}
+                    for uc, rc2 in zip(unique_colors, rev_unique):
+                        color_map[uc] = rc2
+
+                    # Apply color mapping to all cells in this object
+                    for br2 in range(min_r, max_r + 1):
+                        for bc in range(min_c, max_c + 1):
+                            v = raw[br2][bc]
+                            if v in color_map:
+                                output[br2][bc] = color_map[v]
+
+        return output
+
+    # ---- apply: diagonal ring fill ------------------------------------------
+
+    def _apply_diagonal_ring_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        output = [row[:] for row in raw]
+
+        # Extract diagonal color sequence
+        diag_colors = []
+        for i in range(min(H, W)):
+            v = raw[i][i]
+            if v == 0 or v == 1:
+                break
+            diag_colors.append(v)
+
+        # Find rectangle outlined in color 1
+        border_color = 1
+        rect_top = rect_bot = rect_left = rect_right = None
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == border_color:
+                    if rect_top is None or r < rect_top:
+                        rect_top = r
+                    if rect_bot is None or r > rect_bot:
+                        rect_bot = r
+                    if rect_left is None or c < rect_left:
+                        rect_left = c
+                    if rect_right is None or c > rect_right:
+                        rect_right = c
+
+        if rect_top is None or not diag_colors:
+            return [row[:] for row in raw]
+
+        # Fill interior with concentric rings
+        t = rect_top + 1
+        b = rect_bot - 1
+        l = rect_left + 1
+        rr = rect_right - 1
+        ci = 0
+        while t <= b and l <= rr and ci < len(diag_colors):
+            color = diag_colors[ci]
+            for c in range(l, rr + 1):
+                output[t][c] = color
+                output[b][c] = color
+            for r in range(t, b + 1):
+                output[r][l] = color
+                output[r][rr] = color
+            t += 1
+            b -= 1
+            l += 1
+            rr -= 1
+            ci += 1
+
+        # If there's still interior and we ran out of colors, fill with last
+        while t <= b and l <= rr:
+            color = diag_colors[-1]
+            for c in range(l, rr + 1):
+                output[t][c] = color
+                output[b][c] = color
+            for r in range(t, b + 1):
+                output[r][l] = color
+                output[r][rr] = color
+            t += 1
+            b -= 1
+            l += 1
+            rr -= 1
 
         return output
 
