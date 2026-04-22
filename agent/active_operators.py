@@ -8486,9 +8486,9 @@ class GeneralizeOperator(Operator):
     @staticmethod
     def _stamp_fill_grid(raw_in):
         """Apply shape stamp fill: find 2-template, match 0-regions, fill.
-        A match is valid only if the shape's 0-cells don't connect to any
-        0-cells outside the shape (each cell's non-shape 4-neighbors must
-        be non-0 in the input)."""
+        For 1D shapes (single row/column), stamps only on the same row/col.
+        For 2D shapes, stamps anywhere. Uses isolation-score ordering with
+        progressive stamping to resolve overlapping positions."""
         H, W = len(raw_in), len(raw_in[0])
         template_cells = []
         for r in range(H):
@@ -8502,41 +8502,42 @@ class GeneralizeOperator(Operator):
         shape = frozenset((r - min_r, c - min_c) for r, c in template_cells)
         shape_h = max(r for r, c in shape) + 1
         shape_w = max(c for r, c in shape) + 1
-        # Check if template itself is "isolated" (cells don't leak to outside 0s)
-        # If the template isn't isolated, skip the isolation check
-        tmpl_set = set(template_cells)
-        tmpl_isolated = True
-        for tr, tc in template_cells:
-            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                nr, nc = tr + dr, tc + dc
-                if 0 <= nr < H and 0 <= nc < W:
-                    if (nr, nc) not in tmpl_set and raw_in[nr][nc] == 0:
-                        tmpl_isolated = False
-                        break
-            if not tmpl_isolated:
-                break
-        output = [row[:] for row in raw_in]
+        # 1D filter: if shape is a single row or column, constrain stamps
+        rows_used = set(r for r, c in shape)
+        cols_used = set(c for r, c in shape)
+        is_horiz = len(rows_used) == 1
+        is_vert = len(cols_used) == 1
+        tmpl_row = min_r if is_horiz else None
+        tmpl_col = min_c if is_vert else None
+        # Find all valid stamp positions
+        positions = []
         for r in range(H - shape_h + 1):
             for c in range(W - shape_w + 1):
                 cells = [(r + dr, c + dc) for dr, dc in shape]
-                # All shape cells must be 0
                 if not all(raw_in[cr][cc] == 0 for cr, cc in cells):
                     continue
-                # If template is isolated, require match to also be isolated
-                if tmpl_isolated:
-                    cell_set = set(cells)
-                    isolated = True
-                    for cr, cc in cells:
-                        for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
-                            nr, nc = cr + dr, cc + dc
-                            if 0 <= nr < H and 0 <= nc < W:
-                                if (nr, nc) not in cell_set and raw_in[nr][nc] == 0:
-                                    isolated = False
-                                    break
-                        if not isolated:
-                            break
-                    if not isolated:
-                        continue
+                if is_horiz and r != tmpl_row:
+                    continue
+                if is_vert and c != tmpl_col:
+                    continue
+                positions.append((r, c, cells))
+        # Sort by isolation score (external 0-neighbor count, ascending)
+        scored = []
+        for r, c, cells in positions:
+            cell_set = set(cells)
+            ext = set()
+            for cr, cc in cells:
+                for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    nr, nc = cr + dr, cc + dc
+                    if 0 <= nr < H and 0 <= nc < W:
+                        if (nr, nc) not in cell_set and raw_in[nr][nc] == 0:
+                            ext.add((nr, nc))
+            scored.append((len(ext), r, c, cells))
+        scored.sort(key=lambda x: (x[0], x[1], x[2]))
+        # Progressive stamping
+        output = [row[:] for row in raw_in]
+        for _, r, c, cells in scored:
+            if all(output[cr][cc] == 0 for cr, cc in cells):
                 for cr, cc in cells:
                     output[cr][cc] = 2
         return output

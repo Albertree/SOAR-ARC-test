@@ -1429,3 +1429,50 @@
 - Remaining INCORRECT: e5062a87 (complex marker-shape stamping, rule not yet identified)
 - Rules: 356 → 357 (+1 learned)
 - Stored rule hits: 77
+
+---
+## Learning Loop -- 2026-04-22 13:26
+
+- Split: training, Tasks: 80
+- Correct: 79 / 80 (98.8%)
+- Rules: 357 -> 358 (+1 learned)
+- Stored rule hits: 77
+- Time: 212s
+- Log: logs/learn_20260422_132306.log
+
+---
+## Learning Loop -- 2026-04-22 14:08
+
+- Split: training, Tasks: 80
+- Correct: 79 / 80 (98.8%)
+- Rules: 358 -> 359 (+1 learned)
+- Stored rule hits: 77
+- Time: 216s
+- Log: logs/learn_20260422_140441.log
+
+---
+## Session 31 -- 2026-04-22 14:39
+
+### Bug Fix: shape_stamp_fill (Strategy 65)
+- Rewrote `_stamp_fill_grid` algorithm to fix e5062a87:
+  1. **1D shape filter**: if template shape is a single row (or column), stamps
+     are restricted to the same row (or column). Prevents false positives where
+     unrelated 0-regions happen to match the shape geometry.
+  2. **Isolation-score ordering**: positions sorted by ascending count of external
+     0-neighbors (most "enclosed" first). Resolves overlapping stamp conflicts
+     by preferring the position with fewer leak points.
+  3. **Progressive stamping**: checks against evolving output grid so earlier
+     stamps block conflicting later positions.
+- Category: template replication / binary grid marker stamping (0/5/2 grids)
+- Solved: e5062a87
+
+### Learning Loop Results
+- Split: training, Tasks: 80
+- Correct: 80 / 80 (100.0%) — up from 79/80 (98.8%)
+- Solved (new): e5062a87 (shape_stamp_fill)
+- Rules: 359 -> 361 (+2 learned)
+- Stored rule hits: 77
+- Discovered: 3 new rules from pipeline
+- Time: 187s
+- Log: logs/learn_20260422_143647.log
+- Regression: 08ed6ac7 CORRECT
