@@ -184,3 +184,14 @@ and a 1-group/2-cell handler. Fixed: easy0012.
 - Time: 1s
 - Log: logs/learn_20260422_154223.log
 - Note: All 16 tasks CORRECT — no improvements needed this session
+
+---
+## Learning Loop -- 2026-04-22 15:42
+
+- Split: training, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 63 -> 67 (+4 learned)
+- Stored rule hits: 8
+- Time: 1s
+- Log: logs/learn_20260422_154247.log
+- Note: All 16 tasks CORRECT — no improvements needed this session
