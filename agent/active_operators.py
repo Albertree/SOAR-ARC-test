@@ -636,6 +636,22 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_frame_extract(patterns, wm)
 
+        # Strategy 81: marker shape extract (find shape containing marker 8, extract it)
+        if rule is None:
+            rule = self._try_marker_shape_extract(patterns, wm)
+
+        # Strategy 82: template placeholder stamp (stamp template onto placeholder blocks)
+        if rule is None:
+            rule = self._try_template_placeholder_stamp(patterns, wm)
+
+        # Strategy 83: unique quadrant extract (4 quadrants, extract the unique-color one)
+        if rule is None:
+            rule = self._try_unique_quadrant_extract(patterns, wm)
+
+        # Strategy 84: self-ref grid fill (grid of blocks, hole at block position)
+        if rule is None:
+            rule = self._try_self_ref_grid_fill(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -10352,6 +10368,439 @@ class GeneralizeOperator(Operator):
 
         return {"type": "frame_extract", "edge_color": edge_color}
 
+    # ---- strategy 81: marker shape extract ----------------------------------
+
+    def _try_marker_shape_extract(self, patterns, wm):
+        """
+        Detect: input has several colored shapes on a black (0) background.
+        Exactly one shape contains a marker pixel (color 8). Output is that
+        shape's bounding box with the marker replaced by the shape's own color.
+        Category: shape selection by marker / extraction.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        marker_color = 8
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            ri, ro = g0.raw, g1.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+
+            # Find marker pixel(s)
+            marker_cells = [(r, c) for r in range(H) for c in range(W)
+                            if ri[r][c] == marker_color]
+            if len(marker_cells) != 1:
+                return None
+            mr, mc = marker_cells[0]
+
+            # Find the shape that contains/touches the marker
+            # The shape is the connected component of non-zero, non-background
+            # cells around the marker (including adjacent non-zero cells)
+            # First find all non-zero cells
+            non_bg = set()
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] != 0:
+                        non_bg.add((r, c))
+
+            # BFS from marker to find its connected shape
+            visited = set()
+            queue = [(mr, mc)]
+            shape_cells = []
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in non_bg:
+                    continue
+                visited.add(p)
+                shape_cells.append(p)
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (p[0] + dr, p[1] + dc)
+                    if nb not in visited and nb in non_bg:
+                        queue.append(nb)
+
+            if not shape_cells:
+                return None
+
+            # Find shape color (most common non-marker color in shape)
+            color_counts = {}
+            for r, c in shape_cells:
+                v = ri[r][c]
+                if v != marker_color:
+                    color_counts[v] = color_counts.get(v, 0) + 1
+            if not color_counts:
+                return None
+            shape_color = max(color_counts, key=color_counts.get)
+
+            # Get bounding box of shape
+            min_r = min(r for r, c in shape_cells)
+            max_r = max(r for r, c in shape_cells)
+            min_c = min(c for r, c in shape_cells)
+            max_c = max(c for r, c in shape_cells)
+
+            bbox_h = max_r - min_r + 1
+            bbox_w = max_c - min_c + 1
+
+            if bbox_h != oH or bbox_w != oW:
+                return None
+
+            # Build expected output: crop bbox, replace marker with shape_color
+            expected = []
+            for r in range(min_r, max_r + 1):
+                row = []
+                for c in range(min_c, max_c + 1):
+                    v = ri[r][c]
+                    if v == marker_color:
+                        v = shape_color
+                    row.append(v)
+                expected.append(row)
+
+            if expected != ro:
+                return None
+
+        return {"type": "marker_shape_extract", "marker_color": marker_color}
+
+    # ---- strategy 82: template placeholder stamp ----------------------------
+
+    def _try_template_placeholder_stamp(self, patterns, wm):
+        """
+        Detect: input has one multi-color template shape and one or more
+        placeholder blocks (all same color, typically 5). Each placeholder
+        has the same dimensions as the template. Output replaces each
+        placeholder with a copy of the template.
+        Category: pattern replication / template stamping.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        placeholder_color = None
+        template_data = None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            ri, ro = g0.raw, g1.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+
+            if H != oH or W != oW:
+                return None
+
+            # Find connected components of non-zero cells
+            non_bg = set()
+            for r in range(H):
+                for c in range(W):
+                    if ri[r][c] != 0:
+                        non_bg.add((r, c))
+
+            visited = set()
+            components = []
+            for pos in non_bg:
+                if pos in visited:
+                    continue
+                queue = [pos]
+                comp = []
+                while queue:
+                    p = queue.pop(0)
+                    if p in visited or p not in non_bg:
+                        continue
+                    visited.add(p)
+                    comp.append(p)
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nb = (p[0] + dr, p[1] + dc)
+                        if nb not in visited and nb in non_bg:
+                            queue.append(nb)
+                components.append(comp)
+
+            if len(components) < 2:
+                return None
+
+            # Classify components: uniform (all same color) vs multi-color
+            uniform_comps = []
+            multi_comps = []
+            for comp in components:
+                colors = set(ri[r][c] for r, c in comp)
+                if len(colors) == 1:
+                    uniform_comps.append((comp, list(colors)[0]))
+                else:
+                    multi_comps.append(comp)
+
+            # Need exactly 1 multi-color template and >=1 uniform placeholders
+            if len(multi_comps) != 1 or len(uniform_comps) < 1:
+                return None
+
+            template_comp = multi_comps[0]
+
+            # Check all uniform comps have same color
+            pc = uniform_comps[0][1]
+            if not all(c == pc for _, c in uniform_comps):
+                return None
+
+            if placeholder_color is None:
+                placeholder_color = pc
+            elif placeholder_color != pc:
+                return None
+
+            # Get template bbox
+            t_min_r = min(r for r, c in template_comp)
+            t_max_r = max(r for r, c in template_comp)
+            t_min_c = min(c for r, c in template_comp)
+            t_max_c = max(c for r, c in template_comp)
+            t_h = t_max_r - t_min_r + 1
+            t_w = t_max_c - t_min_c + 1
+
+            # Extract template pattern (relative to bbox, bg = 0)
+            tpl = [[0] * t_w for _ in range(t_h)]
+            for r, c in template_comp:
+                tpl[r - t_min_r][c - t_min_c] = ri[r][c]
+
+            template_data = tpl  # template shape varies per example
+
+            # Verify each placeholder has matching bbox dimensions
+            for comp, _ in uniform_comps:
+                p_min_r = min(r for r, c in comp)
+                p_max_r = max(r for r, c in comp)
+                p_min_c = min(c for r, c in comp)
+                p_max_c = max(c for r, c in comp)
+                p_h = p_max_r - p_min_r + 1
+                p_w = p_max_c - p_min_c + 1
+                if p_h != t_h or p_w != t_w:
+                    return None
+
+            # Verify output: template unchanged, placeholders replaced
+            for comp, _ in uniform_comps:
+                p_min_r = min(r for r, c in comp)
+                p_min_c = min(c for r, c in comp)
+                for dr in range(t_h):
+                    for dc in range(t_w):
+                        expected = tpl[dr][dc]
+                        actual = ro[p_min_r + dr][p_min_c + dc]
+                        if expected != actual:
+                            return None
+
+        return {
+            "type": "template_placeholder_stamp",
+            "placeholder_color": placeholder_color,
+        }
+
+    # ---- strategy 83: unique quadrant extract --------------------------------
+
+    def _try_unique_quadrant_extract(self, patterns, wm):
+        """
+        Detect: grid divided into 4 quadrants by zero-separator rows/columns.
+        Three quadrants use the same non-zero main color, one uses a different
+        color. Output = the unique-color quadrant extracted.
+        Category: quadrant selection / region extraction by color uniqueness.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            ri, ro = g0.raw, g1.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+
+            # Find separator rows (all zeros)
+            sep_rows = [r for r in range(H) if all(ri[r][c] == 0 for c in range(W))]
+            # Find separator cols (all zeros)
+            sep_cols = [c for c in range(W) if all(ri[r][c] == 0 for r in range(H))]
+
+            if not sep_rows or not sep_cols:
+                return None
+
+            # Find contiguous blocks of separator rows
+            row_bands = self._find_separator_bands(sep_rows, H)
+            col_bands = self._find_separator_bands(sep_cols, W)
+
+            if len(row_bands) != 1 or len(col_bands) != 1:
+                return None
+
+            # Define 4 quadrants
+            r_sep_start, r_sep_end = row_bands[0]
+            c_sep_start, c_sep_end = col_bands[0]
+
+            quadrants = [
+                (0, r_sep_start - 1, 0, c_sep_start - 1),               # TL
+                (0, r_sep_start - 1, c_sep_end + 1, W - 1),             # TR
+                (r_sep_end + 1, H - 1, 0, c_sep_start - 1),             # BL
+                (r_sep_end + 1, H - 1, c_sep_end + 1, W - 1),           # BR
+            ]
+
+            # Check each quadrant is valid
+            valid_quads = []
+            for r0, r1, c0, c1 in quadrants:
+                if r0 > r1 or c0 > c1:
+                    return None
+                valid_quads.append((r0, r1, c0, c1))
+
+            # Determine dominant non-zero color for each quadrant
+            quad_colors = []
+            for r0, r1, c0, c1 in valid_quads:
+                color_counts = {}
+                for r in range(r0, r1 + 1):
+                    for c in range(c0, c1 + 1):
+                        v = ri[r][c]
+                        if v != 0:
+                            color_counts[v] = color_counts.get(v, 0) + 1
+                if not color_counts:
+                    return None
+                dominant = max(color_counts, key=color_counts.get)
+                quad_colors.append(dominant)
+
+            # Find the unique color (appears exactly once among 4 quadrants)
+            from collections import Counter
+            cc = Counter(quad_colors)
+            unique_colors = [c for c, n in cc.items() if n == 1]
+            if len(unique_colors) != 1:
+                return None
+
+            unique_idx = quad_colors.index(unique_colors[0])
+            r0, r1, c0, c1 = valid_quads[unique_idx]
+
+            # Verify output matches this quadrant
+            quad_h = r1 - r0 + 1
+            quad_w = c1 - c0 + 1
+            if quad_h != oH or quad_w != oW:
+                return None
+
+            extracted = [ri[r][c0:c1 + 1] for r in range(r0, r1 + 1)]
+            if extracted != ro:
+                return None
+
+        return {"type": "unique_quadrant_extract"}
+
+    @staticmethod
+    def _find_separator_bands(sep_indices, total):
+        """Group consecutive separator indices into bands.
+        Returns list of (start, end) tuples."""
+        if not sep_indices:
+            return []
+        bands = []
+        start = sep_indices[0]
+        prev = sep_indices[0]
+        for idx in sep_indices[1:]:
+            if idx == prev + 1:
+                prev = idx
+            else:
+                bands.append((start, prev))
+                start = idx
+                prev = idx
+        bands.append((start, prev))
+        return bands
+
+    # ---- strategy 84: self-referential grid fill ----------------------------
+
+    def _try_self_ref_grid_fill(self, patterns, wm):
+        """
+        Detect: grid divided into NxN blocks by zero-separator rows/columns.
+        Each block is filled with a foreground color except for a single 0-cell
+        whose position within the block equals the block's position in the grid.
+        Some blocks may be empty (all 0) in input; output fills them.
+        Category: self-referential positional grid / pattern completion.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            ri, ro = g0.raw, g1.raw
+            H, W = len(ri), len(ri[0])
+            oH, oW = len(ro), len(ro[0])
+            if H != oH or W != oW:
+                return None
+
+            # Find separator rows and cols
+            sep_rows = [r for r in range(H) if all(ri[r][c] == 0 for c in range(W))
+                        and all(ro[r][c] == 0 for c in range(W))]
+            sep_cols = [c for c in range(W) if all(ri[r][c] == 0 for r in range(H))
+                        and all(ro[r][c] == 0 for r in range(H))]
+
+            if not sep_rows and not sep_cols:
+                # Could be no separators (e.g., 2×2 grid with no separator lines)
+                # For now require at least one kind
+                pass
+
+            # Build row and col groups (non-separator bands)
+            sep_r_set = set(sep_rows)
+            sep_c_set = set(sep_cols)
+
+            row_groups = []
+            r = 0
+            while r < H:
+                if r in sep_r_set:
+                    r += 1
+                    continue
+                start = r
+                while r < H and r not in sep_r_set:
+                    r += 1
+                row_groups.append((start, r - 1))
+
+            col_groups = []
+            c = 0
+            while c < W:
+                if c in sep_c_set:
+                    c += 1
+                    continue
+                start = c
+                while c < W and c not in sep_c_set:
+                    c += 1
+                col_groups.append((start, c - 1))
+
+            n_rows = len(row_groups)
+            n_cols = len(col_groups)
+            if n_rows < 2 or n_cols < 2 or n_rows != n_cols:
+                return None
+
+            # All blocks should have same dimensions
+            block_h = row_groups[0][1] - row_groups[0][0] + 1
+            block_w = col_groups[0][1] - col_groups[0][0] + 1
+            if block_h != n_rows or block_w != n_cols:
+                return None
+            for rg in row_groups:
+                if rg[1] - rg[0] + 1 != block_h:
+                    return None
+            for cg in col_groups:
+                if cg[1] - cg[0] + 1 != block_w:
+                    return None
+
+            # Determine foreground color from output (most common non-zero)
+            fg_counts = {}
+            for r in range(H):
+                for c in range(W):
+                    v = ro[r][c]
+                    if v != 0 and r not in sep_r_set and c not in sep_c_set:
+                        fg_counts[v] = fg_counts.get(v, 0) + 1
+            if not fg_counts:
+                return None
+            fg_color = max(fg_counts, key=fg_counts.get)
+
+            # Verify each block in output: filled with fg, hole at (bi, bj)
+            for bi in range(n_rows):
+                for bj in range(n_cols):
+                    rs, re = row_groups[bi]
+                    cs, ce = col_groups[bj]
+                    for lr in range(block_h):
+                        for lc in range(block_w):
+                            expected = 0 if (lr == bi and lc == bj) else fg_color
+                            actual = ro[rs + lr][cs + lc]
+                            if actual != expected:
+                                return None
+
+        return {"type": "self_ref_grid_fill"}
+
 
 class DescendOperator(Operator):
     """
@@ -10583,6 +11032,14 @@ class PredictOperator(Operator):
             return self._apply_crop_rect_flip(rule, input_grid)
         if rule_type == "frame_extract":
             return self._apply_frame_extract(rule, input_grid)
+        if rule_type == "marker_shape_extract":
+            return self._apply_marker_shape_extract(rule, input_grid)
+        if rule_type == "template_placeholder_stamp":
+            return self._apply_template_placeholder_stamp(rule, input_grid)
+        if rule_type == "unique_quadrant_extract":
+            return self._apply_unique_quadrant_extract(rule, input_grid)
+        if rule_type == "self_ref_grid_fill":
+            return self._apply_self_ref_grid_fill(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -13811,6 +14268,282 @@ class PredictOperator(Operator):
 
         return [raw[r][frame_min_c:frame_max_c + 1]
                 for r in range(frame_min_r, frame_max_r + 1)]
+
+    def _apply_marker_shape_extract(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        marker_color = rule["marker_color"]
+
+        # Find marker
+        marker_cells = [(r, c) for r in range(H) for c in range(W)
+                        if raw[r][c] == marker_color]
+        if not marker_cells:
+            return [row[:] for row in raw]
+        mr, mc = marker_cells[0]
+
+        # BFS to find connected shape
+        non_bg = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0:
+                    non_bg.add((r, c))
+
+        visited = set()
+        queue = [(mr, mc)]
+        shape_cells = []
+        while queue:
+            p = queue.pop(0)
+            if p in visited or p not in non_bg:
+                continue
+            visited.add(p)
+            shape_cells.append(p)
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nb = (p[0] + dr, p[1] + dc)
+                if nb not in visited and nb in non_bg:
+                    queue.append(nb)
+
+        if not shape_cells:
+            return [row[:] for row in raw]
+
+        # Determine shape color
+        color_counts = {}
+        for r, c in shape_cells:
+            v = raw[r][c]
+            if v != marker_color:
+                color_counts[v] = color_counts.get(v, 0) + 1
+        shape_color = max(color_counts, key=color_counts.get) if color_counts else 0
+
+        # Extract bounding box, replace marker with shape color
+        min_r = min(r for r, c in shape_cells)
+        max_r = max(r for r, c in shape_cells)
+        min_c = min(c for r, c in shape_cells)
+        max_c = max(c for r, c in shape_cells)
+
+        output = []
+        for r in range(min_r, max_r + 1):
+            row = []
+            for c in range(min_c, max_c + 1):
+                v = raw[r][c]
+                if v == marker_color:
+                    v = shape_color
+                row.append(v)
+            output.append(row)
+        return output
+
+    def _apply_template_placeholder_stamp(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+        placeholder_color = rule["placeholder_color"]
+
+        # Find connected components of non-zero cells
+        non_bg = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0:
+                    non_bg.add((r, c))
+
+        visited = set()
+        components = []
+        for pos in sorted(non_bg):
+            if pos in visited:
+                continue
+            queue = [pos]
+            comp = []
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in non_bg:
+                    continue
+                visited.add(p)
+                comp.append(p)
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (p[0] + dr, p[1] + dc)
+                    if nb not in visited and nb in non_bg:
+                        queue.append(nb)
+            components.append(comp)
+
+        # Classify components
+        template_comp = None
+        placeholder_comps = []
+        for comp in components:
+            colors = set(raw[r][c] for r, c in comp)
+            if len(colors) == 1 and list(colors)[0] == placeholder_color:
+                placeholder_comps.append(comp)
+            elif len(colors) > 1 or (len(colors) == 1 and list(colors)[0] != placeholder_color):
+                if template_comp is None:
+                    template_comp = comp
+                # Multiple non-placeholder comps: pick the multi-color one
+                elif len(colors) > 1:
+                    template_comp = comp
+
+        if template_comp is None:
+            return [row[:] for row in raw]
+
+        # Extract template
+        t_min_r = min(r for r, c in template_comp)
+        t_max_r = max(r for r, c in template_comp)
+        t_min_c = min(c for r, c in template_comp)
+        t_max_c = max(c for r, c in template_comp)
+        t_h = t_max_r - t_min_r + 1
+        t_w = t_max_c - t_min_c + 1
+
+        tpl = [[0] * t_w for _ in range(t_h)]
+        for r, c in template_comp:
+            tpl[r - t_min_r][c - t_min_c] = raw[r][c]
+
+        # Build output: copy input, replace each placeholder with template
+        output = [row[:] for row in raw]
+        for comp in placeholder_comps:
+            p_min_r = min(r for r, c in comp)
+            p_min_c = min(c for r, c in comp)
+            for dr in range(t_h):
+                for dc in range(t_w):
+                    if p_min_r + dr < H and p_min_c + dc < W:
+                        output[p_min_r + dr][p_min_c + dc] = tpl[dr][dc]
+
+        return output
+
+    def _apply_unique_quadrant_extract(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Find separator rows and cols
+        sep_rows = [r for r in range(H) if all(raw[r][c] == 0 for c in range(W))]
+        sep_cols = [c for c in range(W) if all(raw[r][c] == 0 for r in range(H))]
+
+        row_bands = GeneralizeOperator._find_separator_bands(sep_rows, H)
+        col_bands = GeneralizeOperator._find_separator_bands(sep_cols, W)
+
+        if len(row_bands) != 1 or len(col_bands) != 1:
+            return [row[:] for row in raw]
+
+        r_sep_start, r_sep_end = row_bands[0]
+        c_sep_start, c_sep_end = col_bands[0]
+
+        quadrants = [
+            (0, r_sep_start - 1, 0, c_sep_start - 1),
+            (0, r_sep_start - 1, c_sep_end + 1, W - 1),
+            (r_sep_end + 1, H - 1, 0, c_sep_start - 1),
+            (r_sep_end + 1, H - 1, c_sep_end + 1, W - 1),
+        ]
+
+        # Find dominant color per quadrant
+        quad_colors = []
+        for r0, r1, c0, c1 in quadrants:
+            color_counts = {}
+            for r in range(r0, r1 + 1):
+                for c in range(c0, c1 + 1):
+                    v = raw[r][c]
+                    if v != 0:
+                        color_counts[v] = color_counts.get(v, 0) + 1
+            dominant = max(color_counts, key=color_counts.get) if color_counts else 0
+            quad_colors.append(dominant)
+
+        # Find unique color
+        from collections import Counter
+        cc = Counter(quad_colors)
+        unique_colors = [c for c, n in cc.items() if n == 1]
+        if not unique_colors:
+            return [row[:] for row in raw]
+
+        unique_idx = quad_colors.index(unique_colors[0])
+        r0, r1, c0, c1 = quadrants[unique_idx]
+
+        return [raw[r][c0:c1 + 1] for r in range(r0, r1 + 1)]
+
+    def _apply_self_ref_grid_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        H, W = len(raw), len(raw[0])
+
+        # Find separator rows and cols (all zero in input)
+        sep_r_set = set()
+        sep_c_set = set()
+        for r in range(H):
+            if all(raw[r][c] == 0 for c in range(W)):
+                sep_r_set.add(r)
+        for c in range(W):
+            if all(raw[r][c] == 0 for r in range(H)):
+                sep_c_set.add(c)
+
+        # Build row and col groups
+        row_groups = []
+        r = 0
+        while r < H:
+            if r in sep_r_set:
+                r += 1
+                continue
+            start = r
+            while r < H and r not in sep_r_set:
+                r += 1
+            row_groups.append((start, r - 1))
+
+        col_groups = []
+        c = 0
+        while c < W:
+            if c in sep_c_set:
+                c += 1
+                continue
+            start = c
+            while c < W and c not in sep_c_set:
+                c += 1
+            col_groups.append((start, c - 1))
+
+        n = len(row_groups)
+        if n < 2 or n != len(col_groups):
+            return [row[:] for row in raw]
+
+        block_h = row_groups[0][1] - row_groups[0][0] + 1
+        block_w = col_groups[0][1] - col_groups[0][0] + 1
+
+        # Validate block dimensions match grid count
+        if block_h != n or block_w != n:
+            return [row[:] for row in raw]
+
+        # Validate all blocks have consistent dimensions
+        for rg in row_groups:
+            if rg[1] - rg[0] + 1 != block_h:
+                return [row[:] for row in raw]
+        for cg in col_groups:
+            if cg[1] - cg[0] + 1 != block_w:
+                return [row[:] for row in raw]
+
+        # Find foreground color from non-empty blocks
+        fg_color = None
+        for bi in range(n):
+            for bj in range(n):
+                rs = row_groups[bi][0]
+                cs = col_groups[bj][0]
+                for lr in range(block_h):
+                    for lc in range(block_w):
+                        if rs + lr < H and cs + lc < W:
+                            v = raw[rs + lr][cs + lc]
+                            if v != 0:
+                                fg_color = v
+                                break
+                    if fg_color:
+                        break
+                if fg_color:
+                    break
+            if fg_color:
+                break
+
+        if fg_color is None:
+            return [row[:] for row in raw]
+
+        # Build output: copy separators, fill blocks
+        output = [row[:] for row in raw]
+        for bi in range(n):
+            for bj in range(n):
+                rs = row_groups[bi][0]
+                cs = col_groups[bj][0]
+                for lr in range(block_h):
+                    for lc in range(block_w):
+                        if rs + lr < H and cs + lc < W:
+                            if lr == bi and lc == bj:
+                                output[rs + lr][cs + lc] = 0
+                            else:
+                                output[rs + lr][cs + lc] = fg_color
+
+        return output
 
 
 # ======================================================================

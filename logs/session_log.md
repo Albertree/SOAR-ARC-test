@@ -1602,3 +1602,73 @@
 - Stored rule hits: 88
 - Time: 2477s
 - Log: logs/learn_20260422_170554.log
+
+---
+## Learning Loop -- 2026-04-22 18:20
+
+- Split: training, Tasks: 160
+- Correct: 90 / 160 (56.2%)
+- Rules: 381 -> 382 (+1 learned)
+- Stored rule hits: 88
+- Time: 1999s
+- Log: logs/learn_20260422_174729.log
+
+---
+## Learning Loop -- 2026-04-22 19:17
+
+- Split: training, Tasks: 160
+- Correct: 93 / 160 (58.1%)
+- Rules: 382 -> 388 (+6 learned)
+- Stored rule hits: 88
+- Time: 2738s
+- Log: logs/learn_20260422_183129.log
+
+---
+## Learning Loop -- 2026-04-22 19:30
+
+- Split: training, Tasks: 160
+- Correct: 93 / 160 (58.1%)
+- Rules: 386 -> 388 (+2 learned)
+- Stored rule hits: 90
+- Time: 2888s
+- Log: logs/learn_20260422_184243.log
+
+---
+## Learning Loop -- 2026-04-22 19:34
+
+- Split: training, Tasks: 160
+- Correct: 93 / 160 (58.1%)
+- Rules: 387 -> 388 (+1 learned)
+- Stored rule hits: 90
+- Time: 2449s
+- Log: logs/learn_20260422_185356.log
+
+---
+## Learning Loop -- 2026-04-22 20:20
+
+- Split: training, Tasks: 160
+- Correct: 94 / 160 (58.8%)
+- Rules: 388 -> 390 (+2 learned)
+- Stored rule hits: 90
+- Time: 2077s
+- Log: logs/learn_20260422_194615.log
+
+---
+## Session 34 -- 2026-04-22 21:06
+
+### Strategies Added
+1. **marker_shape_extract** — Multiple colored shapes on black background; one has a marker pixel (color 8). Extract that shape's bounding box, replace marker with shape color. (solves 5117e062)
+2. **template_placeholder_stamp** — One multi-color template shape + placeholder blocks (all same color, e.g. 5). Replace each placeholder with a copy of the template. (solves e76a88a6)
+3. **unique_quadrant_extract** — Grid divided into 4 quadrants by zero-separators. Three quadrants share same color, one is unique. Extract the unique-color quadrant. (solves 0b148d64)
+4. **self_ref_grid_fill** — Grid of NxN blocks separated by zero lines. Each block is filled with foreground color except one hole at position matching the block's grid coordinates. Fill missing blocks. (solves 9ddd00f0)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 94 / 160 (58.8%) — up from 90/160 (56.2%) in session 33
+- Newly solved: 5117e062 (marker_shape_extract), e76a88a6 (template_placeholder_stamp), 0b148d64 (unique_quadrant_extract), 9ddd00f0 (self_ref_grid_fill)
+- Rules: 390 -> 391 (+1 learned)
+- Stored rule hits: 91
+- Errors: 0
+- Time: 2067s
+- Log: logs/learn_20260422_203159.log
+- Regression: 08ed6ac7 CORRECT
