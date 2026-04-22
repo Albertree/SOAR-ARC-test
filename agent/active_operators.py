@@ -607,6 +607,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_shape_jigsaw_assemble(patterns, wm)
 
+        # Strategy 74: frame hole recolor (1-frame holes classify 5-shapes → recolor to 2)
+        if rule is None:
+            rule = self._try_frame_hole_recolor(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -9328,6 +9332,410 @@ class GeneralizeOperator(Operator):
 
         return None
 
+    # ---- strategy 73: stamp shape match ------------------------------------
+
+    def _try_stamp_shape_match(self, patterns, wm):
+        """
+        Detect: grid of two main colors (bg_color and fg_color) plus a small
+        connected component of a third marker color. The marker shape is
+        "stamped" onto every location where bg_color cells form the same shape.
+        Category: shape-template stamping / pattern replication.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if not examples:
+            return None
+
+        # Validate on first example, then verify on all
+        raw0_in = examples[0].input_grid.raw
+        raw0_out = examples[0].output_grid.raw
+        H, W = len(raw0_in), len(raw0_in[0])
+
+        # Find all colors in input
+        colors_in = set()
+        for r in range(H):
+            for c in range(W):
+                colors_in.add(raw0_in[r][c])
+
+        if len(colors_in) != 3:
+            return None
+
+        # Find marker color: appears in input, and some cells change to it in output
+        # Marker color cells in input are kept, and new marker cells appear in output
+        marker_color = None
+        bg_color = None
+        fg_color = None
+
+        # Count occurrences
+        color_counts = {}
+        for r in range(H):
+            for c in range(W):
+                v = raw0_in[r][c]
+                color_counts[v] = color_counts.get(v, 0) + 1
+
+        # The marker is the rarest non-bg color, and bg is the one that gets replaced
+        sorted_colors = sorted(color_counts.items(), key=lambda x: x[1])
+        # Expect: marker (least), then two others
+        if len(sorted_colors) != 3:
+            return None
+
+        candidate_marker = sorted_colors[0][0]
+
+        # Check output has same dimensions and marker cells appear in new places
+        if len(raw0_out) != H or len(raw0_out[0]) != W:
+            return None
+
+        # Find which color gets replaced by marker in output
+        replaced_color = None
+        for r in range(H):
+            for c in range(W):
+                if raw0_in[r][c] != raw0_out[r][c]:
+                    if raw0_out[r][c] == candidate_marker:
+                        replaced_color = raw0_in[r][c]
+                        break
+            if replaced_color is not None:
+                break
+
+        if replaced_color is None:
+            return None
+
+        marker_color = candidate_marker
+        bg_color = replaced_color
+        fg_color = None
+        for clr in colors_in:
+            if clr != marker_color and clr != bg_color:
+                fg_color = clr
+                break
+
+        if fg_color is None:
+            return None
+
+        # Verify all changes are bg_color -> marker_color
+        for r in range(H):
+            for c in range(W):
+                if raw0_in[r][c] != raw0_out[r][c]:
+                    if raw0_in[r][c] != bg_color or raw0_out[r][c] != marker_color:
+                        return None
+
+        # Extract marker shape (connected component of marker_color)
+        marker_cells = set()
+        for r in range(H):
+            for c in range(W):
+                if raw0_in[r][c] == marker_color:
+                    marker_cells.add((r, c))
+
+        if not marker_cells or len(marker_cells) < 2:
+            return None
+
+        # Get relative offsets of the marker shape (need not be 4-connected)
+        marker_list = sorted(marker_cells)
+        origin_r, origin_c = marker_list[0]
+        shape_offsets = tuple(sorted((r - origin_r, c - origin_c) for r, c in marker_list))
+
+        # Now apply the rule to input and check it produces correct output
+        def apply_stamp(raw_grid):
+            h = len(raw_grid)
+            w = len(raw_grid[0])
+            out = [row[:] for row in raw_grid]
+            # Find marker cells in this grid
+            mc = set()
+            for rr in range(h):
+                for cc in range(w):
+                    if raw_grid[rr][cc] == marker_color:
+                        mc.add((rr, cc))
+            # Get shape offsets from this grid's marker
+            mc_sorted = sorted(mc)
+            if not mc_sorted:
+                return out
+            or_r, or_c = mc_sorted[0]
+            s_off = tuple(sorted((rr - or_r, cc - or_c) for rr, cc in mc_sorted))
+            if s_off != shape_offsets:
+                return None  # Shape mismatch
+            # Scan for all placements on bg_color cells
+            for r in range(h):
+                for c in range(w):
+                    fits = True
+                    for dr, dc in shape_offsets:
+                        nr, nc = r + dr, c + dc
+                        if nr < 0 or nr >= h or nc < 0 or nc >= w:
+                            fits = False
+                            break
+                        if raw_grid[nr][nc] != bg_color:
+                            fits = False
+                            break
+                    if fits:
+                        for dr, dc in shape_offsets:
+                            out[r + dr][c + dc] = marker_color
+            return out
+
+        # Verify on all examples
+        for pair in examples:
+            inp = pair.input_grid.raw
+            exp = pair.output_grid.raw
+            got = apply_stamp(inp)
+            if got is None or got != exp:
+                return None
+
+        return {
+            "type": "stamp_shape_match",
+            "marker_color": marker_color,
+            "bg_color": bg_color,
+            "shape_offsets": [list(o) for o in shape_offsets],
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _get_connected_components(cells):
+        """Return list of sets, each a 4-connected component of (r,c) positions."""
+        remaining = set(cells)
+        components = []
+        while remaining:
+            seed = next(iter(remaining))
+            component = set()
+            stack = [seed]
+            while stack:
+                pos = stack.pop()
+                if pos in component:
+                    continue
+                component.add(pos)
+                remaining.discard(pos)
+                r, c = pos
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in remaining:
+                        stack.append(nb)
+            components.append(component)
+        return components
+
+    # ---- strategy 74: frame hole recolor -----------------------------------
+
+    def _try_frame_hole_recolor(self, patterns, wm):
+        """
+        Detect: a frame of 1-cells with rectangular enclosed holes at top.
+        Below: scattered shapes of 5-cells. Shapes whose columns overlap with
+        a rectangle are checked against THAT rectangle's hole shape; shapes
+        with no overlap are checked against ALL holes. If a shape contains
+        the hole as a sub-pattern → recolored to 2. Otherwise stays 5.
+        Category: frame-based shape classification / template matching.
+        """
+        task = wm.task
+        if task is None:
+            return None
+        examples = task.example_pairs
+        if not examples:
+            return None
+
+        # Quick structural check on first example
+        raw_in = examples[0].input_grid.raw
+        raw_out = examples[0].output_grid.raw
+        H, W = len(raw_in), len(raw_in[0])
+
+        # Must have colors 0, 1, 5 in input and 0, 1, 2, 5 in output
+        colors_in = set()
+        colors_out = set()
+        for r in range(H):
+            for c in range(W):
+                colors_in.add(raw_in[r][c])
+                colors_out.add(raw_out[r][c])
+
+        if 1 not in colors_in or 5 not in colors_in:
+            return None
+        if 2 not in colors_out:
+            return None
+
+        # All changes must be 5 → 2
+        for r in range(H):
+            for c in range(W):
+                if raw_in[r][c] != raw_out[r][c]:
+                    if raw_in[r][c] != 5 or raw_out[r][c] != 2:
+                        return None
+
+        def solve_frame_hole(raw):
+            """Apply the frame-hole-recolor rule to a grid. Returns predicted output."""
+            h = len(raw)
+            w = len(raw[0])
+
+            # Find frame (1-cells) rows
+            frame_rows = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw[r][c] == 1:
+                        frame_rows.add(r)
+            if not frame_rows:
+                return None
+
+            frame_bottom = max(frame_rows)
+
+            # Find all 1-cells
+            one_cells = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw[r][c] == 1:
+                        one_cells.add((r, c))
+
+            # Find enclosed 0-cells (holes) within the frame region
+            # These are 0-cells in frame rows bounded by 1-cells
+            frame_top = min(frame_rows)
+
+            # Find rectangular holes: 0-cells in frame region enclosed by 1-cells
+            # Use flood-fill from grid border to find exterior 0-cells
+            exterior = set()
+            border_seeds = []
+            for r in range(h):
+                for c in range(w):
+                    if raw[r][c] == 0 and (r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                        border_seeds.append((r, c))
+
+            stack = list(border_seeds)
+            visited = set()
+            while stack:
+                pos = stack.pop()
+                if pos in visited:
+                    continue
+                visited.add(pos)
+                r, c = pos
+                if raw[r][c] != 0:
+                    continue
+                exterior.add(pos)
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if 0 <= nr < h and 0 <= nc < w and (nr, nc) not in visited:
+                        stack.append((nr, nc))
+
+            # Interior 0-cells = 0-cells in frame rows that are NOT exterior
+            # But holes may also connect downward through the frame opening
+            # So instead: find 0-cells within frame rows bounded by 1-walls
+            hole_cells = set()
+            for r in range(frame_top, frame_bottom + 1):
+                for c in range(w):
+                    if raw[r][c] == 0:
+                        # Check if bounded by 1-cells on left and right in same row
+                        has_left = any(raw[r][lc] == 1 for lc in range(c))
+                        has_right = any(raw[r][rc] == 1 for rc in range(c + 1, w))
+                        # Check bounded above (in some row)
+                        has_above = any(raw[ar][c] == 1 for ar in range(frame_top, r))
+                        if has_left and has_right and has_above:
+                            hole_cells.add((r, c))
+
+            if not hole_cells:
+                return None
+
+            # Group hole cells into connected components → each is a "rectangle hole"
+            hole_ccs = GeneralizeOperator._get_connected_components(hole_cells)
+
+            # For each hole CC, get its column range, wall range, and shape
+            rectangles = []
+            for hcc in hole_ccs:
+                cols = set(c for _, c in hcc)
+                min_r = min(r for r, _ in hcc)
+                min_c = min(c for _, c in hcc)
+                shape = frozenset((r - min_r, c - min_c) for r, c in hcc)
+                hole_col_range = (min(cols), max(cols))
+                # Wall range: hole cols ± 1
+                wall_col_range = (min(cols) - 1, max(cols) + 1)
+                hole_width = max(cols) - min(cols) + 1
+                rectangles.append({
+                    "hole_col_range": hole_col_range,
+                    "wall_col_range": wall_col_range,
+                    "hole_width": hole_width,
+                    "shape": shape,
+                })
+
+            if not rectangles:
+                return None
+
+            # Find 5-groups below the frame
+            five_cells = set()
+            for r in range(frame_bottom + 1, h):
+                for c in range(w):
+                    if raw[r][c] == 5:
+                        five_cells.add((r, c))
+
+            if not five_cells:
+                return None
+
+            five_groups = GeneralizeOperator._get_connected_components(five_cells)
+
+            # For each 5-group, determine if it should be recolored
+            out = [row[:] for row in raw]
+            for group in five_groups:
+                group_cols = set(c for _, c in group)
+                group_width = max(group_cols) - min(group_cols) + 1
+                min_r = min(r for r, _ in group)
+                min_c = min(c for _, c in group)
+                group_shape = frozenset((r - min_r, c - min_c) for r, c in group)
+
+                # Check if group is entirely within any rectangle's wall range
+                enclosing_rect = None
+                for rect in rectangles:
+                    wmin, wmax = rect["wall_col_range"]
+                    if all(wmin <= c <= wmax for c in group_cols):
+                        enclosing_rect = rect
+                        break
+
+                should_recolor = False
+                if enclosing_rect is not None:
+                    # Group is within a rectangle — check width match + containment
+                    if group_width == enclosing_rect["hole_width"]:
+                        if GeneralizeOperator._shape_contains_subshape(
+                            group_shape, enclosing_rect["shape"]
+                        ):
+                            should_recolor = True
+                else:
+                    # Group outside all rectangles — check containment vs any hole
+                    for rect in rectangles:
+                        if GeneralizeOperator._shape_contains_subshape(
+                            group_shape, rect["shape"]
+                        ):
+                            should_recolor = True
+                            break
+
+                if should_recolor:
+                    for r, c in group:
+                        out[r][c] = 2
+
+            return out
+
+        # Verify on all examples
+        for pair in examples:
+            inp = pair.input_grid.raw
+            exp = pair.output_grid.raw
+            got = solve_frame_hole(inp)
+            if got is None or got != exp:
+                return None
+
+        return {
+            "type": "frame_hole_recolor",
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _shape_contains_subshape(big_shape, small_shape):
+        """Check if big_shape contains small_shape as a translated sub-pattern."""
+        if len(small_shape) > len(big_shape):
+            return False
+        if not small_shape:
+            return True
+        # Normalize small_shape
+        sm_list = sorted(small_shape)
+        sm_origin = sm_list[0]
+        sm_norm = frozenset((r - sm_origin[0], c - sm_origin[1]) for r, c in sm_list)
+
+        # Try all possible translations: offset each cell in big_shape as origin
+        big_list = sorted(big_shape)
+        for br, bc in big_list:
+            # If we place sm_norm origin at (br, bc), check all sm cells are in big
+            all_in = True
+            for dr, dc in sm_norm:
+                if (br + dr, bc + dc) not in big_shape:
+                    all_in = False
+                    break
+            if all_in:
+                return True
+        return False
+
 
 class DescendOperator(Operator):
     """
@@ -9543,6 +9951,10 @@ class PredictOperator(Operator):
             return self._apply_stamp_tile_toward_bar(rule, input_grid)
         if rule_type == "shape_jigsaw_assemble":
             return self._apply_shape_jigsaw_assemble(rule, input_grid)
+        if rule_type == "stamp_shape_match":
+            return self._apply_stamp_shape_match(rule, input_grid)
+        if rule_type == "frame_hole_recolor":
+            return self._apply_frame_hole_recolor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -12410,6 +12822,134 @@ class PredictOperator(Operator):
     def _apply_shape_jigsaw_assemble(self, rule, input_grid):
         """Apply shape jigsaw assembly rule."""
         return GeneralizeOperator._solve_jigsaw(input_grid.raw)
+
+    # ---- apply: stamp shape match ------------------------------------------
+
+    def _apply_stamp_shape_match(self, rule, input_grid):
+        """Apply stamp-shape-match rule: find marker shape, stamp on all bg_color matches."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0])
+        marker_color = rule["marker_color"]
+        bg_color = rule["bg_color"]
+        shape_offsets = [tuple(o) for o in rule["shape_offsets"]]
+
+        out = [row[:] for row in raw]
+        # Scan for all placements on bg_color cells
+        for r in range(h):
+            for c in range(w):
+                fits = True
+                for dr, dc in shape_offsets:
+                    nr, nc = r + dr, c + dc
+                    if nr < 0 or nr >= h or nc < 0 or nc >= w:
+                        fits = False
+                        break
+                    if raw[nr][nc] != bg_color:
+                        fits = False
+                        break
+                if fits:
+                    for dr, dc in shape_offsets:
+                        out[r + dr][c + dc] = marker_color
+        return out
+
+    # ---- apply: frame hole recolor -----------------------------------------
+
+    def _apply_frame_hole_recolor(self, rule, input_grid):
+        """Apply frame-hole-recolor rule: classify 5-shapes by frame holes."""
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0])
+
+        # Find frame rows
+        frame_rows = set()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == 1:
+                    frame_rows.add(r)
+        if not frame_rows:
+            return [row[:] for row in raw]
+
+        frame_bottom = max(frame_rows)
+        frame_top = min(frame_rows)
+
+        # Find hole cells
+        hole_cells = set()
+        for r in range(frame_top, frame_bottom + 1):
+            for c in range(w):
+                if raw[r][c] == 0:
+                    has_left = any(raw[r][lc] == 1 for lc in range(c))
+                    has_right = any(raw[r][rc] == 1 for rc in range(c + 1, w))
+                    has_above = any(raw[ar][c] == 1 for ar in range(frame_top, r))
+                    if has_left and has_right and has_above:
+                        hole_cells.add((r, c))
+
+        if not hole_cells:
+            return [row[:] for row in raw]
+
+        hole_ccs = GeneralizeOperator._get_connected_components(hole_cells)
+        rectangles = []
+        for hcc in hole_ccs:
+            cols = set(c for _, c in hcc)
+            min_r = min(r for r, _ in hcc)
+            min_c = min(c for _, c in hcc)
+            shape = frozenset((r - min_r, c - min_c) for r, c in hcc)
+            hole_col_range = (min(cols), max(cols))
+            wall_col_range = (min(cols) - 1, max(cols) + 1)
+            hole_width = max(cols) - min(cols) + 1
+            rectangles.append({
+                "hole_col_range": hole_col_range,
+                "wall_col_range": wall_col_range,
+                "hole_width": hole_width,
+                "shape": shape,
+            })
+
+        # Find 5-groups
+        five_cells = set()
+        for r in range(frame_bottom + 1, h):
+            for c in range(w):
+                if raw[r][c] == 5:
+                    five_cells.add((r, c))
+
+        if not five_cells:
+            return [row[:] for row in raw]
+
+        five_groups = GeneralizeOperator._get_connected_components(five_cells)
+
+        out = [row[:] for row in raw]
+        for group in five_groups:
+            group_cols = set(c for _, c in group)
+            group_width = max(group_cols) - min(group_cols) + 1
+            min_r = min(r for r, _ in group)
+            min_c = min(c for _, c in group)
+            group_shape = frozenset((r - min_r, c - min_c) for r, c in group)
+
+            enclosing_rect = None
+            for rect in rectangles:
+                wmin, wmax = rect["wall_col_range"]
+                if all(wmin <= c <= wmax for c in group_cols):
+                    enclosing_rect = rect
+                    break
+
+            should_recolor = False
+            if enclosing_rect is not None:
+                if group_width == enclosing_rect["hole_width"]:
+                    if GeneralizeOperator._shape_contains_subshape(
+                        group_shape, enclosing_rect["shape"]
+                    ):
+                        should_recolor = True
+            else:
+                for rect in rectangles:
+                    if GeneralizeOperator._shape_contains_subshape(
+                        group_shape, rect["shape"]
+                    ):
+                        should_recolor = True
+                        break
+
+            if should_recolor:
+                for r, c in group:
+                    out[r][c] = 2
+
+        return out
 
 
 # ======================================================================

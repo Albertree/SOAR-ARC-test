@@ -1376,3 +1376,56 @@
 - Time: 219s
 - Log: logs/learn_20260422_110542.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-22 11:13
+
+- Split: training, Tasks: 80
+- Correct: 78 / 80 (97.5%)
+- Rules: 352 -> 353 (+1 learned)
+- Stored rule hits: 76
+- Time: 217s
+- Log: logs/learn_20260422_111017.log
+
+---
+## Learning Loop -- 2026-04-22 12:45
+
+- Split: training, Tasks: 80
+- Correct: 78 / 80 (97.5%)
+- Rules: 353 -> 354 (+1 learned)
+- Stored rule hits: 76
+- Time: 230s
+- Log: logs/learn_20260422_124114.log
+
+---
+## Learning Loop -- 2026-04-22 13:10
+
+- Split: training, Tasks: 80
+- Correct: 78 / 80 (97.5%)
+- Rules: 354 -> 356 (+2 learned)
+- Stored rule hits: 76
+- Time: 214s
+- Log: logs/learn_20260422_130710.log
+
+---
+## Learning Loop -- 2026-04-22 13:21
+
+- Split: training, Tasks: 80
+- Correct: 79 / 80 (98.8%)
+- Rules: 356 -> 357 (+1 learned)
+- Stored rule hits: 77
+- Time: 213s
+- Log: logs/learn_20260422_131823.log
+
+---
+## Session 30 -- 2026-04-22 13:21
+
+- **Score: 79 / 80 (98.8%)** — up from 78/80 (97.5%)
+- New strategy: `frame_hole_recolor` (Strategy 74)
+  - Detects U-shaped frames of 1-cells with rectangular enclosed holes
+  - 5-shapes below the frame are classified: if group is within a rectangle's wall range and has same column width as the hole, check containment → recolor to 2; otherwise check against all holes
+  - Category: frame-based shape classification / template matching
+  - Solved: 1acc24af
+- Remaining INCORRECT: e5062a87 (complex marker-shape stamping, rule not yet identified)
+- Rules: 356 → 357 (+1 learned)
+- Stored rule hits: 77
