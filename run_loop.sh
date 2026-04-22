@@ -120,33 +120,38 @@ while true; do
     # ── 2. Claude Code improves the agent ────────────────────
     log "Claude Code improving agent..."
 
-    claude -p "$(cat <<PROMPT
-You are session ${SESSION} of the SOAR-ARC loop.
+    CLAUDE_PROMPT_FILE=$(mktemp)
+    cat > "$CLAUDE_PROMPT_FILE" <<'STATIC_TOP'
+You are running a session of the SOAR-ARC ez-main experiment.
 
-Read PROMPT.md for the mission. Read CLAUDE.md for architecture details.
+Read CLAUDE.md for architecture details.
 
-Here are the agent's results from this session:
+Here are the agent results from this session:
 
-${LEARN_OUTPUT}
+STATIC_TOP
+    printf '%s\n' "$LEARN_OUTPUT" >> "$CLAUDE_PROMPT_FILE"
+    cat >> "$CLAUDE_PROMPT_FILE" <<'STATIC_BOT'
 
 Your task:
 1. Pick 1-3 INCORRECT tasks from above
-2. Read their JSON from data/ARC_AGI/training/<hex>.json
+2. Read their JSON from data/ARC_easy/<name>.json
 3. Understand what transformation each task needs
 4. Add _try_* methods in GeneralizeOperator (agent/active_operators.py)
 5. Add matching _apply_* methods in PredictOperator
 6. Verify: python run_task.py must output CORRECT
-7. Verify: python run_learn.py --limit ${TASKS_PER_SESSION} --shuffle shows improvement
+7. Verify: python run_learn.py shows improvement
 8. Append results to logs/session_log.md
 
 Do NOT modify: data/, agent/cycle.py, agent/wm.py
 Each strategy must handle a CATEGORY of tasks, not just one.
-PROMPT
-)" \
+STATIC_BOT
+
+    claude -p "$(cat "$CLAUDE_PROMPT_FILE")" \
         --permission-mode bypassPermissions \
         --output-format stream-json \
         --verbose \
         2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
+    rm -f "$CLAUDE_PROMPT_FILE"
 
     log "Claude Code finished."
 
