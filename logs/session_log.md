@@ -1789,3 +1789,31 @@
 - Stored rule hits: 96
 - Time: 2098s
 - Log: logs/learn_20260423_005823.log
+
+---
+## Learning Loop -- 2026-04-23 02:20
+
+- Split: training, Tasks: 160
+- Correct: 100 / 160 (62.5%)
+- Rules: 404 -> 405 (+1 learned)
+- Stored rule hits: 97
+- Time: 2242s
+- Log: logs/learn_20260423_014315.log
+
+---
+## Session 37 -- 2026-04-23 02:33
+
+### Strategies Added
+1. **column_rank_recolor** — scattered minority-color cells (e.g. 0) on uniform background are recolored 1,2,3,… by left-to-right column rank (solves 575b1a71)
+2. **rect_frame_gap_ray** — rectangular frames of color 1 with one gap; fill interior with color 2 and extend a ray of 2 from the gap to grid boundary (solves 292dd178)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 102 / 160 (63.7%) — up from 100/160 (62.5%)
+- Solved: 575b1a71 (column_rank_recolor), 292dd178 (rect_frame_gap_ray)
+- Rules: 405 -> 408 (+3 learned)
+- Stored rule hits: 97
+- Discovered: 7 new rules from pipeline
+- Time: 2146s
+- Log: logs/learn_20260423_023324.log
+- Regression: 08ed6ac7 CORRECT

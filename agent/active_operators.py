@@ -15,6 +15,61 @@ from ARCKG.comparison import compare as arckg_compare
 
 
 # ======================================================================
+# Module-level helpers (shared across operators)
+# ======================================================================
+
+def _find_rect_frames(raw, frame_color, bg_color, H, W):
+    """Find rectangular frames with exactly one gap in the border."""
+    visited = set()
+    frames = []
+    for sr in range(H):
+        for sc in range(W):
+            if raw[sr][sc] == frame_color and (sr, sc) not in visited:
+                component = []
+                queue = [(sr, sc)]
+                visited.add((sr, sc))
+                while queue:
+                    r, c = queue.pop(0)
+                    component.append((r, c))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = r + dr, c + dc
+                        if (0 <= nr < H and 0 <= nc < W
+                                and (nr, nc) not in visited
+                                and raw[nr][nc] == frame_color):
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                if len(component) < 6:
+                    continue
+                comp_set = set(component)
+                min_r = min(r for r, c in component)
+                max_r = max(r for r, c in component)
+                min_c = min(c for r, c in component)
+                max_c = max(c for r, c in component)
+                border_cells = set()
+                for r in range(min_r, max_r + 1):
+                    for c in range(min_c, max_c + 1):
+                        if r in (min_r, max_r) or c in (min_c, max_c):
+                            border_cells.add((r, c))
+                if not comp_set.issubset(border_cells):
+                    continue
+                gaps = border_cells - comp_set
+                if len(gaps) != 1:
+                    continue
+                gap_r, gap_c = gaps.pop()
+                if gap_r == min_r:
+                    gap_side = "top"
+                elif gap_r == max_r:
+                    gap_side = "bottom"
+                elif gap_c == min_c:
+                    gap_side = "left"
+                else:
+                    gap_side = "right"
+                frames.append((min_r, min_c, max_r, max_c,
+                               gap_r, gap_c, gap_side))
+    return frames
+
+
+# ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
 # ======================================================================
 
@@ -675,6 +730,14 @@ class GeneralizeOperator(Operator):
         # Strategy 90: nest rectangles by size (scattered rects → concentric nested output)
         if rule is None:
             rule = self._try_nest_rectangles(patterns, wm)
+
+        # Strategy 91: column rank recolor (0s on uniform bg → color by column rank)
+        if rule is None:
+            rule = self._try_column_rank_recolor(patterns, wm)
+
+        # Strategy 92: rect frame gap ray (rectangular frame with gap → fill interior + ray)
+        if rule is None:
+            rule = self._try_rect_frame_gap_ray(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -11306,6 +11369,167 @@ class GeneralizeOperator(Operator):
                 return None
         return {"type": "nest_rectangles", "confidence": 1.0}
 
+    # ---- strategy 91: column rank recolor --------------------------------
+
+    def _try_column_rank_recolor(self, patterns, wm):
+        """
+        Detect: grid has a uniform background (one dominant colour) with
+        scattered cells of a single minority colour (typically 0).  Each
+        minority cell is replaced with a colour 1, 2, 3, … determined by
+        the left-to-right rank of its column among all columns that contain
+        minority cells.
+        Category: positional encoding / column-based recolouring.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        from collections import Counter
+
+        pair0 = task.example_pairs[0]
+        g0 = pair0.input_grid
+        if not g0:
+            return None
+        raw0 = g0.raw
+        H, W = len(raw0), len(raw0[0]) if raw0 else 0
+        freq = Counter()
+        for r in range(H):
+            for c in range(W):
+                freq[raw0[r][c]] += 1
+        bg_color = freq.most_common(1)[0][0]
+        input_colors = set(freq.keys()) - {bg_color}
+        if len(input_colors) != 1:
+            return None
+        minority_color = input_colors.pop()
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            H2, W2 = len(raw_in), len(raw_in[0]) if raw_in else 0
+            if H2 != len(raw_out) or W2 != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            in_clrs = set()
+            for r in range(H2):
+                for c in range(W2):
+                    in_clrs.add(raw_in[r][c])
+            if in_clrs - {bg_color, minority_color}:
+                return None
+
+            minority_cols = sorted(set(
+                c for r in range(H2) for c in range(W2)
+                if raw_in[r][c] == minority_color
+            ))
+            if not minority_cols:
+                return None
+            col_to_color = {col: idx + 1 for idx, col in enumerate(minority_cols)}
+
+            for r in range(H2):
+                for c in range(W2):
+                    if raw_in[r][c] == minority_color:
+                        if raw_out[r][c] != col_to_color[c]:
+                            return None
+                    else:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+        return {
+            "type": "column_rank_recolor",
+            "bg_color": bg_color,
+            "minority_color": minority_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 92: rect frame gap ray ---------------------------------
+
+    def _try_rect_frame_gap_ray(self, patterns, wm):
+        """
+        Detect: rectangular frames drawn in frame_color on a uniform
+        background.  Each frame has exactly one gap (missing border cell).
+        Interior is filled with fill_color and a ray of fill_color extends
+        from the gap outward to the grid boundary.
+        Category: frame gap detection / interior fill / ray projection.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        from collections import Counter
+
+        pair0 = task.example_pairs[0]
+        g0, g1 = pair0.input_grid, pair0.output_grid
+        if not g0 or not g1:
+            return None
+        raw_in0 = g0.raw
+        raw_out0 = g1.raw
+        H, W = len(raw_in0), len(raw_in0[0]) if raw_in0 else 0
+
+        freq = Counter()
+        for r in range(H):
+            for c in range(W):
+                freq[raw_in0[r][c]] += 1
+        bg_color = freq.most_common(1)[0][0]
+        in_colors = set(freq.keys())
+        if len(in_colors) != 2:
+            return None
+        frame_color = (in_colors - {bg_color}).pop()
+
+        out_colors = set()
+        for r in range(H):
+            for c in range(W):
+                out_colors.add(raw_out0[r][c])
+        new_colors = out_colors - in_colors
+        if len(new_colors) != 1:
+            return None
+        fill_color = new_colors.pop()
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            pH = len(raw_in)
+            pW = len(raw_in[0]) if raw_in else 0
+
+            frames = _find_rect_frames(raw_in, frame_color, bg_color, pH, pW)
+            if not frames:
+                return None
+
+            expected = [row[:] for row in raw_in]
+            for r1, c1, r2, c2, gap_r, gap_c, gap_side in frames:
+                for r in range(r1 + 1, r2):
+                    for c in range(c1 + 1, c2):
+                        expected[r][c] = fill_color
+                expected[gap_r][gap_c] = fill_color
+                if gap_side == "top":
+                    for r in range(gap_r - 1, -1, -1):
+                        expected[r][gap_c] = fill_color
+                elif gap_side == "bottom":
+                    for r in range(gap_r + 1, pH):
+                        expected[r][gap_c] = fill_color
+                elif gap_side == "left":
+                    for c in range(gap_c - 1, -1, -1):
+                        expected[gap_r][c] = fill_color
+                elif gap_side == "right":
+                    for c in range(gap_c + 1, pW):
+                        expected[gap_r][c] = fill_color
+
+            if expected != raw_out:
+                return None
+
+        return {
+            "type": "rect_frame_gap_ray",
+            "bg_color": bg_color,
+            "frame_color": frame_color,
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
 
 class DescendOperator(Operator):
     """
@@ -11557,6 +11781,10 @@ class PredictOperator(Operator):
             return self._apply_l_diagonal_ray(rule, input_grid)
         if rule_type == "nest_rectangles":
             return self._apply_nest_rectangles(rule, input_grid)
+        if rule_type == "column_rank_recolor":
+            return self._apply_column_rank_recolor(rule, input_grid)
+        if rule_type == "rect_frame_gap_ray":
+            return self._apply_rect_frame_gap_ray(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -15363,6 +15591,55 @@ class PredictOperator(Operator):
                 output[r][l] = color
                 output[r][rr2] = color
         return output
+
+    # ---- apply: column_rank_recolor --------------------------------------
+
+    def _apply_column_rank_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        minority_color = rule["minority_color"]
+        minority_cols = sorted(set(
+            c for r in range(H) for c in range(W)
+            if raw[r][c] == minority_color
+        ))
+        col_to_color = {col: idx + 1 for idx, col in enumerate(minority_cols)}
+        out = [row[:] for row in raw]
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == minority_color:
+                    out[r][c] = col_to_color.get(c, minority_color)
+        return out
+
+    # ---- apply: rect_frame_gap_ray ---------------------------------------
+
+    def _apply_rect_frame_gap_ray(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        bg_color = rule["bg_color"]
+        frame_color = rule["frame_color"]
+        fill_color = rule["fill_color"]
+        frames = _find_rect_frames(raw, frame_color, bg_color, H, W)
+        out = [row[:] for row in raw]
+        for r1, c1, r2, c2, gap_r, gap_c, gap_side in frames:
+            for r in range(r1 + 1, r2):
+                for c in range(c1 + 1, c2):
+                    out[r][c] = fill_color
+            out[gap_r][gap_c] = fill_color
+            if gap_side == "top":
+                for r in range(gap_r - 1, -1, -1):
+                    out[r][gap_c] = fill_color
+            elif gap_side == "bottom":
+                for r in range(gap_r + 1, H):
+                    out[r][gap_c] = fill_color
+            elif gap_side == "left":
+                for c in range(gap_c - 1, -1, -1):
+                    out[gap_r][c] = fill_color
+            elif gap_side == "right":
+                for c in range(gap_c + 1, W):
+                    out[gap_r][c] = fill_color
+        return out
 
 
 # ======================================================================
