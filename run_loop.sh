@@ -45,6 +45,17 @@ done
 mkdir -p "$LOG_DIR"
 START_TIME=$(date +%s)
 PIPELINE_LOG="${LOG_DIR}/loop.log"
+SUMMARY_FILE="${LOG_DIR}/summary.md"
+
+# Write header only if file does not exist yet
+if [ ! -f "$SUMMARY_FILE" ]; then
+    cat > "$SUMMARY_FILE" <<'SUMHDR'
+# SOAR-ARC ez-main — Session Summary
+
+> Auto-generated. Each session appends one entry.
+
+SUMHDR
+fi
 
 log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$PIPELINE_LOG"
@@ -162,7 +173,46 @@ STATIC_BOT
         log "[!] Regression: FAILED"
     fi
 
-    # ── 4. Git commit & push ─────────────────────────────────
+    # ── 4. Session summary ───────────────────────────────────
+    SUMMARY_FILE="${LOG_DIR}/summary.md"
+    PCT=$(echo "$LEARN_OUTPUT" | grep -oP '\(\K[\d.]+(?=%)' | tail -1)
+    RULES_BEFORE=$(echo "$LEARN_OUTPUT" | grep "Rules:" | grep -oP '^\s*Rules:\s*\K\d+' || echo "$LEARN_OUTPUT" | grep "Rules:" | grep -oP '\d+' | head -1)
+    RULES_AFTER=$(echo "$LEARN_OUTPUT"  | grep "Rules:" | grep -oP '\d+' | tail -1)
+    REGRESSION_STATUS="PASSED"
+    echo "$LEARN_OUTPUT" | grep -q "Regression: FAILED" && REGRESSION_STATUS="FAILED"
+
+    {
+        echo ""
+        echo "---"
+        echo "## Session $SESSION — $(date '+%Y-%m-%d %H:%M')"
+        echo ""
+        echo "| | |"
+        echo "|---|---|"
+        echo "| Score | **${CORRECT_N} / ${TOTAL_N}** (${PCT}%) |"
+        echo "| Rules | ${RULES_BEFORE} → ${RULES_AFTER} |"
+        echo "| Regression | ${REGRESSION_STATUS} |"
+        echo ""
+        echo "### Per-task results"
+        echo ""
+        echo "| # | Task | Result | Rule | Method |"
+        echo "|---|------|--------|------|--------|"
+        echo "$LEARN_OUTPUT" | grep -oP '\[\d+/\d+\] \S+ \S+.*' | while IFS= read -r line; do
+            IDX=$(echo "$line"  | grep -oP '(?<=\[)\d+(?=/)')
+            TASK=$(echo "$line" | grep -oP '\] \K\S+')
+            RES=$(echo "$line"  | grep -oP '(CORRECT|INCORRECT|ERROR)')
+            RULE=$(echo "$line" | grep -oP 'rule=\K\S+')
+            VIA=$(echo "$line"  | grep -oP 'via=\K\S+')
+            ICON="✅"
+            [ "$RES" = "INCORRECT" ] && ICON="❌"
+            [ "$RES" = "ERROR" ]     && ICON="⚠️"
+            echo "| $IDX | \`$TASK\` | $ICON $RES | \`$RULE\` | $VIA |"
+        done
+        echo ""
+    } >> "$SUMMARY_FILE"
+
+    log "Summary written → $SUMMARY_FILE"
+
+    # ── 5. Git commit & push ─────────────────────────────────
     git add -A
     if ! git diff --cached --quiet; then
         git commit -m "Session $SESSION: $SCORE_LINE ($TIMESTAMP)" 2>&1 | tee -a "$PIPELINE_LOG"
