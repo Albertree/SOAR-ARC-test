@@ -1846,3 +1846,61 @@
 - Time: 2091s
 - Log: logs/learn_20260423_035729.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 05:14
+
+- Split: training, Tasks: 160
+- Correct: 105 / 160 (65.6%)
+- Rules: 413 -> 414 (+1 learned)
+- Stored rule hits: 102
+- Time: 2093s
+- Log: logs/learn_20260423_043917.log
+
+---
+## Learning Loop -- 2026-04-23 06:03
+
+- Split: training, Tasks: 160
+- Correct: 105 / 160 (65.6%)
+- Rules: 414 -> 415 (+1 learned)
+- Stored rule hits: 102
+- Time: 2132s
+- Log: logs/learn_20260423_052757.log
+
+---
+## Learning Loop -- 2026-04-23 06:52
+
+- Split: training, Tasks: 160
+- Correct: 106 / 160 (66.2%)
+- Rules: 415 -> 420 (+5 learned)
+- Stored rule hits: 102
+- Time: 2563s
+- Log: logs/learn_20260423_060933.log
+
+---
+## Learning Loop -- 2026-04-23 07:17
+
+- Split: training, Tasks: 160
+- Correct: 107 / 160 (66.9%)
+- Rules: 417 -> 420 (+3 learned)
+- Stored rule hits: 103
+- Time: 2885s
+- Log: logs/learn_20260423_062925.log
+
+---
+## Session 39 -- 2026-04-23 07:27
+
+### Strategies Added
+1. **line_rank_recolor** — connected components of 5-cells form straight lines; rank by length and recolor (longest→1, middle→4, shortest→2) (solves ea32f347)
+2. **max_rect_fill** — grid of 0s and 5s; find maximal squares of 0-cells (≥2×2) via DP + greedy non-overlapping selection, fill with color 1 (solves 31adaf00)
+3. **divider_complement_merge** — two halves separated by uniform-color column divider; if right side's non-zero cells exactly fill left side's zeros, merge both halves; otherwise output = left side only (solves bbb1b8b6)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 108 / 160 (67.5%) — up from 105/160 (65.6%)
+- Solved new: ea32f347 (line_rank_recolor), 31adaf00 (max_rect_fill), bbb1b8b6 (divider_complement_merge)
+- Rules: 419 -> 420 (+1 learned)
+- Stored rule hits: 105
+- Time: 2667s
+- Log: logs/learn_20260423_064245.log
+- Regression: 08ed6ac7 CORRECT

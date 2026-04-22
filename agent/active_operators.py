@@ -751,6 +751,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_color_count_expand(patterns, wm)
 
+        # Strategy 96: line rank recolor (5-lines ranked by length → 1/4/2)
+        if rule is None:
+            rule = self._try_line_rank_recolor(patterns, wm)
+
+        # Strategy 97: max rect fill (fill maximal ≥2×2 rectangles of 0s with 1)
+        if rule is None:
+            rule = self._try_max_rect_fill(patterns, wm)
+
+        # Strategy 98: divider complement merge (two halves: merge if complementary)
+        if rule is None:
+            rule = self._try_divider_complement_merge(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -11739,6 +11751,296 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy 96: line rank recolor ------------------------------------
+
+    def _try_line_rank_recolor(self, patterns, wm):
+        """
+        Detect: grid of 0s with several straight lines of color 5 (horizontal
+        or vertical).  Output replaces 5 with a color determined by length rank:
+        longest → color A, middle → color B, shortest → color C (learned).
+        Category: line detection + rank-based recoloring.
+        """
+        task = wm.task
+        if not task:
+            return None
+        pairs = task.example_pairs
+        if len(pairs) < 2:
+            return None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            if len(inp) != len(out) or len(inp[0]) != len(out[0]):
+                return None
+
+        # Check that inputs are only 0 and 5
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            for row in inp:
+                for v in row:
+                    if v not in (0, 5):
+                        return None
+
+        def find_lines_cc(grid):
+            """Find lines as connected components of 5-cells."""
+            H = len(grid)
+            W = len(grid[0])
+            visited = set()
+            lines = []
+            for r in range(H):
+                for c in range(W):
+                    if grid[r][c] != 5 or (r, c) in visited:
+                        continue
+                    comp = []
+                    queue = [(r, c)]
+                    visited.add((r, c))
+                    while queue:
+                        cr, cc = queue.pop(0)
+                        comp.append((cr, cc))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = cr + dr, cc + dc
+                            if (0 <= nr < H and 0 <= nc < W
+                                    and (nr, nc) not in visited
+                                    and grid[nr][nc] == 5):
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                    if len(comp) < 2:
+                        continue
+                    rows = set(r2 for r2, c2 in comp)
+                    cols = set(c2 for r2, c2 in comp)
+                    if len(rows) == 1 or len(cols) == 1:
+                        lines.append(comp)
+            return lines
+
+        # Validate on all pairs
+        rank_colors = None
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            lines = find_lines_cc(inp)
+            if len(lines) < 2 or len(lines) > 5:
+                return None
+            lines.sort(key=lambda L: -len(L))
+            pair_colors = []
+            for line in lines:
+                r0, c0 = line[0]
+                color = out[r0][c0]
+                if color == 0 or color == 5:
+                    return None
+                for r, c in line:
+                    if out[r][c] != color:
+                        return None
+                pair_colors.append(color)
+            if rank_colors is None:
+                rank_colors = pair_colors
+            else:
+                if pair_colors != rank_colors:
+                    return None
+
+        return {"type": "line_rank_recolor", "rank_colors": rank_colors,
+                "confidence": 0.95}
+
+    # ---- strategy 97: max rect fill ----------------------------------------
+
+    def _try_max_rect_fill(self, patterns, wm):
+        """
+        Detect: grid of 0s and 5s.  Maximal squares of 0-cells (side >= 2)
+        are filled with a single color; greedy largest-first non-overlapping.
+        Category: square region detection and fill.
+        """
+        task = wm.task
+        if not task:
+            return None
+        pairs = task.example_pairs
+        if len(pairs) < 2:
+            return None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            if len(inp) != len(out) or len(inp[0]) != len(out[0]):
+                return None
+
+        # Check inputs are only 0 and 5
+        for pair in pairs:
+            for row in pair.input_grid.raw:
+                for v in row:
+                    if v not in (0, 5):
+                        return None
+
+        fill_color = None
+
+        def find_fill_cells(grid):
+            """Find cells to fill using maximal-square greedy selection."""
+            H = len(grid)
+            W = len(grid[0])
+            # dp[r][c] = max side of all-0 square with (r,c) as top-left
+            dp = [[0] * W for _ in range(H)]
+            for r in range(H - 1, -1, -1):
+                for c in range(W - 1, -1, -1):
+                    if grid[r][c] != 0:
+                        dp[r][c] = 0
+                    elif r == H - 1 or c == W - 1:
+                        dp[r][c] = 1
+                    else:
+                        dp[r][c] = 1 + min(dp[r + 1][c],
+                                           dp[r][c + 1],
+                                           dp[r + 1][c + 1])
+            # Collect all squares of side >= 2
+            squares = []
+            for r in range(H):
+                for c in range(W):
+                    if dp[r][c] >= 2:
+                        squares.append((dp[r][c], r, c))
+            # Sort by side desc, then position for stability
+            squares.sort(key=lambda x: (-x[0], x[1], x[2]))
+            # Greedy: select non-overlapping
+            filled = set()
+            for s, r, c in squares:
+                cells = set()
+                for dr in range(s):
+                    for dc in range(s):
+                        cells.add((r + dr, c + dc))
+                if cells & filled:
+                    continue
+                filled |= cells
+            return filled
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            H = len(inp)
+            W = len(inp[0])
+            filled_cells = find_fill_cells(inp)
+            if not filled_cells:
+                return None
+
+            # Determine fill color from first filled cell
+            r0, c0 = min(filled_cells)
+            fc = out[r0][c0]
+            if fc == 0 or fc == 5:
+                return None
+            if fill_color is None:
+                fill_color = fc
+            elif fill_color != fc:
+                return None
+
+            # Verify: input + fill = output
+            expected = [row[:] for row in inp]
+            for (r, c) in filled_cells:
+                expected[r][c] = fill_color
+            if expected != out:
+                return None
+
+        return {"type": "max_rect_fill", "fill_color": fill_color,
+                "confidence": 0.95}
+
+    # ---- strategy 98: divider complement merge ------------------------------
+
+    def _try_divider_complement_merge(self, patterns, wm):
+        """
+        Detect: input has two halves separated by a single-column divider
+        of uniform color.  Left half has shape-color cells and 0-cells;
+        right half has colored cells and 0-cells.  If the right non-zero cells
+        exactly complement the left zero cells, output merges both;
+        otherwise output = left side only.
+        Category: split-grid comparison and conditional merge.
+        """
+        task = wm.task
+        if not task:
+            return None
+        pairs = task.example_pairs
+        if len(pairs) < 3:
+            return None
+
+        H0 = len(pairs[0].input_grid.raw)
+        W0 = len(pairs[0].input_grid.raw[0])
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            if len(inp) != H0 or len(inp[0]) != W0:
+                return None
+
+        # Detect vertical divider column
+        divider_col = None
+        divider_color = None
+        for c in range(1, W0 - 1):
+            col_vals = [pairs[0].input_grid.raw[r][c] for r in range(H0)]
+            if len(set(col_vals)) == 1 and col_vals[0] != 0:
+                ok = True
+                for pair in pairs:
+                    cv = [pair.input_grid.raw[r][c] for r in range(H0)]
+                    if cv != col_vals:
+                        ok = False
+                        break
+                if ok:
+                    divider_col = c
+                    divider_color = col_vals[0]
+                    break
+
+        if divider_col is None:
+            return None
+
+        left_w = divider_col
+        right_w = W0 - divider_col - 1
+        if left_w != right_w or left_w < 2:
+            return None
+
+        for pair in pairs:
+            out = pair.output_grid.raw
+            if len(out) != H0 or len(out[0]) != left_w:
+                return None
+
+        shape_color = None
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            for r in range(H0):
+                for c in range(left_w):
+                    v = inp[r][c]
+                    if v != 0:
+                        if shape_color is None:
+                            shape_color = v
+                        elif v != shape_color:
+                            return None
+
+        if shape_color is None:
+            return None
+
+        for pair in pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            left = [[inp[r][c] for c in range(left_w)] for r in range(H0)]
+            right = [[inp[r][divider_col + 1 + c] for c in range(right_w)]
+                     for r in range(H0)]
+
+            complementary = True
+            for r in range(H0):
+                for c in range(left_w):
+                    if left[r][c] != 0 and right[r][c] != 0:
+                        complementary = False
+                        break
+                if not complementary:
+                    break
+
+            if complementary:
+                expected = [row[:] for row in left]
+                for r in range(H0):
+                    for c in range(left_w):
+                        if right[r][c] != 0:
+                            expected[r][c] = right[r][c]
+                if expected != out:
+                    return None
+            else:
+                if left != out:
+                    return None
+
+        return {"type": "divider_complement_merge",
+                "divider_col": divider_col,
+                "divider_color": divider_color,
+                "left_w": left_w,
+                "shape_color": shape_color,
+                "confidence": 0.92}
+
 
 class DescendOperator(Operator):
     """
@@ -12000,6 +12302,12 @@ class PredictOperator(Operator):
             return self._apply_seed_pixel_stamp(rule, input_grid)
         if rule_type == "color_count_expand":
             return self._apply_color_count_expand(rule, input_grid)
+        if rule_type == "line_rank_recolor":
+            return self._apply_line_rank_recolor(rule, input_grid)
+        if rule_type == "max_rect_fill":
+            return self._apply_max_rect_fill(rule, input_grid)
+        if rule_type == "divider_complement_merge":
+            return self._apply_divider_complement_merge(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -15927,6 +16235,121 @@ class PredictOperator(Operator):
                     for dc in range(K):
                         out[r * K + dr][c * K + dc] = val
         return out
+
+    def _apply_line_rank_recolor(self, rule, input_grid):
+        """Replace each line of 5s with a color based on its length rank."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        rank_colors = rule["rank_colors"]
+        if not rank_colors:
+            return None
+        out = [row[:] for row in raw]
+
+        # Find lines as connected components of 5-cells
+        visited = set()
+        lines = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 5 or (r, c) in visited:
+                    continue
+                comp = []
+                queue = [(r, c)]
+                visited.add((r, c))
+                while queue:
+                    cr, cc = queue.pop(0)
+                    comp.append((cr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = cr + dr, cc + dc
+                        if (0 <= nr < H and 0 <= nc < W
+                                and (nr, nc) not in visited
+                                and raw[nr][nc] == 5):
+                            visited.add((nr, nc))
+                            queue.append((nr, nc))
+                if len(comp) >= 2:
+                    lines.append(comp)
+
+        lines.sort(key=lambda L: -len(L))
+        for i, line in enumerate(lines):
+            color = rank_colors[i] if i < len(rank_colors) else rank_colors[-1]
+            for r, c in line:
+                out[r][c] = color
+        return out
+
+    def _apply_max_rect_fill(self, rule, input_grid):
+        """Fill maximal squares of 0s (greedy largest-first) with fill_color."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        fill_color = rule["fill_color"]
+        out = [row[:] for row in raw]
+
+        # dp[r][c] = max side of all-0 square with (r,c) as top-left
+        dp = [[0] * W for _ in range(H)]
+        for r in range(H - 1, -1, -1):
+            for c in range(W - 1, -1, -1):
+                if raw[r][c] != 0:
+                    dp[r][c] = 0
+                elif r == H - 1 or c == W - 1:
+                    dp[r][c] = 1
+                else:
+                    dp[r][c] = 1 + min(dp[r + 1][c],
+                                       dp[r][c + 1],
+                                       dp[r + 1][c + 1])
+        squares = []
+        for r in range(H):
+            for c in range(W):
+                if dp[r][c] >= 2:
+                    squares.append((dp[r][c], r, c))
+        squares.sort(key=lambda x: (-x[0], x[1], x[2]))
+        filled = set()
+        for s, r, c in squares:
+            cells = set()
+            for dr in range(s):
+                for dc in range(s):
+                    cells.add((r + dr, c + dc))
+            if cells & filled:
+                continue
+            filled |= cells
+        for (r, c) in filled:
+            out[r][c] = fill_color
+        return out
+
+    def _apply_divider_complement_merge(self, rule, input_grid):
+        """Split on divider, merge halves if complementary, else keep left."""
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        divider_col = rule["divider_col"]
+        left_w = rule["left_w"]
+
+        # Bounds check: grid must be wide enough for divider + both halves
+        if divider_col >= W or divider_col + 1 + left_w > W or left_w > divider_col:
+            return None
+
+        left = [[raw[r][c] for c in range(left_w)] for r in range(H)]
+        right = [[raw[r][divider_col + 1 + c] for c in range(left_w)]
+                 for r in range(H)]
+
+        # Check if right non-zero cells complement left zero cells
+        complementary = True
+        for r in range(H):
+            for c in range(left_w):
+                if left[r][c] != 0 and right[r][c] != 0:
+                    complementary = False
+                    break
+            if not complementary:
+                break
+
+        if complementary:
+            out = [row[:] for row in left]
+            for r in range(H):
+                for c in range(left_w):
+                    if right[r][c] != 0:
+                        out[r][c] = right[r][c]
+            return out
+        else:
+            return left
 
 
 # ======================================================================
