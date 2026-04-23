@@ -2072,3 +2072,13 @@
 - Log: logs/learn_20260423_183510.log
 - Verified individually: e7dd8335 (shape_half_recolor), 7c8af763 (grid_section_majority_fill), 18286ef8 (template_marker_shift)
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 20:02
+
+- Split: training, Tasks: 1000
+- Correct: 149 / 1000 (14.9%)
+- Rules: 363 -> 438 (+75 learned)
+- Stored rule hits: 83
+- Time: 766s
+- Log: logs/learn_20260423_195011.log

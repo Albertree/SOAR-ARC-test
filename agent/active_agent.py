@@ -9,6 +9,8 @@ Solve flow:
   5. If pipeline discovers a new rule → save to procedural_memory
 """
 
+import signal
+
 from agent.wm import WorkingMemory
 from agent.cycle import run_cycle
 from agent.elaboration_rules import build_elaborator
@@ -17,6 +19,12 @@ from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
+
+_RULE_TIMEOUT_SEC = 10  # max seconds allowed per stored-rule evaluation
+
+
+def _timeout_handler(signum, frame):
+    raise TimeoutError("rule evaluation timed out")
 
 
 class ActiveSoarAgent:
@@ -62,8 +70,23 @@ class ActiveSoarAgent:
             rule = entry.get("rule", {})
             if rule.get("type") == "identity":
                 continue  # skip identity fallback rules
-            if self._rule_matches_examples(rule, task):
-                predicted = self._apply_rule_to_tests(rule, task)
+            try:
+                signal.signal(signal.SIGALRM, _timeout_handler)
+                signal.alarm(_RULE_TIMEOUT_SEC)
+                matched = self._rule_matches_examples(rule, task)
+                signal.alarm(0)
+            except (TimeoutError, Exception):
+                signal.alarm(0)
+                continue
+            if matched:
+                try:
+                    signal.signal(signal.SIGALRM, _timeout_handler)
+                    signal.alarm(_RULE_TIMEOUT_SEC)
+                    predicted = self._apply_rule_to_tests(rule, task)
+                    signal.alarm(0)
+                except (TimeoutError, Exception):
+                    signal.alarm(0)
+                    predicted = None
                 if predicted:
                     increment_reuse_count(entry)
                     self.last_solve_info.update({

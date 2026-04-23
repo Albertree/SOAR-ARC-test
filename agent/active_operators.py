@@ -9489,9 +9489,17 @@ class GeneralizeOperator(Operator):
 
         return None
 
+    _JIGSAW_MAX_CALLS = 50_000  # abort backtracking after this many recursive calls
+
     @staticmethod
-    def _backtrack_jigsaw(grid, H, W, all_orientations, shape_idx):
-        """Backtracking to place shapes into grid."""
+    def _backtrack_jigsaw(grid, H, W, all_orientations, shape_idx, _calls=None):
+        """Backtracking to place shapes into grid. Aborts after _JIGSAW_MAX_CALLS calls."""
+        if _calls is None:
+            _calls = [0]
+        _calls[0] += 1
+        if _calls[0] > GeneralizeOperator._JIGSAW_MAX_CALLS:
+            return None  # give up — search space too large
+
         if shape_idx == len(all_orientations):
             # All shapes placed, check grid is fully filled
             for r in range(H):
@@ -9522,7 +9530,7 @@ class GeneralizeOperator(Operator):
                         grid[pr + r][pc + c] = v
 
                     result = GeneralizeOperator._backtrack_jigsaw(
-                        grid, H, W, all_orientations, shape_idx + 1
+                        grid, H, W, all_orientations, shape_idx + 1, _calls
                     )
                     if result is not None:
                         return result
