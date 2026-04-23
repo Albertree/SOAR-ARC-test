@@ -46,6 +46,7 @@ class _TeeStdout:
 from managers.arc_manager import ARCManager
 from agent.active_agent import ActiveSoarAgent
 from agent.memory import load_all_rules
+from basics.html_report import HTMLReport
 
 
 def parse_args():
@@ -178,7 +179,14 @@ def main():
         root_log_path = f"run_learn_{split}_{timestamp}.txt"
         root_log_file = open(root_log_path, "w")
 
-    # Tee stdout so that viz / print() output also lands in the files
+    # HTML report — only when --viz and --split are both given
+    html_report = None
+    html_path = None
+    if args.viz and force_split:
+        html_path = f"run_learn_{split}_{timestamp}.html"
+        html_report = HTMLReport(split=split, timestamp=timestamp)
+
+    # Tee stdout so that print() output also lands in the txt file
     tee_targets = [f for f in [log_file, root_log_file] if f is not None]
     sys.stdout = _TeeStdout(*tee_targets)
 
@@ -223,9 +231,16 @@ def main():
             if args.viz:
                 _show_viz(task, predicted, is_correct)
 
+            if html_report:
+                html_report.add_task(task_hex, status, rule_type, method_str,
+                                     task, predicted)
+
         except Exception as e:
             error_count += 1
             log(f"[{idx+1}/{total}] {task_hex}: ERROR ({e})")
+            if html_report:
+                html_report.add_task(task_hex, "ERROR", "?", "?", task, None) \
+                    if 'task' in dir() else None
 
     elapsed_total = time.time() - start_time
     final_rules = len(load_all_rules("procedural_memory"))
@@ -244,7 +259,18 @@ def main():
     log_file.close()
     if root_log_file:
         root_log_file.close()
-        print(f"\nFull output saved → {root_log_path}")
+        print(f"Text output saved → {root_log_path}")
+
+    if html_report:
+        html_report.summary = {
+            "correct": correct_count,
+            "total": total,
+            "rules_before": initial_rules,
+            "rules_after": final_rules,
+            "elapsed": f"{elapsed_total:.0f}",
+        }
+        html_report.write(html_path)
+        print(f"HTML report saved → {html_path}")
 
     # Write summary to session_log.md
     session_log_path = "logs/session_log.md"
