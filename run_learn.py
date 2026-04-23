@@ -25,7 +25,9 @@ from agent.memory import load_all_rules
 
 def parse_args():
     p = argparse.ArgumentParser(description="SOAR learning loop")
-    p.add_argument("--split", default="training", help="training or evaluation")
+    p.add_argument("--split", default=None,
+                   help="Force ARC_AGI split: 'training' (1000 tasks) or 'evaluation' (120 tasks). "
+                        "Omit to use data/ARC_easy/ when present.")
     p.add_argument("--limit", type=int, default=None, help="max tasks to run")
     p.add_argument("--shuffle", action="store_true", help="randomize task order")
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
@@ -34,15 +36,16 @@ def parse_args():
     return p.parse_args()
 
 
-def get_task_list(split, data_root="data"):
+def get_task_list(split, data_root="data", force_split=False):
     """Get sorted list of task IDs for a split.
 
-    If data/ARC_easy/ exists, use it directly (ignoring split).
-    Otherwise fall back to data/ARC_AGI/<split>/.
+    If data/ARC_easy/ exists AND force_split is False, use it directly.
+    Pass force_split=True (via --split training/evaluation) to use ARC_AGI instead.
     """
-    easy_dir = os.path.join(data_root, "ARC_easy")
-    if os.path.isdir(easy_dir):
-        return sorted(f.replace(".json", "") for f in os.listdir(easy_dir) if f.endswith(".json"))
+    if not force_split:
+        easy_dir = os.path.join(data_root, "ARC_easy")
+        if os.path.isdir(easy_dir):
+            return sorted(f.replace(".json", "") for f in os.listdir(easy_dir) if f.endswith(".json"))
 
     split_dir = os.path.join(data_root, "ARC_AGI", split)
     if not os.path.isdir(split_dir):
@@ -103,7 +106,9 @@ def main():
         max_steps=50,
     )
 
-    task_hexes = get_task_list(args.split)
+    split = args.split or "training"
+    force_split = args.split is not None
+    task_hexes = get_task_list(split, force_split=force_split)
     if args.shuffle:
         random.seed(args.seed)
         random.shuffle(task_hexes)
@@ -132,7 +137,7 @@ def main():
     initial_rules = len(load_all_rules("procedural_memory"))
 
     log(f"=== SOAR Learning Loop ===")
-    log(f"Split: {args.split} | Tasks: {total} | Stored rules: {initial_rules}")
+    log(f"Split: {split} | Tasks: {total} | Stored rules: {initial_rules}")
     log(f"Log: {log_path}")
     log("")
 
