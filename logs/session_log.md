@@ -1904,3 +1904,41 @@
 - Time: 2667s
 - Log: logs/learn_20260423_064245.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 08:09
+
+- Split: training, Tasks: 160
+- Correct: 108 / 160 (67.5%)
+- Rules: 420 -> 421 (+1 learned)
+- Stored rule hits: 105
+- Time: 2168s
+- Log: logs/learn_20260423_073338.log
+
+---
+## Learning Loop -- 2026-04-23 09:10
+
+- Split: training, Tasks: 160
+- Correct: 110 / 160 (68.8%)
+- Rules: 421 -> 425 (+4 learned)
+- Stored rule hits: 105
+- Time: 2536s
+- Log: logs/learn_20260423_082809.log
+
+---
+## Session 40 -- 2026-04-23 09:50
+
+### Strategies Added
+1. **multi_rect_fill_ray** — Fill interiors of rectangular frames with 0 or 1 gaps; shoot ray from gap if present. Generalizes `rect_frame_gap_ray` to handle complete (gapless) frames too (solves 551d5bf1)
+2. **corner_seed_symmetric_frame** — Non-zero pixels clustered in one corner of an odd-square grid at odd positions define nested concentric rectangular frames via 4-fold symmetry. Diagonal pixels are rectangle corners; off-diagonal pixels fill edges (solves 9d9215db)
+3. **frame_corner_projectile** — L/U-shaped frame with enclosed content; diagonal ray of content color shoots from each external frame corner into open space. Handles per-example color detection and frame shifting when corner is at grid edge (solves ec883f72)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 111 / 160 (69.4%) — up from 108/160 (67.5%)
+- Solved: 551d5bf1 (multi_rect_fill_ray), 9d9215db (corner_seed_symmetric_frame), ec883f72 (frame_corner_projectile)
+- Rules: 425 -> 427 (+2 learned)
+- Stored rule hits: 107
+- Time: 2127s
+- Log: logs/learn_20260423_091526.log
+- Regression: 08ed6ac7 CORRECT

@@ -763,6 +763,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_divider_complement_merge(patterns, wm)
 
+        # Strategy 99: multi rect fill ray (fill all rectangular frames, ray from gap)
+        if rule is None:
+            rule = self._try_multi_rect_fill_ray(patterns, wm)
+
+        # Strategy 100: corner seed symmetric frame (corner pixels → nested symmetric frames)
+        if rule is None:
+            rule = self._try_corner_seed_symmetric_frame(patterns, wm)
+
+        # Strategy 101: frame corner projectile (L/U frame content → diagonal ray from corners)
+        if rule is None:
+            rule = self._try_frame_corner_projectile(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -12042,6 +12054,398 @@ class GeneralizeOperator(Operator):
                 "confidence": 0.92}
 
 
+    # ---- strategy 99: multi rect fill ray ----------------------------------
+
+    def _try_multi_rect_fill_ray(self, patterns, wm):
+        """
+        Detect: rectangular frames (color 1) on bg (color 0) with 0 or 1 gaps.
+        Fill interior with fill_color, shoot ray from gap if present.
+        Generalizes rect_frame_gap_ray to handle complete (0-gap) frames too.
+        Category: frame detection / interior fill / optional ray.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        from collections import Counter
+
+        pair0 = task.example_pairs[0]
+        g0, g1 = pair0.input_grid, pair0.output_grid
+        if not g0 or not g1:
+            return None
+        raw_in0 = g0.raw
+        raw_out0 = g1.raw
+        H, W = len(raw_in0), len(raw_in0[0]) if raw_in0 else 0
+
+        freq = Counter()
+        for r in range(H):
+            for c in range(W):
+                freq[raw_in0[r][c]] += 1
+        bg_color = freq.most_common(1)[0][0]
+        in_colors = set(freq.keys())
+        if len(in_colors) != 2:
+            return None
+        frame_color = (in_colors - {bg_color}).pop()
+
+        out_colors = set()
+        for r in range(H):
+            for c in range(W):
+                out_colors.add(raw_out0[r][c])
+        new_colors = out_colors - in_colors
+        if len(new_colors) != 1:
+            return None
+        fill_color = new_colors.pop()
+
+        for pair in task.example_pairs:
+            raw_in = pair.input_grid.raw
+            raw_out = pair.output_grid.raw
+            pH = len(raw_in)
+            pW = len(raw_in[0]) if raw_in else 0
+
+            frames = self._find_rect_frames_any(
+                raw_in, frame_color, bg_color, pH, pW)
+            if not frames:
+                return None
+
+            expected = [row[:] for row in raw_in]
+            for r1, c1, r2, c2, gap_r, gap_c, gap_side in frames:
+                for r in range(r1 + 1, r2):
+                    for c in range(c1 + 1, c2):
+                        expected[r][c] = fill_color
+                if gap_r is not None:
+                    expected[gap_r][gap_c] = fill_color
+                    if gap_side == "top":
+                        for r in range(gap_r - 1, -1, -1):
+                            expected[r][gap_c] = fill_color
+                    elif gap_side == "bottom":
+                        for r in range(gap_r + 1, pH):
+                            expected[r][gap_c] = fill_color
+                    elif gap_side == "left":
+                        for c in range(gap_c - 1, -1, -1):
+                            expected[gap_r][c] = fill_color
+                    elif gap_side == "right":
+                        for c in range(gap_c + 1, pW):
+                            expected[gap_r][c] = fill_color
+
+            if expected != raw_out:
+                return None
+
+        return {
+            "type": "multi_rect_fill_ray",
+            "bg_color": bg_color,
+            "frame_color": frame_color,
+            "fill_color": fill_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_rect_frames_any(raw, frame_color, bg_color, H, W):
+        """Find rectangular frames with 0 or 1 gaps in the border."""
+        visited = set()
+        frames = []
+        for sr in range(H):
+            for sc in range(W):
+                if raw[sr][sc] == frame_color and (sr, sc) not in visited:
+                    component = []
+                    queue = [(sr, sc)]
+                    visited.add((sr, sc))
+                    while queue:
+                        r, c = queue.pop(0)
+                        component.append((r, c))
+                        for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                            nr, nc = r + dr, c + dc
+                            if (0 <= nr < H and 0 <= nc < W
+                                    and (nr, nc) not in visited
+                                    and raw[nr][nc] == frame_color):
+                                visited.add((nr, nc))
+                                queue.append((nr, nc))
+                    if len(component) < 6:
+                        continue
+                    comp_set = set(component)
+                    min_r = min(r for r, c in component)
+                    max_r = max(r for r, c in component)
+                    min_c = min(c for r, c in component)
+                    max_c = max(c for r, c in component)
+                    border_cells = set()
+                    for r in range(min_r, max_r + 1):
+                        for c in range(min_c, max_c + 1):
+                            if r in (min_r, max_r) or c in (min_c, max_c):
+                                border_cells.add((r, c))
+                    if not comp_set.issubset(border_cells):
+                        continue
+                    gaps = border_cells - comp_set
+                    if len(gaps) == 0:
+                        frames.append((min_r, min_c, max_r, max_c,
+                                       None, None, None))
+                    elif len(gaps) == 1:
+                        gap_r, gap_c = gaps.pop()
+                        if gap_r == min_r:
+                            gap_side = "top"
+                        elif gap_r == max_r:
+                            gap_side = "bottom"
+                        elif gap_c == min_c:
+                            gap_side = "left"
+                        else:
+                            gap_side = "right"
+                        frames.append((min_r, min_c, max_r, max_c,
+                                       gap_r, gap_c, gap_side))
+        return frames
+
+    # ---- strategy 100: corner seed symmetric frame --------------------------
+
+    def _try_corner_seed_symmetric_frame(self, patterns, wm):
+        """
+        Detect: odd-dimension square grid with a few non-zero pixels clustered
+        in one corner at odd row/col positions. Output = 4-fold symmetric
+        nested rectangular frames built from the corner specification.
+        Diagonal pixels (r==c in normalized form) are rectangle corners.
+        Off-diagonal pixels fill the edges between corners.
+        Category: symmetry expansion / nested frames from seed.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if not g0 or not g1:
+                return None
+            raw_in = g0.raw
+            raw_out = g1.raw
+            H, W = len(raw_in), len(raw_in[0])
+            if H != W or H % 2 == 0 or H < 5:
+                return None
+
+            pixels = []
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] != 0:
+                        pixels.append((r, c, raw_in[r][c]))
+            if len(pixels) < 2 or len(pixels) > 30:
+                return None
+            if not all(r % 2 == 1 and c % 2 == 1 for r, c, v in pixels):
+                return None
+
+            center = H // 2
+            quadrants = set()
+            for r, c, v in pixels:
+                qr = 0 if r <= center else 1
+                qc = 0 if c <= center else 1
+                quadrants.add((qr, qc))
+            if len(quadrants) != 1:
+                return None
+            qr, qc = quadrants.pop()
+
+            normalized = []
+            for r, c, v in pixels:
+                nr = r if qr == 0 else H - 1 - r
+                nc = c if qc == 0 else W - 1 - c
+                normalized.append((nr, nc, v))
+            normalized.sort()
+
+            expected = self._build_corner_seed_frame(normalized, H, W)
+            if expected != raw_out:
+                return None
+
+        return {"type": "corner_seed_symmetric_frame", "confidence": 0.95}
+
+    @staticmethod
+    def _build_corner_seed_frame(normalized_pixels, H, W):
+        """Build the 4-fold symmetric frame output from corner seed pixels."""
+        out = [[0] * W for _ in range(H)]
+
+        # Place all 4-reflected pixels
+        for r, c, v in normalized_pixels:
+            for rr, cc in [(r, c), (r, W - 1 - c),
+                           (H - 1 - r, c), (H - 1 - r, W - 1 - c)]:
+                out[rr][cc] = v
+
+        # Horizontal edge fills: off-diagonal pixels where c > r
+        for r, c, v in normalized_pixels:
+            if c > r:
+                mirror_c = W - 1 - c
+                for fc in range(c, mirror_c + 1, 2):
+                    out[r][fc] = v
+                    out[H - 1 - r][fc] = v
+
+        # Vertical edge fills: off-diagonal pixels where r > c
+        for r, c, v in normalized_pixels:
+            if r > c:
+                mirror_r = H - 1 - r
+                for fr in range(r, mirror_r + 1, 2):
+                    out[fr][c] = v
+                    out[fr][W - 1 - c] = v
+
+        return out
+
+    # ---- strategy 101: frame corner projectile ------------------------------
+
+    def _try_frame_corner_projectile(self, patterns, wm):
+        """
+        Detect: L-shaped or U-shaped frame (one color) with enclosed content
+        (another color). Diagonal ray of content color shoots from each
+        external frame corner into the open space.
+        Colors may differ per example; the pattern (not the colors) is the rule.
+        Category: frame detection / diagonal projection.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        from collections import Counter
+
+        bg_color = None
+
+        for pair in task.example_pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            H = len(inp)
+            W = len(inp[0]) if inp else 0
+            freq = Counter()
+            for r in range(H):
+                for c in range(W):
+                    freq[inp[r][c]] += 1
+            bg = freq.most_common(1)[0][0]
+            non_bg = sorted(set(freq.keys()) - {bg})
+            if len(non_bg) != 2:
+                return None
+            if bg_color is None:
+                bg_color = bg
+            elif bg_color != bg:
+                return None
+
+            # Detect frame/content per example and verify
+            fc, cc = self._detect_frame_content(inp, H, W, non_bg)
+            if fc is None:
+                return None
+            predicted = self._compute_frame_projectile(inp, H, W, bg, fc, cc)
+            if predicted is None or predicted != out:
+                return None
+
+        return {
+            "type": "frame_corner_projectile",
+            "bg_color": bg_color,
+            "confidence": 0.95,
+        }
+
+    @staticmethod
+    def _detect_frame_content(raw, H, W, non_bg):
+        """Detect frame vs content color: frame's bbox contains content's."""
+        cells_a = [(r, c) for r in range(H) for c in range(W)
+                   if raw[r][c] == non_bg[0]]
+        cells_b = [(r, c) for r in range(H) for c in range(W)
+                   if raw[r][c] == non_bg[1]]
+        if not cells_a or not cells_b:
+            return None, None
+        bbox_a = (min(r for r, c in cells_a), min(c for r, c in cells_a),
+                  max(r for r, c in cells_a), max(c for r, c in cells_a))
+        bbox_b = (min(r for r, c in cells_b), min(c for r, c in cells_b),
+                  max(r for r, c in cells_b), max(c for r, c in cells_b))
+        a_contains_b = (bbox_a[0] <= bbox_b[0] and bbox_a[1] <= bbox_b[1]
+                        and bbox_a[2] >= bbox_b[2]
+                        and bbox_a[3] >= bbox_b[3])
+        b_contains_a = (bbox_b[0] <= bbox_a[0] and bbox_b[1] <= bbox_a[1]
+                        and bbox_b[2] >= bbox_a[2]
+                        and bbox_b[3] >= bbox_a[3])
+        if a_contains_b and not b_contains_a:
+            return non_bg[0], non_bg[1]
+        if b_contains_a and not a_contains_b:
+            return non_bg[1], non_bg[0]
+        # Fallback: frame has more cells
+        if len(cells_a) >= len(cells_b):
+            return non_bg[0], non_bg[1]
+        return non_bg[1], non_bg[0]
+
+    @staticmethod
+    def _compute_frame_projectile(raw, H, W, bg, fc, cc):
+        """Compute output for frame_corner_projectile transformation."""
+        # Collect frame and content cells
+        frame_cells = set()
+        content_cells = set()
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == fc:
+                    frame_cells.add((r, c))
+                elif raw[r][c] == cc:
+                    content_cells.add((r, c))
+        if not frame_cells or not content_cells:
+            return None
+
+        # Find corners: frame cells with exactly 2 perpendicular frame neighbors
+        corners = []
+        for r, c in frame_cells:
+            h_dirs = []
+            v_dirs = []
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nr, nc = r + dr, c + dc
+                if (nr, nc) in frame_cells:
+                    if dr == 0:
+                        h_dirs.append((dr, dc))
+                    else:
+                        v_dirs.append((dr, dc))
+            if len(h_dirs) == 1 and len(v_dirs) == 1:
+                # Corner with one horizontal and one vertical frame neighbor
+                diag_dr = -v_dirs[0][0]
+                diag_dc = -h_dirs[0][1]
+                corners.append((r, c, diag_dr, diag_dc))
+
+        if not corners:
+            return None
+
+        # Check if any corner's diagonal immediately goes out of bounds
+        # If so, compute shift needed
+        shift_r = 0
+        shift_c = 0
+        all_cells = frame_cells | content_cells
+        min_r = min(r for r, c in all_cells)
+        max_r = max(r for r, c in all_cells)
+        min_c = min(c for r, c in all_cells)
+        max_c = max(c for r, c in all_cells)
+
+        for cr, cc_pos, dr, dc in corners:
+            # Check if first diagonal step is out of bounds
+            nr, nc = cr + dr, cc_pos + dc
+            if nr < 0 or nr >= H or nc < 0 or nc >= W:
+                if dr < 0:  # diagonal goes up, shift down
+                    shift_r = max(shift_r, H - 1 - max_r)
+                elif dr > 0:  # diagonal goes down, shift up
+                    shift_r = min(shift_r, -min_r)
+                if dc < 0:  # diagonal goes left, shift right
+                    shift_c = max(shift_c, W - 1 - max_c)
+                elif dc > 0:  # diagonal goes right, shift left
+                    shift_c = min(shift_c, -min_c)
+
+        # Build output
+        out = [[bg] * W for _ in range(H)]
+
+        # Place shifted frame and content
+        for r, c in frame_cells:
+            nr, nc = r + shift_r, c + shift_c
+            if 0 <= nr < H and 0 <= nc < W:
+                out[nr][nc] = fc
+        for r, c in content_cells:
+            nr, nc = r + shift_r, c + shift_c
+            if 0 <= nr < H and 0 <= nc < W:
+                out[nr][nc] = cc
+
+        # Draw diagonal rays from shifted corners
+        for cr, cc_pos, dr, dc in corners:
+            sr, sc = cr + shift_r, cc_pos + shift_c
+            r, c = sr + dr, sc + dc
+            while 0 <= r < H and 0 <= c < W:
+                out[r][c] = cc
+                r += dr
+                c += dc
+
+        return out
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -12308,6 +12712,12 @@ class PredictOperator(Operator):
             return self._apply_max_rect_fill(rule, input_grid)
         if rule_type == "divider_complement_merge":
             return self._apply_divider_complement_merge(rule, input_grid)
+        if rule_type == "multi_rect_fill_ray":
+            return self._apply_multi_rect_fill_ray(rule, input_grid)
+        if rule_type == "corner_seed_symmetric_frame":
+            return self._apply_corner_seed_symmetric_frame(rule, input_grid)
+        if rule_type == "frame_corner_projectile":
+            return self._apply_frame_corner_projectile(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -16350,6 +16760,100 @@ class PredictOperator(Operator):
             return out
         else:
             return left
+
+    # ---- apply: multi_rect_fill_ray ----------------------------------------
+
+    def _apply_multi_rect_fill_ray(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        bg_color = rule["bg_color"]
+        frame_color = rule["frame_color"]
+        fill_color = rule["fill_color"]
+        frames = GeneralizeOperator._find_rect_frames_any(
+            raw, frame_color, bg_color, H, W)
+        out = [row[:] for row in raw]
+        for r1, c1, r2, c2, gap_r, gap_c, gap_side in frames:
+            for r in range(r1 + 1, r2):
+                for c in range(c1 + 1, c2):
+                    out[r][c] = fill_color
+            if gap_r is not None:
+                out[gap_r][gap_c] = fill_color
+                if gap_side == "top":
+                    for r in range(gap_r - 1, -1, -1):
+                        out[r][gap_c] = fill_color
+                elif gap_side == "bottom":
+                    for r in range(gap_r + 1, H):
+                        out[r][gap_c] = fill_color
+                elif gap_side == "left":
+                    for c in range(gap_c - 1, -1, -1):
+                        out[gap_r][c] = fill_color
+                elif gap_side == "right":
+                    for c in range(gap_c + 1, W):
+                        out[gap_r][c] = fill_color
+        return out
+
+    # ---- apply: corner_seed_symmetric_frame --------------------------------
+
+    def _apply_corner_seed_symmetric_frame(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        if H != W or H % 2 == 0:
+            return [row[:] for row in raw]
+
+        pixels = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != 0:
+                    pixels.append((r, c, raw[r][c]))
+
+        if not pixels:
+            return [row[:] for row in raw]
+
+        center = H // 2
+        quadrants = set()
+        for r, c, v in pixels:
+            qr = 0 if r <= center else 1
+            qc = 0 if c <= center else 1
+            quadrants.add((qr, qc))
+
+        if len(quadrants) != 1:
+            return [row[:] for row in raw]
+        qr, qc = quadrants.pop()
+
+        normalized = []
+        for r, c, v in pixels:
+            nr = r if qr == 0 else H - 1 - r
+            nc = c if qc == 0 else W - 1 - c
+            normalized.append((nr, nc, v))
+        normalized.sort()
+
+        return GeneralizeOperator._build_corner_seed_frame(normalized, H, W)
+
+    # ---- apply: frame_corner_projectile ------------------------------------
+
+    def _apply_frame_corner_projectile(self, rule, input_grid):
+        from collections import Counter
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        bg = rule["bg_color"]
+        freq = Counter()
+        for r in range(H):
+            for c in range(W):
+                freq[raw[r][c]] += 1
+        non_bg = sorted(set(freq.keys()) - {bg})
+        if len(non_bg) != 2:
+            return [row[:] for row in raw]
+        fc, cc = GeneralizeOperator._detect_frame_content(raw, H, W, non_bg)
+        if fc is None:
+            return [row[:] for row in raw]
+        result = GeneralizeOperator._compute_frame_projectile(
+            raw, H, W, bg, fc, cc)
+        if result is None:
+            return [row[:] for row in raw]
+        return result
 
 
 # ======================================================================
