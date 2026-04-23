@@ -16,7 +16,19 @@ import json
 import time
 import random
 import argparse
+import subprocess
 from datetime import datetime
+
+
+def _git_branch() -> str:
+    """Return the current git branch name, or 'unknown' if unavailable."""
+    try:
+        return subprocess.check_output(
+            ["git", "rev-parse", "--abbrev-ref", "HEAD"],
+            stderr=subprocess.DEVNULL,
+        ).decode().strip()
+    except Exception:
+        return "unknown"
 
 from managers.arc_manager import ARCManager
 from agent.active_agent import ActiveSoarAgent
@@ -112,6 +124,7 @@ def main():
     # Log file (always saved to logs/)
     os.makedirs("logs", exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    branch = _git_branch()
     log_path = f"logs/learn_{timestamp}.log"
     log_file = open(log_path, "w")
 
@@ -121,9 +134,9 @@ def main():
     html_report = None
     html_path = None
     if args.viz:
-        root_log_path = f"run_learn_{args.split}_{timestamp}.txt"
+        root_log_path = f"run_learn_{branch}_{args.split}_{timestamp}.txt"
         root_log_file = open(root_log_path, "w")
-        html_path = f"run_learn_{args.split}_{timestamp}.html"
+        html_path = f"run_learn_{branch}_{args.split}_{timestamp}.html"
         html_report = HTMLReport(split=args.split, timestamp=timestamp)
 
     def log(msg):
