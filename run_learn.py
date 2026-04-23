@@ -134,9 +134,10 @@ def main():
     html_report = None
     html_path = None
     if args.viz:
-        root_log_path = f"run_learn_{branch}_{args.split}_{timestamp}.txt"
+        os.makedirs("reports", exist_ok=True)
+        root_log_path = f"reports/run_learn_{branch}_{args.split}_{timestamp}.txt"
         root_log_file = open(root_log_path, "w")
-        html_path = f"run_learn_{branch}_{args.split}_{timestamp}.html"
+        html_path = f"reports/run_learn_{branch}_{args.split}_{timestamp}.html"
         html_report = HTMLReport(split=args.split, timestamp=timestamp)
 
     def log(msg):
