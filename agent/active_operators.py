@@ -395,6 +395,10 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_cross_center_mark(patterns, wm)
 
+        # Strategy 106: bbox hole fill (fill 0s in each shape's bounding box with fill color)
+        if rule is None:
+            rule = self._try_bbox_hole_fill(patterns, wm)
+
         # Strategy 6f: mirror symmetry recolor (symmetric fg pairs → color 1)
         if rule is None:
             rule = self._try_mirror_symmetry_recolor(patterns, wm)
@@ -786,6 +790,14 @@ class GeneralizeOperator(Operator):
         # Strategy 104: Manhattan distance ripple (seed pixel → color rings)
         if rule is None:
             rule = self._try_manhattan_ripple(patterns, wm)
+
+        # Strategy 105: cross sequence extend (cross of colors → extend to fill row/col)
+        if rule is None:
+            rule = self._try_cross_sequence_extend(patterns, wm)
+
+        # Strategy 107: gravity drop floor (colored pixels fall to floor row)
+        if rule is None:
+            rule = self._try_gravity_drop_floor(patterns, wm)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -12806,6 +12818,332 @@ class GeneralizeOperator(Operator):
             "cycle": cycle,
         }
 
+    # ---- strategy 105: cross sequence extend --------------------------------
+
+    def _try_cross_sequence_extend(self, patterns, wm):
+        """
+        Detect: sparse grid (mostly 0) with a small cross pattern — a horizontal
+        arm on one row and a vertical arm on one column, intersecting at one cell.
+        The arms define a cyclic color sequence. Output extends the horizontal
+        sequence across the entire row and the vertical sequence down the entire
+        column, both repeating cyclically.
+        Category: sequence tiling / cross-shaped pattern extension.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Find all non-zero cells
+            nz = [(r, c, raw_in[r][c]) for r in range(H) for c in range(W) if raw_in[r][c] != 0]
+            if len(nz) < 3:
+                return None
+
+            # Find rows and cols with non-zero cells
+            row_counts = {}
+            col_counts = {}
+            for r, c, v in nz:
+                row_counts[r] = row_counts.get(r, 0) + 1
+                col_counts[c] = col_counts.get(c, 0) + 1
+
+            # Find horizontal arm: row with max non-zero cells
+            h_row = max(row_counts, key=row_counts.get)
+            # Find vertical arm: col with max non-zero cells
+            v_col = max(col_counts, key=col_counts.get)
+
+            if row_counts[h_row] < 2 or col_counts[v_col] < 2:
+                return None
+
+            # Verify intersection exists
+            if raw_in[h_row][v_col] == 0:
+                return None
+
+            # Extract horizontal sequence (sorted by column)
+            h_cells = sorted([(c, raw_in[h_row][c]) for c in range(W) if raw_in[h_row][c] != 0], key=lambda x: x[0])
+            # Extract vertical sequence (sorted by row)
+            v_cells = sorted([(r, raw_in[r][v_col]) for r in range(H) if raw_in[r][v_col] != 0], key=lambda x: x[0])
+
+            # Check that all non-zero cells are on the cross
+            cross_positions = set()
+            for c, _ in h_cells:
+                cross_positions.add((h_row, c))
+            for r, _ in v_cells:
+                cross_positions.add((r, v_col))
+            nz_positions = set((r, c) for r, c, _ in nz)
+            if nz_positions != cross_positions:
+                return None
+
+            # Derive horizontal cycle
+            h_seq = [v for _, v in h_cells]
+            h_start_col = h_cells[0][0]
+
+            # Derive vertical cycle
+            v_seq = [v for _, v in v_cells]
+            v_start_row = v_cells[0][0]
+
+            # Verify output: horizontal row filled cyclically
+            h_len = len(h_seq)
+            for c in range(W):
+                expected = h_seq[(c - h_start_col) % h_len]
+                if raw_out[h_row][c] != expected:
+                    return None
+
+            # Verify output: vertical column filled cyclically
+            v_len = len(v_seq)
+            for r in range(H):
+                if r == h_row:
+                    continue  # intersection already verified
+                expected = v_seq[(r - v_start_row) % v_len]
+                if raw_out[r][v_col] != expected:
+                    return None
+
+            # Verify all other cells are 0
+            for r in range(H):
+                for c in range(W):
+                    if r == h_row or c == v_col:
+                        continue
+                    if raw_out[r][c] != 0:
+                        return None
+
+        return {
+            "type": "cross_sequence_extend",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 106: bbox hole fill ----------------------------------------
+
+    def _try_bbox_hole_fill(self, patterns, wm):
+        """
+        Detect: grid has connected components of one foreground color on bg=0.
+        Each component's bounding box has some 0-cells inside. Output fills those
+        interior 0-cells with a fill color. Same-size I/O grids.
+        Category: shape interior fill / bounding box completion.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        fg_color = None
+        fill_color = None
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Find non-zero colors in input
+            in_colors = set()
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] != 0:
+                        in_colors.add(raw_in[r][c])
+            if len(in_colors) != 1:
+                return None
+            pair_fg = in_colors.pop()
+
+            # Find the new color in output (not in input)
+            pair_fill = None
+            for r in range(H):
+                for c in range(W):
+                    if raw_out[r][c] != 0 and raw_out[r][c] != pair_fg:
+                        if pair_fill is None:
+                            pair_fill = raw_out[r][c]
+                        elif raw_out[r][c] != pair_fill:
+                            return None
+            if pair_fill is None:
+                return None
+
+            if fg_color is None:
+                fg_color = pair_fg
+                fill_color = pair_fill
+            elif fg_color != pair_fg or fill_color != pair_fill:
+                return None
+
+            # Find connected components of fg (8-connectivity)
+            visited = [[False] * W for _ in range(H)]
+            components = []
+
+            def bfs(sr, sc):
+                from collections import deque
+                q = deque([(sr, sc)])
+                visited[sr][sc] = True
+                cells = [(sr, sc)]
+                while q:
+                    r, c = q.popleft()
+                    for dr in [-1, 0, 1]:
+                        for dc in [-1, 0, 1]:
+                            if dr == 0 and dc == 0:
+                                continue
+                            nr, nc = r + dr, c + dc
+                            if 0 <= nr < H and 0 <= nc < W and not visited[nr][nc] and raw_in[nr][nc] == pair_fg:
+                                visited[nr][nc] = True
+                                q.append((nr, nc))
+                                cells.append((nr, nc))
+                return cells
+
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] == pair_fg and not visited[r][c]:
+                        components.append(bfs(r, c))
+
+            # For each component, verify bbox fill
+            for comp in components:
+                min_r = min(r for r, c in comp)
+                max_r = max(r for r, c in comp)
+                min_c = min(c for r, c in comp)
+                max_c = max(c for r, c in comp)
+                comp_set = set(comp)
+                for r in range(min_r, max_r + 1):
+                    for c in range(min_c, max_c + 1):
+                        if (r, c) in comp_set:
+                            if raw_out[r][c] != pair_fg:
+                                return None
+                        else:
+                            if raw_out[r][c] != pair_fill:
+                                return None
+
+            # Verify cells outside all bboxes are unchanged
+            all_bbox = set()
+            for comp in components:
+                min_r = min(r for r, c in comp)
+                max_r = max(r for r, c in comp)
+                min_c = min(c for r, c in comp)
+                max_c = max(c for r, c in comp)
+                for r in range(min_r, max_r + 1):
+                    for c in range(min_c, max_c + 1):
+                        all_bbox.add((r, c))
+            for r in range(H):
+                for c in range(W):
+                    if (r, c) not in all_bbox:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+        return {
+            "type": "bbox_hole_fill",
+            "confidence": 1.0,
+            "fg_color": fg_color,
+            "fill_color": fill_color,
+        }
+
+    # ---- strategy 107: gravity drop floor ------------------------------------
+
+    def _try_gravity_drop_floor(self, patterns, wm):
+        """
+        Detect: grid has a floor row (bottom row, all one color), vertical columns
+        of floor color above it, and object-colored pixels sitting above those columns.
+        Object pixels drop down to the floor row, replacing the floor color at their
+        column. The intermediate floor-color cells stay.
+        Category: gravity / object drop to surface.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        floor_color = None
+        obj_color = None
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if H < 3 or W < 2:
+                return None
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Check bottom row is uniform (floor)
+            bottom = raw_in[H - 1]
+            pair_floor = bottom[0]
+            if pair_floor == 0:
+                return None
+            if not all(v == pair_floor for v in bottom):
+                return None
+
+            # Find object color (non-zero, non-floor)
+            pair_obj = None
+            for r in range(H):
+                for c in range(W):
+                    v = raw_in[r][c]
+                    if v != 0 and v != pair_floor:
+                        if pair_obj is None:
+                            pair_obj = v
+                        elif v != pair_obj:
+                            return None
+            if pair_obj is None:
+                return None
+
+            if floor_color is None:
+                floor_color = pair_floor
+                obj_color = pair_obj
+            elif floor_color != pair_floor or obj_color != pair_obj:
+                return None
+
+            # Verify transformation: for each column with an object pixel,
+            # the object should appear at the floor row and be cleared above
+            for c in range(W):
+                # Find object pixel in this column
+                obj_row = None
+                for r in range(H - 1):
+                    if raw_in[r][c] == pair_obj:
+                        if obj_row is not None:
+                            return None  # multiple objects in same column
+                        obj_row = r
+
+                if obj_row is not None:
+                    # Verify: object moves to floor row
+                    if raw_out[H - 1][c] != pair_obj:
+                        return None
+                    # Verify: object's original position becomes 0
+                    if raw_out[obj_row][c] != 0:
+                        return None
+                else:
+                    # No object: floor row should stay unchanged
+                    if raw_out[H - 1][c] != pair_floor:
+                        return None
+
+            # Verify middle rows: floor-color cells stay, other cells become 0
+            for r in range(H - 1):
+                for c in range(W):
+                    if raw_in[r][c] == pair_floor:
+                        if raw_out[r][c] != pair_floor:
+                            return None
+                    elif raw_in[r][c] == pair_obj:
+                        if raw_out[r][c] != 0:
+                            return None
+                    else:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+        return {
+            "type": "gravity_drop_floor",
+            "confidence": 1.0,
+            "floor_color": floor_color,
+            "obj_color": obj_color,
+        }
+
 
 class DescendOperator(Operator):
     """
@@ -13085,6 +13423,12 @@ class PredictOperator(Operator):
             return self._apply_concentric_block_ring(rule, input_grid)
         if rule_type == "manhattan_ripple":
             return self._apply_manhattan_ripple(rule, input_grid)
+        if rule_type == "cross_sequence_extend":
+            return self._apply_cross_sequence_extend(rule, input_grid)
+        if rule_type == "bbox_hole_fill":
+            return self._apply_bbox_hole_fill(rule, input_grid)
+        if rule_type == "gravity_drop_floor":
+            return self._apply_gravity_drop_floor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -17354,6 +17698,124 @@ class PredictOperator(Operator):
                     out[r][c] = bl
                 else:
                     out[r][c] = br_v
+        return out
+
+    # ---- apply: cross sequence extend -----------------------------------------
+
+    def _apply_cross_sequence_extend(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        out = [[0] * W for _ in range(H)]
+
+        # Find all non-zero cells
+        nz = [(r, c, raw[r][c]) for r in range(H) for c in range(W) if raw[r][c] != 0]
+        if not nz:
+            return [row[:] for row in raw]
+
+        # Find horizontal arm row and vertical arm column
+        row_counts = {}
+        col_counts = {}
+        for r, c, v in nz:
+            row_counts[r] = row_counts.get(r, 0) + 1
+            col_counts[c] = col_counts.get(c, 0) + 1
+
+        h_row = max(row_counts, key=row_counts.get)
+        v_col = max(col_counts, key=col_counts.get)
+
+        # Extract sequences
+        h_cells = sorted([(c, raw[h_row][c]) for c in range(W) if raw[h_row][c] != 0], key=lambda x: x[0])
+        v_cells = sorted([(r, raw[r][v_col]) for r in range(H) if raw[r][v_col] != 0], key=lambda x: x[0])
+
+        h_seq = [v for _, v in h_cells]
+        h_start = h_cells[0][0]
+        v_seq = [v for _, v in v_cells]
+        v_start = v_cells[0][0]
+
+        # Fill horizontal row
+        h_len = len(h_seq)
+        for c in range(W):
+            out[h_row][c] = h_seq[(c - h_start) % h_len]
+
+        # Fill vertical column
+        v_len = len(v_seq)
+        for r in range(H):
+            out[r][v_col] = v_seq[(r - v_start) % v_len]
+
+        return out
+
+    # ---- apply: bbox hole fill -----------------------------------------------
+
+    def _apply_bbox_hole_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        fg_color = rule["fg_color"]
+        fill_color = rule["fill_color"]
+        out = [row[:] for row in raw]
+
+        # Find connected components of fg_color (8-connectivity)
+        visited = [[False] * W for _ in range(H)]
+        from collections import deque
+
+        def bfs(sr, sc):
+            q = deque([(sr, sc)])
+            visited[sr][sc] = True
+            cells = [(sr, sc)]
+            while q:
+                r, c = q.popleft()
+                for dr in [-1, 0, 1]:
+                    for dc in [-1, 0, 1]:
+                        if dr == 0 and dc == 0:
+                            continue
+                        nr, nc = r + dr, c + dc
+                        if 0 <= nr < H and 0 <= nc < W and not visited[nr][nc] and raw[nr][nc] == fg_color:
+                            visited[nr][nc] = True
+                            q.append((nr, nc))
+                            cells.append((nr, nc))
+            return cells
+
+        components = []
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] == fg_color and not visited[r][c]:
+                    components.append(bfs(r, c))
+
+        # Fill bounding box holes
+        for comp in components:
+            min_r = min(r for r, c in comp)
+            max_r = max(r for r, c in comp)
+            min_c = min(c for r, c in comp)
+            max_c = max(c for r, c in comp)
+            comp_set = set(comp)
+            for r in range(min_r, max_r + 1):
+                for c in range(min_c, max_c + 1):
+                    if (r, c) not in comp_set:
+                        out[r][c] = fill_color
+
+        return out
+
+    # ---- apply: gravity drop floor -------------------------------------------
+
+    def _apply_gravity_drop_floor(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        floor_color = rule["floor_color"]
+        obj_color = rule["obj_color"]
+        out = [row[:] for row in raw]
+
+        for c in range(W):
+            # Find object pixel in this column
+            obj_row = None
+            for r in range(H - 1):
+                if raw[r][c] == obj_color:
+                    obj_row = r
+                    break
+            if obj_row is not None:
+                out[obj_row][c] = 0        # clear original position
+                out[H - 1][c] = obj_color  # drop to floor
+
         return out
 
     # ---- apply: manhattan ripple ---------------------------------------------

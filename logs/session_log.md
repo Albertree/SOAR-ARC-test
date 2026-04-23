@@ -1980,3 +1980,49 @@
 - Stored rule hits: 20
 - Time: 58s
 - Log: logs/learn_20260423_173125.log
+
+---
+## Learning Loop -- 2026-04-23 17:46
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 435 -> 435 (+0 learned)
+- Stored rule hits: 20
+- Time: 60s
+- Log: logs/learn_20260423_174511.log
+
+---
+## Session 42 -- 2026-04-23 18:18
+
+### Strategies Added
+1. **cross_sequence_extend** (Strategy 105): Sparse grid with a cross-shaped
+   pattern — a horizontal arm on one row and a vertical arm on one column,
+   intersecting at one cell. Each arm's color sequence repeats cyclically to
+   fill the entire row/column. Category: sequence tiling / cross extension.
+   (solves e21d9049)
+2. **bbox_hole_fill** (Strategy 106): Grid has connected components (8-connected)
+   of one foreground color on bg=0. Each component's bounding box has interior
+   0-cells. Output fills those interior 0-cells with a fill color. Components
+   use 8-connectivity to correctly handle diagonal adjacency.
+   Category: shape interior fill / bounding box completion.
+   (solves 60b61512)
+3. **gravity_drop_floor** (Strategy 107): Grid has a uniform floor row (bottom
+   row, all one color), vertical columns of floor color above it, and object-
+   colored pixels sitting above those columns. Object pixels drop down to the
+   floor row, replacing the floor color at their column. Intermediate floor-
+   color cells stay unchanged. Category: gravity / object drop to surface.
+   (solves 3618c87e)
+
+### Bug Fix
+- Moved `bbox_hole_fill` ahead of `mirror_symmetry_recolor` in the strategy
+  chain to prevent false-positive matching on single-fg-color grids.
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 435 -> 435 (+0 learned)
+- Stored rule hits: 20
+- Time: 63s
+- Log: logs/learn_20260423_181713.log
+- Verified individually: e21d9049 (cross_sequence_extend), 60b61512 (bbox_hole_fill), 3618c87e (gravity_drop_floor)
+- Regression: 08ed6ac7 CORRECT
