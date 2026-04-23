@@ -21,7 +21,7 @@ from datetime import datetime
 
 
 def _git_branch() -> str:
-    """Return the current git branch name, or 'unknown' if unavailable."""
+    """Return the current git branch name, or unknown if unavailable."""
     try:
         return subprocess.check_output(
             ["git", "rev-parse", "--abbrev-ref", "HEAD"],
@@ -38,7 +38,9 @@ from basics.html_report import HTMLReport
 
 def parse_args():
     p = argparse.ArgumentParser(description="SOAR learning loop")
-    p.add_argument("--split", default="training", help="training or evaluation")
+    p.add_argument("--split", default=None,
+                   help="Force ARC_AGI split: 'training' (1000 tasks) or 'evaluation' (120 tasks). "
+                        "Omit to use data/ARC_easy/ when present.")
     p.add_argument("--limit", type=int, default=None, help="max tasks to run")
     p.add_argument("--shuffle", action="store_true", help="randomize task order")
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
@@ -47,8 +49,17 @@ def parse_args():
     return p.parse_args()
 
 
-def get_task_list(split, data_root="data"):
-    """Get sorted list of task hex codes for a split."""
+def get_task_list(split, data_root="data", force_split=False):
+    """Get sorted list of task IDs for a split.
+
+    If data/ARC_easy/ exists AND force_split is False, use it directly.
+    Pass force_split=True (via --split training/evaluation) to use ARC_AGI instead.
+    """
+    if not force_split:
+        easy_dir = os.path.join(data_root, "ARC_easy")
+        if os.path.isdir(easy_dir):
+            return sorted(f.replace(".json", "") for f in os.listdir(easy_dir) if f.endswith(".json"))
+
     split_dir = os.path.join(data_root, "ARC_AGI", split)
     if not os.path.isdir(split_dir):
         print(f"[!] Directory not found: {split_dir}")
@@ -75,7 +86,7 @@ def check_correct(predicted, task):
 
 
 def _show_viz(task, predicted, is_correct):
-    """Show input, predicted, and ground truth grids side by side."""
+    """Show input, predicted, and ground truth grids side by side (ANSI colors)."""
     from basics.viz import _print_side_by_side
 
     for i, pair in enumerate(task.test_pairs):
@@ -108,7 +119,9 @@ def main():
         max_steps=50,
     )
 
-    task_hexes = get_task_list(args.split)
+    split = args.split or "training"
+    force_split = args.split is not None
+    task_hexes = get_task_list(split, force_split=force_split)
     if args.shuffle:
         random.seed(args.seed)
         random.shuffle(task_hexes)
@@ -128,17 +141,19 @@ def main():
     log_path = f"logs/learn_{timestamp}.log"
     log_file = open(log_path, "w")
 
-    # Root txt + HTML — only when --viz is passed
+    # Root txt file — only when --split is explicitly given (e.g. --split training)
     root_log_path = None
     root_log_file = None
+    if force_split:
+        root_log_path = f"run_learn_{branch}_{split}_{timestamp}.txt"
+        root_log_file = open(root_log_path, "w")
+
+    # HTML report — only when --viz and --split are both given
     html_report = None
     html_path = None
-    if args.viz:
-        os.makedirs("reports", exist_ok=True)
-        root_log_path = f"reports/run_learn_{branch}_{args.split}_{timestamp}.txt"
-        root_log_file = open(root_log_path, "w")
-        html_path = f"reports/run_learn_{branch}_{args.split}_{timestamp}.html"
-        html_report = HTMLReport(split=args.split, timestamp=timestamp)
+    if args.viz and force_split:
+        html_path = f"run_learn_{branch}_{split}_{timestamp}.html"
+        html_report = HTMLReport(split=split, timestamp=timestamp)
 
     def log(msg):
         line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
@@ -153,7 +168,7 @@ def main():
     initial_rules = len(load_all_rules("procedural_memory"))
 
     log(f"=== SOAR Learning Loop ===")
-    log(f"Split: {args.split} | Tasks: {total} | Stored rules: {initial_rules}")
+    log(f"Split: {split} | Tasks: {total} | Stored rules: {initial_rules}")
     log(f"Log: {log_path}")
     log("")
 
@@ -193,6 +208,9 @@ def main():
         except Exception as e:
             error_count += 1
             log(f"[{idx+1}/{total}] {task_hex}: ERROR ({e})")
+            if html_report:
+                html_report.add_task(task_hex, "ERROR", "?", "?", task, None) \
+                    if 'task' in dir() else None
 
     elapsed_total = time.time() - start_time
     final_rules = len(load_all_rules("procedural_memory"))
@@ -221,7 +239,7 @@ def main():
             "elapsed": f"{elapsed_total:.0f}",
         }
         html_report.write(html_path)
-        print(f"HTML report saved  → {html_path}")
+        print(f"HTML report saved → {html_path}")
 
     # Write summary to session_log.md
     session_log_path = "logs/session_log.md"
