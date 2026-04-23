@@ -1942,3 +1942,41 @@
 - Time: 2127s
 - Log: logs/learn_20260423_091526.log
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 10:28
+
+- Split: training, Tasks: 160
+- Correct: 111 / 160 (69.4%)
+- Rules: 427 -> 428 (+1 learned)
+- Stored rule hits: 108
+- Time: 2135s
+- Log: logs/learn_20260423_095257.log
+
+---
+## Session 41 -- 2026-04-23 11:28
+
+### Strategies Added
+1. **block_shape_match** — Grid of NxN symbol blocks separated by zero-rows/cols; one block marked with color 8 is the template. Blocks matching its binary pattern → recolored 8; blocks strictly between two 8-blocks in the same row/column → recolored 7 (solves d94c3b52)
+2. **concentric_block_ring** — Small RxC input (R,C even) divided into 2×2 blocks, each block determines one concentric ring layer in a (2·max(R,C))² square output. Blocks read row-major: first→innermost ring, last→outermost ring. Each ring has 4 quadrant values from the 2×2 block (solves 8fff9e47)
+3. **manhattan_ripple** — Uniform background grid with single seed pixel; output fills every cell with a cyclic color sequence indexed by Manhattan distance from the seed (solves aaef0977 in isolation, pipeline integration pending)
+
+### Learning Loop Results
+- Split: training, Tasks: 160
+- Correct: 113 / 160 (70.6%) — up from 111/160 (69.4%)
+- Solved: d94c3b52 (block_shape_match), 8fff9e47 (concentric_block_ring)
+- Rules: 428 -> 431 (+3 learned)
+- Stored rule hits: 108
+- Time: 2144s
+- Log: logs/learn_20260423_105312.log
+- Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 17:32
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 431 -> 431 (+0 learned)
+- Stored rule hits: 20
+- Time: 58s
+- Log: logs/learn_20260423_173125.log

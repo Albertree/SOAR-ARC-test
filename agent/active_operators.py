@@ -775,6 +775,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_frame_corner_projectile(patterns, wm)
 
+        # Strategy 102: block shape match (grid of small blocks, template→8, between→7)
+        if rule is None:
+            rule = self._try_block_shape_match(patterns, wm)
+
+        # Strategy 103: concentric block ring (2×2 blocks → concentric ring layers)
+        if rule is None:
+            rule = self._try_concentric_block_ring(patterns, wm)
+
+        # Strategy 104: Manhattan distance ripple (seed pixel → color rings)
+        if rule is None:
+            rule = self._try_manhattan_ripple(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -12446,6 +12458,355 @@ class GeneralizeOperator(Operator):
         return out
 
 
+    # ---- strategy 102: block shape match ------------------------------------
+
+    def _try_block_shape_match(self, patterns, wm):
+        """
+        Detect: grid of NxN symbol blocks separated by 0-rows/cols.
+        One block uses color 8 (template). In the output, all blocks
+        matching the template's binary pattern → 8, blocks strictly
+        between two 8-blocks in the same row or column → 7, rest stays.
+        Category: pattern grid / template matching with line-of-sight fill.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+        if not patterns.get("grid_size_preserved", False):
+            return None
+
+        # Determine grid layout from first example
+        pair0 = task.example_pairs[0]
+        raw_in = pair0.input_grid.raw
+        H = len(raw_in)
+        W = len(raw_in[0]) if raw_in else 0
+        if H < 5 or W < 5:
+            return None
+
+        # Find separator rows (all zeros)
+        sep_rows = [r for r in range(H) if all(raw_in[r][c] == 0 for c in range(W))]
+        sep_cols = [c for c in range(W) if all(raw_in[r][c] == 0 for r in range(H))]
+        if len(sep_rows) < 2 or len(sep_cols) < 2:
+            return None
+
+        # Determine block dimensions and grid layout
+        # Blocks are between consecutive separators
+        block_rows = []
+        for i in range(len(sep_rows) - 1):
+            r0 = sep_rows[i] + 1
+            r1 = sep_rows[i + 1]
+            if r1 > r0:
+                block_rows.append((r0, r1))
+        block_cols = []
+        for i in range(len(sep_cols) - 1):
+            c0 = sep_cols[i] + 1
+            c1 = sep_cols[i + 1]
+            if c1 > c0:
+                block_cols.append((c0, c1))
+
+        if len(block_rows) < 2 or len(block_cols) < 2:
+            return None
+
+        # All blocks must have same dimensions
+        bh = block_rows[0][1] - block_rows[0][0]
+        bw = block_cols[0][1] - block_cols[0][0]
+        if bh < 2 or bw < 2 or bh > 5 or bw > 5:
+            return None
+        for r0, r1 in block_rows:
+            if r1 - r0 != bh:
+                return None
+        for c0, c1 in block_cols:
+            if c1 - c0 != bw:
+                return None
+
+        num_br = len(block_rows)
+        num_bc = len(block_cols)
+
+        # Validate on all examples
+        for pair in task.example_pairs:
+            inp = pair.input_grid.raw
+            out = pair.output_grid.raw
+            if len(inp) != H or len(inp[0]) != W:
+                return None
+            if len(out) != H or len(out[0]) != W:
+                return None
+
+            # Extract blocks and find template
+            blocks = {}
+            template_pos = None
+            template_pat = None
+            for bi, (r0, r1) in enumerate(block_rows):
+                for bj, (c0, c1) in enumerate(block_cols):
+                    pat = []
+                    has_8 = False
+                    for r in range(r0, r1):
+                        row = []
+                        for c in range(c0, c1):
+                            v = inp[r][c]
+                            if v == 8:
+                                has_8 = True
+                            row.append(1 if v != 0 else 0)
+                        pat.append(tuple(row))
+                    pat = tuple(pat)
+                    blocks[(bi, bj)] = pat
+                    if has_8:
+                        if template_pos is not None:
+                            return None  # multiple templates
+                        template_pos = (bi, bj)
+                        template_pat = pat
+
+            if template_pat is None:
+                return None
+
+            # Determine which blocks match template → should be 8
+            eight_blocks = set()
+            for pos, pat in blocks.items():
+                if pat == template_pat:
+                    eight_blocks.add(pos)
+
+            # Determine which blocks are between two 8-blocks → should be 7
+            seven_blocks = set()
+            # Row-wise
+            for bi in range(num_br):
+                eights_in_row = sorted(bj for bj in range(num_bc)
+                                       if (bi, bj) in eight_blocks)
+                for k in range(len(eights_in_row) - 1):
+                    for bj in range(eights_in_row[k] + 1, eights_in_row[k + 1]):
+                        if (bi, bj) not in eight_blocks:
+                            seven_blocks.add((bi, bj))
+            # Column-wise
+            for bj in range(num_bc):
+                eights_in_col = sorted(bi for bi in range(num_br)
+                                       if (bi, bj) in eight_blocks)
+                for k in range(len(eights_in_col) - 1):
+                    for bi in range(eights_in_col[k] + 1, eights_in_col[k + 1]):
+                        if (bi, bj) not in eight_blocks:
+                            seven_blocks.add((bi, bj))
+
+            # Verify against output
+            for bi, (r0, r1) in enumerate(block_rows):
+                for bj, (c0, c1) in enumerate(block_cols):
+                    for r in range(r0, r1):
+                        for c in range(c0, c1):
+                            in_v = inp[r][c]
+                            out_v = out[r][c]
+                            is_filled = (in_v != 0)
+                            if (bi, bj) in eight_blocks:
+                                expected = 8 if is_filled else 0
+                            elif (bi, bj) in seven_blocks:
+                                expected = 7 if is_filled else 0
+                            else:
+                                expected = in_v
+                            if out_v != expected:
+                                return None
+
+        return {
+            "type": "block_shape_match",
+            "confidence": 1.0,
+            "block_height": bh,
+            "block_width": bw,
+        }
+
+    # ---- strategy 103: concentric block ring ---------------------------------
+
+    def _try_concentric_block_ring(self, patterns, wm):
+        """
+        Detect: RxC input (R, C even) → SxS output where S = 2*max(R,C).
+        Input is divided into 2×2 blocks. Each block determines one
+        concentric ring layer. Blocks in row-major order map from
+        innermost to outermost ring. Each ring has 4 quadrant values from
+        the 2×2 block (TL, TR, BL, BR).
+        Category: spiral/ring encoding from small grid to large square.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            R = len(raw_in)
+            C = len(raw_in[0]) if raw_in else 0
+            if R < 2 or C < 2 or R % 2 != 0 or C % 2 != 0:
+                return None
+
+            S = 2 * max(R, C)
+            if len(raw_out) != S or len(raw_out[0]) != S:
+                return None
+
+            # Extract 2×2 blocks in row-major order
+            blocks = []
+            for br in range(R // 2):
+                for bc in range(C // 2):
+                    tl = raw_in[br * 2][bc * 2]
+                    tr = raw_in[br * 2][bc * 2 + 1]
+                    bl = raw_in[br * 2 + 1][bc * 2]
+                    br_v = raw_in[br * 2 + 1][bc * 2 + 1]
+                    blocks.append((tl, tr, bl, br_v))
+
+            num_blocks = len(blocks)
+            max_depth = S // 2 - 1  # 0 to max_depth
+
+            if num_blocks != max_depth + 1:
+                return None
+
+            # blocks[0] → depth max_depth (innermost), blocks[-1] → depth 0
+            # Verify each output cell
+            for r in range(S):
+                for c in range(S):
+                    depth = min(r, c, S - 1 - r, S - 1 - c)
+                    block_idx = max_depth - depth  # innermost first
+                    if block_idx < 0 or block_idx >= num_blocks:
+                        return None
+                    tl, tr, bl, br_v = blocks[block_idx]
+
+                    # Determine quadrant
+                    in_top = r < S // 2
+                    in_left = c < S // 2
+                    if in_top and in_left:
+                        expected = tl
+                    elif in_top and not in_left:
+                        expected = tr
+                    elif not in_top and in_left:
+                        expected = bl
+                    else:
+                        expected = br_v
+
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {"type": "concentric_block_ring", "confidence": 1.0}
+
+    # ---- strategy 104: manhattan distance ripple -----------------------------
+
+    def _try_manhattan_ripple(self, patterns, wm):
+        """
+        Detect: NxM grid of uniform background color with exactly one
+        non-bg pixel (the seed). Output fills every cell based on
+        Manhattan distance from the seed, cycling through a fixed color
+        sequence (all colors except bg).
+        Category: distance-based color radiating patterns.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        bg = None
+        cycle = None
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if H < 3 or W < 3:
+                return None
+            if len(raw_out) != H or len(raw_out[0]) != W:
+                return None
+
+            # Find bg color (most frequent) and seed
+            from collections import Counter
+            freq = Counter()
+            for r in range(H):
+                for c in range(W):
+                    freq[raw_in[r][c]] += 1
+            pair_bg = freq.most_common(1)[0][0]
+            total = H * W
+            if freq[pair_bg] < total - 1:
+                return None  # more than 1 non-bg pixel
+
+            # Consistent bg across examples
+            if bg is None:
+                bg = pair_bg
+            elif bg != pair_bg:
+                return None
+
+            # Find seed
+            seed_r = seed_c = seed_v = None
+            for r in range(H):
+                for c in range(W):
+                    if raw_in[r][c] != bg:
+                        seed_r, seed_c, seed_v = r, c, raw_in[r][c]
+
+            if seed_v is None:
+                return None
+
+            # Derive cycle from output at increasing distances from seed
+            # Walk along the row from the seed to get the cycle
+            pair_cycle = [seed_v]
+            for d in range(1, H + W):
+                # Find any cell at Manhattan distance d
+                found = False
+                for r in range(H):
+                    for c in range(W):
+                        if abs(r - seed_r) + abs(c - seed_c) == d:
+                            pair_cycle.append(raw_out[r][c])
+                            found = True
+                            break
+                    if found:
+                        break
+                if not found:
+                    break
+
+            # Detect cycle length: try lengths from 2 up
+            cycle_len = None
+            for L in range(2, len(pair_cycle)):
+                ok = True
+                for i in range(L, len(pair_cycle)):
+                    if pair_cycle[i] != pair_cycle[i % L]:
+                        ok = False
+                        break
+                if ok:
+                    cycle_len = L
+                    break
+            if cycle_len is None:
+                cycle_len = len(pair_cycle)
+
+            pair_cycle = pair_cycle[:cycle_len]
+
+            # Consistent cycle across examples
+            if cycle is None:
+                cycle = pair_cycle
+            else:
+                # Find alignment: seed_v in the cycle
+                if seed_v not in cycle:
+                    return None
+                base_idx = cycle.index(seed_v)
+                # Verify this pair's cycle matches when rotated
+                if len(pair_cycle) != len(cycle):
+                    return None
+                for i in range(len(cycle)):
+                    if pair_cycle[i] != cycle[(base_idx + i) % len(cycle)]:
+                        # Try re-deriving from this pair's cycle
+                        return None
+
+            # Verify full output
+            seed_idx = cycle.index(seed_v)
+            for r in range(H):
+                for c in range(W):
+                    dist = abs(r - seed_r) + abs(c - seed_c)
+                    expected = cycle[(seed_idx + dist) % len(cycle)]
+                    if raw_out[r][c] != expected:
+                        return None
+
+        if cycle is None:
+            return None
+
+        return {
+            "type": "manhattan_ripple",
+            "confidence": 1.0,
+            "bg": bg,
+            "cycle": cycle,
+        }
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -12718,6 +13079,12 @@ class PredictOperator(Operator):
             return self._apply_corner_seed_symmetric_frame(rule, input_grid)
         if rule_type == "frame_corner_projectile":
             return self._apply_frame_corner_projectile(rule, input_grid)
+        if rule_type == "block_shape_match":
+            return self._apply_block_shape_match(rule, input_grid)
+        if rule_type == "concentric_block_ring":
+            return self._apply_concentric_block_ring(rule, input_grid)
+        if rule_type == "manhattan_ripple":
+            return self._apply_manhattan_ripple(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -16854,6 +17221,170 @@ class PredictOperator(Operator):
         if result is None:
             return [row[:] for row in raw]
         return result
+
+    # ---- apply: block shape match -------------------------------------------
+
+    def _apply_block_shape_match(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+
+        # Find separator rows/cols
+        sep_rows = [r for r in range(H)
+                     if all(raw[r][c] == 0 for c in range(W))]
+        sep_cols = [c for c in range(W)
+                     if all(raw[r][c] == 0 for r in range(H))]
+
+        block_rows = []
+        for i in range(len(sep_rows) - 1):
+            r0 = sep_rows[i] + 1
+            r1 = sep_rows[i + 1]
+            if r1 > r0:
+                block_rows.append((r0, r1))
+        block_cols = []
+        for i in range(len(sep_cols) - 1):
+            c0 = sep_cols[i] + 1
+            c1 = sep_cols[i + 1]
+            if c1 > c0:
+                block_cols.append((c0, c1))
+
+        if not block_rows or not block_cols:
+            return [row[:] for row in raw]
+
+        num_br = len(block_rows)
+        num_bc = len(block_cols)
+
+        # Extract blocks and find template
+        blocks = {}
+        template_pat = None
+        for bi, (r0, r1) in enumerate(block_rows):
+            for bj, (c0, c1) in enumerate(block_cols):
+                pat = []
+                has_8 = False
+                for r in range(r0, r1):
+                    row = []
+                    for c in range(c0, c1):
+                        v = raw[r][c]
+                        if v == 8:
+                            has_8 = True
+                        row.append(1 if v != 0 else 0)
+                    pat.append(tuple(row))
+                pat = tuple(pat)
+                blocks[(bi, bj)] = pat
+                if has_8:
+                    template_pat = pat
+
+        if template_pat is None:
+            return [row[:] for row in raw]
+
+        # Find 8-blocks (matching template)
+        eight_blocks = set()
+        for pos, pat in blocks.items():
+            if pat == template_pat:
+                eight_blocks.add(pos)
+
+        # Find 7-blocks (between two 8-blocks in same row or column)
+        seven_blocks = set()
+        for bi in range(num_br):
+            eights_in_row = sorted(bj for bj in range(num_bc)
+                                   if (bi, bj) in eight_blocks)
+            for k in range(len(eights_in_row) - 1):
+                for bj in range(eights_in_row[k] + 1, eights_in_row[k + 1]):
+                    if (bi, bj) not in eight_blocks:
+                        seven_blocks.add((bi, bj))
+        for bj in range(num_bc):
+            eights_in_col = sorted(bi for bi in range(num_br)
+                                   if (bi, bj) in eight_blocks)
+            for k in range(len(eights_in_col) - 1):
+                for bi in range(eights_in_col[k] + 1, eights_in_col[k + 1]):
+                    if (bi, bj) not in eight_blocks:
+                        seven_blocks.add((bi, bj))
+
+        # Build output
+        out = [row[:] for row in raw]
+        for bi, (r0, r1) in enumerate(block_rows):
+            for bj, (c0, c1) in enumerate(block_cols):
+                if (bi, bj) in eight_blocks:
+                    for r in range(r0, r1):
+                        for c in range(c0, c1):
+                            if raw[r][c] != 0:
+                                out[r][c] = 8
+                elif (bi, bj) in seven_blocks:
+                    for r in range(r0, r1):
+                        for c in range(c0, c1):
+                            if raw[r][c] != 0:
+                                out[r][c] = 7
+        return out
+
+    # ---- apply: concentric block ring ----------------------------------------
+
+    def _apply_concentric_block_ring(self, rule, input_grid):
+        raw = input_grid.raw
+        R = len(raw)
+        C = len(raw[0]) if raw else 0
+        S = 2 * max(R, C)
+
+        # Extract 2×2 blocks in row-major order
+        blocks = []
+        for br in range(R // 2):
+            for bc in range(C // 2):
+                tl = raw[br * 2][bc * 2]
+                tr = raw[br * 2][bc * 2 + 1]
+                bl = raw[br * 2 + 1][bc * 2]
+                br_v = raw[br * 2 + 1][bc * 2 + 1]
+                blocks.append((tl, tr, bl, br_v))
+
+        max_depth = S // 2 - 1
+
+        out = [[0] * S for _ in range(S)]
+        for r in range(S):
+            for c in range(S):
+                depth = min(r, c, S - 1 - r, S - 1 - c)
+                block_idx = max_depth - depth
+                if block_idx < 0 or block_idx >= len(blocks):
+                    continue
+                tl, tr, bl, br_v = blocks[block_idx]
+                in_top = r < S // 2
+                in_left = c < S // 2
+                if in_top and in_left:
+                    out[r][c] = tl
+                elif in_top and not in_left:
+                    out[r][c] = tr
+                elif not in_top and in_left:
+                    out[r][c] = bl
+                else:
+                    out[r][c] = br_v
+        return out
+
+    # ---- apply: manhattan ripple ---------------------------------------------
+
+    def _apply_manhattan_ripple(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        bg = rule["bg"]
+        cycle = rule["cycle"]
+
+        # Find seed
+        seed_r = seed_c = seed_v = None
+        for r in range(H):
+            for c in range(W):
+                if raw[r][c] != bg:
+                    seed_r, seed_c, seed_v = r, c, raw[r][c]
+                    break
+            if seed_v is not None:
+                break
+
+        if seed_v is None or seed_v not in cycle:
+            return [row[:] for row in raw]
+
+        seed_idx = cycle.index(seed_v)
+        out = [[0] * W for _ in range(H)]
+        for r in range(H):
+            for c in range(W):
+                dist = abs(r - seed_r) + abs(c - seed_c)
+                out[r][c] = cycle[(seed_idx + dist) % len(cycle)]
+        return out
 
 
 # ======================================================================

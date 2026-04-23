@@ -24,12 +24,14 @@ export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:$
 #   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh
 #   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --max-sessions 10
 #   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --tasks-per-session 30
+#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --resume
 # ============================================================
 
 MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
 TASKS_PER_SESSION=20
 MAX_TASKS=1000
+RESUME=false
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 
@@ -37,6 +39,7 @@ while [[ "$#" -gt 0 ]]; do
     case $1 in
         --max-sessions) MAX_SESSIONS="$2"; shift ;;
         --tasks-per-session) TASKS_PER_SESSION="$2"; shift ;;
+        --resume) RESUME=true ;;
         *) echo "Unknown: $1"; exit 1 ;;
     esac
     shift
@@ -58,15 +61,19 @@ get_last_session() {
     fi
 }
 
-# ============================================================
-# Clean start: reset memory folders
-# ============================================================
-log "Cleaning memory folders..."
-find semantic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find semantic_memory -type d -empty ! -path 'semantic_memory' -delete 2>/dev/null
-find procedural_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find episodic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
+if [ "$RESUME" = true ]; then
+    log "Resume mode enabled: keeping existing memory folders."
+else
+    # ============================================================
+    # Clean start: reset memory folders
+    # ============================================================
+    log "Cleaning memory folders..."
+    find semantic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
+    find semantic_memory -type d -empty ! -path 'semantic_memory' -delete 2>/dev/null
+    find procedural_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
+    find episodic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
+    find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
+fi
 
 SESSION=$(get_last_session)
 
