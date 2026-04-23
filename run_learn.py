@@ -11,37 +11,12 @@ Usage:
 """
 
 import os
-import re
 import sys
 import json
 import time
 import random
 import argparse
 from datetime import datetime
-
-
-class _TeeStdout:
-    """Write to real stdout AND to one or more files, stripping ANSI codes for files."""
-
-    _ANSI = re.compile(r"\x1b\[[0-9;]*m")
-
-    def __init__(self, *files):
-        self._stdout = sys.__stdout__
-        self._files = files
-
-    def write(self, data):
-        self._stdout.write(data)
-        clean = self._ANSI.sub("", data)
-        for f in self._files:
-            f.write(clean)
-
-    def flush(self):
-        self._stdout.flush()
-        for f in self._files:
-            f.flush()
-
-    def __getattr__(self, name):
-        return getattr(self._stdout, name)
 
 from managers.arc_manager import ARCManager
 from agent.active_agent import ActiveSoarAgent
@@ -98,13 +73,8 @@ def check_correct(predicted, task):
     return all(p == a for p, a in zip(pred, answers))
 
 
-def _grid_to_text(grid):
-    """Render a grid as plain text rows of single-digit numbers."""
-    return ["  ".join(str(cell) for cell in row) for row in grid]
-
-
 def _show_viz(task, predicted, is_correct):
-    """Show input, predicted, and answer grids — colored in terminal, numeric in files."""
+    """Show input, predicted, and ground truth grids side by side (ANSI colors)."""
     from basics.viz import _print_side_by_side
 
     for i, pair in enumerate(task.test_pairs):
@@ -122,22 +92,8 @@ def _show_viz(task, predicted, is_correct):
             labels.append("answer")
 
         tag = "MATCH" if is_correct else "MISMATCH"
-        header = f"  {'  |  '.join(labels)}  << {tag}"
-
-        # Terminal: colored blocks via _print_side_by_side (written through Tee)
-        # But the colored output is unreadable when ANSI is stripped, so we
-        # print a plain numeric version first (always readable in files).
-        print(header)
-        # Plain numeric grid — readable in text files
-        text_rows = [_grid_to_text(g) for g in grids]
-        n_rows = max(len(r) for r in text_rows)
-        col_width = max(len(r[0]) if r else 0 for r in text_rows) + 4
-        for row_i in range(n_rows):
-            parts = []
-            for g_rows in text_rows:
-                parts.append(g_rows[row_i] if row_i < len(g_rows) else "")
-            print("  " + "    |    ".join(p.ljust(col_width) for p in parts))
-        print()
+        print(f"  {'  |  '.join(labels)}  << {tag}")
+        _print_side_by_side(grids, gap=6)
     print()
 
 
@@ -186,13 +142,14 @@ def main():
         html_path = f"run_learn_{split}_{timestamp}.html"
         html_report = HTMLReport(split=split, timestamp=timestamp)
 
-    # Tee stdout so that print() output also lands in the txt file
-    tee_targets = [f for f in [log_file, root_log_file] if f is not None]
-    sys.stdout = _TeeStdout(*tee_targets)
-
     def log(msg):
         line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
-        print(line)   # Tee captures this into all open files automatically
+        print(line)
+        log_file.write(line + "\n")
+        log_file.flush()
+        if root_log_file:
+            root_log_file.write(line + "\n")
+            root_log_file.flush()
 
     start_time = time.time()
     initial_rules = len(load_all_rules("procedural_memory"))
@@ -255,7 +212,6 @@ def main():
     log(f"Time:        {elapsed_total:.0f}s  ({elapsed_total/max(total,1):.1f}s/task)")
     log("=" * 55)
 
-    sys.stdout = sys.__stdout__   # restore before closing files
     log_file.close()
     if root_log_file:
         root_log_file.close()
