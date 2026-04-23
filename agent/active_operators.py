@@ -799,6 +799,18 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_gravity_drop_floor(patterns, wm)
 
+        # Strategy 108: shape half recolor (bottom half of shape recolored)
+        if rule is None:
+            rule = self._try_shape_half_recolor(patterns, wm)
+
+        # Strategy 109: grid section majority fill (borders of 5 with markers, interior filled)
+        if rule is None:
+            rule = self._try_grid_section_majority_fill(patterns, wm)
+
+        # Strategy 110: template marker shift (0-line grid, template 5/9, marker 6 directs shift)
+        if rule is None:
+            rule = self._try_template_marker_shift(patterns, wm)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1858,9 +1870,9 @@ class GeneralizeOperator(Operator):
         if not pair_analyses or not patterns.get("grid_size_preserved"):
             return None
 
-        # All pairs must have the same number of change groups
+        # All pairs must have the same number of change groups (≥2 for sequential)
         group_counts = [a["num_groups"] for a in pair_analyses]
-        if len(set(group_counts)) != 1 or group_counts[0] == 0:
+        if len(set(group_counts)) != 1 or group_counts[0] < 2:
             return None
 
         all_source_colors = set()
@@ -13145,6 +13157,332 @@ class GeneralizeOperator(Operator):
         }
 
 
+    # ---- strategy 108: shape half recolor ----------------------------------
+
+    def _try_shape_half_recolor(self, patterns, wm):
+        """
+        Detect: a closed shape made of color 1 on bg 0.  The shape is split
+        at its vertical midpoint; the bottom half is recolored from 1 to 2.
+        Category: shape bisection / half recolor.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Collect rows that contain color 1
+            rows_with_1 = [r for r in range(H) if any(raw_in[r][c] == 1 for c in range(W))]
+            if len(rows_with_1) < 2:
+                return None
+
+            min_r = rows_with_1[0]
+            max_r = rows_with_1[-1]
+            span = max_r - min_r + 1
+            if span < 2:
+                return None
+
+            # Midpoint: top half keeps 1, bottom half becomes 2
+            mid = min_r + span // 2  # first row of bottom half
+
+            # Verify: every 1-cell in top half stays 1, every 1-cell in bottom half becomes 2
+            for r in range(H):
+                for c in range(W):
+                    iv = raw_in[r][c]
+                    ov = raw_out[r][c]
+                    if iv == 1:
+                        if r < mid:
+                            if ov != 1:
+                                return None
+                        else:
+                            if ov != 2:
+                                return None
+                    else:
+                        if ov != iv:
+                            return None
+
+        return {
+            "type": "shape_half_recolor",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy 109: grid section majority fill ----------------------------
+
+    def _try_grid_section_majority_fill(self, patterns, wm):
+        """
+        Detect: grid partitioned by border rows/cols of color 5 (with non-5 markers
+        like 1 and 2).  Interior cells are 0.  Each rectangular section is filled
+        with the majority non-5 marker color found on its four surrounding borders.
+        Category: grid partition / border-majority fill.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        border_color = 5
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+            if H < 3 or W < 3:
+                return None
+
+            # Identify border rows: rows where every cell is either border_color or a marker (non-0)
+            border_rows = []
+            for r in range(H):
+                if all(raw_in[r][c] != 0 for c in range(W)):
+                    border_rows.append(r)
+
+            # Identify border cols: cols where most cells are border_color or marker
+            border_cols = []
+            for c in range(W):
+                if all(raw_in[r][c] != 0 for r in range(H)):
+                    border_cols.append(c)
+
+            if len(border_rows) < 2:
+                return None
+
+            # Check interior cells are 0 or on a border col with marker
+            # Build sections between consecutive border rows and border cols
+            # Add implicit boundaries
+            row_bounds = border_rows
+            col_bounds = border_cols if border_cols else []
+
+            # Build section list
+            sections = []
+            for ri in range(len(row_bounds) - 1):
+                r_top = row_bounds[ri]
+                r_bot = row_bounds[ri + 1]
+                if r_bot - r_top <= 1:
+                    continue
+                if col_bounds:
+                    # Add left edge and right edge
+                    col_edges = [-1] + col_bounds + [W]
+                    for ci in range(len(col_edges) - 1):
+                        c_left = col_edges[ci]
+                        c_right = col_edges[ci + 1]
+                        if c_right - c_left <= 1:
+                            continue
+                        sections.append((r_top, r_bot, c_left, c_right))
+                else:
+                    sections.append((r_top, r_bot, -1, W))
+
+            if not sections:
+                return None
+
+            # For each section, collect border markers and verify fill
+            for (r_top, r_bot, c_left, c_right) in sections:
+                # Interior rows/cols
+                int_r_start = r_top + 1
+                int_r_end = r_bot
+                int_c_start = max(c_left + 1, 0)
+                int_c_end = min(c_right, W)
+
+                # Collect markers on borders
+                markers = []
+                # Top border row
+                for c in range(int_c_start, int_c_end):
+                    v = raw_in[r_top][c]
+                    if v != border_color:
+                        markers.append(v)
+                # Bottom border row
+                for c in range(int_c_start, int_c_end):
+                    v = raw_in[r_bot][c]
+                    if v != border_color:
+                        markers.append(v)
+                # Left border col (if exists)
+                if c_left >= 0:
+                    for r in range(int_r_start, int_r_end):
+                        v = raw_in[r][c_left]
+                        if v != border_color:
+                            markers.append(v)
+                # Right border col (if exists)
+                if c_right < W:
+                    for r in range(int_r_start, int_r_end):
+                        v = raw_in[r][c_right]
+                        if v != border_color:
+                            markers.append(v)
+
+                if not markers:
+                    return None
+
+                # Majority color
+                from collections import Counter
+                counts = Counter(markers)
+                fill_color = counts.most_common(1)[0][0]
+
+                # Verify output: interior 0-cells become fill_color,
+                # border-col markers stay, border_color stays
+                for r in range(int_r_start, int_r_end):
+                    for c in range(int_c_start, int_c_end):
+                        iv = raw_in[r][c]
+                        ov = raw_out[r][c]
+                        if iv == 0:
+                            if ov != fill_color:
+                                return None
+                        else:
+                            # marker on divider col — should stay
+                            if ov != iv:
+                                return None
+
+        return {
+            "type": "grid_section_majority_fill",
+            "confidence": 1.0,
+            "border_color": border_color,
+        }
+
+    # ---- strategy 110: template marker shift ---------------------------------
+
+    def _try_template_marker_shift(self, patterns, wm):
+        """
+        Detect: grid divided into rectangular sections by full rows/cols of 0.
+        One section contains a 3x3 template of 5s with a 9 at center.  A specific
+        marker color (6) appears in another section.  The 9 shifts within the
+        template toward the marker's section, and the marker is replaced with 9.
+        Category: directional shift / template pointer.
+        """
+        task = wm.task
+        if not task or not task.example_pairs:
+            return None
+
+        bg = 7
+        template_body = 5
+        template_center = 9
+        shift_marker = 6
+
+        for pair in task.example_pairs:
+            ig = pair.input_grid
+            og = pair.output_grid
+            if ig is None or og is None:
+                return None
+            raw_in = ig.raw
+            raw_out = og.raw
+            H = len(raw_in)
+            W = len(raw_in[0]) if raw_in else 0
+            if len(raw_out) != H or (raw_out and len(raw_out[0]) != W):
+                return None
+
+            # Find 0-rows and 0-cols (full rows/cols of 0)
+            zero_rows = [r for r in range(H) if all(raw_in[r][c] == 0 for c in range(W))]
+            zero_cols = [c for c in range(W) if all(raw_in[r][c] == 0 for r in range(H))]
+
+            if not zero_rows or not zero_cols:
+                return None
+
+            # Build section boundaries
+            row_bounds = [-1] + zero_rows + [H]
+            col_bounds = [-1] + zero_cols + [W]
+
+            # Find template section (contains 3x3 of 5s with 9)
+            template_sec = None
+            template_sec_idx = None
+            marker_sec_idx = None
+            marker_pos = None
+
+            for ri in range(len(row_bounds) - 1):
+                for ci in range(len(col_bounds) - 1):
+                    r_start = row_bounds[ri] + 1
+                    r_end = row_bounds[ri + 1]
+                    c_start = col_bounds[ci] + 1
+                    c_end = col_bounds[ci + 1]
+                    if r_end - r_start < 1 or c_end - c_start < 1:
+                        continue
+
+                    has_5 = False
+                    has_9 = False
+                    has_marker = False
+                    marker_r = marker_c = None
+                    for r in range(r_start, r_end):
+                        for c in range(c_start, c_end):
+                            v = raw_in[r][c]
+                            if v == template_body:
+                                has_5 = True
+                            if v == template_center:
+                                has_9 = True
+                            if v == shift_marker:
+                                has_marker = True
+                                marker_r, marker_c = r, c
+
+                    if has_5 and has_9:
+                        template_sec = (r_start, r_end, c_start, c_end)
+                        template_sec_idx = (ri, ci)
+                    if has_marker:
+                        marker_sec_idx = (ri, ci)
+                        marker_pos = (marker_r, marker_c)
+
+            if template_sec is None or marker_sec_idx is None or template_sec_idx is None:
+                return None
+
+            # Compute direction from template section to marker section
+            dr = 0
+            if marker_sec_idx[0] > template_sec_idx[0]:
+                dr = 1
+            elif marker_sec_idx[0] < template_sec_idx[0]:
+                dr = -1
+            dc = 0
+            if marker_sec_idx[1] > template_sec_idx[1]:
+                dc = 1
+            elif marker_sec_idx[1] < template_sec_idx[1]:
+                dc = -1
+
+            # Find 9 position in template
+            nine_r = nine_c = None
+            for r in range(template_sec[0], template_sec[1]):
+                for c in range(template_sec[2], template_sec[3]):
+                    if raw_in[r][c] == template_center:
+                        nine_r, nine_c = r, c
+
+            if nine_r is None:
+                return None
+
+            # Verify: 9 moves by (dr, dc) in template
+            new_nine_r = nine_r + dr
+            new_nine_c = nine_c + dc
+            if raw_out[new_nine_r][new_nine_c] != template_center:
+                return None
+            if raw_out[nine_r][nine_c] != template_body:
+                return None
+
+            # Verify: marker position becomes 9
+            if raw_out[marker_pos[0]][marker_pos[1]] != template_center:
+                return None
+
+            # Verify all other cells unchanged
+            for r in range(H):
+                for c in range(W):
+                    if (r, c) in ((nine_r, nine_c), (new_nine_r, new_nine_c), marker_pos):
+                        continue
+                    if raw_out[r][c] != raw_in[r][c]:
+                        return None
+
+        return {
+            "type": "template_marker_shift",
+            "confidence": 1.0,
+            "bg": bg,
+            "template_body": template_body,
+            "template_center": template_center,
+            "shift_marker": shift_marker,
+        }
+
+
 class DescendOperator(Operator):
     """
     Placeholder: moves focus to a deeper KG level when current-level
@@ -13429,6 +13767,12 @@ class PredictOperator(Operator):
             return self._apply_bbox_hole_fill(rule, input_grid)
         if rule_type == "gravity_drop_floor":
             return self._apply_gravity_drop_floor(rule, input_grid)
+        if rule_type == "shape_half_recolor":
+            return self._apply_shape_half_recolor(rule, input_grid)
+        if rule_type == "grid_section_majority_fill":
+            return self._apply_grid_section_majority_fill(rule, input_grid)
+        if rule_type == "template_marker_shift":
+            return self._apply_template_marker_shift(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -17846,6 +18190,201 @@ class PredictOperator(Operator):
             for c in range(W):
                 dist = abs(r - seed_r) + abs(c - seed_c)
                 out[r][c] = cycle[(seed_idx + dist) % len(cycle)]
+        return out
+
+
+    # ---- apply: shape half recolor -------------------------------------------
+
+    def _apply_shape_half_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+
+        # Find rows containing color 1
+        rows_with_1 = [r for r in range(H) if any(raw[r][c] == 1 for c in range(W))]
+        if not rows_with_1:
+            return out
+
+        min_r = rows_with_1[0]
+        max_r = rows_with_1[-1]
+        span = max_r - min_r + 1
+        mid = min_r + span // 2
+
+        for r in range(mid, H):
+            for c in range(W):
+                if raw[r][c] == 1:
+                    out[r][c] = 2
+
+        return out
+
+    # ---- apply: grid section majority fill -----------------------------------
+
+    def _apply_grid_section_majority_fill(self, rule, input_grid):
+        from collections import Counter
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        border_color = rule["border_color"]
+        out = [row[:] for row in raw]
+
+        # Find border rows and cols
+        border_rows = [r for r in range(H) if all(raw[r][c] != 0 for c in range(W))]
+        border_cols = [c for c in range(W) if all(raw[r][c] != 0 for r in range(H))]
+
+        row_bounds = border_rows
+        col_bounds = border_cols if border_cols else []
+
+        for ri in range(len(row_bounds) - 1):
+            r_top = row_bounds[ri]
+            r_bot = row_bounds[ri + 1]
+            if r_bot - r_top <= 1:
+                continue
+            if col_bounds:
+                col_edges = [-1] + col_bounds + [W]
+                for ci in range(len(col_edges) - 1):
+                    c_left = col_edges[ci]
+                    c_right = col_edges[ci + 1]
+                    if c_right - c_left <= 1:
+                        continue
+                    self._fill_section(raw, out, H, W, r_top, r_bot,
+                                       c_left, c_right, border_color)
+            else:
+                self._fill_section(raw, out, H, W, r_top, r_bot,
+                                   -1, W, border_color)
+
+        return out
+
+    def _fill_section(self, raw, out, H, W, r_top, r_bot, c_left, c_right,
+                       border_color):
+        from collections import Counter
+        int_r_start = r_top + 1
+        int_r_end = r_bot
+        int_c_start = max(c_left + 1, 0)
+        int_c_end = min(c_right, W)
+
+        markers = []
+        for c in range(int_c_start, int_c_end):
+            v = raw[r_top][c]
+            if v != border_color:
+                markers.append(v)
+        for c in range(int_c_start, int_c_end):
+            v = raw[r_bot][c]
+            if v != border_color:
+                markers.append(v)
+        if c_left >= 0:
+            for r in range(int_r_start, int_r_end):
+                v = raw[r][c_left]
+                if v != border_color:
+                    markers.append(v)
+        if c_right < W:
+            for r in range(int_r_start, int_r_end):
+                v = raw[r][c_right]
+                if v != border_color:
+                    markers.append(v)
+
+        if not markers:
+            return
+
+        counts = Counter(markers)
+        fill_color = counts.most_common(1)[0][0]
+
+        for r in range(int_r_start, int_r_end):
+            for c in range(int_c_start, int_c_end):
+                if raw[r][c] == 0:
+                    out[r][c] = fill_color
+
+    # ---- apply: template marker shift ----------------------------------------
+
+    def _apply_template_marker_shift(self, rule, input_grid):
+        raw = input_grid.raw
+        H = len(raw)
+        W = len(raw[0]) if raw else 0
+        template_body = rule["template_body"]
+        template_center = rule["template_center"]
+        shift_marker = rule["shift_marker"]
+        out = [row[:] for row in raw]
+
+        # Find 0-rows and 0-cols
+        zero_rows = [r for r in range(H) if all(raw[r][c] == 0 for c in range(W))]
+        zero_cols = [c for c in range(W) if all(raw[r][c] == 0 for r in range(H))]
+
+        row_bounds = [-1] + zero_rows + [H]
+        col_bounds = [-1] + zero_cols + [W]
+
+        # Find template section and marker section
+        template_sec = None
+        template_sec_idx = None
+        marker_sec_idx = None
+        marker_pos = None
+
+        for ri in range(len(row_bounds) - 1):
+            for ci in range(len(col_bounds) - 1):
+                r_start = row_bounds[ri] + 1
+                r_end = row_bounds[ri + 1]
+                c_start = col_bounds[ci] + 1
+                c_end = col_bounds[ci + 1]
+                if r_end - r_start < 1 or c_end - c_start < 1:
+                    continue
+
+                has_5 = False
+                has_9 = False
+                has_marker = False
+                mr = mc = None
+                for r in range(r_start, r_end):
+                    for c in range(c_start, c_end):
+                        v = raw[r][c]
+                        if v == template_body:
+                            has_5 = True
+                        if v == template_center:
+                            has_9 = True
+                        if v == shift_marker:
+                            has_marker = True
+                            mr, mc = r, c
+
+                if has_5 and has_9:
+                    template_sec = (r_start, r_end, c_start, c_end)
+                    template_sec_idx = (ri, ci)
+                if has_marker:
+                    marker_sec_idx = (ri, ci)
+                    marker_pos = (mr, mc)
+
+        if template_sec is None or marker_sec_idx is None or template_sec_idx is None:
+            return [row[:] for row in raw]
+
+        # Direction
+        dr = 0
+        if marker_sec_idx[0] > template_sec_idx[0]:
+            dr = 1
+        elif marker_sec_idx[0] < template_sec_idx[0]:
+            dr = -1
+        dc = 0
+        if marker_sec_idx[1] > template_sec_idx[1]:
+            dc = 1
+        elif marker_sec_idx[1] < template_sec_idx[1]:
+            dc = -1
+
+        # Find 9 position
+        nine_r = nine_c = None
+        for r in range(template_sec[0], template_sec[1]):
+            for c in range(template_sec[2], template_sec[3]):
+                if raw[r][c] == template_center:
+                    nine_r, nine_c = r, c
+
+        if nine_r is None:
+            return [row[:] for row in raw]
+
+        new_nine_r = nine_r + dr
+        new_nine_c = nine_c + dc
+
+        # Move 9 in template
+        out[nine_r][nine_c] = template_body
+        out[new_nine_r][new_nine_c] = template_center
+
+        # Replace marker with 9
+        if marker_pos:
+            out[marker_pos[0]][marker_pos[1]] = template_center
+
         return out
 
 

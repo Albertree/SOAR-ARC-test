@@ -2026,3 +2026,49 @@
 - Log: logs/learn_20260423_181713.log
 - Verified individually: e21d9049 (cross_sequence_extend), 60b61512 (bbox_hole_fill), 3618c87e (gravity_drop_floor)
 - Regression: 08ed6ac7 CORRECT
+
+---
+## Learning Loop -- 2026-04-23 18:20
+
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 435 -> 435 (+0 learned)
+- Stored rule hits: 20
+- Time: 58s
+- Log: logs/learn_20260423_181948.log
+
+---
+## Session 43 -- 2026-04-23 18:36
+
+### Strategies Added
+1. **shape_half_recolor** (Strategy 108): Shape made of color 1 on bg 0 is split
+   at its vertical midpoint; the bottom half is recolored from 1 to 2.
+   Category: shape bisection / half recolor.
+   (solves e7dd8335)
+2. **grid_section_majority_fill** (Strategy 109): Grid partitioned by border
+   rows/cols of color 5 with non-5 markers (1, 2). Interior 0-cells in each
+   rectangular section are filled with the majority non-5 marker color found
+   on the section's four surrounding borders.
+   Category: grid partition / border-majority fill.
+   (solves 7c8af763)
+3. **template_marker_shift** (Strategy 110): Grid divided into sections by full
+   rows/cols of 0. One section has a 3x3 template of 5s with a 9 at center.
+   Marker color 6 in another section determines direction; the 9 shifts one
+   step toward that section, and the marker is replaced with 9.
+   Category: directional shift / template pointer.
+   (solves 18286ef8)
+
+### Bug Fix
+- Added guard to `recolor_sequential` detection: requires at least 2 change
+  groups (was falsely matching single-group tasks like e7dd8335 where the
+  bottom half of a shape changes color).
+
+### Learning Loop Results
+- Split: training, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 435 -> 435 (+0 learned)
+- Stored rule hits: 20
+- Time: 61s
+- Log: logs/learn_20260423_183510.log
+- Verified individually: e7dd8335 (shape_half_recolor), 7c8af763 (grid_section_majority_fill), 18286ef8 (template_marker_shift)
+- Regression: 08ed6ac7 CORRECT
