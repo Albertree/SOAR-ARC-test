@@ -127,11 +127,17 @@ def main():
     log_path = f"logs/learn_{timestamp}.log"
     log_file = open(log_path, "w")
 
+    # Mirror all output to a plain text file in the project root
+    root_log_path = f"run_learn_{timestamp}.txt"
+    root_log_file = open(root_log_path, "w")
+
     def log(msg):
         line = f"[{datetime.now().strftime('%H:%M:%S')}] {msg}"
         print(line)
         log_file.write(line + "\n")
         log_file.flush()
+        root_log_file.write(line + "\n")
+        root_log_file.flush()
 
     start_time = time.time()
     initial_rules = len(load_all_rules("procedural_memory"))
@@ -188,6 +194,8 @@ def main():
     log("=" * 55)
 
     log_file.close()
+    root_log_file.close()
+    print(f"\nFull output saved → {root_log_path}")
 
     # Write summary to session_log.md
     session_log_path = "logs/session_log.md"
