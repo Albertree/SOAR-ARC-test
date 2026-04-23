@@ -277,3 +277,113 @@ and a 1-group/2-cell handler. Fixed: easy0012.
 - Stored rule hits: 8
 - Time: 1s
 - Log: logs/learn_20260422_154633.log
+
+---
+## Learning Loop -- 2026-04-23 15:49
+
+- Split: training, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 99 -> 99 (+0 learned)
+- Stored rule hits: 8
+- Time: 2s
+- Log: logs/learn_20260423_154928.log
+
+---
+## Learning Loop -- 2026-04-23 15:55
+
+- Split: training, Tasks: 5
+- Correct: 0 / 5 (0.0%)
+- Rules: 99 -> 100 (+1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260423_155541.log
+
+---
+## Learning Loop -- 2026-04-23 15:57
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 108 -> 108 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260423_155712.log
+
+---
+## Learning Loop -- 2026-04-23 16:02
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 108 -> 108 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260423_160212.log
+
+---
+## Learning Loop -- 2026-04-23 16:02
+
+- Split: training, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 108 -> 108 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260423_160212.log
+
+---
+## Learning Loop -- 2026-04-23 16:04
+
+- Split: training, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 111 -> 111 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260423_160452.log
+
+---
+## Learning Loop -- 2026-04-23 16:05
+
+- Split: training, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 116 -> 116 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260423_160540.log
+
+---
+## Learning Loop -- 2026-04-23 16:09
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 143 -> 143 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260423_160910.log
+
+---
+## Learning Loop -- 2026-04-23 16:11
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 143 -> 143 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260423_161128.log
+
+---
+## Learning Loop -- 2026-04-23 16:11
+
+- Split: training, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 143 -> 143 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260423_161129.log
+
+---
+## Learning Loop -- 2026-04-23 16:27
+
+- Split: training, Tasks: 1000
+- Correct: 3 / 1000 (0.3%)
+- Rules: 143 -> 202 (+59 learned)
+- Stored rule hits: 1
+- Time: 960s
+- Log: logs/learn_20260423_161142.log
