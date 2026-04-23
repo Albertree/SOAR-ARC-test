@@ -6,16 +6,20 @@ Success criteria: output contains "CORRECT"
 """
 
 import sys
+import argparse
 import traceback
-
-TASK_HEX = "08ed6ac7"
-# TASK_HEX = "00d62c1b" #"0ca9ddb6" # "0a2355a6"
 
 
 MAX_STEPS = 500  # Allow enough iterations until goal is achieved
 
 
 def main():
+    parser = argparse.ArgumentParser(description="Run SOAR pipeline on a single task")
+    parser.add_argument("task", nargs="?", default="08ed6ac7",
+                        help="Task ID (e.g. easy0001) or full filename without .json")
+    args = parser.parse_args()
+    TASK_HEX = args.task.replace(".json", "")
+
     print(f"=== run_task: {TASK_HEX} ===\n")
 
     # 1. Load task
