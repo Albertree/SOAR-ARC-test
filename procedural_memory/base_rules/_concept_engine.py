@@ -682,6 +682,97 @@ def _infer_from_examples(task, arckg_features, patterns):
 
 
 # ----------------------------------------------------------------------
+# Per-object recolor driven by component size
+# ----------------------------------------------------------------------
+
+def _size_color_map_for_pair(g_in, g_out, bg):
+    """For one pair, return {component_size: output_color} or None if invalid.
+    Each non-bg connected component in g_in must have positions that are
+    uniformly recolored in g_out, and bg cells must be unchanged."""
+    h_in = len(g_in)
+    w_in = len(g_in[0]) if g_in else 0
+    h_out = len(g_out)
+    w_out = len(g_out[0]) if g_out else 0
+    if h_in != h_out or w_in != w_out:
+        return None
+    objs = P.extract_objects(g_in, bg=bg)
+    if not objs:
+        return None
+    pair_map = {}
+    used_positions = set()
+    for obj in objs:
+        out_colors = set()
+        for r, c in obj["positions"]:
+            out_colors.add(g_out[r][c])
+            used_positions.add((r, c))
+        if len(out_colors) != 1:
+            return None
+        new_color = out_colors.pop()
+        if new_color == bg:
+            return None
+        sz = obj["size"]
+        if sz in pair_map and pair_map[sz] != new_color:
+            return None
+        pair_map[sz] = new_color
+    for r in range(h_in):
+        for c in range(w_in):
+            if (r, c) in used_positions:
+                continue
+            if g_in[r][c] != g_out[r][c]:
+                return None
+    return pair_map
+
+
+@_register_infer("size_to_color_map_objects")
+def _infer_size_to_color_map_objects(task, arckg_features, patterns):
+    """Build a {size: color} mapping consistent across all training pairs,
+    where each non-bg connected component is uniformly recolored in the output
+    based on its cell count. Returns a dict-typed sentinel resolved per-input."""
+    if not arckg_features.get("size_comm", True):
+        return None
+    bg = None
+    for pair in task.example_pairs:
+        if pair.input_grid is None or pair.output_grid is None:
+            continue
+        b = P.find_bg_color(pair.input_grid.raw)
+        if bg is None:
+            bg = b
+        elif bg != b:
+            return None
+    if bg is None:
+        return None
+    merged = {}
+    for pair in task.example_pairs:
+        if pair.input_grid is None or pair.output_grid is None:
+            continue
+        pair_map = _size_color_map_for_pair(pair.input_grid.raw, pair.output_grid.raw, bg)
+        if pair_map is None:
+            return None
+        for sz, color in pair_map.items():
+            if sz in merged and merged[sz] != color:
+                return None
+            merged[sz] = color
+    if not merged:
+        return None
+    return {"_kind": "recolor_by_size", "map": merged, "bg": bg}
+
+
+def _apply_recolor_by_size(grid, size_map, bg):
+    """Recolor each non-bg connected component by its size. Returns new grid
+    or None if any component's size is not in the map."""
+    norm_map = {int(k): int(v) for k, v in size_map.items()}
+    objs = P.extract_objects(grid, bg=bg)
+    output = [row[:] for row in grid]
+    for obj in objs:
+        new_color = norm_map.get(obj["size"])
+        if new_color is None:
+            return None
+        for r, c in obj["positions"]:
+            output[r][c] = new_color
+    return output
+
+
+# ----------------------------------------------------------------------
 # Concentric ring color reversal
 # ----------------------------------------------------------------------
 
@@ -811,6 +902,16 @@ def _execute_concept(concept, params, input_grid_raw, verbose=False):
                     print(f"[CONCEPT] {cid}: ring-reversal map could not be derived from input")
                 return None
             resolved_params[k] = dyn_map
+        elif isinstance(v, dict) and v.get("_kind") == "recolor_by_size":
+            dyn_grid = _apply_recolor_by_size(
+                input_grid_raw, v.get("map", {}), int(v.get("bg", 0))
+            )
+            if dyn_grid is None:
+                if verbose:
+                    print(f"[CONCEPT] {cid}: recolor-by-size could not be applied "
+                          f"(unknown component size in input)")
+                return None
+            resolved_params[k] = dyn_grid
     env.update(resolved_params)
 
     for step in concept["steps"]:

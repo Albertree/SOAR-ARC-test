@@ -1,0 +1,14 @@
+{
+  "concept_id": "recolor_objects_by_size",
+  "version": 1,
+  "description": "Each non-bg connected component is recolored uniformly to a value determined by its cell count, using a {size: color} map inferred from training pairs. Grid shape and bg are preserved.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "out_grid": {"type": "grid", "infer": "size_to_color_map_objects"}
+  },
+  "steps": [],
+  "result": "$out_grid"
+}

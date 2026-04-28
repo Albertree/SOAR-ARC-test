@@ -305,3 +305,86 @@ These complete the four mirror-doubling directions (above/below × left/right). 
 - The geometric-symmetry concept family is now complete: 4 in-place flips (h/v/transpose/anti-transpose), 3 rotations (90 cw, 90 ccw, 180), 4 size-doubling mirrors (above/below/left/right), and 1 quadrant tile. Future symmetry concepts have nothing left to add without new primitives.
 - The unaddressed failure categories are the same six families session 9 listed: per-object relocation, path-drawing between waypoints, inner-rectangle fill by inner-size, quadrant-grid sub-pattern shifts, tile-resolution synthesis, triangular row growth. Each one requires either (a) a step engine extension (loops over `extract_objects` results, "for each section" orchestrator), or (b) new structured-output infer methods (e.g., `size_to_color_map` consumable by a single recolor call). Those changes are larger than a per-session concept addition.
 - 08ed6ac7 regression gate remains INCORRECT pre-existing.
+
+---
+## Learning Loop -- 2026-04-29 07:48
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 4
+- Time: 58s
+- Log: logs/learn_20260429_074727.log
+
+### Session 11 reflections (2026-04-29)
+
+**Failures inspected:** Picked `6e82a1ae` (per-object recoloring driven by component size) as the
+target. Read its JSON: every training pair has a single non-bg color (5) on a black bg; each
+4-connected component in the input has all its positions uniformly recolored in the output to
+a value determined solely by the component's cell count. Across all 3 pairs the map is the
+same: size 4 -> 1, size 3 -> 2, size 2 -> 3. Spot-checked `9f669b64`, `c0f76784`, `e9ac8c9e`,
+`0e206a2e`, `13f06aa5`, `afe3afe9`, `bbc9ae5d` to make sure the size->color hypothesis is
+specific (those are different patterns: rectangle-pair swap, frame-fill by inner size,
+quadrant fill, cross relocation, boundary marker overlay, 2D pattern lookup, triangular row
+growth respectively -- none reduce to size-driven recoloring).
+
+**Strategy: per-component size->color recolor.** Until now the engine could only express
+operations that compose primitives over a whole grid; per-object behavior required either
+unrolled steps (hopeless) or new primitives (frozen). The escape hatch already in the engine
+is the dynamic-sentinel mechanism used by `concentric_ring_reversal` / `<RING_REVERSAL>`: a
+parameter value resolved per-input at execute time, computed from `input_grid_raw`. I extended
+that mechanism to a new sentinel kind so concepts can return a per-input output grid built
+from extracted objects.
+
+**Implementation:**
+1. `procedural_memory/base_rules/_concept_engine.py`:
+   - Added `_size_color_map_for_pair(g_in, g_out, bg)` -- validates one pair: every non-bg
+     component's positions in g_out are uniform, bg cells unchanged, returns
+     `{size: out_color}` or None.
+   - Added infer method `size_to_color_map_objects` -- requires `size_comm=True`, infers a bg
+     consistent across all training pairs, merges per-pair size->color maps, and on success
+     returns a typed sentinel dict `{"_kind": "recolor_by_size", "map": {...}, "bg": bg}`.
+   - Added helper `_apply_recolor_by_size(grid, size_map, bg)` -- detects components in the
+     input, recolors each by its size, returns None if any component has an unknown size.
+   - Plumbed a new branch in `_execute_concept`'s sentinel-resolution loop: when a parameter
+     value is a dict with `_kind == "recolor_by_size"`, replace it with the input-specific
+     output grid before `env.update(resolved_params)`. Same shape as the existing
+     `<RING_REVERSAL>` path.
+2. `procedural_memory/concepts/recolor_objects_by_size.json` -- signature is the loose
+   `grid_size_preserved=true` + `requires_content_diff=true` filter (validation does the heavy
+   work). Single parameter `out_grid` infers via the new method; `steps: []`; `result:
+   "$out_grid"`. This is the first concept whose result comes wholly from a sentinel
+   resolution rather than primitive composition.
+
+**Validation:**
+- Direct unit test: `_size_color_map_for_pair` on each of `6e82a1ae`'s 3 training pairs returns
+  `{4:1, 3:2, 2:3}` (consistent). `_apply_recolor_by_size` on the test input matches the
+  expected output exactly.
+- End-to-end via `try_concepts` on `6e82a1ae`: anti_diagonal_flip / flip_h / flip_v fail
+  validation, ring_reversal / global_recolor / preserve_single_column return None on infer,
+  then `recolor_objects_by_size` MATCHES with params `{'out_grid': {'_kind':
+  'recolor_by_size', 'map': {4: 1, 3: 2, 2: 3}, 'bg': 0}}` and `apply_concept` on the test
+  pair produces the correct output.
+- False-positive sweep: ran `try_concepts` on all 16 currently-failing tasks. The new concept
+  matches exactly one (`6e82a1ae`); the other 15 still return None. No collateral.
+- Regression on existing concepts: `concentric_ring_reversal` still matches `85c4e7cd` via its
+  own sentinel path (verified directly). My changes are purely additive (one new infer, one
+  new helper, one new dict-typed sentinel branch) so the existing 17 concepts and 4 stored
+  rules are untouched.
+- `run_task.py` (regression `08ed6ac7`) -> INCORRECT (pre-existing across sessions 3, 5-10).
+- Concept loader: `[CONCEPT] Loaded 18 concepts` (up from 17).
+
+**Notes for next session:**
+- Expected gain on the next learn loop: 6e82a1ae moves from FAIL to OK (5/20, 25%). It will
+  also be saved as a stored rule, becoming a future memory hit.
+- The dict-typed sentinel mechanism opens a clean path for other per-object operations that
+  previously required step-engine extensions: the infer method does the cross-pair invariant
+  search, returns a typed payload, and the engine's sentinel resolver applies it per-input.
+  Future concepts that fit this shape: per-object color->color (when size isn't the key but
+  e.g., position or shape is), per-section recoloring once a section enumerator exists.
+- The strategy specifically did NOT solve the still-open categories: per-object relocation
+  (`0e206a2e`, `e9ac8c9e`), inner-size-driven frame fill (`c0f76784`), triangular row growth
+  (`bbc9ae5d`), 2D pattern lookup (`afe3afe9`), section/quadrant-grid recoloring
+  (`332202d5`, `825aa9e9`, `1c56ad9f`). Each still needs either a different sentinel kind or
+  a new infer method.
+- 08ed6ac7 regression gate remains INCORRECT pre-existing.
