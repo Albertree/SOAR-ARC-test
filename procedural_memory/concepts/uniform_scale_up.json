@@ -1,0 +1,16 @@
+{
+  "concept_id": "uniform_scale_up",
+  "version": 1,
+  "description": "Output = input scaled uniformly (each cell becomes a factor x factor block). Output dims = factor * input dims for both height and width.",
+  "signature": {
+    "grid_size_preserved": false,
+    "input_constraints": ["uniform_scale", "integer_ratio"]
+  },
+  "parameters": {
+    "factor": {"type": "int", "infer": "ratio_hw"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "scale", "args": {"grid": "$input", "factor": "$factor"}, "output": "result"}
+  ],
+  "result": "$result"
+}
