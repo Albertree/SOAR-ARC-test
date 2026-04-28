@@ -1,0 +1,10 @@
+{
+  "id": 14,
+  "rule": {
+    "type": "connector_block_split",
+    "confidence": 1.0
+  },
+  "source_task": "9f669b64",
+  "created_at": "2026-04-29T04:36:33.097969",
+  "times_reused": 25
+}

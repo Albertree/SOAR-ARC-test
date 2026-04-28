@@ -1,0 +1,10 @@
+{
+  "id": 5,
+  "rule": {
+    "type": "template_rotate_place",
+    "confidence": 1.0
+  },
+  "source_task": "0e206a2e",
+  "created_at": "2026-04-29T04:36:11.498182",
+  "times_reused": 25
+}

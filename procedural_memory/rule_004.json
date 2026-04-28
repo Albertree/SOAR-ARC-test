@@ -1,0 +1,11 @@
+{
+  "id": 4,
+  "rule": {
+    "type": "quadrant_fill",
+    "filler_color": 5,
+    "confidence": 1.0
+  },
+  "source_task": "e9ac8c9e",
+  "created_at": "2026-04-29T04:36:06.912049",
+  "times_reused": 25
+}

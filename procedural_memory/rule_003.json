@@ -1,0 +1,13 @@
+{
+  "id": 3,
+  "rule": {
+    "type": "path_with_turns",
+    "path_color": 3,
+    "cw_color": 6,
+    "ccw_color": 8,
+    "confidence": 1.0
+  },
+  "source_task": "e5790162",
+  "created_at": "2026-04-29T04:36:04.638854",
+  "times_reused": 25
+}

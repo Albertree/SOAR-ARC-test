@@ -1,0 +1,11 @@
+{
+  "id": 12,
+  "rule": {
+    "type": "extract_center_column",
+    "bg_color": 0,
+    "confidence": 1.0
+  },
+  "source_task": "d23f8c26",
+  "created_at": "2026-04-29T04:36:29.744017",
+  "times_reused": 25
+}

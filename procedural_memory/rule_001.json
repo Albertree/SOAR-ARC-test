@@ -1,0 +1,15 @@
+{
+  "id": 1,
+  "rule": {
+    "type": "separator_reflect",
+    "bg": 7,
+    "sep_color": 9,
+    "target_color": 2,
+    "chain_color": 6,
+    "mirror_color": 5,
+    "confidence": 1.0
+  },
+  "source_task": "c9680e90",
+  "created_at": "2026-04-29T04:35:59.656562",
+  "times_reused": 25
+}

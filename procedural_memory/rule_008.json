@@ -1,0 +1,11 @@
+{
+  "id": 8,
+  "rule": {
+    "type": "fill_by_interior_size",
+    "border_color": 5,
+    "confidence": 1.0
+  },
+  "source_task": "c0f76784",
+  "created_at": "2026-04-29T04:36:20.337925",
+  "times_reused": 25
+}

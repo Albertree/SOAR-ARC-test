@@ -1,0 +1,10 @@
+{
+  "id": 20,
+  "rule": {
+    "type": "quadrant_shape_swap",
+    "confidence": 1.0
+  },
+  "source_task": "5a719d11",
+  "created_at": "2026-04-29T04:36:54.919016",
+  "times_reused": 25
+}

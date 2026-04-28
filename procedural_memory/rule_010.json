@@ -1,0 +1,10 @@
+{
+  "id": 10,
+  "rule": {
+    "type": "mirror_vertical_append",
+    "confidence": 1.0
+  },
+  "source_task": "8be77c9e",
+  "created_at": "2026-04-29T04:36:24.419954",
+  "times_reused": 25
+}

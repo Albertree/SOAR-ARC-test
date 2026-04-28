@@ -1,0 +1,11 @@
+{
+  "id": 2,
+  "rule": {
+    "type": "count_diagonal_x",
+    "bg": 7,
+    "confidence": 1.0
+  },
+  "source_task": "878187ab",
+  "created_at": "2026-04-29T04:36:03.170723",
+  "times_reused": 25
+}

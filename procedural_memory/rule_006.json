@@ -1,0 +1,11 @@
+{
+  "id": 6,
+  "rule": {
+    "type": "gravity_settle",
+    "bg": 7,
+    "confidence": 1.0
+  },
+  "source_task": "825aa9e9",
+  "created_at": "2026-04-29T04:36:13.368583",
+  "times_reused": 25
+}

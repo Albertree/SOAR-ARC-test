@@ -1,0 +1,64 @@
+{
+  "id": 2,
+  "fingerprint": {
+    "task_hex": "878187ab",
+    "n_example_pairs": 2,
+    "n_test_pairs": 1,
+    "grid_size_preserved": false,
+    "input_sizes": [
+      [
+        16,
+        16
+      ],
+      [
+        15,
+        15
+      ]
+    ],
+    "output_sizes": [
+      [
+        16,
+        16
+      ],
+      [
+        16,
+        16
+      ]
+    ],
+    "size_ratios": [
+      1.0,
+      1.14
+    ],
+    "size_bucket": "large",
+    "ratio_bucket": "slight_change",
+    "input_color_counts": [
+      3,
+      3
+    ],
+    "output_color_counts": [
+      3,
+      3
+    ],
+    "colors_added": true,
+    "colors_removed": true,
+    "color_count_change": "same",
+    "n_input_objects": [
+      15,
+      11
+    ],
+    "n_output_objects": [
+      1,
+      1
+    ],
+    "object_count_preserved": false,
+    "object_count_change": "decrease",
+    "comm_scores": [
+      "1/3",
+      "0/3"
+    ],
+    "overall_comm_ratio": 0.167
+  },
+  "solved_with_rule": "count_diagonal_x",
+  "rule_id": "rule_002.json",
+  "created_at": "2026-04-29T04:36:03.171713"
+}

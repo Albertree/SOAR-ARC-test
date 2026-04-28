@@ -1,0 +1,13 @@
+{
+  "id": 11,
+  "rule": {
+    "type": "zone_expand",
+    "spine_color": 8,
+    "bg": 7,
+    "crossing_color": 1,
+    "confidence": 1.0
+  },
+  "source_task": "332202d5",
+  "created_at": "2026-04-29T04:36:29.115089",
+  "times_reused": 25
+}

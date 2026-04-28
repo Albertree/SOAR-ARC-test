@@ -1,0 +1,10 @@
+{
+  "id": 7,
+  "rule": {
+    "type": "grid_shear",
+    "confidence": 1.0
+  },
+  "source_task": "1c56ad9f",
+  "created_at": "2026-04-29T04:36:17.960544",
+  "times_reused": 25
+}

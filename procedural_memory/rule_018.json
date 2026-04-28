@@ -1,0 +1,10 @@
+{
+  "id": 18,
+  "rule": {
+    "type": "arrow_ray_edge",
+    "confidence": 1.0
+  },
+  "source_task": "13f06aa5",
+  "created_at": "2026-04-29T04:36:46.858002",
+  "times_reused": 25
+}
