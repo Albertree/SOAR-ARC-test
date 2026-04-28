@@ -215,6 +215,7 @@ procedural_memory/rule_*.json
 procedural_memory/episode_*.json
 !procedural_memory/base_rules/
 !procedural_memory/concepts/
+!procedural_memory/concepts/**
 episodic_memory/*
 !episodic_memory/.gitkeep
 # Result code

@@ -6,7 +6,7 @@ if [ -d "/mnt/c" ]; then
 else
     PRE="/c"
 fi
-export PATH="${PRE}/Users/ds-lab/anaconda3:${PRE}/Users/ds-lab/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/ds-lab/AppData/Roaming/npm:${PRE}/Users/ds-lab/AppData/Local/Microsoft/WindowsApps:$PATH"
+export PATH="${PRE}/Users/sklee/AppData/Local/Programs/Python/Python310:${PRE}/Users/sklee/AppData/Local/Programs/Python/Python310/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/sklee/AppData/Roaming/npm:${PRE}/Users/sklee/AppData/Local/Microsoft/WindowsApps:$PATH"
 
 # ============================================================
 # SOAR-ARC Infinite Loop
@@ -30,6 +30,8 @@ MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
 TASKS_PER_SESSION=20
 MAX_TASKS=1000
+TARGET_CORRECT=40
+TARGET_TOTAL=40
 CLAUDE_TIMEOUT=600
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
@@ -44,6 +46,7 @@ while [[ "$#" -gt 0 ]]; do
 done
 
 mkdir -p "$LOG_DIR"
+mkdir -p "procedural_memory/concepts"
 START_TIME=$(date +%s)
 PIPELINE_LOG="${LOG_DIR}/loop.log"
 
@@ -107,6 +110,11 @@ while true; do
     # ── Auto-grow task pool on 100% score ──────────────────
     CORRECT_N=$(echo "$SCORE_LINE" | grep -oP '\d+(?= /)' || echo "0")
     TOTAL_N=$(echo "$SCORE_LINE" | grep -oP '(?<= / )\d+' || echo "0")
+    STOP_AFTER_COMMIT=0
+    if [ "$CORRECT_N" -eq "$TARGET_CORRECT" ] && [ "$TOTAL_N" -eq "$TARGET_TOTAL" ]; then
+        STOP_AFTER_COMMIT=1
+        log "*** Target score reached: ${TARGET_CORRECT}/${TARGET_TOTAL}. Will stop after commit. ***"
+    fi
     if [ "$CORRECT_N" -eq "$TOTAL_N" ] && [ "$TOTAL_N" -gt 0 ] && [ "$TASKS_PER_SESSION" -lt "$MAX_TASKS" ]; then
         TASKS_PER_SESSION=$((TASKS_PER_SESSION * 2))
         if [ "$TASKS_PER_SESSION" -gt "$MAX_TASKS" ]; then
@@ -231,12 +239,21 @@ PROMPT
     fi
 
     # ── 4. Git commit & push ─────────────────────────────────
+    COMMIT_DONE=0
     git add -A
     if ! git diff --cached --quiet; then
         git commit -m "Session $SESSION: $SCORE_LINE ($TIMESTAMP)" 2>&1 | tee -a "$PIPELINE_LOG"
+        COMMIT_DONE=1
         GIT_TERMINAL_PROMPT=0 git push origin "$BRANCH" 2>&1 | tee -a "$PIPELINE_LOG" && log "Pushed." || log "Push skipped (no credentials cached)."
     else
         log "No changes."
+    fi
+
+    if [ "$STOP_AFTER_COMMIT" -eq 1 ] && [ "$COMMIT_DONE" -eq 1 ]; then
+        log "Target reached and commit created. Stopping loop."
+        break
+    elif [ "$STOP_AFTER_COMMIT" -eq 1 ]; then
+        log "Target reached but no commit was created. Continuing loop."
     fi
 
     log "========== SESSION $SESSION done =========="
