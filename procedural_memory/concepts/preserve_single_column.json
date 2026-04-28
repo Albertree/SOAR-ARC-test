@@ -1,0 +1,19 @@
+{
+  "concept_id": "preserve_single_column",
+  "version": 1,
+  "description": "Keep only one column from the input (inferred from training pairs, e.g. center column); fill the rest with the background color.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "col_index": {"type": "int", "infer": "column_index_from_arckg"},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "extract_column", "args": {"grid": "$input", "col_index": "$col_index"}, "output": "col_data"},
+    {"id": "s2", "primitive": "make_uniform", "args": {"height": "$input_height", "width": "$input_width", "color": "$bg"}, "output": "blank"},
+    {"id": "s3", "primitive": "place_column", "args": {"grid": "$blank", "column": "$col_data", "col_index": "$col_index"}, "output": "result"}
+  ],
+  "result": "$result"
+}
