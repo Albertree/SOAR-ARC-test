@@ -107,8 +107,8 @@ while true; do
     log "Memory: $RULES_LINE"
 
     # ── Auto-grow task pool on 100% score ──────────────────
-    CORRECT_N=$(echo "$SCORE_LINE" | grep -oP '\d+(?= /)' || echo "0")
-    TOTAL_N=$(echo "$SCORE_LINE" | grep -oP '(?<= / )\d+' || echo "0")
+    CORRECT_N=$(echo "$SCORE_LINE" | grep -oE '[0-9]+' | sed -n '1p' || echo "0")
+    TOTAL_N=$(echo "$SCORE_LINE" | grep -oE '[0-9]+' | sed -n '2p' || echo "0")
     if [ "$CORRECT_N" -eq "$TOTAL_N" ] && [ "$TOTAL_N" -gt 0 ] && [ "$TASKS_PER_SESSION" -lt "$MAX_TASKS" ]; then
         TASKS_PER_SESSION=$((TASKS_PER_SESSION * 2))
         if [ "$TASKS_PER_SESSION" -gt "$MAX_TASKS" ]; then
@@ -117,15 +117,22 @@ while true; do
         log "*** 100% score! Growing task pool to $TASKS_PER_SESSION ***"
     fi
 
+    # Stop condition: 40/40 reached
+    if [ "$CORRECT_N" -eq 40 ] && [ "$TOTAL_N" -eq 40 ]; then
+        log "*** TARGET REACHED: 40/40 -- stopping loop. ***"
+        break
+    fi
+
     # ── 2. Claude Code improves the agent ────────────────────
     log "Claude Code improving agent..."
 
-    claude -p "$(cat <<PROMPT
+    PROMPT_TMP=$(mktemp /tmp/soar_prompt_XXXXXX.txt)
+    cat > "$PROMPT_TMP" <<PROMPT
 You are session ${SESSION} of the SOAR-ARC loop.
 
 Read PROMPT.md for the mission. Read CLAUDE.md for architecture details.
 
-Here are the agent's results from this session:
+Here are the agent results from this session:
 
 ${LEARN_OUTPUT}
 
@@ -142,11 +149,13 @@ Your task:
 Do NOT modify: data/, agent/cycle.py, agent/wm.py
 Each strategy must handle a CATEGORY of tasks, not just one.
 PROMPT
-)" \
+
+    claude -p "$(cat "$PROMPT_TMP")" \
         --permission-mode bypassPermissions \
         --output-format stream-json \
         --verbose \
         2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
+    rm -f "$PROMPT_TMP"
 
     log "Claude Code finished."
 
