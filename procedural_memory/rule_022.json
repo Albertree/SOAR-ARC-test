@@ -1,0 +1,15 @@
+{
+  "id": 22,
+  "concept": "tile pattern vertical",
+  "category": "other",
+  "rule": {
+    "type": "tile_pattern_vertical",
+    "confidence": 1.0
+  },
+  "covers": [
+    "9b30e358"
+  ],
+  "source_task": "9b30e358",
+  "created_at": "2026-04-29T08:31:12.477646",
+  "times_reused": 0
+}

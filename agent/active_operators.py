@@ -362,7 +362,26 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_keep_solid_rectangles(example_pairs)
 
-        # Strategy 15: simple 1:1 color mapping
+        # Strategy 15: tile pattern vertical — input has all-bg top rows and
+        #   a non-bg pattern at the bottom; output tiles the pattern upward
+        #   anchored to the bottom of the grid
+        if rule is None:
+            rule = self._try_tile_pattern_vertical(example_pairs)
+
+        # Strategy 16: diagonal tail extend — input has a solid 2x2 fg block
+        #   plus 1-4 tail cells at diagonal-adjacent positions; each tail is
+        #   extended in its diagonal direction until the grid edge
+        if rule is None:
+            rule = self._try_diagonal_tail_extend(example_pairs)
+
+        # Strategy 17: corner diagonal 2x2 — input has a 2x2 block of 4 unique
+        #   non-bg colors; output places 2x2 blocks at offsets (+/-2, +/-2)
+        #   from the source's top-left, each filled with the diagonally
+        #   opposite cell's color (clipped to grid bounds)
+        if rule is None:
+            rule = self._try_corner_diagonal_2x2(example_pairs)
+
+        # Strategy 18: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -1625,6 +1644,259 @@ class GeneralizeOperator(Operator):
                     keep.add((r + 1, c + 1))
         return keep
 
+    # ---- strategy: tile pattern vertical --------------------------------
+
+    def _try_tile_pattern_vertical(self, example_pairs):
+        """
+        Detect: same grid size; the top portion of the input is uniform
+        background; the bottom portion contains a non-bg pattern. The output
+        tiles that pattern upward anchored to the bottom of the grid:
+            output[r] = pattern[(r - R) mod pattern_h]
+        where R is the first row containing a non-bg cell, and pattern is
+        rows R..h-1 of the input.
+        """
+        if not example_pairs:
+            return None
+
+        any_change = False
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            first_row = None
+            for r in range(h):
+                if any(c != bg for c in raw_in[r]):
+                    first_row = r
+                    break
+            if first_row is None or first_row == 0:
+                return None
+
+            # Top rows must be all bg
+            for r in range(first_row):
+                for c in range(w):
+                    if raw_in[r][c] != bg:
+                        return None
+
+            pattern_h = h - first_row
+            if pattern_h < 1:
+                return None
+            pattern = raw_in[first_row:]
+
+            for r in range(h):
+                expected = pattern[(r - first_row) % pattern_h]
+                if list(raw_out[r]) != list(expected):
+                    return None
+                if r < first_row and list(raw_out[r]) != list(raw_in[r]):
+                    any_change = True
+
+        if not any_change:
+            return None
+        return {"type": "tile_pattern_vertical", "confidence": 1.0}
+
+    # ---- strategy: diagonal tail extend ---------------------------------
+
+    def _try_diagonal_tail_extend(self, example_pairs):
+        """
+        Detect: input has one bg color and one fg color. The fg cells form
+        a single solid 2x2 block plus 0..4 'tail' cells at diagonal-adjacent
+        positions to the 2x2 corners (TL: (r0-1,c0-1), TR: (r0-1,c1+1),
+        BL: (r1+1,c0-1), BR: (r1+1,c1+1)). The output equals the input plus
+        each tail extended in its diagonal direction one step at a time
+        until the grid edge.
+        """
+        if not example_pairs:
+            return None
+
+        any_extension = False
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+            fg_set = set(counts.keys()) - {bg}
+            if len(fg_set) != 1:
+                return None
+            fg = next(iter(fg_set))
+
+            params = self._find_2x2_block_with_tails(raw_in, fg, bg)
+            if params is None:
+                return None
+            r0, c0 = params["r0"], params["c0"]
+            tails = params["tails"]
+            if not tails:
+                return None
+
+            expected = [row[:] for row in raw_in]
+            self._draw_diagonal_tails(expected, r0, c0, tails, fg)
+
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+                    if expected[r][c] != raw_in[r][c]:
+                        any_extension = True
+
+        if not any_extension:
+            return None
+        return {"type": "diagonal_tail_extend", "confidence": 1.0}
+
+    @staticmethod
+    def _find_2x2_block_with_tails(raw, fg, bg):
+        """Locate a unique solid 2x2 block of fg cells whose other fg cells
+        are only at diagonal-adjacent corner positions. Returns
+        {r0, c0, tails: [(dr, dc), ...]} or None.
+        Tails are described by direction (-1,-1)/(-1,+1)/(+1,-1)/(+1,+1).
+        """
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        # Find all 2x2 fg blocks
+        blocks = []
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (raw[r][c] == fg and raw[r][c + 1] == fg
+                        and raw[r + 1][c] == fg and raw[r + 1][c + 1] == fg):
+                    blocks.append((r, c))
+        if len(blocks) != 1:
+            return None
+        r0, c0 = blocks[0]
+        r1, c1 = r0 + 1, c0 + 1
+
+        # Collect all fg positions
+        fg_positions = {(r, c) for r in range(h) for c in range(w)
+                        if raw[r][c] == fg}
+        block_cells = {(r0, c0), (r0, c1), (r1, c0), (r1, c1)}
+        tail_candidates = {
+            (-1, -1): (r0 - 1, c0 - 1),
+            (-1, +1): (r0 - 1, c1 + 1),
+            (+1, -1): (r1 + 1, c0 - 1),
+            (+1, +1): (r1 + 1, c1 + 1),
+        }
+        tails = []
+        for direction, pos in tail_candidates.items():
+            if pos in fg_positions:
+                tails.append(direction)
+
+        # All fg cells must be either the 2x2 block or a recognized tail
+        recognized = set(block_cells)
+        for d in tails:
+            recognized.add(tail_candidates[d])
+        if recognized != fg_positions:
+            return None
+        return {"r0": r0, "c0": c0, "tails": tails}
+
+    @staticmethod
+    def _draw_diagonal_tails(grid, r0, c0, tails, fg):
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        r1, c1 = r0 + 1, c0 + 1
+        starts = {
+            (-1, -1): (r0 - 1, c0 - 1),
+            (-1, +1): (r0 - 1, c1 + 1),
+            (+1, -1): (r1 + 1, c0 - 1),
+            (+1, +1): (r1 + 1, c1 + 1),
+        }
+        for dr, dc in tails:
+            sr, sc = starts[(dr, dc)]
+            r, c = sr + dr, sc + dc
+            while 0 <= r < h and 0 <= c < w:
+                grid[r][c] = fg
+                r += dr
+                c += dc
+
+    # ---- strategy: corner diagonal 2x2 ----------------------------------
+
+    def _try_corner_diagonal_2x2(self, example_pairs):
+        """
+        Detect: same grid size; input has a single 2x2 axis-aligned block of
+        four DISTINCT non-bg colors (TL/TR/BL/BR), with no other non-bg cells.
+        Output equals input plus four 2x2 blocks placed at offsets
+        (-2,-2), (-2,+2), (+2,-2), (+2,+2) from the source's TL corner. Each
+        such block is filled with the source's diagonally opposite cell's
+        color (TL->BR, TR->BL, BL->TR, BR->TL). Out-of-bounds cells of the
+        block are simply not drawn (clipped).
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            non_bg_positions = [(r, c) for r in range(h) for c in range(w)
+                                if raw_in[r][c] != bg]
+            if len(non_bg_positions) != 4:
+                return None
+            rows = sorted({r for r, _ in non_bg_positions})
+            cols = sorted({c for _, c in non_bg_positions})
+            if len(rows) != 2 or len(cols) != 2:
+                return None
+            if rows[1] - rows[0] != 1 or cols[1] - cols[0] != 1:
+                return None
+            r0, c0 = rows[0], cols[0]
+            r1, c1 = rows[1], cols[1]
+            tl, tr, bl, br = (raw_in[r0][c0], raw_in[r0][c1],
+                              raw_in[r1][c0], raw_in[r1][c1])
+            if len({tl, tr, bl, br}) != 4:
+                return None
+
+            expected = [row[:] for row in raw_in]
+            self._draw_corner_diagonal_blocks(expected, r0, c0,
+                                              tl, tr, bl, br)
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "corner_diagonal_2x2", "confidence": 1.0}
+
+    @staticmethod
+    def _draw_corner_diagonal_blocks(grid, r0, c0, tl, tr, bl, br):
+        h = len(grid)
+        w = len(grid[0]) if grid else 0
+        # (block_top_left_offset_from_source_TL, fill_color)
+        specs = [
+            ((-2, -2), br),  # TL direction → opposite corner color
+            ((-2, +2), bl),  # TR direction
+            ((+2, -2), tr),  # BL direction
+            ((+2, +2), tl),  # BR direction
+        ]
+        for (dr, dc), color in specs:
+            br0 = r0 + dr
+            bc0 = c0 + dc
+            for rr in range(br0, br0 + 2):
+                for cc in range(bc0, bc0 + 2):
+                    if 0 <= rr < h and 0 <= cc < w:
+                        grid[rr][cc] = color
+
     @staticmethod
     def _find_components(raw, color):
         """Return 4-connected components of `color` in `raw` as lists of (r, c)."""
@@ -1744,6 +2016,12 @@ class PredictOperator(Operator):
             return self._apply_object_extract_swap(rule, input_grid)
         if rule_type == "keep_solid_rectangles":
             return self._apply_keep_solid_rectangles(rule, input_grid)
+        if rule_type == "tile_pattern_vertical":
+            return self._apply_tile_pattern_vertical(rule, input_grid)
+        if rule_type == "diagonal_tail_extend":
+            return self._apply_diagonal_tail_extend(rule, input_grid)
+        if rule_type == "corner_diagonal_2x2":
+            return self._apply_corner_diagonal_2x2(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2068,6 +2346,85 @@ class PredictOperator(Operator):
             for c in range(w):
                 if raw[r][c] == fg and (r, c) not in keep:
                     out[r][c] = bg
+        return out
+
+    def _apply_tile_pattern_vertical(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        first_row = None
+        for r in range(h):
+            if any(c != bg for c in raw[r]):
+                first_row = r
+                break
+        if first_row is None or first_row == 0:
+            return [row[:] for row in raw]
+        pattern_h = h - first_row
+        pattern = raw[first_row:]
+        out = []
+        for r in range(h):
+            out.append(list(pattern[(r - first_row) % pattern_h]))
+        return out
+
+    def _apply_diagonal_tail_extend(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        fg_set = set(counts.keys()) - {bg}
+        if len(fg_set) != 1:
+            return None
+        fg = next(iter(fg_set))
+        params = GeneralizeOperator._find_2x2_block_with_tails(raw, fg, bg)
+        if params is None:
+            return [row[:] for row in raw]
+        out = [row[:] for row in raw]
+        GeneralizeOperator._draw_diagonal_tails(out, params["r0"],
+                                                params["c0"],
+                                                params["tails"], fg)
+        return out
+
+    def _apply_corner_diagonal_2x2(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        non_bg = [(r, c) for r in range(h) for c in range(w)
+                  if raw[r][c] != bg]
+        if len(non_bg) != 4:
+            return [row[:] for row in raw]
+        rows = sorted({r for r, _ in non_bg})
+        cols = sorted({c for _, c in non_bg})
+        if len(rows) != 2 or len(cols) != 2:
+            return [row[:] for row in raw]
+        if rows[1] - rows[0] != 1 or cols[1] - cols[0] != 1:
+            return [row[:] for row in raw]
+        r0, c0 = rows[0], cols[0]
+        r1, c1 = rows[1], cols[1]
+        tl, tr, bl, br = (raw[r0][c0], raw[r0][c1],
+                          raw[r1][c0], raw[r1][c1])
+        out = [row[:] for row in raw]
+        GeneralizeOperator._draw_corner_diagonal_blocks(out, r0, c0,
+                                                        tl, tr, bl, br)
         return out
 
     def _apply_diamond_connector(self, rule, input_grid):

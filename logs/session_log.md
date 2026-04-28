@@ -215,3 +215,44 @@ Added 3 strategies to `agent/active_operators.py`:
 
 Result: 9/40 (22.5%) -> 12/40 (30.0%). 3 new rules stored. Regression
 gate (08ed6ac7) still CORRECT.
+
+---
+## Learning Loop -- 2026-04-29 08:23
+
+- Split: None, Tasks: 40
+- Correct: 12 / 40 (30.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 12
+- Time: 20s
+- Log: logs/learn_20260429_082313.log
+
+---
+## Learning Loop -- 2026-04-29 08:31
+
+- Split: None, Tasks: 40
+- Correct: 15 / 40 (37.5%)
+- Rules: 19 -> 22 (+3 learned)
+- Stored rule hits: 12
+- Time: 21s
+- Log: logs/learn_20260429_083052.log
+
+### Session 6 (Claude) -- new generalization strategies
+
+Added 3 strategies to `agent/active_operators.py`:
+
+- **tile_pattern_vertical** -- input has all-bg top rows and a non-bg
+  pattern at the bottom; output tiles the pattern upward anchored to the
+  bottom: `output[r] = pattern[(r - first_row) mod pattern_h]`. Solves
+  9b30e358.
+- **diagonal_tail_extend** -- one bg + one fg, with fg forming a single
+  solid 2x2 block plus 0-4 tail cells at the diagonal-adjacent positions
+  to the 2x2 corners. Each tail is extended one cell at a time in its
+  diagonal direction to the grid edge. Solves 7ddcd7ec.
+- **corner_diagonal_2x2** -- input is a single 2x2 of 4 DISTINCT non-bg
+  colors on a uniform bg. Output places 2x2 blocks at offsets
+  (+/-2, +/-2) from the source's top-left, each filled with the
+  diagonally-opposite source cell's color (TL<->BR, TR<->BL), clipped to
+  grid bounds. Solves 93b581b8.
+
+Result: 12/40 (30.0%) -> 15/40 (37.5%). 3 new rules stored. Regression
+gate (08ed6ac7) still CORRECT.

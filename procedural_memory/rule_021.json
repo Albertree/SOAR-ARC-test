@@ -1,0 +1,15 @@
+{
+  "id": 21,
+  "concept": "corner diagonal 2x2",
+  "category": "other",
+  "rule": {
+    "type": "corner_diagonal_2x2",
+    "confidence": 1.0
+  },
+  "covers": [
+    "93b581b8"
+  ],
+  "source_task": "93b581b8",
+  "created_at": "2026-04-29T08:31:08.605848",
+  "times_reused": 0
+}
