@@ -92,3 +92,13 @@
   - **Single-color shape gravity inside a sectioned grid** (`825aa9e9`): combine `find_separator_lines` + per-section `gravity` on the smaller grid. Doable with current primitives if a `for_each_section` inference orchestrator existed.
   - **Stair growth** (`bbc9ae5d`): still blocked on a new primitive (`stair_extend` or similar). Skip for now.
 - The 08ed6ac7 regression gate (per CLAUDE.md) is still failing pre-existing. Worth flagging — it's been INCORRECT since at least the start of session 1, despite being labeled "must always output CORRECT".
+
+---
+## Learning Loop -- 2026-04-29 06:41
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 3
+- Time: 42s
+- Log: logs/learn_20260429_064046.log

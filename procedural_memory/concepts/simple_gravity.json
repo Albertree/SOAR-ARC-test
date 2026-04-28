@@ -1,0 +1,17 @@
+{
+  "concept_id": "simple_gravity",
+  "version": 1,
+  "description": "Output = input with all non-bg cells dropped toward one edge (down/up/left/right). Gaps collapse, in-line ordering preserved. Direction brute-forced from training pairs.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "direction": {"type": "str", "infer": "from_examples", "candidates": ["down", "up", "left", "right"]},
+    "bg": {"type": "color", "infer": "bg_color"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "gravity", "args": {"grid": "$input", "direction": "$direction", "bg": "$bg"}, "output": "result"}
+  ],
+  "result": "$result"
+}
