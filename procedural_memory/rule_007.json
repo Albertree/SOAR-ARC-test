@@ -1,0 +1,15 @@
+{
+  "id": 7,
+  "concept": "staircase extend right",
+  "category": "other",
+  "rule": {
+    "type": "staircase_extend_right",
+    "confidence": 1.0
+  },
+  "covers": [
+    "bbc9ae5d"
+  ],
+  "source_task": "bbc9ae5d",
+  "created_at": "2026-04-29T07:58:23.284298",
+  "times_reused": 0
+}

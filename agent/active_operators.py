@@ -314,7 +314,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_stack_with_mirror(example_pairs)
 
-        # Strategy 6: simple 1:1 color mapping
+        # Strategy 6: rectangle interior fill — hollow rect borders get interior
+        #   filled with a color determined by interior dimensions
+        if rule is None:
+            rule = self._try_rect_interior_fill(example_pairs)
+
+        # Strategy 7: staircase extend right — 1-row input becomes a triangular
+        #   stack of rows where each row's prefix grows by one cell
+        if rule is None:
+            rule = self._try_staircase_extend_right(example_pairs)
+
+        # Strategy 8: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -722,6 +732,209 @@ class GeneralizeOperator(Operator):
                     return False
             return True
 
+    # ---- strategy: rectangle interior fill ------------------------------
+
+    def _try_rect_interior_fill(self, example_pairs):
+        """
+        Detect: same grid size; input contains hollow rectangular borders of a
+        single foreground color on a background; output equals input except
+        each hollow rect's interior is filled with a color determined by the
+        rect's interior dimensions. Map (interior_h, interior_w) -> fill_color
+        is learned from training and applied to test rectangles.
+        """
+        if not example_pairs:
+            return None
+
+        size_to_fill = {}
+        bg_color = None
+        border_color = None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            # Background = most-frequent color in input
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            # Foreground colors = everything else; require exactly one
+            fg_set = {c for c in counts if c != bg}
+            if len(fg_set) != 1:
+                return None
+            fg = next(iter(fg_set))
+
+            if bg_color is None:
+                bg_color, border_color = bg, fg
+            elif (bg_color, border_color) != (bg, fg):
+                return None
+
+            rects = self._find_hollow_rects(raw_in, fg, bg)
+            if not rects:
+                return None
+
+            # Build expected output: copy input, fill each rect interior
+            # with the color present in raw_out at the interior cells.
+            for (r0, c0, r1, c1) in rects:
+                ih_int = r1 - r0 - 1
+                iw_int = c1 - c0 - 1
+                if ih_int < 1 or iw_int < 1:
+                    return None
+                fill = raw_out[r0 + 1][c0 + 1]
+                # Interior must be uniform fill color in output
+                for r in range(r0 + 1, r1):
+                    for c in range(c0 + 1, c1):
+                        if raw_out[r][c] != fill:
+                            return None
+                key = (ih_int, iw_int)
+                if key in size_to_fill and size_to_fill[key] != fill:
+                    return None
+                size_to_fill[key] = fill
+
+            # Verify all non-interior cells are unchanged
+            interior_cells = set()
+            for (r0, c0, r1, c1) in rects:
+                for r in range(r0 + 1, r1):
+                    for c in range(c0 + 1, c1):
+                        interior_cells.add((r, c))
+            for r in range(h):
+                for c in range(w):
+                    if (r, c) in interior_cells:
+                        continue
+                    if raw_in[r][c] != raw_out[r][c]:
+                        return None
+
+        if not size_to_fill:
+            return None
+        return {
+            "type": "rect_interior_fill",
+            "background": bg_color,
+            "border": border_color,
+            "size_to_fill": {f"{k[0]}x{k[1]}": v for k, v in size_to_fill.items()},
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_hollow_rects(raw, fg, bg):
+        """Find all hollow rectangles of color fg with interior color bg.
+        Returns list of (r0, c0, r1, c1) bounding boxes."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # Find connected components of fg cells (4-connected)
+        visited = [[False] * w for _ in range(h)]
+        rects = []
+
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != fg or visited[r][c]:
+                    continue
+                # BFS
+                comp = []
+                queue = [(r, c)]
+                while queue:
+                    rr, cc = queue.pop(0)
+                    if rr < 0 or rr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] != fg:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        queue.append((rr + dr, cc + dc))
+
+                if not comp:
+                    continue
+                rs = [p[0] for p in comp]
+                cs = [p[1] for p in comp]
+                r0, r1 = min(rs), max(rs)
+                c0, c1 = min(cs), max(cs)
+                width = c1 - c0 + 1
+                height = r1 - r0 + 1
+                if width < 3 or height < 3:
+                    continue
+                # Check border is all fg
+                comp_set = set(comp)
+                ok = True
+                for cc in range(c0, c1 + 1):
+                    if (r0, cc) not in comp_set or (r1, cc) not in comp_set:
+                        ok = False
+                        break
+                if ok:
+                    for rr in range(r0, r1 + 1):
+                        if (rr, c0) not in comp_set or (rr, c1) not in comp_set:
+                            ok = False
+                            break
+                if not ok:
+                    continue
+                # Check interior is all bg
+                for rr in range(r0 + 1, r1):
+                    for cc in range(c0 + 1, c1):
+                        if raw[rr][cc] != bg:
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                # Component must be exactly the border (no extra fg cells)
+                expected_border_size = 2 * (height + width) - 4
+                if ok and len(comp) == expected_border_size:
+                    rects.append((r0, c0, r1, c1))
+        return rects
+
+    # ---- strategy: staircase extend right -------------------------------
+
+    def _try_staircase_extend_right(self, example_pairs):
+        """
+        Detect: every input is exactly one row of width w; output has
+        oh = w // 2 rows and width w. Row 0 of the output equals the input;
+        each subsequent row extends the colored prefix by one cell to the
+        right (one more cell of the same fg color, rest background).
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            if len(raw_in) != 1:
+                return None
+            w = len(raw_in[0])
+            if w < 2:
+                return None
+            oh = len(raw_out)
+            if oh != w // 2 or oh < 1:
+                return None
+            for row in raw_out:
+                if len(row) != w:
+                    return None
+
+            # The prefix color (fg) is the leftmost cell; the rest must be a
+            # single different background color.
+            row0 = list(raw_in[0])
+            distinct = set(row0)
+            if len(distinct) != 2:
+                return None
+            fg = row0[0]
+            bg = next(v for v in distinct if v != fg)
+
+            n = 0
+            while n < w and row0[n] == fg:
+                n += 1
+            if n == 0 or any(v != bg for v in row0[n:]):
+                return None
+
+            # Verify each output row
+            for i in range(oh):
+                expected = [fg] * (n + i) + [bg] * (w - n - i)
+                if list(raw_out[i]) != expected:
+                    return None
+
+        return {"type": "staircase_extend_right", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -797,6 +1010,10 @@ class PredictOperator(Operator):
             return self._apply_integer_upscale(rule, input_grid)
         if rule_type == "stack_with_mirror":
             return self._apply_stack_with_mirror(rule, input_grid)
+        if rule_type == "rect_interior_fill":
+            return self._apply_rect_interior_fill(rule, input_grid)
+        if rule_type == "staircase_extend_right":
+            return self._apply_staircase_extend_right(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -932,6 +1149,61 @@ class PredictOperator(Operator):
             left = [row[:] for row in raw] if order == "input_first" else flipped
             right = flipped if order == "input_first" else [row[:] for row in raw]
             return [list(left[r]) + list(right[r]) for r in range(len(raw))]
+
+    def _apply_rect_interior_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = rule.get("background")
+        fg = rule.get("border")
+        size_to_fill_raw = rule.get("size_to_fill") or {}
+        if bg is None or fg is None:
+            return None
+        size_to_fill = {}
+        for k, v in size_to_fill_raw.items():
+            try:
+                a, b = k.split("x")
+                size_to_fill[(int(a), int(b))] = v
+            except ValueError:
+                continue
+
+        rects = GeneralizeOperator._find_hollow_rects(raw, fg, bg)
+        out = [row[:] for row in raw]
+        for (r0, c0, r1, c1) in rects:
+            ih = r1 - r0 - 1
+            iw = c1 - c0 - 1
+            fill = size_to_fill.get((ih, iw))
+            if fill is None:
+                continue
+            for r in range(r0 + 1, r1):
+                for c in range(c0 + 1, c1):
+                    out[r][c] = fill
+        return out
+
+    def _apply_staircase_extend_right(self, rule, input_grid):
+        raw = input_grid.raw
+        if len(raw) != 1:
+            return None
+        row0 = list(raw[0])
+        w = len(row0)
+        if w < 2:
+            return None
+        distinct = set(row0)
+        if len(distinct) != 2:
+            return None
+        fg = row0[0]
+        bg = next(v for v in distinct if v != fg)
+        n = 0
+        while n < w and row0[n] == fg:
+            n += 1
+        if n == 0 or any(v != bg for v in row0[n:]):
+            return None
+        oh = w // 2
+        out = []
+        for i in range(oh):
+            cells = [fg] * (n + i) + [bg] * (w - n - i)
+            out.append(cells)
+        return out
 
     # ---- helpers ---------------------------------------------------------
 
