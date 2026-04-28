@@ -128,3 +128,51 @@ Verification:
   - Existing 4 stored-rule hits remain CORRECT
 - Rules: 7 -> 10 (+3 stored, including a recolor_sequential variant
   discovered for 08ed6ac7 during regression checks)
+
+---
+## Learning Loop -- 2026-04-29 08:08
+
+- Split: None, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 6
+- Time: 9s
+- Log: logs/learn_20260429_080804.log
+
+---
+## Learning Loop -- 2026-04-29 08:12
+
+- Split: None, Tasks: 40
+- Correct: 9 / 40 (22.5%)
+- Rules: 10 -> 16 (+6 learned)
+- Stored rule hits: 6
+- Time: 23s
+- Log: logs/learn_20260429_081223.log
+
+---
+## Session 4 -- 2026-04-29 08:12
+
+Added two generalization strategies in `agent/active_operators.py`:
+
+- **`axis_line_keep`** -- detects when the output preserves a single row or
+  column of the input verbatim and replaces every other cell with one
+  uniform background color. The line position must be consistent across
+  examples (currently the middle row or column). Solves d23f8c26 -- which
+  the agent previously misclassified as `color_mapping` because every
+  changed cell happened to map to 0. Inserted before `color_mapping` so
+  the more specific projection rule wins.
+- **`recolor_by_size`** -- detects inputs with one background and one
+  foreground color where each connected component of the foreground is
+  uniformly recolored in the output to a color that depends solely on its
+  cell count. Learns a `size -> color` map across training pairs, requires
+  consistency, and rejects if non-foreground cells change. Solves
+  6e82a1ae (size 4 -> 1, 3 -> 2, 2 -> 3 in this category).
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 9 / 40 (22.5%), up from
+  6 / 20 (30%) on the same training-prefix subset:
+  - d23f8c26: CORRECT via axis_line_keep (pipeline, was INCORRECT)
+  - 6e82a1ae: CORRECT via recolor_by_size (pipeline, was INCORRECT)
+  - All 6 prior stored-rule wins still CORRECT
+- Rules: 10 -> 16 (+6 stored after the 40-task expansion).

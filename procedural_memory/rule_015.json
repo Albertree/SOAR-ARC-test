@@ -1,19 +1,18 @@
 {
-  "id": 2,
+  "id": 15,
   "concept": "remap_one_color",
   "category": "color_transform",
   "rule": {
     "type": "color_mapping",
     "mapping": {
-      "0": 1
+      "8": 4
     },
     "confidence": 0.8
   },
   "covers": [
-    "60a26a3e",
-    "a5313dff"
+    "9f5f939b"
   ],
-  "source_task": "60a26a3e",
-  "created_at": "2026-04-29T07:50:29.806281",
+  "source_task": "9f5f939b",
+  "created_at": "2026-04-29T08:12:40.545922",
   "times_reused": 0
 }

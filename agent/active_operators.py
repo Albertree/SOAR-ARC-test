@@ -334,7 +334,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_diamond_connector(example_pairs)
 
-        # Strategy 10: simple 1:1 color mapping
+        # Strategy 10: axis line keep — output preserves a single row or
+        #   column of the input; everything else collapses to background
+        if rule is None:
+            rule = self._try_axis_line_keep(example_pairs)
+
+        # Strategy 11: recolor by component size — single fg color split into
+        #   connected components, each recolored by cell count
+        if rule is None:
+            rule = self._try_recolor_by_size(example_pairs)
+
+        # Strategy 12: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -1230,6 +1240,164 @@ class GeneralizeOperator(Operator):
                 for rr2 in range(rl + 2, rr - 1):
                     grid[rr2][c] = marker
 
+    # ---- strategy: axis line keep ---------------------------------------
+
+    def _try_axis_line_keep(self, example_pairs):
+        """
+        Detect: same grid size; output equals input on a single 'kept' line
+        (one row or one column) and equals a single background color
+        everywhere else. The line position must be derivable consistently
+        across all examples (e.g., always the middle row/column).
+        """
+        if not example_pairs:
+            return None
+
+        for axis, pos_kind in (("col", "middle"), ("row", "middle")):
+            params = self._check_axis_line_keep(example_pairs, axis, pos_kind)
+            if params is not None:
+                return {
+                    "type": "axis_line_keep",
+                    "axis": axis,
+                    "position": pos_kind,
+                    "background": params["background"],
+                    "confidence": 1.0,
+                }
+        return None
+
+    @staticmethod
+    def _check_axis_line_keep(example_pairs, axis, pos_kind):
+        bg_color = None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            if pos_kind == "middle":
+                k = (w // 2) if axis == "col" else (h // 2)
+            else:
+                return None
+
+            local_bg = None
+            for r in range(h):
+                for c in range(w):
+                    on_line = (axis == "col" and c == k) or (axis == "row" and r == k)
+                    if on_line:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+                    else:
+                        if local_bg is None:
+                            local_bg = raw_out[r][c]
+                        elif raw_out[r][c] != local_bg:
+                            return None
+            if local_bg is None:
+                return None
+            if bg_color is None:
+                bg_color = local_bg
+            elif bg_color != local_bg:
+                return None
+        if bg_color is None:
+            return None
+        return {"background": bg_color}
+
+    # ---- strategy: recolor by component size ----------------------------
+
+    def _try_recolor_by_size(self, example_pairs):
+        """
+        Detect: same grid size; input has one background color and one
+        foreground color; connected components of foreground cells in the
+        input are each recolored uniformly in the output to a color that
+        depends solely on the component's cell count. A consistent
+        size -> color mapping must hold across all examples. Non-foreground
+        cells are unchanged.
+        """
+        if not example_pairs:
+            return None
+
+        size_to_color = {}
+        fg_color = None
+        bg_color = None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg_local = max(counts, key=counts.get)
+            in_colors = set(counts.keys())
+            fg_set = in_colors - {bg_local}
+            if len(fg_set) != 1:
+                return None
+            fg_local = next(iter(fg_set))
+
+            if bg_color is None:
+                bg_color, fg_color = bg_local, fg_local
+            elif (bg_color, fg_color) != (bg_local, fg_local):
+                return None
+
+            comps = self._find_components(raw_in, fg_local)
+            if not comps:
+                return None
+            for comp in comps:
+                out_colors = {raw_out[r][c] for (r, c) in comp}
+                if len(out_colors) != 1:
+                    return None
+                out_c = next(iter(out_colors))
+                size = len(comp)
+                if size in size_to_color and size_to_color[size] != out_c:
+                    return None
+                size_to_color[size] = out_c
+
+            # Non-foreground cells must be unchanged
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] != fg_local and raw_out[r][c] != raw_in[r][c]:
+                        return None
+
+        if not size_to_color or fg_color is None:
+            return None
+        return {
+            "type": "recolor_by_size",
+            "foreground": fg_color,
+            "background": bg_color,
+            "size_to_color": {str(k): v for k, v in size_to_color.items()},
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_components(raw, color):
+        """Return 4-connected components of `color` in `raw` as lists of (r, c)."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        visited = [[False] * w for _ in range(h)]
+        comps = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != color or visited[r][c]:
+                    continue
+                comp = []
+                queue = [(r, c)]
+                while queue:
+                    rr, cc = queue.pop()
+                    if rr < 0 or rr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] != color:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        queue.append((rr + dr, cc + dc))
+                comps.append(comp)
+        return comps
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -1313,6 +1481,10 @@ class PredictOperator(Operator):
             return self._apply_corner_quadrant_fill(rule, input_grid)
         if rule_type == "diamond_connector":
             return self._apply_diamond_connector(rule, input_grid)
+        if rule_type == "axis_line_keep":
+            return self._apply_axis_line_keep(rule, input_grid)
+        if rule_type == "recolor_by_size":
+            return self._apply_recolor_by_size(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1521,6 +1693,47 @@ class PredictOperator(Operator):
         if not groups:
             return None
         return GeneralizeOperator._apply_quadrant_groups(raw, groups, bg)
+
+    def _apply_axis_line_keep(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        axis = rule.get("axis")
+        pos = rule.get("position")
+        bg = rule.get("background")
+        if axis not in ("col", "row") or pos != "middle" or bg is None:
+            return None
+        k = (w // 2) if axis == "col" else (h // 2)
+        out = [[bg] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                on_line = (axis == "col" and c == k) or (axis == "row" and r == k)
+                if on_line:
+                    out[r][c] = raw[r][c]
+        return out
+
+    def _apply_recolor_by_size(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        fg = rule.get("foreground")
+        if fg is None:
+            return None
+        size_to_color_raw = rule.get("size_to_color") or {}
+        size_to_color = {}
+        for k, v in size_to_color_raw.items():
+            try:
+                size_to_color[int(k)] = v
+            except (TypeError, ValueError):
+                continue
+        out = [row[:] for row in raw]
+        for comp in GeneralizeOperator._find_components(raw, fg):
+            new_color = size_to_color.get(len(comp))
+            if new_color is None:
+                continue
+            for (rr, cc) in comp:
+                out[rr][cc] = new_color
+        return out
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

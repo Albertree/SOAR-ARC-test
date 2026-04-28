@@ -1,0 +1,18 @@
+{
+  "id": 13,
+  "concept": "axis mirror recolor",
+  "category": "color_transform",
+  "rule": {
+    "type": "axis_mirror_recolor",
+    "axis": "horizontal",
+    "marker": 1,
+    "foreground": 5,
+    "confidence": 1.0
+  },
+  "covers": [
+    "ce039d91"
+  ],
+  "source_task": "ce039d91",
+  "created_at": "2026-04-29T08:12:35.904421",
+  "times_reused": 0
+}
