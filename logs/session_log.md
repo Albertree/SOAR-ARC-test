@@ -169,3 +169,35 @@
 - The big leverage left is still in tasks needing a "for each object" step orchestrator (`6e82a1ae` size-based recoloring, `c0f76784` fill-by-frame-size, `9f669b64` move-by-bigger-neighbor). That's a step-engine extension, not a new concept — bigger than this session warranted.
 - Marker-pattern candidates that would unlock several failures: per-section gravity for `825aa9e9`/`332202d5` (combine `find_separator_lines` with directional `gravity` per cell), and connect-shapes for `60a26a3e`. Both would need new infer methods to identify and coordinate sub-grid operations.
 - The 08ed6ac7 regression gate is still INCORRECT pre-existing (noted across sessions 3, 5).
+
+---
+## Learning Loop -- 2026-04-29 07:12
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 4
+- Time: 42s
+- Log: logs/learn_20260429_071141.log
+
+### Session 7 reflections (2026-04-29)
+
+**Failures analyzed:** Re-read in detail: `c9680e90` (gravity-toward-separator), `e9ac8c9e` (quadrant-fill-from-corners), `0e206a2e` (cross-pattern translation), `825aa9e9` (compartment gravity), `1c56ad9f` (alternating row shift), `c0f76784` (rectangle interior fill by size), `bbc9ae5d` (triangular extension), `5a719d11` (multi-grid recoloring), `60a26a3e` (connect aligned diamonds), `e5790162` (ricocheting trail), `6e82a1ae` (recolor by object size). Same conclusion as session 6: every remaining failure needs either per-object iteration the step engine can't express, or a per-section sub-grid orchestrator. No single failure reduces to a clean composition of existing primitives + an existing infer method.
+
+**Topology groups & strategies:**
+
+1. **Pure horizontal flip (size unchanged, content differs).** Rounds out the geometric-transform family alongside `flip_vertical_inplace` (also added this session), the existing `rotate_180`, and the size-doubling mirror concepts. ARCKG signature: `grid_size_preserved=true`, `requires_content_diff=true`. Strict validation gate prevents false matches — only tasks whose output is exactly `flip_horizontal(input)` will pass. Created `concepts/flip_horizontal_inplace.json` — single `flip_horizontal` step, no parameters.
+
+2. **Pure vertical flip (size unchanged, content differs).** Counterpart of above. Created `concepts/flip_vertical_inplace.json` — single `flip_vertical` step, no parameters.
+
+**Quick validation:**
+- `python run_task.py` (regression `08ed6ac7`) → still INCORRECT (pre-existing, also INCORRECT on baseline `git stash` — confirmed unchanged by these additions). New concepts get tried but their strict validation gate rejects them on this task, as expected.
+- Concept loader picks up both new files: `[CONCEPT] Loaded 11 concepts`.
+- Direct execution check via the engine: `flip_horizontal_inplace` and `flip_vertical_inplace` are well-formed, correctly skipped on tasks they don't match.
+
+**Notes for next session:**
+- No expected gain on the next learn loop with the current 20-task sample — none of the surveyed failures are pure flips. These two concepts are coverage infrastructure for the broader training set, complementing the existing geometric concept family.
+- The dominant remaining failure pattern is **separator-segmented operations**: tasks like `c9680e90`, `825aa9e9`, `5a719d11`, `332202d5` all have full-row/full-column separator lines partitioning the grid, with the transformation acting *per compartment*. The current `gravity` primitive operates over the whole grid, not per compartment. Unlocking this would need either a new `gravity_per_compartment` primitive (forbidden — `_primitives.py` is frozen) or a step engine that can iterate over compartments produced by `find_separator_lines`.
+- The other big leverage area is **per-object reasoning** (`6e82a1ae` color-by-size, `c0f76784` fill-by-frame-size, `9f669b64` move-by-bigger-neighbor). `extract_objects` returns the list, but no step primitive consumes that list iteratively.
+- The 08ed6ac7 regression gate remains INCORRECT pre-existing (noted across sessions 3, 5, 6, now 7).
+
