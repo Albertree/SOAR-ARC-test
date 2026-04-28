@@ -381,7 +381,26 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_corner_diagonal_2x2(example_pairs)
 
-        # Strategy 18: simple 1:1 color mapping
+        # Strategy 18: rotational quadrants 2x — square HxH input becomes
+        #   2H x 2H output with TL=input, TR=rot90 CCW, BL=rot180,
+        #   BR=rot90 CW
+        if rule is None:
+            rule = self._try_rotational_quadrants_2x(example_pairs)
+
+        # Strategy 19: inside marker count 3x3 — input has bg + a rectangle
+        #   border color + a third 'marker' color; output is 3x3 with N
+        #   marker cells filled in row-major order (N = marker count
+        #   strictly inside the rectangle)
+        if rule is None:
+            rule = self._try_inside_marker_count_3x3(example_pairs)
+
+        # Strategy 20: corner L shoot — each isolated non-bg pixel projects
+        #   an L-shape (vertical + horizontal arm) to the two grid edges
+        #   meeting at its nearest Manhattan corner
+        if rule is None:
+            rule = self._try_corner_l_shoot(example_pairs)
+
+        # Strategy 21: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -1878,6 +1897,213 @@ class GeneralizeOperator(Operator):
 
         return {"type": "corner_diagonal_2x2", "confidence": 1.0}
 
+    # ---- strategy: rotational quadrants 2x ------------------------------
+
+    def _try_rotational_quadrants_2x(self, example_pairs):
+        """
+        Detect: square HxH input; output is 2H x 2H tiled from four
+        rotations of the input as quadrants:
+          TL = input          TR = rotate 90 CCW (input)
+          BL = rotate 180     BR = rotate 90 CW
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0 or h != w:
+                return None
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+            if oh != 2 * h or ow != 2 * w:
+                return None
+            expected = self._build_rotational_quadrants_2x(raw_in)
+            for r in range(oh):
+                for c in range(ow):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "rotational_quadrants_2x", "confidence": 1.0}
+
+    @staticmethod
+    def _build_rotational_quadrants_2x(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        rot_ccw = [[raw[c][w - 1 - r] for c in range(h)] for r in range(w)]
+        rot_cw = [[raw[h - 1 - c][r] for c in range(h)] for r in range(w)]
+        rot_180 = [[raw[h - 1 - r][w - 1 - c] for c in range(w)]
+                   for r in range(h)]
+        out = [[0] * (2 * w) for _ in range(2 * h)]
+        for r in range(h):
+            for c in range(w):
+                out[r][c] = raw[r][c]
+                out[r][c + w] = rot_ccw[r][c]
+                out[r + h][c] = rot_180[r][c]
+                out[r + h][c + w] = rot_cw[r][c]
+        return out
+
+    # ---- strategy: inside marker count 3x3 ------------------------------
+
+    def _try_inside_marker_count_3x3(self, example_pairs):
+        """
+        Detect: input has exactly 3 colors -- a background (most common),
+        a 'border' color whose cells are exactly the 4 sides of one
+        axis-aligned rectangle (size >= 3x3), and a 'marker' color (the
+        third color). Output is always 3x3 painted with N marker cells in
+        row-major order (top-left to bottom-right) where N is the count of
+        marker cells strictly inside the rectangle's interior; remaining
+        output cells are background. Requires 1 <= N <= 9.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+            if oh != 3 or ow != 3:
+                return None
+            params = self._inside_marker_count_3x3_params(raw_in)
+            if params is None:
+                return None
+            bg, marker, n = params["bg"], params["marker"], params["n"]
+            if not (1 <= n <= 9):
+                return None
+            expected = [[bg] * 3 for _ in range(3)]
+            for k in range(n):
+                expected[k // 3][k % 3] = marker
+            for r in range(3):
+                for c in range(3):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "inside_marker_count_3x3", "confidence": 1.0}
+
+    @staticmethod
+    def _inside_marker_count_3x3_params(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        if len(counts) != 3:
+            return None
+        bg = max(counts, key=counts.get)
+        others = [c for c in counts if c != bg]
+
+        qualifying = []
+        for cand in others:
+            positions = [(r, c) for r in range(h) for c in range(w)
+                         if raw[r][c] == cand]
+            if not positions:
+                continue
+            rs = [p[0] for p in positions]
+            cs = [p[1] for p in positions]
+            r0, r1 = min(rs), max(rs)
+            c0, c1 = min(cs), max(cs)
+            if r1 - r0 < 2 or c1 - c0 < 2:
+                continue
+            if not all((r in (r0, r1)) or (c in (c0, c1))
+                       for r, c in positions):
+                continue
+            full = (
+                all(raw[r0][c] == cand for c in range(c0, c1 + 1))
+                and all(raw[r1][c] == cand for c in range(c0, c1 + 1))
+                and all(raw[r][c0] == cand for r in range(r0, r1 + 1))
+                and all(raw[r][c1] == cand for r in range(r0, r1 + 1))
+            )
+            if full:
+                qualifying.append((cand, (r0, c0, r1, c1)))
+
+        if len(qualifying) != 1:
+            return None
+        border, rect = qualifying[0]
+        marker = next(c for c in others if c != border)
+        r0, c0, r1, c1 = rect
+        n = sum(
+            1 for r in range(r0 + 1, r1) for c in range(c0 + 1, c1)
+            if raw[r][c] == marker
+        )
+        return {"bg": bg, "border": border, "marker": marker, "n": n,
+                "rect": rect}
+
+    # ---- strategy: corner L shoot ---------------------------------------
+
+    def _try_corner_l_shoot(self, example_pairs):
+        """
+        Detect: same grid size; input has a background (most common color)
+        and one or more isolated single-cell non-bg pixels (no two non-bg
+        cells are 4-adjacent). For each non-bg pixel at (r, c), the output
+        draws an L-shape of that pixel's color: a vertical arm from (r, c)
+        to (corner_r, c) and a horizontal arm from (r, c) to (r, corner_c),
+        where (corner_r, corner_c) is the grid corner with smallest
+        Manhattan distance to (r, c). All other output cells equal bg.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            non_bg = [(r, c) for r in range(h) for c in range(w)
+                      if raw_in[r][c] != bg]
+            if not non_bg:
+                return None
+            for r, c in non_bg:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if (0 <= nr < h and 0 <= nc < w
+                            and raw_in[nr][nc] != bg):
+                        return None
+
+            expected = self._draw_corner_l_shoot(raw_in, bg)
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "corner_l_shoot", "confidence": 1.0}
+
+    @staticmethod
+    def _draw_corner_l_shoot(raw, bg):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                v = raw[r][c]
+                if v == bg:
+                    continue
+                dists = (
+                    r + c,                      # TL
+                    r + (w - 1 - c),            # TR
+                    (h - 1 - r) + c,            # BL
+                    (h - 1 - r) + (w - 1 - c),  # BR
+                )
+                best = min(range(4), key=lambda i: dists[i])
+                cr = 0 if best in (0, 1) else h - 1
+                cc = 0 if best in (0, 2) else w - 1
+                r0, r1 = (cr, r) if cr <= r else (r, cr)
+                c0, c1 = (cc, c) if cc <= c else (c, cc)
+                for rr in range(r0, r1 + 1):
+                    out[rr][c] = v
+                for cc2 in range(c0, c1 + 1):
+                    out[r][cc2] = v
+        return out
+
     @staticmethod
     def _draw_corner_diagonal_blocks(grid, r0, c0, tl, tr, bl, br):
         h = len(grid)
@@ -2022,6 +2248,12 @@ class PredictOperator(Operator):
             return self._apply_diagonal_tail_extend(rule, input_grid)
         if rule_type == "corner_diagonal_2x2":
             return self._apply_corner_diagonal_2x2(rule, input_grid)
+        if rule_type == "rotational_quadrants_2x":
+            return self._apply_rotational_quadrants_2x(rule, input_grid)
+        if rule_type == "inside_marker_count_3x3":
+            return self._apply_inside_marker_count_3x3(rule, input_grid)
+        if rule_type == "corner_l_shoot":
+            return self._apply_corner_l_shoot(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2426,6 +2658,39 @@ class PredictOperator(Operator):
         GeneralizeOperator._draw_corner_diagonal_blocks(out, r0, c0,
                                                         tl, tr, bl, br)
         return out
+
+    def _apply_rotational_quadrants_2x(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0 or h != w:
+            return None
+        return GeneralizeOperator._build_rotational_quadrants_2x(raw)
+
+    def _apply_inside_marker_count_3x3(self, rule, input_grid):
+        raw = input_grid.raw
+        params = GeneralizeOperator._inside_marker_count_3x3_params(raw)
+        if params is None:
+            return None
+        bg, marker, n = params["bg"], params["marker"], params["n"]
+        n = max(0, min(9, n))
+        out = [[bg] * 3 for _ in range(3)]
+        for k in range(n):
+            out[k // 3][k % 3] = marker
+        return out
+
+    def _apply_corner_l_shoot(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        return GeneralizeOperator._draw_corner_l_shoot(raw, bg)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

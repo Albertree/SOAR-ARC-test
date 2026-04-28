@@ -1,0 +1,15 @@
+{
+  "id": 25,
+  "concept": "corner l shoot",
+  "category": "other",
+  "rule": {
+    "type": "corner_l_shoot",
+    "confidence": 1.0
+  },
+  "covers": [
+    "705a3229"
+  ],
+  "source_task": "705a3229",
+  "created_at": "2026-04-29T08:41:59.763963",
+  "times_reused": 0
+}

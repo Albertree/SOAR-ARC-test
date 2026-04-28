@@ -1,0 +1,15 @@
+{
+  "id": 24,
+  "concept": "rotational quadrants 2x",
+  "category": "other",
+  "rule": {
+    "type": "rotational_quadrants_2x",
+    "confidence": 1.0
+  },
+  "covers": [
+    "ed98d772"
+  ],
+  "source_task": "ed98d772",
+  "created_at": "2026-04-29T08:41:56.071542",
+  "times_reused": 0
+}

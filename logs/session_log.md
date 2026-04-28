@@ -256,3 +256,45 @@ Added 3 strategies to `agent/active_operators.py`:
 
 Result: 12/40 (30.0%) -> 15/40 (37.5%). 3 new rules stored. Regression
 gate (08ed6ac7) still CORRECT.
+
+---
+## Learning Loop -- 2026-04-29 08:32
+
+- Split: None, Tasks: 40
+- Correct: 15 / 40 (37.5%)
+- Rules: 22 -> 22 (+0 learned)
+- Stored rule hits: 15
+- Time: 20s
+- Log: logs/learn_20260429_083216.log
+
+---
+## Learning Loop -- 2026-04-29 08:41
+
+- Split: None, Tasks: 40
+- Correct: 18 / 40 (45.0%)
+- Rules: 22 -> 25 (+3 learned)
+- Stored rule hits: 15
+- Time: 21s
+- Log: logs/learn_20260429_084138.log
+
+### Session 7 (Claude) -- new generalization strategies
+
+Added 3 strategies to `agent/active_operators.py`:
+
+- **rotational_quadrants_2x** -- square HxH input expands to a 2H x 2H
+  output composed of 4 H x H quadrants of input rotations:
+  TL = input, TR = rotate 90 CCW, BL = rotate 180, BR = rotate 90 CW.
+  Solves ed98d772.
+- **inside_marker_count_3x3** -- input has exactly 3 colors: bg
+  (most common), a 'border' color whose cells are exactly the 4 sides
+  of one axis-aligned rectangle, and a 'marker' color (the third
+  color). Output is always 3x3 painted with N marker cells in
+  row-major order (rest = bg) where N = count of marker cells
+  strictly inside the rectangle. Solves c8b7cc0f.
+- **corner_l_shoot** -- each isolated single-cell non-bg pixel projects
+  an L-shape of its color toward the two grid edges that meet at its
+  nearest Manhattan corner (vertical arm to (corner_r, c) plus
+  horizontal arm to (r, corner_c)). Solves 705a3229.
+
+Result: 15/40 (37.5%) -> 18/40 (45.0%). 3 new rules stored. Regression
+gate (08ed6ac7) still CORRECT.
