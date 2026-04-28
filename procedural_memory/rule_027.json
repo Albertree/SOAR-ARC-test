@@ -1,0 +1,16 @@
+{
+  "id": 27,
+  "concept": "square corner marker",
+  "category": "other",
+  "rule": {
+    "type": "square_corner_marker",
+    "marker": 2,
+    "confidence": 1.0
+  },
+  "covers": [
+    "14b8e18c"
+  ],
+  "source_task": "14b8e18c",
+  "created_at": "2026-04-29T08:50:47.469408",
+  "times_reused": 0
+}

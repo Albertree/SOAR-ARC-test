@@ -400,7 +400,20 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_corner_l_shoot(example_pairs)
 
-        # Strategy 21: simple 1:1 color mapping
+        # Strategy 21: concentric ring reverse — input is concentric
+        #   rectangular layers each painted in a single color; output is the
+        #   same shape with the layer color order reversed
+        if rule is None:
+            rule = self._try_concentric_ring_reverse(example_pairs)
+
+        # Strategy 22: square corner marker — each connected component that
+        #   forms a square (h==w>=2) and is either a complete hollow border
+        #   or a solid filled block gets 8 marker cells placed orthogonally
+        #   adjacent to its 4 corners (just outside the bbox)
+        if rule is None:
+            rule = self._try_square_corner_marker(example_pairs)
+
+        # Strategy 23: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -2077,6 +2090,181 @@ class GeneralizeOperator(Operator):
 
         return {"type": "corner_l_shoot", "confidence": 1.0}
 
+    # ---- strategy: concentric ring reverse ------------------------------
+
+    def _try_concentric_ring_reverse(self, example_pairs):
+        """
+        Detect: input is HxW (>=2 in each dim), tiled in concentric
+        rectangular rings — each ring (cells where
+        min(r, h-1-r, c, w-1-c) == k) painted a single uniform color.
+        Output has the same shape with the per-ring colors reversed
+        (innermost color becomes outermost). At least 2 distinct ring
+        colors required so the transformation is non-trivial.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h < 2 or w < 2:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            in_layers = self._concentric_layers(raw_in)
+            out_layers = self._concentric_layers(raw_out)
+            if in_layers is None or out_layers is None:
+                return None
+            if len(set(in_layers)) < 2:
+                return None
+            if out_layers != list(reversed(in_layers)):
+                return None
+
+        return {"type": "concentric_ring_reverse", "confidence": 1.0}
+
+    @staticmethod
+    def _concentric_layers(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        L = (min(h, w) + 1) // 2
+        layers = []
+        for k in range(L):
+            color = None
+            for r in range(h):
+                for c in range(w):
+                    if min(r, h - 1 - r, c, w - 1 - c) != k:
+                        continue
+                    v = raw[r][c]
+                    if color is None:
+                        color = v
+                    elif color != v:
+                        return None
+            if color is None:
+                return None
+            layers.append(color)
+        return layers
+
+    # ---- strategy: square corner marker ---------------------------------
+
+    def _try_square_corner_marker(self, example_pairs):
+        """
+        Detect: same grid size; output introduces exactly one new color
+        (marker), the same in every pair. For each non-background
+        connected component whose bbox is a square (h == w >= 2) AND
+        whose cells form either a complete hollow rectangle border or a
+        solid filled square, the output places marker cells at the 8
+        positions orthogonally adjacent to the 4 bbox corners (two per
+        corner, one above/below and one left/right). All other cells
+        match the input.
+        """
+        if not example_pairs:
+            return None
+
+        marker = None
+        had_target = False
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            in_colors = {c for row in raw_in for c in row}
+            out_colors = {c for row in raw_out for c in row}
+            new_colors = out_colors - in_colors
+            if len(new_colors) != 1:
+                return None
+            m = next(iter(new_colors))
+            if marker is None:
+                marker = m
+            elif marker != m:
+                return None
+            targets = self._square_marker_targets(raw_in)
+            if targets:
+                had_target = True
+            expected = self._draw_square_corner_markers(raw_in, targets, m)
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        if not had_target:
+            return None
+        return {"type": "square_corner_marker", "marker": marker,
+                "confidence": 1.0}
+
+    @staticmethod
+    def _square_marker_targets(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        visited = [[False] * w for _ in range(h)]
+        targets = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == bg or visited[r][c]:
+                    continue
+                color = raw[r][c]
+                comp = []
+                stack = [(r, c)]
+                while stack:
+                    rr, cc = stack.pop()
+                    if rr < 0 or rr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] != color:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        stack.append((rr + dr, cc + dc))
+                rs = [p[0] for p in comp]
+                cs = [p[1] for p in comp]
+                r0, r1 = min(rs), max(rs)
+                c0, c1 = min(cs), max(cs)
+                ch = r1 - r0 + 1
+                cw = c1 - c0 + 1
+                if ch != cw or ch < 2:
+                    continue
+                cell_set = set(comp)
+                is_solid = all(
+                    (rr, cc) in cell_set
+                    for rr in range(r0, r1 + 1)
+                    for cc in range(c0, c1 + 1)
+                )
+                border = set()
+                for cc in range(c0, c1 + 1):
+                    border.add((r0, cc))
+                    border.add((r1, cc))
+                for rr in range(r0, r1 + 1):
+                    border.add((rr, c0))
+                    border.add((rr, c1))
+                is_hollow = (cell_set == border)
+                if is_solid or is_hollow:
+                    targets.append((r0, c0, r1, c1))
+        return targets
+
+    @staticmethod
+    def _draw_square_corner_markers(raw, targets, marker):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+        for (r0, c0, r1, c1) in targets:
+            for mr, mc in [
+                (r0 - 1, c0), (r0, c0 - 1),
+                (r0 - 1, c1), (r0, c1 + 1),
+                (r1 + 1, c0), (r1, c0 - 1),
+                (r1 + 1, c1), (r1, c1 + 1),
+            ]:
+                if 0 <= mr < h and 0 <= mc < w:
+                    out[mr][mc] = marker
+        return out
+
     @staticmethod
     def _draw_corner_l_shoot(raw, bg):
         h = len(raw)
@@ -2254,6 +2442,10 @@ class PredictOperator(Operator):
             return self._apply_inside_marker_count_3x3(rule, input_grid)
         if rule_type == "corner_l_shoot":
             return self._apply_corner_l_shoot(rule, input_grid)
+        if rule_type == "concentric_ring_reverse":
+            return self._apply_concentric_ring_reverse(rule, input_grid)
+        if rule_type == "square_corner_marker":
+            return self._apply_square_corner_marker(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2691,6 +2883,32 @@ class PredictOperator(Operator):
                 counts[c] = counts.get(c, 0) + 1
         bg = max(counts, key=counts.get)
         return GeneralizeOperator._draw_corner_l_shoot(raw, bg)
+
+    def _apply_concentric_ring_reverse(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 2 or w < 2:
+            return None
+        layers = GeneralizeOperator._concentric_layers(raw)
+        if layers is None:
+            return None
+        rev = list(reversed(layers))
+        out = [[0] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                k = min(r, h - 1 - r, c, w - 1 - c)
+                out[r][c] = rev[k]
+        return out
+
+    def _apply_square_corner_marker(self, rule, input_grid):
+        raw = input_grid.raw
+        marker = rule.get("marker")
+        if marker is None:
+            return None
+        targets = GeneralizeOperator._square_marker_targets(raw)
+        return GeneralizeOperator._draw_square_corner_markers(raw, targets,
+                                                              marker)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

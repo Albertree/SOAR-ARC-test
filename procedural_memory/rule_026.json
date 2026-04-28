@@ -1,0 +1,15 @@
+{
+  "id": 26,
+  "concept": "concentric ring reverse",
+  "category": "other",
+  "rule": {
+    "type": "concentric_ring_reverse",
+    "confidence": 1.0
+  },
+  "covers": [
+    "85c4e7cd"
+  ],
+  "source_task": "85c4e7cd",
+  "created_at": "2026-04-29T08:50:35.175450",
+  "times_reused": 0
+}

@@ -298,3 +298,47 @@ Added 3 strategies to `agent/active_operators.py`:
 
 Result: 15/40 (37.5%) -> 18/40 (45.0%). 3 new rules stored. Regression
 gate (08ed6ac7) still CORRECT.
+
+---
+## Learning Loop -- 2026-04-29 08:43
+
+- Split: None, Tasks: 40
+- Correct: 18 / 40 (45.0%)
+- Rules: 25 -> 25 (+0 learned)
+- Stored rule hits: 18
+- Time: 21s
+- Log: logs/learn_20260429_084240.log
+
+---
+## Learning Loop -- 2026-04-29 08:50
+
+- Split: None, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 25 -> 27 (+2 learned)
+- Stored rule hits: 18
+- Time: 21s
+- Log: logs/learn_20260429_085027.log
+
+### Session 8 (Claude) -- new generalization strategies
+
+Added 2 strategies to `agent/active_operators.py`:
+
+- **concentric_ring_reverse** -- input is HxW (>=2 in each dim) tiled in
+  concentric rectangular rings, where each ring (cells with
+  min(r, h-1-r, c, w-1-c) == k) is painted a single uniform color and
+  there are at least 2 distinct ring colors. Output is the same shape
+  with the per-ring color sequence reversed (innermost color becomes
+  outermost). Works on rectangular grids of any aspect ratio.
+  Solves 85c4e7cd.
+- **square_corner_marker** -- output introduces exactly one new color
+  (the marker), consistent across all training pairs. For each
+  non-background connected component whose bbox is a square (h == w
+  >= 2) AND whose cells form either a complete hollow rectangle border
+  or a fully solid filled square, the output places marker cells at
+  the 8 positions orthogonally adjacent to the 4 bbox corners (one
+  above/below and one left/right of each corner). Components that are
+  isolated single cells, lines, or non-square rectangles are ignored.
+  Solves 14b8e18c.
+
+Result: 18/40 (45.0%) -> 20/40 (50.0%). 2 new rules stored. Regression
+gate (08ed6ac7) still CORRECT.
