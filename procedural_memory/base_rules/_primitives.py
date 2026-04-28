@@ -520,7 +520,13 @@ def draw_turn_path(grid, path_color, cw_color, ccw_color, bg=0):
     r, c = start
     output[r][c] = path_color
 
+    visited_states = set()
     while True:
+        state = (r, c, dir_idx)
+        if state in visited_states:
+            break  # cycle detected — avoid infinite loop
+        visited_states.add(state)
+
         dr, dc = dirs[dir_idx]
         nr, nc = r + dr, c + dc
 

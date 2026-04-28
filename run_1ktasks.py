@@ -25,7 +25,7 @@ MAX_STEPS = 500
 
 # ── timeout helper (Unix only) ────────────────────────────────────────────────
 
-class TimeoutError(Exception):
+class TimeoutError(BaseException):
     pass
 
 
