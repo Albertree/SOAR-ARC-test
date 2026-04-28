@@ -137,3 +137,35 @@
 - The `<MARKER>` sentinel pattern in `_execute_concept` is now established. Future concepts that need per-input parameter computation can reuse it: pick a marker string, register the infer method to validate the pattern (returning the marker), and add a substitution branch alongside `<RING_REVERSAL>`.
 - Tasks still waiting on infrastructure that the marker pattern could unlock: **per-cell concentric mapping with non-uniform rings** (extension of 85c4e7cd if encountered), **swap-two-colors where neither was inferable globally** (e.g. add a `palette_inversion` infer that works from the input alone). Tasks that need real per-object iteration (`6e82a1ae` color-by-size, `c0f76784` fill-by-frame-size) still need a step-level "for each object" construct, which the current engine doesn't have — adding it is a bigger change than this session warranted.
 - The 08ed6ac7 regression gate is still failing pre-existing (noted in session 3). Worth flagging again if the loop ever needs a true regression check.
+
+---
+## Learning Loop -- 2026-04-29 07:03
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 3
+- Time: 43s
+- Log: logs/learn_20260429_070227.log
+
+### Session 6 reflections (2026-04-29)
+
+**Failures analyzed:** Read `c9680e90`, `878187ab`, `e5790162`, `e9ac8c9e`, `0e206a2e`, `825aa9e9`, `1c56ad9f`, `c0f76784`, `60a26a3e`, `332202d5`, `6e82a1ae`, `9f669b64`, `afe3afe9`, `13f06aa5`, `bbc9ae5d`, `5a719d11` in detail. Every remaining failure needs either (a) per-object iteration that the step engine can't express, (b) a new infer method for shape/section/marker reasoning, or (c) per-pair sectioned operations. None reduce to a single primitive composition with the existing infer methods.
+
+**Topology groups & strategies:**
+
+1. **180-degree rotation (size unchanged, content differs).** Rounds out the geometric-transform family alongside `vertical_mirror_below`, `horizontal_mirror_right`, and `uniform_scale_up`. ARCKG signature: `grid_size_preserved=true`, `requires_content_diff=true`. The engine's strict validation gate (must match every training pair) prevents false positives — only tasks whose output truly equals `rotate_cw(input, 2)` will match. Created `concepts/rotate_180.json` — single `rotate_cw` step with `times=2`, no parameters.
+
+2. **Four-quadrant mirror tile (both dimensions double).** Output = 2x2 tiling where each quadrant is `input` mirrored along the appropriate axes (TL=input, TR=h-flip, BL=v-flip, BR=180-rotated). ARCKG signature: `size_ratio = [2.0, 2.0]`. Composes existing primitives only. Created `concepts/quadrant_mirror_tile.json` — `flip_horizontal`/`flip_vertical` then a 2x2 `concat_horizontal`/`concat_vertical` assembly, no parameters.
+
+**Quick validation:**
+- `python run_task.py` (regression `08ed6ac7`) → still INCORRECT (pre-existing, unchanged). `rotate_180`'s signature passes the filter on this task (size preserved + content differs) but its strict validation gate fails on both training pairs without false-matching.
+- `quadrant_mirror_tile` is correctly filtered out by signature (08ed6ac7 has size_comm=true, doesn't match `size_ratio=[2.0, 2.0]`).
+- Concept loader picks up both new files: `[CONCEPT] Loaded 9 concepts`.
+- Direct execution check via `_execute_concept(rotate_180, {}, pair.input_grid.raw)` returns the rotated grid as expected — concepts are well-formed.
+
+**Notes for next session:**
+- No expected gain on the next learn loop with the current 20-task sample — neither concept matches any of the surveyed failures (most are object/section reasoning, not pure geometric transforms). These two concepts are coverage infrastructure for the broader training set.
+- The big leverage left is still in tasks needing a "for each object" step orchestrator (`6e82a1ae` size-based recoloring, `c0f76784` fill-by-frame-size, `9f669b64` move-by-bigger-neighbor). That's a step-engine extension, not a new concept — bigger than this session warranted.
+- Marker-pattern candidates that would unlock several failures: per-section gravity for `825aa9e9`/`332202d5` (combine `find_separator_lines` with directional `gravity` per cell), and connect-shapes for `60a26a3e`. Both would need new infer methods to identify and coordinate sub-grid operations.
+- The 08ed6ac7 regression gate is still INCORRECT pre-existing (noted across sessions 3, 5).

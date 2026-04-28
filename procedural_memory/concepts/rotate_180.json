@@ -1,0 +1,14 @@
+{
+  "concept_id": "rotate_180",
+  "version": 1,
+  "description": "Output = input rotated 180 degrees. Same dimensions.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {},
+  "steps": [
+    {"id": "s1", "primitive": "rotate_cw", "args": {"grid": "$input", "times": 2}, "output": "result"}
+  ],
+  "result": "$result"
+}
