@@ -176,3 +176,42 @@ Verification:
   - 6e82a1ae: CORRECT via recolor_by_size (pipeline, was INCORRECT)
   - All 6 prior stored-rule wins still CORRECT
 - Rules: 10 -> 16 (+6 stored after the 40-task expansion).
+
+---
+## Learning Loop -- 2026-04-29 08:13
+
+- Split: None, Tasks: 40
+- Correct: 9 / 40 (22.5%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 9
+- Time: 20s
+- Log: logs/learn_20260429_081319.log
+
+---
+## Learning Loop -- 2026-04-29 08:22
+
+- Split: None, Tasks: 40
+- Correct: 12 / 40 (30.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 12
+- Time: 20s
+- Log: logs/learn_20260429_082227.log
+
+### Session 5 (Claude) -- new generalization strategies
+
+Added 3 strategies to `agent/active_operators.py`:
+
+- **rect_interior_marker_fill** -- hollow rectangular borders of fg get
+  interior bg cells filled with a constant marker color (preserving any
+  pre-existing interior fg cells). Solves a5313dff.
+- **object_extract_swap** -- input has bg + exactly two non-bg colors A, B
+  forming a single bounded object; output is the object's bbox with A and B
+  swapped. The swap rule is universal (no fixed colors learned). Solves
+  b94a9452.
+- **keep_solid_rectangles** -- keep only fg cells that lie in some 2x2
+  all-fg window; erase scattered/isolated fg cells to background. Handles
+  L-shaped components by keeping only their solid rectangular sub-regions.
+  Solves 7f4411dc.
+
+Result: 9/40 (22.5%) -> 12/40 (30.0%). 3 new rules stored. Regression
+gate (08ed6ac7) still CORRECT.

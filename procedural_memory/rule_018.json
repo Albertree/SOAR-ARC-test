@@ -1,0 +1,18 @@
+{
+  "id": 18,
+  "concept": "rect interior marker fill",
+  "category": "fill_transform",
+  "rule": {
+    "type": "rect_interior_marker_fill",
+    "marker": 1,
+    "foreground": 2,
+    "background": 0,
+    "confidence": 1.0
+  },
+  "covers": [
+    "a5313dff"
+  ],
+  "source_task": "a5313dff",
+  "created_at": "2026-04-29T08:19:36.720240",
+  "times_reused": 3
+}

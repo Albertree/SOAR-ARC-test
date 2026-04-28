@@ -344,7 +344,25 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_recolor_by_size(example_pairs)
 
-        # Strategy 12: simple 1:1 color mapping
+        # Strategy 12: rect interior marker fill — hollow-border rectangles
+        #   get interior background cells filled with a constant marker color,
+        #   while pre-existing foreground cells inside are preserved
+        if rule is None:
+            rule = self._try_rect_interior_marker_fill(example_pairs)
+
+        # Strategy 13: object extract + color swap — input has bg + exactly two
+        #   non-background colors forming a bounded object; output is the
+        #   object's bbox with the two non-bg colors swapped
+        if rule is None:
+            rule = self._try_object_extract_swap(example_pairs)
+
+        # Strategy 14: keep solid rectangles — keep only foreground components
+        #   that fill their bounding box solidly with both dimensions >= 2;
+        #   erase scattered/non-rectangular foreground cells to background
+        if rule is None:
+            rule = self._try_keep_solid_rectangles(example_pairs)
+
+        # Strategy 15: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -1372,6 +1390,241 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: rect interior marker fill ----------------------------
+
+    def _try_rect_interior_marker_fill(self, example_pairs):
+        """
+        Detect: same grid size; one bg + one fg in input; one new color in
+        output (the marker, consistent across pairs). Input contains one or
+        more axis-aligned rectangles whose 4 borders are entirely fg (size
+        >= 3x3). Output equals input except interior bg cells of every such
+        rectangle become the marker color (existing interior fg cells stay).
+        """
+        if not example_pairs:
+            return None
+
+        marker = None
+        fg_color = None
+        bg_color = None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+            in_colors = set(counts.keys())
+            fg_set = in_colors - {bg}
+            if len(fg_set) != 1:
+                return None
+            fg = next(iter(fg_set))
+
+            new_colors = (
+                {c for row in raw_out for c in row} - in_colors
+            )
+            if len(new_colors) != 1:
+                return None
+            m = next(iter(new_colors))
+
+            if marker is None:
+                marker, fg_color, bg_color = m, fg, bg
+            elif (m, fg, bg) != (marker, fg_color, bg_color):
+                return None
+
+            rects = self._find_rect_borders(raw_in, fg, min_h=3, min_w=3)
+            if not rects:
+                return None
+
+            interior_cells = set()
+            for (r0, c0, r1, c1) in rects:
+                for r in range(r0 + 1, r1):
+                    for c in range(c0 + 1, c1):
+                        interior_cells.add((r, c))
+
+            for r in range(h):
+                for c in range(w):
+                    if (r, c) in interior_cells and raw_in[r][c] == bg:
+                        if raw_out[r][c] != m:
+                            return None
+                    else:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+        if marker is None:
+            return None
+        return {
+            "type": "rect_interior_marker_fill",
+            "marker": marker,
+            "foreground": fg_color,
+            "background": bg_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_rect_borders(raw, fg, min_h=3, min_w=3):
+        """Find all axis-aligned rectangles whose 4 borders are entirely fg.
+        Returns a list of (r0, c0, r1, c1)."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        rects = []
+        for r0 in range(h):
+            for r1 in range(r0 + min_h - 1, h):
+                for c0 in range(w):
+                    if raw[r0][c0] != fg or raw[r1][c0] != fg:
+                        continue
+                    for c1 in range(c0 + min_w - 1, w):
+                        if raw[r0][c1] != fg or raw[r1][c1] != fg:
+                            continue
+                        if any(raw[r0][c] != fg for c in range(c0, c1 + 1)):
+                            continue
+                        if any(raw[r1][c] != fg for c in range(c0, c1 + 1)):
+                            continue
+                        if any(raw[r][c0] != fg for r in range(r0, r1 + 1)):
+                            continue
+                        if any(raw[r][c1] != fg for r in range(r0, r1 + 1)):
+                            continue
+                        rects.append((r0, c0, r1, c1))
+        return rects
+
+    # ---- strategy: object extract + color swap --------------------------
+
+    def _try_object_extract_swap(self, example_pairs):
+        """
+        Detect: input has one bg color and exactly two non-bg colors A and B
+        forming a single bounded object; output equals the object's bbox
+        region with A and B swapped (bg cells inside the bbox stay bg). The
+        specific A/B colors may differ per pair, but the swap rule is the
+        same: output = swap(input bbox, A<->B).
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            h_out = len(raw_out)
+            w_out = len(raw_out[0]) if raw_out else 0
+            if h_in == 0 or w_in == 0 or h_out == 0 or w_out == 0:
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+            non_bg = [c for c in counts if c != bg]
+            if len(non_bg) != 2:
+                return None
+
+            rows = [r for r in range(h_in)
+                    for c in range(w_in) if raw_in[r][c] != bg]
+            cols = [c for r in range(h_in)
+                    for c in range(w_in) if raw_in[r][c] != bg]
+            if not rows:
+                return None
+            r0, r1 = min(rows), max(rows)
+            c0, c1 = min(cols), max(cols)
+            obj_h = r1 - r0 + 1
+            obj_w = c1 - c0 + 1
+
+            if h_out != obj_h or w_out != obj_w:
+                return None
+
+            a, b = non_bg
+            for r in range(obj_h):
+                for c in range(obj_w):
+                    v = raw_in[r0 + r][c0 + c]
+                    if v == a:
+                        expected = b
+                    elif v == b:
+                        expected = a
+                    else:
+                        expected = v
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {
+            "type": "object_extract_swap",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: keep solid rectangles --------------------------------
+
+    def _try_keep_solid_rectangles(self, example_pairs):
+        """
+        Detect: same grid size; one bg + one fg in input; output equals input
+        except foreground cells that do NOT belong to any solid 2x2+ block of
+        fg cells are erased to background. A foreground cell is kept iff at
+        least one of the four 2x2 windows containing it is entirely fg.
+        """
+        if not example_pairs:
+            return None
+
+        any_kept = False
+        any_erased = False
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+            fg_set = set(counts.keys()) - {bg}
+            if len(fg_set) != 1:
+                return None
+            fg = next(iter(fg_set))
+
+            keep_cells = self._compute_solid_block_keep(raw_in, fg)
+
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] == fg and (r, c) not in keep_cells:
+                        if raw_out[r][c] != bg:
+                            return None
+                        any_erased = True
+                    else:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+                        if raw_in[r][c] == fg:
+                            any_kept = True
+
+        if not any_kept or not any_erased:
+            return None
+        return {
+            "type": "keep_solid_rectangles",
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _compute_solid_block_keep(raw, fg):
+        """Cells of color fg that lie in some 2x2 all-fg window."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        keep = set()
+        for r in range(h - 1):
+            for c in range(w - 1):
+                if (raw[r][c] == fg and raw[r][c + 1] == fg
+                        and raw[r + 1][c] == fg and raw[r + 1][c + 1] == fg):
+                    keep.add((r, c))
+                    keep.add((r, c + 1))
+                    keep.add((r + 1, c))
+                    keep.add((r + 1, c + 1))
+        return keep
+
     @staticmethod
     def _find_components(raw, color):
         """Return 4-connected components of `color` in `raw` as lists of (r, c)."""
@@ -1485,6 +1738,12 @@ class PredictOperator(Operator):
             return self._apply_axis_line_keep(rule, input_grid)
         if rule_type == "recolor_by_size":
             return self._apply_recolor_by_size(rule, input_grid)
+        if rule_type == "rect_interior_marker_fill":
+            return self._apply_rect_interior_marker_fill(rule, input_grid)
+        if rule_type == "object_extract_swap":
+            return self._apply_object_extract_swap(rule, input_grid)
+        if rule_type == "keep_solid_rectangles":
+            return self._apply_keep_solid_rectangles(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1733,6 +1992,82 @@ class PredictOperator(Operator):
                 continue
             for (rr, cc) in comp:
                 out[rr][cc] = new_color
+        return out
+
+    def _apply_rect_interior_marker_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        marker = rule.get("marker")
+        fg = rule.get("foreground")
+        bg = rule.get("background")
+        if marker is None or fg is None or bg is None:
+            return None
+        rects = GeneralizeOperator._find_rect_borders(raw, fg, min_h=3, min_w=3)
+        out = [row[:] for row in raw]
+        for (r0, c0, r1, c1) in rects:
+            for r in range(r0 + 1, r1):
+                for c in range(c0 + 1, c1):
+                    if raw[r][c] == bg:
+                        out[r][c] = marker
+        return out
+
+    def _apply_object_extract_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        non_bg = [c for c in counts if c != bg]
+        if len(non_bg) != 2:
+            return None
+        rows = [r for r in range(h) for c in range(w) if raw[r][c] != bg]
+        cols = [c for r in range(h) for c in range(w) if raw[r][c] != bg]
+        if not rows:
+            return None
+        r0, r1 = min(rows), max(rows)
+        c0, c1 = min(cols), max(cols)
+        a, b = non_bg
+        out = []
+        for r in range(r0, r1 + 1):
+            new_row = []
+            for c in range(c0, c1 + 1):
+                v = raw[r][c]
+                if v == a:
+                    new_row.append(b)
+                elif v == b:
+                    new_row.append(a)
+                else:
+                    new_row.append(v)
+            out.append(new_row)
+        return out
+
+    def _apply_keep_solid_rectangles(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        fg_set = set(counts.keys()) - {bg}
+        if len(fg_set) != 1:
+            return None
+        fg = next(iter(fg_set))
+        keep = GeneralizeOperator._compute_solid_block_keep(raw, fg)
+        out = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fg and (r, c) not in keep:
+                    out[r][c] = bg
         return out
 
     def _apply_diamond_connector(self, rule, input_grid):

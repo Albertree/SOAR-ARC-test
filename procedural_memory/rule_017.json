@@ -1,0 +1,15 @@
+{
+  "id": 17,
+  "concept": "object extract swap",
+  "category": "other",
+  "rule": {
+    "type": "object_extract_swap",
+    "confidence": 1.0
+  },
+  "covers": [
+    "b94a9452"
+  ],
+  "source_task": "b94a9452",
+  "created_at": "2026-04-29T08:19:36.492544",
+  "times_reused": 3
+}
