@@ -58,3 +58,37 @@
   - **Concentric-ring color reversal** (`85c4e7cd`): the colors form nested rectangles and the output reverses the ring color order. `color_map_from_arckg` won't work — the {old:new} mapping differs per pair. Would need a `ring_color_reversal` infer method that walks rings from the outside in and pairs colors with their mirrored position.
   - **Per-cell gravity toward a wall** (`825aa9e9`): grid is partitioned by separator lines into rectangular cells, and within each cell the non-bg shape slides toward the cell's "wall" edge. Needs separator-aware sectioning + directional sub-grid gravity.
   - **Row-extension stair pattern** (`bbc9ae5d`): output adds rows below where each row extends the colored prefix by one cell. The relation between row count, prefix length, and grid width is non-obvious and may not be expressible without a new primitive.
+
+---
+## Learning Loop -- 2026-04-29 06:33
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 2
+- Time: 42s
+- Log: logs/learn_20260429_063251.log
+
+### Session 3 reflections (2026-04-29)
+
+**Failures analyzed:** Surveyed ~10 incorrect tasks (`c9680e90`, `878187ab`, `0e206a2e`, `9f669b64`, `13f06aa5`, `825aa9e9`, `c0f76784`, `60a26a3e`, `6e82a1ae`, `1c56ad9f`, `5a719d11`, `bbc9ae5d`, `85c4e7cd`, `e9ac8c9e`, `e5790162`, `afe3afe9`). All require either shape-aware logic, per-cell ring detection, or per-pair color mappings that the existing infer methods can't express. None reduce to a single primitive composition.
+
+**Topology groups & strategies:**
+
+1. **Globally consistent color remap (size unchanged, contents differ).** A general fallback for any task whose entire transformation is "every cell of color X becomes color Y, the same X->Y across all training pairs". Reuses the existing `color_map_from_arckg` infer method, which already returns None when the mapping is inconsistent — so 08ed6ac7 (multiple targets per source), 85c4e7cd (per-pair ring reversal), preserve-column tasks (some X stay X, some become bg) all correctly fail signature/inference and fall through. Created `concepts/global_recolor.json` — single `recolor` step.
+
+2. **Horizontal mirror right (width doubles, height same).** Mirror counterpart to the existing `vertical_mirror_below`. ARCKG signature: `size_ratio = [1.0, 2.0]`. Created `concepts/horizontal_mirror_right.json` — `flip_horizontal` then `concat_horizontal`. No tasks in the current sample match, but the concept rounds out the simple-geometric coverage and will catch any future task with this topology.
+
+**Quick validation:**
+- `python run_task.py` (regression `08ed6ac7`) -> INCORRECT (pre-existing — `color_map_from_arckg` returns None as expected, falls through to identity). Confirmed unchanged from baseline before my changes.
+- Concept loader picks up both new files: `[CONCEPT] Loaded 5 concepts`.
+- `global_recolor` correctly returns None on `08ed6ac7` (inconsistent mapping: 5 maps to 1, 2, 3, 4 across cells), so the existing recolor_sequential pipeline still gets a chance.
+- Existing memory hits unaffected (`8be77c9e`, `d23f8c26`).
+
+**Notes for next session:**
+- No expected gain in the next learn loop — neither concept matches a task in the current 20-task sample. The concepts are infrastructure for broader sample coverage.
+- The biggest leverage left is in tasks that need new inference methods, not new primitives. Candidates that keep recurring across sessions:
+  - **Per-cell concentric ring inversion** (`85c4e7cd`): need a `reverse_ring_colors` infer method that walks `min(r, h-1-r, c, w-1-c)` for each cell and produces a per-pair color map keyed by ring index, then expressed back as `recolor`'s `{old: new}`. Would only need engine changes (new `_register_infer`), no new primitive.
+  - **Single-color shape gravity inside a sectioned grid** (`825aa9e9`): combine `find_separator_lines` + per-section `gravity` on the smaller grid. Doable with current primitives if a `for_each_section` inference orchestrator existed.
+  - **Stair growth** (`bbc9ae5d`): still blocked on a new primitive (`stair_extend` or similar). Skip for now.
+- The 08ed6ac7 regression gate (per CLAUDE.md) is still failing pre-existing. Worth flagging — it's been INCORRECT since at least the start of session 1, despite being labeled "must always output CORRECT".

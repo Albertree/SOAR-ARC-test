@@ -1,0 +1,16 @@
+{
+  "concept_id": "global_recolor",
+  "version": 1,
+  "description": "Output = input with a globally consistent {old: new} color remapping inferred from training pairs.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "mapping": {"type": "color_map", "infer": "color_map_from_arckg"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "recolor", "args": {"grid": "$input", "mapping": "$mapping"}, "output": "result"}
+  ],
+  "result": "$result"
+}
