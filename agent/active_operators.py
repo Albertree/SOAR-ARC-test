@@ -289,12 +289,32 @@ class GeneralizeOperator(Operator):
         if not patterns:
             return
 
+        task = wm.task
+        example_pairs = self._collect_example_pairs(task)
+
         rule = None
 
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         rule = self._try_recolor_sequential(patterns)
 
-        # Strategy 2: simple 1:1 color mapping
+        # Strategy 2: bounding-box fill — fill bg cells within bbox of fg color
+        if rule is None:
+            rule = self._try_bbox_fill(example_pairs)
+
+        # Strategy 3: horizontal mirror recolor — recolor cells whose
+        #   horizontal-mirror partner has the same color
+        if rule is None:
+            rule = self._try_axis_mirror_recolor(example_pairs)
+
+        # Strategy 4: integer upscale — each input cell becomes a kxk block
+        if rule is None:
+            rule = self._try_integer_upscale(example_pairs)
+
+        # Strategy 5: stack with mirror — output = concat(input, flip(input))
+        if rule is None:
+            rule = self._try_stack_with_mirror(example_pairs)
+
+        # Strategy 6: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -303,6 +323,19 @@ class GeneralizeOperator(Operator):
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    @staticmethod
+    def _collect_example_pairs(task):
+        """Return list of (raw_input, raw_output) tuples for example pairs."""
+        if task is None:
+            return []
+        out = []
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                continue
+            out.append((g0.raw, g1.raw))
+        return out
 
     # ---- strategy: sequential recoloring --------------------------------
 
@@ -397,6 +430,298 @@ class GeneralizeOperator(Operator):
 
         return None
 
+    # ---- strategy: bounding-box fill ------------------------------------
+
+    def _try_bbox_fill(self, example_pairs):
+        """
+        Detect: same grid size; output equals input except every background
+        cell within the bounding box of the foreground color has been
+        recolored to a single marker color (a color not present in input).
+        """
+        if not example_pairs:
+            return None
+
+        marker = None
+        bg_color = None
+        fg_color = None
+
+        for raw_in, raw_out in example_pairs:
+            h, w = len(raw_in), len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != len(raw_out[0] if raw_out else []):
+                return None
+
+            in_colors = {c for row in raw_in for c in row}
+            out_colors = {c for row in raw_out for c in row}
+            new_colors = out_colors - in_colors
+            if len(new_colors) != 1:
+                return None
+            m = next(iter(new_colors))
+
+            # Background = most-frequent color in input
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            # Foreground = the other input color (must be exactly two)
+            fg_set = {c for c in in_colors if c != bg}
+            if len(fg_set) != 1:
+                return None
+            fg = next(iter(fg_set))
+
+            # Compute bbox of foreground in input
+            rows = [r for r in range(h) for c in range(w) if raw_in[r][c] == fg]
+            cols = [c for r in range(h) for c in range(w) if raw_in[r][c] == fg]
+            if not rows:
+                return None
+            r0, r1 = min(rows), max(rows)
+            c0, c1 = min(cols), max(cols)
+
+            # Verify: inside bbox, bg→marker, fg→fg; outside bbox unchanged
+            for r in range(h):
+                for c in range(w):
+                    inside = r0 <= r <= r1 and c0 <= c <= c1
+                    if inside and raw_in[r][c] == bg:
+                        if raw_out[r][c] != m:
+                            return None
+                    else:
+                        if raw_out[r][c] != raw_in[r][c]:
+                            return None
+
+            if marker is None:
+                marker, bg_color, fg_color = m, bg, fg
+            elif (m, bg, fg) != (marker, bg_color, fg_color):
+                return None
+
+        return {
+            "type": "bbox_fill",
+            "marker": marker,
+            "background": bg_color,
+            "foreground": fg_color,
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: axis mirror recolor ----------------------------------
+
+    def _try_axis_mirror_recolor(self, example_pairs):
+        """
+        Detect: same grid size, exactly one new color in output (marker).
+        For some axis (horizontal/vertical), every changed cell is the
+        original foreground color and its mirror partner along that axis
+        also has the original foreground color in the input.
+        Unchanged cells are those without a same-color mirror partner.
+        """
+        if not example_pairs:
+            return None
+
+        for axis in ("horizontal", "vertical"):
+            params = self._check_mirror_axis(example_pairs, axis)
+            if params is not None:
+                return {
+                    "type": "axis_mirror_recolor",
+                    "axis": axis,
+                    "marker": params["marker"],
+                    "foreground": params["foreground"],
+                    "confidence": 1.0,
+                }
+        return None
+
+    @staticmethod
+    def _check_mirror_axis(example_pairs, axis):
+        marker = None
+        fg = None
+        had_change = False
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or (w and w != len(raw_out[0])):
+                return None
+
+            new_colors = (
+                {c for row in raw_out for c in row}
+                - {c for row in raw_in for c in row}
+            )
+            if len(new_colors) != 1:
+                return None
+            m = next(iter(new_colors))
+
+            for r in range(h):
+                for c in range(w):
+                    if axis == "horizontal":
+                        rr, cc = r, w - 1 - c
+                    else:
+                        rr, cc = h - 1 - r, c
+                    in_v = raw_in[r][c]
+                    out_v = raw_out[r][c]
+                    mirror_v = raw_in[rr][cc]
+                    if out_v == in_v:
+                        # If this cell HAS a same-color mirror partner of
+                        # a non-bg color, the rule would have flipped it.
+                        # We require: not changed → no same-color partner
+                        # OR cell is on the axis and equals itself (trivial).
+                        if (r, c) != (rr, cc) and in_v == mirror_v and in_v != 0:
+                            # only allow when in_v is the background
+                            # (but bg already excluded by != 0 check is rough);
+                            # we'll defer to fg check below.
+                            pass
+                        continue
+                    # Changed: must change FROM some fg TO marker, with mirror
+                    # partner also equal to fg in the input.
+                    if out_v != m:
+                        return None
+                    if in_v == 0:
+                        # background-cells turning into marker — not this rule
+                        return None
+                    if mirror_v != in_v:
+                        return None
+                    if fg is None:
+                        fg = in_v
+                    elif fg != in_v:
+                        return None
+                    had_change = True
+
+            if marker is None:
+                marker = m
+            elif marker != m:
+                return None
+
+        if not had_change or fg is None:
+            return None
+
+        # Final sanity: re-apply rule and confirm exact match.
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            for r in range(h):
+                for c in range(w):
+                    if axis == "horizontal":
+                        rr, cc = r, w - 1 - c
+                    else:
+                        rr, cc = h - 1 - r, c
+                    expected = raw_in[r][c]
+                    if (raw_in[r][c] == fg
+                            and (r, c) != (rr, cc)
+                            and raw_in[rr][cc] == fg):
+                        expected = marker
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {"marker": marker, "foreground": fg}
+
+    # ---- strategy: integer upscale --------------------------------------
+
+    def _try_integer_upscale(self, example_pairs):
+        """
+        Detect: output dimensions are k * input dimensions (same k for both
+        height and width, and the same k across all examples). Each input
+        cell at (r, c) becomes a kxk block at rows [k*r, k*r+k) and cols
+        [k*c, k*c+k) in the output, all filled with the same color.
+        """
+        if not example_pairs:
+            return None
+
+        factor = None
+        for raw_in, raw_out in example_pairs:
+            ih = len(raw_in)
+            iw = len(raw_in[0]) if raw_in else 0
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+            if ih == 0 or iw == 0 or oh == 0 or ow == 0:
+                return None
+            if oh % ih != 0 or ow % iw != 0:
+                return None
+            kh, kw = oh // ih, ow // iw
+            if kh != kw or kh < 2:
+                return None
+            if factor is None:
+                factor = kh
+            elif factor != kh:
+                return None
+            for r in range(ih):
+                for c in range(iw):
+                    v = raw_in[r][c]
+                    for dr in range(factor):
+                        for dc in range(factor):
+                            if raw_out[r * factor + dr][c * factor + dc] != v:
+                                return None
+
+        if factor is None:
+            return None
+        return {"type": "integer_upscale", "factor": factor, "confidence": 1.0}
+
+    # ---- strategy: stack with mirror ------------------------------------
+
+    def _try_stack_with_mirror(self, example_pairs):
+        """
+        Detect: output = concatenation of input and a flipped copy of input
+        along one axis. Tries four configurations:
+          - direction=vertical,   order=input_first  (rows: input, vflip(input))
+          - direction=vertical,   order=flip_first   (rows: vflip(input), input)
+          - direction=horizontal, order=input_first  (cols: input, hflip(input))
+          - direction=horizontal, order=flip_first   (cols: hflip(input), input)
+        The same configuration must hold across every example.
+        """
+        if not example_pairs:
+            return None
+
+        configs = [
+            ("vertical", "input_first"),
+            ("vertical", "flip_first"),
+            ("horizontal", "input_first"),
+            ("horizontal", "flip_first"),
+        ]
+
+        for direction, order in configs:
+            ok = True
+            for raw_in, raw_out in example_pairs:
+                if not self._check_stack_mirror(raw_in, raw_out, direction, order):
+                    ok = False
+                    break
+            if ok:
+                return {
+                    "type": "stack_with_mirror",
+                    "direction": direction,
+                    "order": order,
+                    "confidence": 1.0,
+                }
+        return None
+
+    @staticmethod
+    def _check_stack_mirror(raw_in, raw_out, direction, order):
+        ih = len(raw_in)
+        iw = len(raw_in[0]) if raw_in else 0
+        oh = len(raw_out)
+        ow = len(raw_out[0]) if raw_out else 0
+        if ih == 0 or iw == 0:
+            return False
+
+        if direction == "vertical":
+            if ow != iw or oh != 2 * ih:
+                return False
+            flipped = list(reversed(raw_in))
+            top = raw_in if order == "input_first" else flipped
+            bot = flipped if order == "input_first" else raw_in
+            for r in range(ih):
+                if list(raw_out[r]) != list(top[r]):
+                    return False
+                if list(raw_out[ih + r]) != list(bot[r]):
+                    return False
+            return True
+        else:  # horizontal
+            if oh != ih or ow != 2 * iw:
+                return False
+            flipped = [list(reversed(row)) for row in raw_in]
+            left = raw_in if order == "input_first" else flipped
+            right = flipped if order == "input_first" else raw_in
+            for r in range(ih):
+                if list(raw_out[r][:iw]) != list(left[r]):
+                    return False
+                if list(raw_out[r][iw:]) != list(right[r]):
+                    return False
+            return True
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -464,6 +789,14 @@ class PredictOperator(Operator):
             return self._apply_recolor_sequential(rule, input_grid)
         if rule_type == "color_mapping":
             return self._apply_color_mapping(rule, input_grid)
+        if rule_type == "bbox_fill":
+            return self._apply_bbox_fill(rule, input_grid)
+        if rule_type == "axis_mirror_recolor":
+            return self._apply_axis_mirror_recolor(rule, input_grid)
+        if rule_type == "integer_upscale":
+            return self._apply_integer_upscale(rule, input_grid)
+        if rule_type == "stack_with_mirror":
+            return self._apply_stack_with_mirror(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -516,6 +849,89 @@ class PredictOperator(Operator):
         for row in raw:
             output.append([mapping.get(cell, cell) for cell in row])
         return output
+
+    def _apply_bbox_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        marker = rule.get("marker")
+        fg = rule.get("foreground")
+        bg = rule.get("background")
+        if marker is None or fg is None or bg is None:
+            return None
+
+        rows = [r for r in range(h) for c in range(w) if raw[r][c] == fg]
+        cols = [c for r in range(h) for c in range(w) if raw[r][c] == fg]
+        if not rows:
+            return [row[:] for row in raw]
+        r0, r1 = min(rows), max(rows)
+        c0, c1 = min(cols), max(cols)
+
+        out = [row[:] for row in raw]
+        for r in range(r0, r1 + 1):
+            for c in range(c0, c1 + 1):
+                if out[r][c] == bg:
+                    out[r][c] = marker
+        return out
+
+    def _apply_axis_mirror_recolor(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        marker = rule.get("marker")
+        fg = rule.get("foreground")
+        axis = rule.get("axis", "horizontal")
+        if marker is None or fg is None:
+            return None
+
+        out = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != fg:
+                    continue
+                if axis == "horizontal":
+                    rr, cc = r, w - 1 - c
+                else:
+                    rr, cc = h - 1 - r, c
+                if (r, c) == (rr, cc):
+                    continue
+                if raw[rr][cc] == fg:
+                    out[r][c] = marker
+        return out
+
+    def _apply_integer_upscale(self, rule, input_grid):
+        raw = input_grid.raw
+        k = rule.get("factor")
+        if not isinstance(k, int) or k < 2:
+            return None
+        out = []
+        for row in raw:
+            new_row = []
+            for v in row:
+                new_row.extend([v] * k)
+            for _ in range(k):
+                out.append(new_row[:])
+        return out
+
+    def _apply_stack_with_mirror(self, rule, input_grid):
+        raw = input_grid.raw
+        direction = rule.get("direction")
+        order = rule.get("order")
+        if direction not in ("vertical", "horizontal"):
+            return None
+        if order not in ("input_first", "flip_first"):
+            return None
+
+        if direction == "vertical":
+            flipped = list(reversed([row[:] for row in raw]))
+            top = [row[:] for row in raw] if order == "input_first" else flipped
+            bot = flipped if order == "input_first" else [row[:] for row in raw]
+            return [r[:] for r in top] + [r[:] for r in bot]
+        else:
+            flipped = [list(reversed(row)) for row in raw]
+            left = [row[:] for row in raw] if order == "input_first" else flipped
+            right = flipped if order == "input_first" else [row[:] for row in raw]
+            return [list(left[r]) + list(right[r]) for r in range(len(raw))]
 
     # ---- helpers ---------------------------------------------------------
 
