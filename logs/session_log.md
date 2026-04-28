@@ -233,3 +233,43 @@
 - No expected gain on the next learn loop -- the 20-task sample contains no pure 90-deg rotations among the failures. These two concepts are coverage infrastructure for the broader training set, completing the rotation family.
 - The dominant unaddressed failure patterns remain: **separator-segmented operations** (`c9680e90`, `825aa9e9`, `5a719d11`, `332202d5`) and **per-object reasoning** (`6e82a1ae`, `c0f76784`, `9f669b64`). Unlocking these requires either new primitives (forbidden -- frozen at 24) or a step-engine extension supporting compartment iteration / per-object loops. Author of `_concept_engine.py` would need to add either (a) a "for-each-section" step type or (b) richer infer methods that produce structured outputs (e.g., size->color maps consumable by a single recolor call).
 - 08ed6ac7 regression gate remains INCORRECT pre-existing (noted across sessions 3, 5, 6, 7, now 8).
+
+---
+## Learning Loop -- 2026-04-29 07:30
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 4
+- Time: 43s
+- Log: logs/learn_20260429_072948.log
+
+### Session 9 reflections (2026-04-29)
+
+**Failures inspected:** `c9680e90`, `bbc9ae5d`, `13f06aa5`, `9f669b64`, `0e206a2e`, `60a26a3e`, `e9ac8c9e`, `c0f76784`, `1c56ad9f`, `332202d5`, `825aa9e9`, `e5790162`, `878187ab`, `6e82a1ae`, `afe3afe9`.
+
+**Diagnosis:** none of the 16 failing tasks in this session decompose cleanly into the frozen 24-primitive set. They all require one of:
+- Per-object relocation by inter-object relations (`9f669b64`, `6e82a1ae`, `e9ac8c9e`)
+- Path-drawing between waypoints (`e5790162`, `0e206a2e`, `60a26a3e`)
+- Inner-rectangle fill keyed on inner-size (`c0f76784`)
+- Quadrant-grid sub-pattern shifts (`1c56ad9f`, `332202d5`, `825aa9e9`)
+- Tile-resolution synthesis (`13f06aa5`, `afe3afe9`, `878187ab`)
+- Triangular row-extension growth (`bbc9ae5d`)
+
+None of these are JSON-step expressible without either new infer methods that produce per-object/per-section structured outputs, or new step kinds (loops, conditionals). Same wall identified in prior sessions.
+
+**Concepts added (coverage completion, not failure-targeted):**
+- `vertical_mirror_above.json`: output = flip_vertical(input) stacked above input. Counterpart to existing `vertical_mirror_below`. signature: size_ratio [2.0, 1.0].
+- `horizontal_mirror_left.json`: output = flip_horizontal(input) joined to the left of input. Counterpart to existing `horizontal_mirror_right`. signature: size_ratio [1.0, 2.0].
+
+These complete the four mirror-doubling directions (above/below × left/right). They share signatures with their counterparts; the validator runs each in turn so coexistence is fine.
+
+**Quick validation:**
+- `python run_task.py` (regression `08ed6ac7`) -> still INCORRECT (pre-existing across sessions 3, 5, 6, 7, 8; verified via `git stash` round-trip that my additions did not change the result).
+- Loader picks up both new files: `[CONCEPT] Loaded 15 concepts` (up from 13).
+- No new failing task in this session benefits — both new concepts fail signature match on every failing task here, so no regression in the 4-correct count, no new wins either.
+
+**Notes for next session:**
+- The 16 failures span six distinct problem families above; addressing any of them without new primitives requires extending `_concept_engine.py`. Recommendation: prioritize a `for_each_section` step kind that would unlock the separator/quadrant family (`332202d5`, `825aa9e9`, `1c56ad9f`) — those share a common decomposition (split by separator, recolor each block, recombine).
+- Mirror-doubling concept family is now complete (4 directions). Future symmetry concepts should target diagonal axes (transpose, anti-transpose) for square grids.
+- 08ed6ac7 regression gate remains INCORRECT pre-existing.
