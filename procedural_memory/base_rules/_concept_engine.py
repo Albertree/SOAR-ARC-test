@@ -681,6 +681,59 @@ def _infer_from_examples(task, arckg_features, patterns):
     return None
 
 
+# ----------------------------------------------------------------------
+# Concentric ring color reversal
+# ----------------------------------------------------------------------
+
+def _ring_reversal_map_for_grid(grid):
+    """Build {old: new} color map that reverses concentric rectangular rings.
+    Each ring (cells where min(r, h-1-r, c, w-1-c) == k) must be uniform color.
+    Returns None if the grid has no valid ring structure."""
+    h = len(grid)
+    w = len(grid[0]) if grid else 0
+    if h < 2 or w < 2:
+        return None
+    R = (min(h, w) - 1) // 2
+    ring_colors = []
+    for r_idx in range(R + 1):
+        cells = []
+        for r in range(h):
+            for c in range(w):
+                if min(r, h - 1 - r, c, w - 1 - c) == r_idx:
+                    cells.append(grid[r][c])
+        if not cells or len(set(cells)) != 1:
+            return None
+        ring_colors.append(cells[0])
+    n = len(ring_colors)
+    mapping = {}
+    for i in range(n):
+        old = ring_colors[i]
+        new = ring_colors[n - 1 - i]
+        if old in mapping and mapping[old] != new:
+            return None
+        mapping[old] = new
+    return mapping
+
+
+@_register_infer("ring_color_reversal_map")
+def _infer_ring_color_reversal_map(task, arckg_features, patterns):
+    """Validate that every training pair is a concentric-ring color reversal.
+    Returns marker '<RING_REVERSAL>'; the actual {old:new} map is computed
+    per-input at execute time (test inputs will have different colors)."""
+    saw_pair = False
+    for pair in task.example_pairs:
+        if pair.input_grid is None or pair.output_grid is None:
+            continue
+        in_map = _ring_reversal_map_for_grid(pair.input_grid.raw)
+        if in_map is None:
+            return None
+        predicted = [[in_map.get(c, c) for c in row] for row in pair.input_grid.raw]
+        if predicted != pair.output_grid.raw:
+            return None
+        saw_pair = True
+    return "<RING_REVERSAL>" if saw_pair else None
+
+
 # ======================================================================
 # Brute-force parameter resolution
 # ======================================================================
@@ -748,9 +801,16 @@ def _execute_concept(concept, params, input_grid_raw, verbose=False):
     env["input_width"] = len(input_grid_raw[0]) if input_grid_raw else 0
     # Resolve sentinel values before merging params
     resolved_params = dict(params)
-    for k, v in resolved_params.items():
+    for k, v in list(resolved_params.items()):
         if v == -1 and k == "col_index":
             resolved_params[k] = env["input_width"] // 2
+        elif v == "<RING_REVERSAL>":
+            dyn_map = _ring_reversal_map_for_grid(input_grid_raw)
+            if dyn_map is None:
+                if verbose:
+                    print(f"[CONCEPT] {cid}: ring-reversal map could not be derived from input")
+                return None
+            resolved_params[k] = dyn_map
     env.update(resolved_params)
 
     for step in concept["steps"]:

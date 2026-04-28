@@ -102,3 +102,38 @@
 - Stored rule hits: 3
 - Time: 42s
 - Log: logs/learn_20260429_064046.log
+
+---
+## Learning Loop -- 2026-04-29 06:52
+
+- Split: training, Tasks: 20
+- Correct: 3 / 20 (15.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 3
+- Time: 42s
+- Log: logs/learn_20260429_065136.log
+
+### Session 5 reflections (2026-04-29)
+
+**Failures analyzed:** Surveyed sizing of all 17 failures, then read `85c4e7cd`, `c0f76784`, `e9ac8c9e`, `6e82a1ae`, `9f669b64`, `13f06aa5`, `1c56ad9f`, `e5790162`, `0e206a2e`, `825aa9e9`, `332202d5`, `60a26a3e`, `878187ab`, `afe3afe9`, `bbc9ae5d` in detail. The simple geometric tasks (pure flip / rotate / transpose) are already covered or absent from the sample (only 4 such tasks exist in all of training).
+
+**Topology group & strategy:**
+
+1. **Concentric ring color reversal** (`85c4e7cd`, all 4 train pairs match). Each input is a square with concentric rectangular rings, each ring uniform color; the output is the same shape with the ring-color sequence reversed (outermost ↔ innermost). The mapping `{old: new}` is intrinsic to each input, so a static `recolor` parameter inferred from training cannot apply to the test input (different colors). Solved by adding a small dynamic-param hook to the engine.
+
+   - Added helper `_ring_reversal_map_for_grid(grid)` in `_concept_engine.py` that detects ring structure on any grid and returns the reversal mapping (or None if not ring-structured).
+   - Added infer method `ring_color_reversal_map` that validates the pattern across all training pairs and returns the marker `"<RING_REVERSAL>"`.
+   - Extended `_execute_concept` to substitute the marker with the per-input mapping (computed via `_ring_reversal_map_for_grid(input_grid_raw)`) right after sentinel resolution, mirroring how `col_index = -1` is already handled.
+   - Created `concepts/concentric_ring_reversal.json` — single `recolor` step, signature `{grid_size_preserved: true, requires_content_diff: true}`.
+
+**Quick validation:**
+- `python run_task.py --task 85c4e7cd` → `RESULT: CORRECT` (was INCORRECT). [CONCEPT] log: `concentric_ring_reversal: MATCHED task 85c4e7cd with params {'mapping': '<RING_REVERSAL>'}`.
+- `python run_task.py` (regression `08ed6ac7`) → `RESULT: INCORRECT` (pre-existing — `ring_color_reversal_map` correctly returns None and falls through, behavior unchanged).
+- Spot-checked memory-hit tasks: `8be77c9e` and `c59eb873` still CORRECT; `d23f8c26` still INCORRECT on direct run (pre-existing — succeeds in the loop only via stored rule, also unchanged).
+- Concept loader picks up the new file: `[CONCEPT] Loaded 7 concepts`.
+
+**Notes for next session:**
+- Expected gain in next learn loop: +1 (85c4e7cd → 4/20 = 20%).
+- The `<MARKER>` sentinel pattern in `_execute_concept` is now established. Future concepts that need per-input parameter computation can reuse it: pick a marker string, register the infer method to validate the pattern (returning the marker), and add a substitution branch alongside `<RING_REVERSAL>`.
+- Tasks still waiting on infrastructure that the marker pattern could unlock: **per-cell concentric mapping with non-uniform rings** (extension of 85c4e7cd if encountered), **swap-two-colors where neither was inferable globally** (e.g. add a `palette_inversion` infer that works from the input alone). Tasks that need real per-object iteration (`6e82a1ae` color-by-size, `c0f76784` fill-by-frame-size) still need a step-level "for each object" construct, which the current engine doesn't have — adding it is a bigger change than this session warranted.
+- The 08ed6ac7 regression gate is still failing pre-existing (noted in session 3). Worth flagging again if the loop ever needs a true regression check.

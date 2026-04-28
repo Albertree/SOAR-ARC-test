@@ -1,0 +1,16 @@
+{
+  "concept_id": "concentric_ring_reversal",
+  "version": 1,
+  "description": "Output = input with concentric rectangular ring colors reversed (outermost <-> innermost). Each input ring must be one uniform color. Mapping is recomputed per input.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "mapping": {"type": "color_map", "infer": "ring_color_reversal_map"}
+  },
+  "steps": [
+    {"id": "s1", "primitive": "recolor", "args": {"grid": "$input", "mapping": "$mapping"}, "output": "result"}
+  ],
+  "result": "$result"
+}
