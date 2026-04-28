@@ -1,0 +1,16 @@
+{
+  "id": 8,
+  "concept": "corner quadrant fill",
+  "category": "fill_transform",
+  "rule": {
+    "type": "corner_quadrant_fill",
+    "inner_color": 5,
+    "confidence": 1.0
+  },
+  "covers": [
+    "e9ac8c9e"
+  ],
+  "source_task": "e9ac8c9e",
+  "created_at": "2026-04-29T08:05:11.852097",
+  "times_reused": 2
+}

@@ -80,3 +80,51 @@ Verification:
   - bbc9ae5d: CORRECT via staircase_extend_right (pipeline)
   - 8be77c9e, c59eb873: CORRECT via stored rules
 - Rules: 5 -> 7 (+2 new strategies stored in procedural_memory/)
+
+---
+## Learning Loop -- 2026-04-29 07:59
+
+- Split: None, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 4
+- Time: 8s
+- Log: logs/learn_20260429_075851.log
+
+---
+## Learning Loop -- 2026-04-29 08:07
+
+- Split: None, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 6
+- Time: 9s
+- Log: logs/learn_20260429_080656.log
+
+---
+## Session 3 -- 2026-04-29 08:07
+
+Added two generalization strategies in `agent/active_operators.py`:
+
+- **`corner_quadrant_fill`** -- detects N solid rectangles of one shared
+  "inner color" each surrounded by 4 single-cell corner markers at the
+  diagonal-adjacent positions. Each rectangle is replaced by 4 equal
+  quadrants colored by the corresponding corner; the corner markers are
+  cleared to background. Handles multiple groups per grid (test inputs
+  often contain several inner rectangles even when training pairs each
+  contain only one). Solves e9ac8c9e.
+- **`diamond_connector`** -- detects '+'-shaped 4-cell objects (one
+  foreground cell at each of N/S/E/W around an empty center, with all
+  4 diagonals empty). Adjacent collinear diamonds (sharing a row or
+  column with no other diamond between them) are joined by a line of a
+  learned marker color through the cells strictly between their inner
+  '+' tips. Solves 60a26a3e.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 20 --shuffle`: 6 / 20 (30.0%), up from 4 / 20
+  - e9ac8c9e: CORRECT via corner_quadrant_fill
+  - 60a26a3e: CORRECT via diamond_connector
+  - Existing 4 stored-rule hits remain CORRECT
+- Rules: 7 -> 10 (+3 stored, including a recolor_sequential variant
+  discovered for 08ed6ac7 during regression checks)

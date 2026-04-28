@@ -324,7 +324,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_staircase_extend_right(example_pairs)
 
-        # Strategy 8: simple 1:1 color mapping
+        # Strategy 8: corner quadrant fill — 4 single-cell corner markers
+        #   surround a solid inner rectangle which is split into quadrants
+        if rule is None:
+            rule = self._try_corner_quadrant_fill(example_pairs)
+
+        # Strategy 9: diamond connector — collinear '+'-shaped 4-cell objects
+        #   are joined by lines of a marker color
+        if rule is None:
+            rule = self._try_diamond_connector(example_pairs)
+
+        # Strategy 10: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -935,6 +945,291 @@ class GeneralizeOperator(Operator):
 
         return {"type": "staircase_extend_right", "confidence": 1.0}
 
+    # ---- strategy: corner quadrant fill ---------------------------------
+
+    def _try_corner_quadrant_fill(self, example_pairs):
+        """
+        Detect: same grid size; input has 4 single-cell 'corner markers' of
+        distinct non-background colors at the 4 corners of an axis-aligned
+        rectangle, plus a solid block of one other 'inner' color filling the
+        cells strictly inside that rectangle. The output replaces the corners
+        with background and splits the inner block into four equal quadrants
+        (TL/TR/BL/BR) recolored by the corresponding corner color.
+        """
+        if not example_pairs:
+            return None
+
+        inner_color = None
+
+        for raw_in, raw_out in example_pairs:
+            params = self._check_corner_quadrant_fill(raw_in, raw_out)
+            if params is None:
+                return None
+            if inner_color is None:
+                inner_color = params["inner_color"]
+            elif inner_color != params["inner_color"]:
+                return None
+
+        if inner_color is None:
+            return None
+        return {
+            "type": "corner_quadrant_fill",
+            "inner_color": inner_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _check_corner_quadrant_fill(raw_in, raw_out):
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+        if h == 0 or w == 0:
+            return None
+        if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+            return None
+
+        counts = {}
+        for row in raw_in:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        # Find inner color: must be one color forming one or more solid
+        # rectangles, each of even side lengths >= 2, with 4 single-cell
+        # 'corner markers' at the diagonal-adjacent positions.
+        groups = GeneralizeOperator._find_corner_quadrant_groups(raw_in, bg)
+        if not groups:
+            return None
+        inner = groups[0]["inner_color"]
+        for g in groups:
+            if g["inner_color"] != inner:
+                return None
+
+        expected = GeneralizeOperator._apply_quadrant_groups(raw_in, groups, bg)
+        for r in range(h):
+            for c in range(w):
+                if expected[r][c] != raw_out[r][c]:
+                    return None
+
+        return {"inner_color": inner}
+
+    @staticmethod
+    def _find_corner_quadrant_groups(raw, bg):
+        """Find all (inner-rect + 4 corner-marker) groups in raw.
+
+        A group consists of: a solid rectangle filled with one non-bg color
+        (the 'inner color'), with side lengths >= 2 and even, surrounded by
+        4 single cells at the diagonal-adjacent positions, each a distinct
+        non-bg color (and distinct from the inner color). Returns a list of
+        dicts {r0,r1,c0,c1, inner_color, tl, tr, bl, br}, or empty list."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        # 4-connected components of every non-bg color
+        visited = [[False] * w for _ in range(h)]
+        groups = []
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == bg or visited[r][c]:
+                    continue
+                color = raw[r][c]
+                comp = []
+                queue = [(r, c)]
+                while queue:
+                    rr, cc = queue.pop()
+                    if rr < 0 or rr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] != color:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        queue.append((rr + dr, cc + dc))
+                if len(comp) < 4:
+                    continue  # skip tiny components
+                rs = [p[0] for p in comp]
+                cs = [p[1] for p in comp]
+                r0, r1 = min(rs), max(rs)
+                c0, c1 = min(cs), max(cs)
+                ih = r1 - r0 + 1
+                iw = c1 - c0 + 1
+                if ih < 2 or iw < 2:
+                    continue
+                if ih % 2 != 0 or iw % 2 != 0:
+                    continue
+                # Must be a solid rectangle
+                if len(comp) != ih * iw:
+                    continue
+                # Corner positions are diagonally adjacent to the rectangle
+                cr0, cc0 = r0 - 1, c0 - 1
+                cr1, cc1 = r0 - 1, c1 + 1
+                cr2, cc2 = r1 + 1, c0 - 1
+                cr3, cc3 = r1 + 1, c1 + 1
+                if (cr0 < 0 or cc0 < 0 or cr3 >= h or cc3 >= w):
+                    continue
+                tl_v = raw[cr0][cc0]
+                tr_v = raw[cr1][cc1]
+                bl_v = raw[cr2][cc2]
+                br_v = raw[cr3][cc3]
+                corner_vals = [tl_v, tr_v, bl_v, br_v]
+                if any(v == bg or v == color for v in corner_vals):
+                    continue
+                if len(set(corner_vals)) != 4:
+                    continue
+                # Each corner cell must be isolated: 4-neighbours all bg
+                ok = True
+                for (rr, cc) in [(cr0, cc0), (cr1, cc1), (cr2, cc2), (cr3, cc3)]:
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nr, nc = rr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w:
+                            if raw[nr][nc] != bg:
+                                ok = False
+                                break
+                    if not ok:
+                        break
+                if not ok:
+                    continue
+                groups.append({
+                    "r0": r0, "r1": r1, "c0": c0, "c1": c1,
+                    "inner_color": color,
+                    "tl": tl_v, "tr": tr_v, "bl": bl_v, "br": br_v,
+                    "tl_pos": (cr0, cc0), "tr_pos": (cr1, cc1),
+                    "bl_pos": (cr2, cc2), "br_pos": (cr3, cc3),
+                })
+        return groups
+
+    @staticmethod
+    def _apply_quadrant_groups(raw, groups, bg):
+        out = [list(row) for row in raw]
+        for g in groups:
+            r0, r1, c0, c1 = g["r0"], g["r1"], g["c0"], g["c1"]
+            ih = r1 - r0 + 1
+            iw = c1 - c0 + 1
+            hh, ww = ih // 2, iw // 2
+            # Clear corner markers
+            for key in ("tl_pos", "tr_pos", "bl_pos", "br_pos"):
+                rr, cc = g[key]
+                out[rr][cc] = bg
+            # Fill quadrants of inner rect
+            for r in range(r0, r1 + 1):
+                for c in range(c0, c1 + 1):
+                    is_top = r < r0 + hh
+                    is_left = c < c0 + ww
+                    if is_top and is_left:
+                        out[r][c] = g["tl"]
+                    elif is_top:
+                        out[r][c] = g["tr"]
+                    elif is_left:
+                        out[r][c] = g["bl"]
+                    else:
+                        out[r][c] = g["br"]
+        return out
+
+    # ---- strategy: diamond connector ------------------------------------
+
+    def _try_diamond_connector(self, example_pairs):
+        """
+        Detect: same grid size; input contains '+'-shaped 4-cell diamond
+        markers (one foreground cell at each of N/S/E/W around a background
+        center, with all 4 diagonal cells being background). Each pair of
+        adjacent collinear diamonds (sharing a row or column with no other
+        diamond between them on that line) is joined in the output by a
+        line of a single 'connector' color filling the cells strictly
+        between their inner '+' tips.
+        """
+        if not example_pairs:
+            return None
+
+        connector = None
+        fg_color = None
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            in_colors = {c for row in raw_in for c in row}
+            out_colors = {c for row in raw_out for c in row}
+            new_colors = out_colors - in_colors
+            if len(new_colors) != 1:
+                return None
+            marker = next(iter(new_colors))
+            if connector is None:
+                connector = marker
+            elif connector != marker:
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+            fg_set = in_colors - {bg}
+            if len(fg_set) != 1:
+                return None
+            fg = next(iter(fg_set))
+            if fg_color is None:
+                fg_color = fg
+            elif fg_color != fg:
+                return None
+
+            diamonds = self._find_diamonds(raw_in, fg, bg)
+            if len(diamonds) < 2:
+                return None
+
+            expected = [list(row) for row in raw_in]
+            self._draw_diamond_connectors(expected, diamonds, marker)
+
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        if connector is None or fg_color is None:
+            return None
+        return {
+            "type": "diamond_connector",
+            "connector": connector,
+            "foreground": fg_color,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _find_diamonds(raw, fg, bg):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        centers = []
+        for r in range(1, h - 1):
+            for c in range(1, w - 1):
+                if raw[r][c] != bg:
+                    continue
+                if (raw[r - 1][c] == fg and raw[r + 1][c] == fg
+                        and raw[r][c - 1] == fg and raw[r][c + 1] == fg
+                        and raw[r - 1][c - 1] == bg and raw[r - 1][c + 1] == bg
+                        and raw[r + 1][c - 1] == bg and raw[r + 1][c + 1] == bg):
+                    centers.append((r, c))
+        return centers
+
+    @staticmethod
+    def _draw_diamond_connectors(grid, diamonds, marker):
+        by_row = {}
+        by_col = {}
+        for r, c in diamonds:
+            by_row.setdefault(r, []).append(c)
+            by_col.setdefault(c, []).append(r)
+        for r, cols in by_row.items():
+            cols = sorted(cols)
+            for i in range(len(cols) - 1):
+                cl, cr = cols[i], cols[i + 1]
+                for cc in range(cl + 2, cr - 1):
+                    grid[r][cc] = marker
+        for c, rows in by_col.items():
+            rows = sorted(rows)
+            for i in range(len(rows) - 1):
+                rl, rr = rows[i], rows[i + 1]
+                for rr2 in range(rl + 2, rr - 1):
+                    grid[rr2][c] = marker
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -1014,6 +1309,10 @@ class PredictOperator(Operator):
             return self._apply_rect_interior_fill(rule, input_grid)
         if rule_type == "staircase_extend_right":
             return self._apply_staircase_extend_right(rule, input_grid)
+        if rule_type == "corner_quadrant_fill":
+            return self._apply_corner_quadrant_fill(rule, input_grid)
+        if rule_type == "diamond_connector":
+            return self._apply_diamond_connector(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1203,6 +1502,49 @@ class PredictOperator(Operator):
         for i in range(oh):
             cells = [fg] * (n + i) + [bg] * (w - n - i)
             out.append(cells)
+        return out
+
+    def _apply_corner_quadrant_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        inner_color = rule.get("inner_color")
+        if inner_color is None:
+            return None
+
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        groups = GeneralizeOperator._find_corner_quadrant_groups(raw, bg)
+        groups = [g for g in groups if g["inner_color"] == inner_color]
+        if not groups:
+            return None
+        return GeneralizeOperator._apply_quadrant_groups(raw, groups, bg)
+
+    def _apply_diamond_connector(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        connector = rule.get("connector")
+        if connector is None:
+            return None
+
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        in_colors = {c for row in raw for c in row}
+        fg_set = in_colors - {bg}
+        if len(fg_set) != 1:
+            return None
+        fg = next(iter(fg_set))
+
+        diamonds = GeneralizeOperator._find_diamonds(raw, fg, bg)
+        out = [row[:] for row in raw]
+        GeneralizeOperator._draw_diamond_connectors(out, diamonds, connector)
         return out
 
     # ---- helpers ---------------------------------------------------------
