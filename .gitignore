@@ -211,10 +211,7 @@ __marimo__/
 memory/
 semantic_memory/*
 !semantic_memory/.gitkeep
-procedural_memory/*
-!procedural_memory/.gitkeep
-episodic_memory/*
-!episodic_memory/.gitkeep
+# procedural_memory and episodic_memory are now fully tracked
 # Result code
 result_code/
 
