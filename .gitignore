@@ -211,12 +211,6 @@ __marimo__/
 memory/
 semantic_memory/*
 !semantic_memory/.gitkeep
-procedural_memory/rule_*.json
-procedural_memory/episode_*.json
-!procedural_memory/base_rules/
-!procedural_memory/concepts/
-episodic_memory/*
-!episodic_memory/.gitkeep
 # Result code
 result_code/
 
