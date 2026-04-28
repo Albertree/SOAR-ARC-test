@@ -273,3 +273,35 @@ These complete the four mirror-doubling directions (above/below × left/right). 
 - The 16 failures span six distinct problem families above; addressing any of them without new primitives requires extending `_concept_engine.py`. Recommendation: prioritize a `for_each_section` step kind that would unlock the separator/quadrant family (`332202d5`, `825aa9e9`, `1c56ad9f`) — those share a common decomposition (split by separator, recolor each block, recombine).
 - Mirror-doubling concept family is now complete (4 directions). Future symmetry concepts should target diagonal axes (transpose, anti-transpose) for square grids.
 - 08ed6ac7 regression gate remains INCORRECT pre-existing.
+
+---
+## Learning Loop -- 2026-04-29 07:37
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 4
+- Time: 43s
+- Log: logs/learn_20260429_073634.log
+
+### Session 10 reflections (2026-04-29)
+
+**Failures inspected:** Re-read `c9680e90` (separator + per-half vector translation), `878187ab` (X-pattern in corner), `e5790162` (ricocheting trail), `e9ac8c9e` (corner-color quadrant fill), `0e206a2e` (cross-pattern relocation), `825aa9e9` (compartment gravity), `1c56ad9f` (alternating row shift), `c0f76784` (rectangle fill by frame size), `60a26a3e` (connect aligned diamonds), `332202d5` (separator-grid recolor), `6e82a1ae` (per-object recoloring by size), `9f669b64` (rectangle-pair color swap), `afe3afe9` (2D pattern lookup), `13f06aa5` (boundary marker overlay), `bbc9ae5d` (triangular row growth), `5a719d11` (multi-grid recoloring). Same wall as sessions 6-9: every remaining failure needs per-object iteration, per-section orchestration, or new infer methods. None reduce to a single-step composition with the frozen primitive set + existing infer methods.
+
+**Topology groups & strategies (coverage completion -- diagonal axes, per session 9's note):**
+
+1. **Main-diagonal mirror / transpose (size unchanged on square grids).** Output = input transposed. ARCKG signature: `grid_size_preserved=true`, `requires_content_diff=true`. Strict validation gate restricts to square grids whose output is exactly `transpose(input)` (transpose of HxW is WxH; if H != W, the validator's per-pair shape check rejects). Created `concepts/transpose_inplace.json` -- single `transpose` step, no parameters.
+
+2. **Anti-diagonal mirror (size unchanged on square grids).** Output = input reflected along the top-right to bottom-left diagonal. Composition: `transpose` then `rotate_cw` 2 times (= rotate 180). Verified algebraically: `(r,c) -> (c,r) -> (n-1-c, n-1-r)` matches anti-diagonal mirror. Created `concepts/anti_diagonal_flip.json` -- two-step composition, no parameters.
+
+**Quick validation:**
+- `python run_task.py` (regression `08ed6ac7`) -> still INCORRECT (pre-existing across sessions 3, 5, 6, 7, 8, 9). Both new concepts get tried and rejected by the validator on this task, as expected.
+- Concept loader picks up both new files: `[CONCEPT] Loaded 17 concepts` (up from 15).
+- Direct execution check: `transpose_inplace` on `[[1,2,3],[4,5,6],[7,8,9]]` -> `[[1,4,7],[2,5,8],[3,6,9]]`. `anti_diagonal_flip` on the same input -> `[[9,6,3],[8,5,2],[7,4,1]]`. Both correct.
+- Sanity-check on non-square input: `transpose_inplace` on a 2x3 grid produces a 3x2 grid; the validation gate would catch the size mismatch against any non-transpose-shaped output.
+
+**Notes for next session:**
+- No expected gain on the next learn loop with the current 20-task sample -- none of the failing tasks are pure transpose / anti-diagonal flips. These two concepts complete the diagonal-axis symmetry family identified as a gap in session 9 and are coverage infrastructure for the broader training set.
+- The geometric-symmetry concept family is now complete: 4 in-place flips (h/v/transpose/anti-transpose), 3 rotations (90 cw, 90 ccw, 180), 4 size-doubling mirrors (above/below/left/right), and 1 quadrant tile. Future symmetry concepts have nothing left to add without new primitives.
+- The unaddressed failure categories are the same six families session 9 listed: per-object relocation, path-drawing between waypoints, inner-rectangle fill by inner-size, quadrant-grid sub-pattern shifts, tile-resolution synthesis, triangular row growth. Each one requires either (a) a step engine extension (loops over `extract_objects` results, "for each section" orchestrator), or (b) new structured-output infer methods (e.g., `size_to_color_map` consumable by a single recolor call). Those changes are larger than a per-session concept addition.
+- 08ed6ac7 regression gate remains INCORRECT pre-existing.
