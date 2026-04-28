@@ -201,3 +201,35 @@
 - The other big leverage area is **per-object reasoning** (`6e82a1ae` color-by-size, `c0f76784` fill-by-frame-size, `9f669b64` move-by-bigger-neighbor). `extract_objects` returns the list, but no step primitive consumes that list iteratively.
 - The 08ed6ac7 regression gate remains INCORRECT pre-existing (noted across sessions 3, 5, 6, now 7).
 
+
+---
+## Learning Loop -- 2026-04-29 07:20
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 4
+- Time: 42s
+- Log: logs/learn_20260429_072016.log
+
+
+---
+## Session 8 -- 2026-04-29 07:28
+
+**Failures analyzed:** Re-read several failing tasks: `c9680e90` (separator + 6/2 vector translation), `878187ab` (X-pattern in corner), `bbc9ae5d` (staircase row generation), `6e82a1ae` (per-object recoloring by size), `825aa9e9` (compartment gravity), `9f669b64` (rectangle-pair color swap), `1c56ad9f` (alternating row shift), `c0f76784` (rectangle interior fill by frame size), `60a26a3e` (connect aligned diamonds), `0e206a2e` (cross-pattern relocation), `e5790162` (ricocheting path), `5a719d11` (multi-grid recoloring), `e9ac8c9e` (corner-color quadrant fill), `13f06aa5` (boundary marker overlay), `332202d5` (separator-grid recolor), `afe3afe9` (2D pattern lookup). Same conclusion as sessions 6/7: every remaining failure needs per-object iteration or per-compartment orchestration the linear-step concept engine cannot express, OR primitives outside the frozen 24.
+
+**Topology groups & strategies:**
+
+1. **Pure 90-degree clockwise rotation (size unchanged on square grids, content differs).** Rounds out the rotation family alongside the existing `rotate_180`. ARCKG signature: `grid_size_preserved=true`, `requires_content_diff=true`. Strict validation gate prevents false matches -- only square-grid tasks whose output is exactly `rotate_cw(input, times=1)` will pass. Created `concepts/rotate_cw_90.json` -- single `rotate_cw` step with `times=1`, no parameters.
+
+2. **Pure 90-degree counter-clockwise rotation (size unchanged on square grids, content differs).** Counterpart of above (= 270 deg CW). Created `concepts/rotate_ccw_90.json` -- single `rotate_cw` step with `times=3`, no parameters.
+
+**Quick validation:**
+- `python run_task.py` (regression `08ed6ac7`) -> still INCORRECT (pre-existing, also INCORRECT on baseline `git stash` -- confirmed unchanged by these additions). New concepts get tried but their strict validation gate rejects them on this task, as expected.
+- Concept loader picks up both new files: `[CONCEPT] Loaded 13 concepts` (up from 11).
+- Direct execution check: `rotate_cw_90` and `rotate_ccw_90` are well-formed; signature filter restricts them to size-preserved cases (square grids), validation rejects mismatches.
+
+**Notes for next session:**
+- No expected gain on the next learn loop -- the 20-task sample contains no pure 90-deg rotations among the failures. These two concepts are coverage infrastructure for the broader training set, completing the rotation family.
+- The dominant unaddressed failure patterns remain: **separator-segmented operations** (`c9680e90`, `825aa9e9`, `5a719d11`, `332202d5`) and **per-object reasoning** (`6e82a1ae`, `c0f76784`, `9f669b64`). Unlocking these requires either new primitives (forbidden -- frozen at 24) or a step-engine extension supporting compartment iteration / per-object loops. Author of `_concept_engine.py` would need to add either (a) a "for-each-section" step type or (b) richer infer methods that produce structured outputs (e.g., size->color maps consumable by a single recolor call).
+- 08ed6ac7 regression gate remains INCORRECT pre-existing (noted across sessions 3, 5, 6, 7, now 8).
