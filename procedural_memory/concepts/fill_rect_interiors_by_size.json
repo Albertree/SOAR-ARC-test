@@ -1,0 +1,14 @@
+{
+  "concept_id": "fill_rect_interiors_by_size",
+  "version": 1,
+  "description": "Each non-bg connected component is a hollow rectangle border; its interior (originally bg) is filled uniformly with a color determined by the inner area cell count, using a {inner_cells: color} map inferred from training pairs.",
+  "signature": {
+    "grid_size_preserved": true,
+    "requires_content_diff": true
+  },
+  "parameters": {
+    "out_grid": {"type": "grid", "infer": "rect_interior_size_to_color"}
+  },
+  "steps": [],
+  "result": "$out_grid"
+}

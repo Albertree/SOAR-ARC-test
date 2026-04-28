@@ -388,3 +388,13 @@ from extracted objects.
   (`332202d5`, `825aa9e9`, `1c56ad9f`). Each still needs either a different sentinel kind or
   a new infer method.
 - 08ed6ac7 regression gate remains INCORRECT pre-existing.
+
+---
+## Learning Loop -- 2026-04-29 07:59
+
+- Split: training, Tasks: 20
+- Correct: 4 / 20 (20.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 4
+- Time: 43s
+- Log: logs/learn_20260429_075822.log

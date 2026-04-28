@@ -773,6 +773,143 @@ def _apply_recolor_by_size(grid, size_map, bg):
 
 
 # ----------------------------------------------------------------------
+# Hollow-rectangle interior fill driven by inner area size
+# ----------------------------------------------------------------------
+
+def _hollow_rect_info(obj):
+    """If obj is a hollow rectangle (border fully present, interior absent),
+    return (inner_h, inner_w, border_positions, interior_positions). Else None."""
+    top, left, bbox_h, bbox_w = obj["bbox"]
+    if bbox_h < 3 or bbox_w < 3:
+        return None
+    border = set()
+    for r in range(top, top + bbox_h):
+        for c in range(left, left + bbox_w):
+            if r == top or r == top + bbox_h - 1 or c == left or c == left + bbox_w - 1:
+                border.add((r, c))
+    positions = set(obj["positions"])
+    if positions != border:
+        return None
+    interior = set()
+    for r in range(top + 1, top + bbox_h - 1):
+        for c in range(left + 1, left + bbox_w - 1):
+            interior.add((r, c))
+    return (bbox_h - 2, bbox_w - 2, border, interior)
+
+
+def _rect_interior_map_for_pair(g_in, g_out, bg):
+    """Validate one pair: every non-bg component is a hollow rectangle, the bbox
+    interior is bg in input and uniformly recolored in output, all other bg cells
+    are unchanged. Returns {inner_cells: fill_color} or None."""
+    h_in = len(g_in)
+    w_in = len(g_in[0]) if g_in else 0
+    h_out = len(g_out)
+    w_out = len(g_out[0]) if g_out else 0
+    if h_in != h_out or w_in != w_out:
+        return None
+    objs = P.extract_objects(g_in, bg=bg)
+    if not objs:
+        return None
+    pair_map = {}
+    touched = set()
+    for obj in objs:
+        info = _hollow_rect_info(obj)
+        if info is None:
+            return None
+        inner_h, inner_w, border, interior = info
+        if not interior:
+            return None
+        for (r, c) in border:
+            if g_in[r][c] != obj["color"] or g_out[r][c] != obj["color"]:
+                return None
+            touched.add((r, c))
+        for (r, c) in interior:
+            if g_in[r][c] != bg:
+                return None
+            touched.add((r, c))
+        fill_colors = {g_out[r][c] for (r, c) in interior}
+        if len(fill_colors) != 1:
+            return None
+        fill = fill_colors.pop()
+        if fill == bg:
+            return None
+        key = inner_h * inner_w
+        if key in pair_map and pair_map[key] != fill:
+            return None
+        pair_map[key] = fill
+    for r in range(h_in):
+        for c in range(w_in):
+            if (r, c) in touched:
+                continue
+            if g_in[r][c] != g_out[r][c]:
+                return None
+    return pair_map
+
+
+@_register_infer("rect_interior_size_to_color")
+def _infer_rect_interior_size_to_color(task, arckg_features, patterns):
+    """Build {inner_area_cells: fill_color} consistent across all training pairs,
+    where every non-bg component is a hollow rectangle whose interior is uniformly
+    recolored. Returns a dict-typed sentinel resolved per-input."""
+    if not arckg_features.get("size_comm", True):
+        return None
+    bg = None
+    for pair in task.example_pairs:
+        if pair.input_grid is None or pair.output_grid is None:
+            continue
+        b = P.find_bg_color(pair.input_grid.raw)
+        if bg is None:
+            bg = b
+        elif bg != b:
+            return None
+    if bg is None:
+        return None
+    merged = {}
+    for pair in task.example_pairs:
+        if pair.input_grid is None or pair.output_grid is None:
+            continue
+        pair_map = _rect_interior_map_for_pair(
+            pair.input_grid.raw, pair.output_grid.raw, bg
+        )
+        if pair_map is None:
+            return None
+        for sz, color in pair_map.items():
+            if sz in merged and merged[sz] != color:
+                return None
+            merged[sz] = color
+    if not merged:
+        return None
+    return {"_kind": "fill_rect_interiors", "map": merged, "bg": bg}
+
+
+def _apply_fill_rect_interiors(grid, size_map, bg):
+    """Fill the interior of each hollow-rectangle component using {inner_cells: color}.
+    Returns new grid, or None if any component is not a valid hollow rectangle or its
+    inner area is not in the map."""
+    norm_map = {int(k): int(v) for k, v in size_map.items()}
+    objs = P.extract_objects(grid, bg=bg)
+    if not objs:
+        return None
+    output = [row[:] for row in grid]
+    for obj in objs:
+        info = _hollow_rect_info(obj)
+        if info is None:
+            return None
+        inner_h, inner_w, _border, interior = info
+        if not interior:
+            return None
+        key = inner_h * inner_w
+        fill = norm_map.get(key)
+        if fill is None:
+            return None
+        for (r, c) in interior:
+            if grid[r][c] != bg:
+                return None
+            output[r][c] = fill
+    return output
+
+
+# ----------------------------------------------------------------------
 # Concentric ring color reversal
 # ----------------------------------------------------------------------
 
@@ -912,6 +1049,16 @@ def _execute_concept(concept, params, input_grid_raw, verbose=False):
                           f"(unknown component size in input)")
                 return None
             resolved_params[k] = dyn_grid
+        elif isinstance(v, dict) and v.get("_kind") == "fill_rect_interiors":
+            dyn_grid = _apply_fill_rect_interiors(
+                input_grid_raw, v.get("map", {}), int(v.get("bg", 0))
+            )
+            if dyn_grid is None:
+                if verbose:
+                    print(f"[CONCEPT] {cid}: fill-rect-interiors could not be applied "
+                          f"(invalid rectangle or unknown inner size in input)")
+                return None
+            resolved_params[k] = dyn_grid
     env.update(resolved_params)
 
     for step in concept["steps"]:
@@ -968,7 +1115,7 @@ def _validate_concept(concept, params, task, verbose=False):
         predicted = _execute_concept(concept, params, pair.input_grid.raw, verbose=verbose)
         if predicted is None:
             if verbose:
-                print(f"[CONCEPT] {cid}: validation failed on pair {idx} — execution returned None")
+                print(f"[CONCEPT] {cid}: validation failed on pair {idx} -- execution returned None")
             return False
         if predicted != pair.output_grid.raw:
             if verbose:
@@ -977,10 +1124,10 @@ def _validate_concept(concept, params, task, verbose=False):
                 for r in range(min(len(predicted), len(expected))):
                     for c in range(min(len(predicted[r]), len(expected[r]))):
                         if predicted[r][c] != expected[r][c]:
-                            print(f"[CONCEPT] {cid}: validation failed on pair {idx} — "
+                            print(f"[CONCEPT] {cid}: validation failed on pair {idx} -- "
                                   f"cell ({r},{c}): predicted {predicted[r][c]}, expected {expected[r][c]}")
                             return False
-                print(f"[CONCEPT] {cid}: validation failed on pair {idx} — "
+                print(f"[CONCEPT] {cid}: validation failed on pair {idx} -- "
                       f"size mismatch: predicted {len(predicted)}x{len(predicted[0]) if predicted else 0}, "
                       f"expected {len(expected)}x{len(expected[0]) if expected else 0}")
             return False
