@@ -520,6 +520,16 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_template_replication(example_pairs)
 
+        # Strategy 35: gravity to floor — shapes (non-bg, non-wall colors)
+        #   fall vertically inside compartments bounded by wall-color cells in
+        #   the bottom row. Each shape is a 4-connected component; per-column
+        #   landing row is determined by wall thickness from grid bottom (with
+        #   a 1-row buffer above the topmost wall row when a column has wall),
+        #   or h-2 when the column has no wall but the bottom row has any wall
+        #   marker. Disconnected cells in the same column stack contiguously.
+        if rule is None:
+            rule = self._try_gravity_to_floor(example_pairs)
+
         # Strategy 31: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -4553,6 +4563,134 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy: gravity to floor -------------------------------------
+
+    def _try_gravity_to_floor(self, example_pairs):
+        """
+        Detect: input has bg + wall (color present in bottom row) + shape
+        color(s); output is gravity-simulated where each 4-connected shape
+        component falls toward the bottom, settling per-column with a 1-row
+        buffer above the top-most wall row in that column (or 1-row above
+        grid bottom if column has no wall but bottom row has any wall).
+        """
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            h_in = len(raw_in)
+            w_in = len(raw_in[0]) if raw_in else 0
+            if h_in == 0 or w_in == 0:
+                return None
+            if h_in != len(raw_out) or w_in != (len(raw_out[0]) if raw_out else 0):
+                return None
+            pred = GeneralizeOperator._gravity_simulate(raw_in)
+            if pred is None:
+                return None
+            if [list(r) for r in pred] != [list(r) for r in raw_out]:
+                return None
+        return {"type": "gravity_to_floor", "confidence": 0.9}
+
+    @staticmethod
+    def _gravity_simulate(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 2 or w < 1:
+            return None
+
+        bg = raw[0][w // 2]
+        bottom_non_bg = [c for c in raw[h - 1] if c != bg]
+        if not bottom_non_bg:
+            return None
+        wall_counts = {}
+        for c in bottom_non_bg:
+            wall_counts[c] = wall_counts.get(c, 0) + 1
+        wall = max(wall_counts, key=wall_counts.get)
+        if wall == bg:
+            return None
+
+        shape_colors = set()
+        for row in raw:
+            for v in row:
+                if v != bg and v != wall:
+                    shape_colors.add(v)
+        if not shape_colors:
+            return None
+
+        wall_thickness = []
+        for c in range(w):
+            t = 0
+            for r in range(h - 1, -1, -1):
+                if raw[r][c] == wall:
+                    t += 1
+                else:
+                    break
+            wall_thickness.append(t)
+
+        bottom_max = []
+        for c in range(w):
+            if wall_thickness[c] >= 1:
+                bm = h - wall_thickness[c] - 2
+            else:
+                bm = h - 2
+            bottom_max.append(bm)
+
+        # Find 4-connected shape components
+        visited = [[False] * w for _ in range(h)]
+        comps = []
+        for r in range(h):
+            for c in range(w):
+                if visited[r][c] or raw[r][c] not in shape_colors:
+                    continue
+                comp = []
+                stack = [(r, c)]
+                visited[r][c] = True
+                while stack:
+                    cr, cc = stack.pop()
+                    comp.append((cr, cc, raw[cr][cc]))
+                    for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                        nr, nc = cr + dr, cc + dc
+                        if 0 <= nr < h and 0 <= nc < w and not visited[nr][nc] \
+                                and raw[nr][nc] in shape_colors:
+                            visited[nr][nc] = True
+                            stack.append((nr, nc))
+                comps.append(comp)
+
+        comps.sort(key=lambda comp: max(c[0] for c in comp), reverse=True)
+
+        out = [[bg] * w for _ in range(h)]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == wall:
+                    out[r][c] = wall
+
+        placed = set()
+        for comp in comps:
+            comp_set = {(cr, cc) for cr, cc, _ in comp}
+            delta = 10 ** 9
+            for cr, cc, _ in comp:
+                limit = bottom_max[cc] - cr
+                if limit < delta:
+                    delta = limit
+            for cr, cc, _ in comp:
+                for d in range(0, max(0, delta) + 1):
+                    nr = cr + d
+                    if nr >= h:
+                        delta = min(delta, d - 1)
+                        break
+                    if raw[nr][cc] == wall:
+                        delta = min(delta, d - 1)
+                        break
+                    if (nr, cc) in placed and (nr, cc) not in comp_set:
+                        delta = min(delta, d - 1)
+                        break
+            delta = max(0, delta)
+            for cr, cc, color in comp:
+                nr = cr + delta
+                if 0 <= nr < h:
+                    out[nr][cc] = color
+                    placed.add((nr, cc))
+
+        return out
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -4690,6 +4828,8 @@ class PredictOperator(Operator):
             return self._apply_panel_swap(rule, input_grid)
         if rule_type == "template_replication":
             return self._apply_template_replication(rule, input_grid)
+        if rule_type == "gravity_to_floor":
+            return self._apply_gravity_to_floor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5420,6 +5560,10 @@ class PredictOperator(Operator):
     def _apply_template_replication(self, rule, input_grid):
         raw = input_grid.raw
         return GeneralizeOperator._compute_template_replication(raw)
+
+    def _apply_gravity_to_floor(self, rule, input_grid):
+        raw = input_grid.raw
+        return GeneralizeOperator._gravity_simulate(raw)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

@@ -1061,3 +1061,61 @@ Verification:
 - `python run_task.py` (regression on 08ed6ac7): CORRECT
 - `python run_learn.py --limit 40 --shuffle`: 34 / 40 (85.0%) -- no change
 - Rules: 41 -> 41 (no new strategies persisted)
+
+---
+## Learning Loop -- 2026-04-29 11:39
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 19s
+- Log: logs/learn_20260429_113938.log
+
+---
+## Learning Loop -- 2026-04-29 11:58
+
+- Split: None, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 41 -> 42 (+1 learned)
+- Stored rule hits: 34
+- Time: 20s
+- Log: logs/learn_20260429_115744.log
+
+---
+## Session 23 -- 2026-04-29
+
+Added a new strategy `gravity_to_floor` to crack **825aa9e9**:
+
+- **Detection**: `bg = grid[0][w//2]` (middle of top row); `wall = most
+  common non-bg color in bottom row`. Shape colors = remaining non-bg.
+  Strategy is rejected if no wall cells exist in the bottom row, or no
+  shape color is present.
+- **Per-column landing row**: walking up from grid bottom, count
+  consecutive wall cells in the column (`wall_thickness[c]`). If
+  `wall_thickness[c] >= 1`, the shape's bottom in that column is
+  `h - wall_thickness[c] - 2` (1-row buffer above the topmost wall row).
+  If the column has no wall (e.g. between sparse markers), the shape's
+  bottom is `h - 2` (1 row above grid bottom row), since the bottom row
+  itself contains the marker pattern.
+- **Component fall**: 4-connected shape components are sorted bottom-up
+  and each falls rigidly the maximum delta that respects per-col
+  landing rows, walls, and previously-placed cells. Disconnected cells
+  in the same column thus stack contiguously.
+
+Verified across all 4 train pairs of 825aa9e9 (continuous wall + sparse
+markers + thick wall + per-column wall thickness). Safety swept
+against the full 400-task training split: only 825aa9e9 matches, no
+false positives on the 34 currently-correct tasks.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 35 / 40 (87.5%) -- up from 34
+- Rules: 41 -> 42 (+1 learned, gravity_to_floor stored for 825aa9e9)
+
+Remaining failures: 878187ab (scatter -> encoded summary chevron),
+1c56ad9f (per-pair sawtooth phase), 9f669b64 (collision physics with
+inconsistent placement rule across pairs), afe3afe9 (30x30 macro-grid
+to 7x6/6x7 dual-panel summary), a2d730bd (rect-projects-arrow with
+diamond decoration). All were re-analysed in sessions 21-22 and have
+no single-rule unification across train pairs.
