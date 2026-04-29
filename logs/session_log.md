@@ -438,3 +438,53 @@ Verification:
   - 332202d5: CORRECT via cross_zone_fill (newly discovered)
   - 642d658d: CORRECT via plus_majority_color (newly discovered)
 - Rules: 29 -> 31 (+2 new strategies stored in procedural_memory/)
+
+---
+## Learning Loop -- 2026-04-29 09:08
+
+- Split: None, Tasks: 40
+- Correct: 24 / 40 (60.0%)
+- Rules: 31 -> 31 (+0 learned)
+- Stored rule hits: 24
+- Time: 21s
+- Log: logs/learn_20260429_090838.log
+
+---
+## Learning Loop -- 2026-04-29 09:20
+
+- Split: None, Tasks: 40
+- Correct: 24 / 40 (60.0%)
+- Rules: 31 -> 31 (+0 learned)
+- Stored rule hits: 24
+- Time: 24s
+- Log: logs/learn_20260429_092008.log
+
+---
+## Learning Loop -- 2026-04-29 09:21
+
+- Split: None, Tasks: 40
+- Correct: 25 / 40 (62.5%)
+- Rules: 31 -> 32 (+1 learned)
+- Stored rule hits: 24
+- Time: 24s
+- Log: logs/learn_20260429_092118.log
+
+---
+## Session 11 -- 2026-04-29
+
+**Strategy added:** `ricochet_ray`
+
+Single 'shooter' cell (one-of-a-kind isolated non-bg pixel on a grid edge)
+shoots a ray of its own color into the grid. Ray ricochets 90° off each
+isolated 'marker' cell — each marker color has a learned fixed turn
+direction (clockwise or counter-clockwise). Ray paints background cells
+with shooter color and stops at the grid edge.
+
+- Solves: e5790162 (and category of similar marker-ricochet tasks)
+- Initial direction inferred from edge-position of shooter cell
+- Marker turn direction (cw/ccw) learned per color from example pairs
+- Placed BEFORE `recolor_sequential` to avoid false-positive matching
+  (recolor_sequential was matching the bg-to-shooter cells as a single
+  "recolor" group)
+
+**Result:** 24/40 -> 25/40 (60.0% -> 62.5%), +1 rule learned (rule_032)

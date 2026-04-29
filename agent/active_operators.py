@@ -294,8 +294,15 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
+        # Strategy 0: ricochet ray — single 'shooter' cell on a grid edge
+        #   shoots a ray of its own color into the grid, ricocheting 90°
+        #   off each isolated 'marker' cell. Tried first because the
+        #   sequential-recolor strategy can false-positive on these tasks.
+        rule = self._try_ricochet_ray(example_pairs)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
 
         # Strategy 2: bounding-box fill — fill bg cells within bbox of fg color
         if rule is None:
@@ -2744,6 +2751,193 @@ class GeneralizeOperator(Operator):
         candidates = [k for k, v in counts.items() if v == best_n]
         return min(candidates)
 
+    # ---- strategy: ricochet ray -----------------------------------------
+
+    def _try_ricochet_ray(self, example_pairs):
+        """
+        Detect: same grid size; one cell is a single 'shooter' marker on a
+        grid edge. Other non-bg cells are isolated 'marker' cells. Output
+        equals input plus a polyline of shooter-color cells starting at the
+        shooter, traveling perpendicular to its grid edge, ricocheting 90°
+        off each marker (each marker color has a fixed turn direction:
+        clockwise or counter-clockwise). Trail stops at the grid edge.
+        """
+        from itertools import product
+
+        if not example_pairs:
+            return None
+
+        shooter_color = None
+        marker_turn_constraints = {}
+
+        for raw_in, raw_out in example_pairs:
+            if not raw_in or not raw_out:
+                return None
+            h = len(raw_in)
+            w = len(raw_in[0])
+            if len(raw_out) != h or len(raw_out[0]) != w:
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            non_bg = [(r, c) for r in range(h) for c in range(w)
+                      if raw_in[r][c] != bg]
+            if len(non_bg) < 2:
+                return None
+            for r, c in non_bg:
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nr, nc = r + dr, c + dc
+                    if (0 <= nr < h and 0 <= nc < w
+                            and raw_in[nr][nc] != bg):
+                        return None
+
+            in_counts = {}
+            out_counts = {}
+            for row in raw_in:
+                for c in row:
+                    in_counts[c] = in_counts.get(c, 0) + 1
+            for row in raw_out:
+                for c in row:
+                    out_counts[c] = out_counts.get(c, 0) + 1
+
+            increased = [c for c in in_counts
+                         if c != bg
+                         and out_counts.get(c, 0) > in_counts.get(c, 0)]
+            if len(increased) != 1:
+                return None
+            shooter = increased[0]
+
+            shooter_cells = [(r, c) for r in range(h) for c in range(w)
+                             if raw_in[r][c] == shooter]
+            if len(shooter_cells) != 1:
+                return None
+
+            # Markers and bg→shooter rule for output
+            for r in range(h):
+                for c in range(w):
+                    iv = raw_in[r][c]
+                    ov = raw_out[r][c]
+                    if iv == bg:
+                        if ov not in (bg, shooter):
+                            return None
+                    elif iv == shooter:
+                        if ov != shooter:
+                            return None
+                    else:
+                        if ov != iv:
+                            return None
+
+            if shooter_color is None:
+                shooter_color = shooter
+            elif shooter_color != shooter:
+                return None
+
+            sr, sc = shooter_cells[0]
+            init_dirs = []
+            if sc == 0:
+                init_dirs.append((0, 1))
+            if sc == w - 1:
+                init_dirs.append((0, -1))
+            if sr == 0:
+                init_dirs.append((1, 0))
+            if sr == h - 1:
+                init_dirs.append((-1, 0))
+            if not init_dirs:
+                return None
+
+            marker_colors = sorted({raw_in[r][c] for r, c in non_bg
+                                    if raw_in[r][c] != shooter})
+
+            found = None
+            for init_dir in init_dirs:
+                for combo in product(["cw", "ccw"], repeat=len(marker_colors)):
+                    turn_map = dict(zip(marker_colors, combo))
+                    # Combine with already-known constraints
+                    consistent = True
+                    for k, v in turn_map.items():
+                        if k in marker_turn_constraints \
+                                and marker_turn_constraints[k] != v:
+                            consistent = False
+                            break
+                    if not consistent:
+                        continue
+                    trail = self._trace_ricochet_ray(
+                        raw_in, sr, sc, init_dir, shooter, bg, turn_map)
+                    if trail is None:
+                        continue
+                    expected = [row[:] for row in raw_in]
+                    for tr, tc in trail:
+                        expected[tr][tc] = shooter
+                    if expected == raw_out:
+                        found = (init_dir, turn_map)
+                        break
+                if found is not None:
+                    break
+
+            if found is None:
+                return None
+
+            for k, v in found[1].items():
+                marker_turn_constraints[k] = v
+
+        if shooter_color is None:
+            return None
+
+        return {
+            "type": "ricochet_ray",
+            "shooter_color": shooter_color,
+            "marker_turns": marker_turn_constraints,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _trace_ricochet_ray(raw, sr, sc, init_dir, shooter, bg, turn_map):
+        """Trace ray from (sr, sc) with starting direction init_dir.
+        Ricochets 90° at each marker per turn_map. Returns list of trail
+        cells (excluding shooter), or None if invalid (loop / unknown
+        marker / bad path).
+        """
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+
+        def turn(d, way):
+            dr, dc = d
+            if way == "cw":
+                return (dc, -dr)
+            return (-dc, dr)
+
+        trail = []
+        r, c = sr, sc
+        direction = init_dir
+        seen_states = set()
+        max_steps = h * w * 4 + 4
+
+        for _ in range(max_steps):
+            nr, nc = r + direction[0], c + direction[1]
+            if not (0 <= nr < h and 0 <= nc < w):
+                return trail
+            v = raw[nr][nc]
+            if v == bg:
+                trail.append((nr, nc))
+                r, c = nr, nc
+                continue
+            if v == shooter:
+                return None
+            if v not in turn_map:
+                return None
+            new_dir = turn(direction, turn_map[v])
+            state = (r, c, new_dir)
+            if state in seen_states:
+                return None
+            seen_states.add(state)
+            direction = new_dir
+
+        return None
+
     @staticmethod
     def _draw_corner_l_shoot(raw, bg):
         h = len(raw)
@@ -2933,6 +3127,8 @@ class PredictOperator(Operator):
             return self._apply_cross_zone_fill(rule, input_grid)
         if rule_type == "plus_majority_color":
             return self._apply_plus_majority_color(rule, input_grid)
+        if rule_type == "ricochet_ray":
+            return self._apply_ricochet_ray(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3422,6 +3618,60 @@ class PredictOperator(Operator):
                 or parsed["background"] != rule.get("background")):
             return None
         return GeneralizeOperator._build_cross_zone(raw, orient, parsed)
+
+    def _apply_ricochet_ray(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        shooter = rule.get("shooter_color")
+        turn_map = rule.get("marker_turns") or {}
+        if shooter is None:
+            return None
+
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        shooter_cells = [(r, c) for r in range(h) for c in range(w)
+                         if raw[r][c] == shooter]
+        if len(shooter_cells) != 1:
+            return None
+        sr, sc = shooter_cells[0]
+
+        init_dirs = []
+        if sc == 0:
+            init_dirs.append((0, 1))
+        if sc == w - 1:
+            init_dirs.append((0, -1))
+        if sr == 0:
+            init_dirs.append((1, 0))
+        if sr == h - 1:
+            init_dirs.append((-1, 0))
+        if not init_dirs:
+            return None
+
+        # JSON loads dict keys as strings; coerce to int
+        norm_turn_map = {}
+        for k, v in turn_map.items():
+            try:
+                norm_turn_map[int(k)] = v
+            except (TypeError, ValueError):
+                norm_turn_map[k] = v
+
+        for init_dir in init_dirs:
+            trail = GeneralizeOperator._trace_ricochet_ray(
+                raw, sr, sc, init_dir, shooter, bg, norm_turn_map)
+            if trail is None:
+                continue
+            out = [row[:] for row in raw]
+            for tr, tc in trail:
+                out[tr][tc] = shooter
+            return out
+        return None
 
     def _apply_plus_majority_color(self, rule, input_grid):
         raw = input_grid.raw
