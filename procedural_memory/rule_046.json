@@ -1,0 +1,17 @@
+{
+  "id": 46,
+  "concept": "count wedge v pattern",
+  "category": "other",
+  "rule": {
+    "type": "count_wedge_v_pattern",
+    "wedge_bg": 2,
+    "wedge_line": 4,
+    "confidence": 1.0
+  },
+  "covers": [
+    "878187ab"
+  ],
+  "source_task": "878187ab",
+  "created_at": "2026-04-29T12:40:24.501588",
+  "times_reused": 0
+}

@@ -1257,3 +1257,59 @@ no single-rule unification across train pairs.
 - Result: 38/40 (95.0%) -- unchanged from session 26
 - run_task.py: CORRECT (regression intact)
 - Remaining failures: 878187ab, afe3afe9
+
+---
+## Learning Loop -- 2026-04-29 12:32
+
+- Split: None, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 45 -> 45 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_123232.log
+
+---
+## Learning Loop -- 2026-04-29 12:40
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 45 -> 46 (+1 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_124023.log
+
+---
+## Learning Loop -- 2026-04-29 12:41
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 46 -> 46 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_124046.log
+
+---
+## Session 28 -- 2026-04-29 12:42
+
+Added one generalization strategy in `agent/active_operators.py`:
+
+- **`count_wedge_v_pattern`** -- input has bg + exactly two scatter colors
+  with distinct counts. The two counts give the dimensions of a wedge
+  rendered in the bottom-left of the output: `W = max(count1, count2)`,
+  `H = min(count1, count2)`. Inside the wedge, two learned colors render
+  an inverted-V (`wedge_line` color forms the V on a `wedge_bg` field):
+  bottom row has line cells at columns 0 and W-1, each row above moves
+  inward by one column until convergence (single-cell apex when W is odd,
+  two-cell apex when W is even). If H exceeds the convergence height, the
+  V mirrors back outward forming an X / diamond (with the apex row
+  doubled when W is even). Output dimensions are not constrained to match
+  input (training pair sizes can differ). Solves 878187ab.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_task.py 878187ab`: CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 39 / 40 (97.5%), up from
+  38 / 40 (95.0%)
+  - 878187ab: CORRECT via count_wedge_v_pattern (pipeline)
+- Rules: 45 -> 46 (+1 new strategy stored in procedural_memory/)
+- Remaining failure: afe3afe9 (complex meta-puzzle deferred)

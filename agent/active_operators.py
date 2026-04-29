@@ -555,6 +555,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_barrier_passage(example_pairs)
 
+        # Strategy 38: count-wedge V/X — input has bg + two scatter colors;
+        #   their counts give wedge dimensions (W=larger, H=smaller). Output
+        #   draws an inverted-V (or diamond/X folded apex) of one color on a
+        #   field of another, anchored bottom-left, bg elsewhere.
+        if rule is None:
+            rule = self._try_count_wedge_v_pattern(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -5143,6 +5150,139 @@ class GeneralizeOperator(Operator):
 
         return out
 
+    # ---- strategy: count-wedge V/X pattern ------------------------------
+
+    def _try_count_wedge_v_pattern(self, example_pairs):
+        """
+        Detect: input has exactly 3 colors -- a background (most common)
+        and two scatter colors with distinct counts. The output preserves
+        bg everywhere except a rectangular wedge anchored at the bottom-
+        left corner. The wedge has dimensions H x W where W = max(count1,
+        count2) and H = min(count1, count2). The wedge is filled with one
+        'wedge_bg' color, with one 'wedge_line' color drawing an inverted
+        V from the bottom row (4s at corners (0, W-1)) converging upward
+        by one column per row to a single apex (W odd) or two-cell apex
+        (W even). If H exceeds the convergence height, the V mirrors back
+        outward (forming an X / diamond, with a doubled apex row when W
+        is even).
+        """
+        if not example_pairs:
+            return None
+
+        wedge_bg_set = set()
+        wedge_line_set = set()
+        for raw_in, raw_out in example_pairs:
+            params = GeneralizeOperator._count_wedge_v_params(raw_in, raw_out)
+            if params is None:
+                return None
+            wedge_bg_set.add(params["wedge_bg"])
+            wedge_line_set.add(params["wedge_line"])
+
+        if len(wedge_bg_set) != 1 or len(wedge_line_set) != 1:
+            return None
+
+        return {
+            "type": "count_wedge_v_pattern",
+            "wedge_bg": wedge_bg_set.pop(),
+            "wedge_line": wedge_line_set.pop(),
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _count_wedge_v_dims(raw_in):
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw_in:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        if len(counts) != 3:
+            return None
+        bg = max(counts, key=counts.get)
+        others = [c for c in counts if c != bg]
+        if len(others) != 2:
+            return None
+        n1, n2 = counts[others[0]], counts[others[1]]
+        if n1 == n2:
+            return None
+        W = max(n1, n2)
+        H = min(n1, n2)
+        if W < 2 or H < 1 or W > w or H > h:
+            return None
+        return {"bg": bg, "H": H, "W": W}
+
+    @staticmethod
+    def _count_wedge_v_offset(k, W):
+        """Column offset of the V/X line cells at step k from the bottom."""
+        if W % 2 == 0:
+            conv = W // 2
+            if k < conv:
+                return k
+            mirrored = 2 * conv - 1 - k
+            if mirrored < 0:
+                return None
+            return mirrored
+        else:
+            conv = (W + 1) // 2
+            if k < conv:
+                return k
+            mirrored = 2 * conv - 2 - k
+            if mirrored < 0:
+                return None
+            return mirrored
+
+    @staticmethod
+    def _count_wedge_v_params(raw_in, raw_out):
+        dims = GeneralizeOperator._count_wedge_v_dims(raw_in)
+        if dims is None:
+            return None
+        bg = dims["bg"]
+        H = dims["H"]
+        W = dims["W"]
+        oh = len(raw_out)
+        ow = len(raw_out[0]) if raw_out else 0
+        if oh < H or ow < W:
+            return None
+        r_top = oh - H
+
+        # Outside the wedge, output must be bg.
+        for r in range(oh):
+            for c in range(ow):
+                in_wedge = (r >= r_top and c < W)
+                if not in_wedge and raw_out[r][c] != bg:
+                    return None
+
+        # Identify the two colors used inside the wedge.
+        wc_counts = {}
+        for r in range(r_top, oh):
+            for c in range(W):
+                v = raw_out[r][c]
+                wc_counts[v] = wc_counts.get(v, 0) + 1
+        if len(wc_counts) != 2:
+            return None
+        wedge_bg = max(wc_counts, key=wc_counts.get)
+        wedge_line = min(wc_counts, key=wc_counts.get)
+        if wedge_bg == wedge_line:
+            return None
+
+        # Verify V/X pattern.
+        for k in range(H):
+            r = oh - 1 - k
+            offset = GeneralizeOperator._count_wedge_v_offset(k, W)
+            if offset is None:
+                return None
+            c_left = offset
+            c_right = W - 1 - offset
+            for c in range(W):
+                expected = wedge_line if (c == c_left or c == c_right) \
+                    else wedge_bg
+                if raw_out[r][c] != expected:
+                    return None
+
+        return {"wedge_bg": wedge_bg, "wedge_line": wedge_line}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5288,6 +5428,8 @@ class PredictOperator(Operator):
             return self._apply_zigzag_grid_shear(rule, input_grid)
         if rule_type == "barrier_passage":
             return self._apply_barrier_passage(rule, input_grid)
+        if rule_type == "count_wedge_v_pattern":
+            return self._apply_count_wedge_v_pattern(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6065,6 +6207,39 @@ class PredictOperator(Operator):
         if result is None:
             return [row[:] for row in raw]
         return result
+
+    def _apply_count_wedge_v_pattern(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        dims = GeneralizeOperator._count_wedge_v_dims(raw)
+        if dims is None:
+            return None
+        bg = dims["bg"]
+        H = dims["H"]
+        W = dims["W"]
+        wedge_bg = rule.get("wedge_bg")
+        wedge_line = rule.get("wedge_line")
+        if wedge_bg is None or wedge_line is None:
+            return None
+
+        out = [[bg] * w for _ in range(h)]
+        r_top = h - H
+        for k in range(H):
+            r = h - 1 - k
+            offset = GeneralizeOperator._count_wedge_v_offset(k, W)
+            if offset is None:
+                offset = 0
+            c_left = offset
+            c_right = W - 1 - offset
+            for c in range(W):
+                if c == c_left or c == c_right:
+                    out[r][c] = wedge_line
+                else:
+                    out[r][c] = wedge_bg
+        return out
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw
