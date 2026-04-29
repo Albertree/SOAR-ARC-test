@@ -1179,3 +1179,34 @@ no single-rule unification across train pairs.
 - run_task.py: CORRECT (regression intact)
 - Newly solved: 1c56ad9f via zigzag_grid_shear
 - Remaining failures: 878187ab (V/triangle drawing), 9f669b64 (object split/relocate), afe3afe9 (multi-color pattern composition)
+
+---
+## Learning Loop -- 2026-04-29 12:15
+
+- Split: None, Tasks: 40
+- Correct: 37 / 40 (92.5%)
+- Rules: 44 -> 44 (+0 learned)
+- Stored rule hits: 37
+- Time: 19s
+- Log: logs/learn_20260429_121522.log
+
+---
+## Learning Loop -- 2026-04-29 12:27
+
+- Split: None, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 44 -> 45 (+1 learned)
+- Stored rule hits: 37
+- Time: 19s
+- Log: logs/learn_20260429_122705.log
+
+---
+## Session 26 -- 2026-04-29
+
+- Failed tasks before: 878187ab, 9f669b64, afe3afe9
+- Picked: 9f669b64 (barrier_passage pattern)
+- Strategy added: three collinear non-bg shapes share a common row or col span. The smallest (with most square aspect) is the SMALL; among the other two, the one whose bbox is fully filled is the BARRIER (tiebreak when both are solid: BARRIER's long axis is perpendicular to the line through shapes), and the third is the ANCHOR. Output: SMALL slides through BARRIER to the far grid edge in BARRIER's direction; BARRIER widens by SMALL's perpendicular extent (centered on its original perp center) leaving a hole at SMALL's perpendicular position; ANCHOR is unchanged.
+- Result: 37/40 (92.5%) -> 38/40 (95.0%)
+- run_task.py: CORRECT (regression intact)
+- Newly solved: 9f669b64 via barrier_passage
+- Remaining failures: 878187ab (V/triangle drawing), afe3afe9 (multi-color pattern composition)

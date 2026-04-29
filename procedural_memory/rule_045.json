@@ -1,0 +1,15 @@
+{
+  "id": 45,
+  "concept": "barrier passage",
+  "category": "other",
+  "rule": {
+    "type": "barrier_passage",
+    "confidence": 1.0
+  },
+  "covers": [
+    "9f669b64"
+  ],
+  "source_task": "9f669b64",
+  "created_at": "2026-04-29T12:27:11.141694",
+  "times_reused": 0
+}

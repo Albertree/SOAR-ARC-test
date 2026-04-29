@@ -548,6 +548,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_zigzag_grid_shear(example_pairs)
 
+        # Strategy 37: barrier passage — three collinear non-bg shapes
+        #   (anchor, small, barrier). The small shape moves along the line
+        #   through the barrier to the far grid edge; the barrier widens
+        #   perpendicular to motion to leave a hole at the small's path.
+        if rule is None:
+            rule = self._try_barrier_passage(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -4783,6 +4790,231 @@ class GeneralizeOperator(Operator):
 
         return {"type": "zigzag_grid_shear", "confidence": 1.0}
 
+    # ---- strategy: barrier passage --------------------------------------
+
+    def _try_barrier_passage(self, example_pairs):
+        """
+        Detect: 3 distinct non-bg colors arranged collinearly (each forms
+        one connected/colored region). The smallest (and most compact) is
+        the SMALL. Of the other two, the one whose bbox is fully filled
+        (a solid rectangle) is the BARRIER; the other is the ANCHOR. If
+        both flanks are solid, BARRIER is the one whose long axis is
+        perpendicular to the line connecting the three shapes.
+
+        Output: SMALL slides along the line, through the BARRIER, to the
+        far grid edge in the BARRIER's direction. BARRIER widens by the
+        SMALL's perpendicular extent (centered on its original center)
+        with a hole at the SMALL's perpendicular position. ANCHOR is
+        unchanged.
+        """
+        if not example_pairs:
+            return None
+        ok_any = False
+        for raw_in, raw_out in example_pairs:
+            predicted = GeneralizeOperator._barrier_passage_predict(raw_in)
+            if predicted is None:
+                return None
+            h = len(raw_out)
+            w = len(raw_out[0]) if raw_out else 0
+            if len(predicted) != h or any(len(r) != w for r in predicted):
+                return None
+            for r in range(h):
+                for c in range(w):
+                    if predicted[r][c] != raw_out[r][c]:
+                        return None
+            ok_any = True
+        if not ok_any:
+            return None
+        return {"type": "barrier_passage", "confidence": 1.0}
+
+    @staticmethod
+    def _barrier_passage_predict(raw_in):
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+        if h == 0 or w == 0:
+            return None
+
+        counts = {}
+        for row in raw_in:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        if len(counts) < 4:
+            return None
+        bg = max(counts, key=counts.get)
+        non_bg = [c for c in counts if c != bg]
+        if len(non_bg) != 3:
+            return None
+
+        shapes = {}
+        for color in non_bg:
+            cells = [(r, c) for r in range(h) for c in range(w)
+                     if raw_in[r][c] == color]
+            if not cells:
+                return None
+            rs = [r for r, _ in cells]
+            cs = [c for _, c in cells]
+            r0, r1 = min(rs), max(rs)
+            c0, c1 = min(cs), max(cs)
+            sh = r1 - r0 + 1
+            sw = c1 - c0 + 1
+            cell_set = set(cells)
+            is_solid = (len(cell_set) == sh * sw)
+            shapes[color] = {
+                "color": color, "cells": cell_set,
+                "r0": r0, "r1": r1, "c0": c0, "c1": c1,
+                "h": sh, "w": sw,
+                "size": len(cells), "is_solid": is_solid,
+            }
+
+        # Pick SMALL: smallest cell count, tiebreak by smallest aspect ratio.
+        def small_key(c):
+            sh = shapes[c]
+            ratio = max(sh["h"], sh["w"]) / min(sh["h"], sh["w"])
+            return (sh["size"], ratio)
+
+        small_color = min(shapes, key=small_key)
+        small = shapes[small_color]
+        flanks = [shapes[c] for c in shapes if c != small_color]
+        A, B = flanks
+
+        # Determine collinearity: shapes share a common row range
+        # (horizontal motion) or common col range (vertical motion).
+        def overlap_rows(s1, s2):
+            return not (s1["r1"] < s2["r0"] or s2["r1"] < s1["r0"])
+
+        def overlap_cols(s1, s2):
+            return not (s1["c1"] < s2["c0"] or s2["c1"] < s1["c0"])
+
+        share_row = (overlap_rows(small, A) and overlap_rows(small, B)
+                     and overlap_rows(A, B))
+        share_col = (overlap_cols(small, A) and overlap_cols(small, B)
+                     and overlap_cols(A, B))
+
+        if share_col and not share_row:
+            motion_axis = "vertical"
+        elif share_row and not share_col:
+            motion_axis = "horizontal"
+        else:
+            return None
+
+        # Identify barrier (solid rect) vs anchor.
+        if A["is_solid"] and not B["is_solid"]:
+            barrier, anchor = A, B
+        elif B["is_solid"] and not A["is_solid"]:
+            barrier, anchor = B, A
+        elif A["is_solid"] and B["is_solid"]:
+            # Tiebreak: barrier's long axis is perpendicular to motion.
+            if motion_axis == "vertical":
+                A_perp = A["w"] > A["h"]
+                B_perp = B["w"] > B["h"]
+            else:
+                A_perp = A["h"] > A["w"]
+                B_perp = B["h"] > B["w"]
+            if A_perp and not B_perp:
+                barrier, anchor = A, B
+            elif B_perp and not A_perp:
+                barrier, anchor = B, A
+            else:
+                return None
+        else:
+            return None
+
+        # Barrier must lie strictly on one side of small along motion axis.
+        if motion_axis == "vertical":
+            if barrier["r1"] < small["r0"]:
+                direction = "up"
+            elif barrier["r0"] > small["r1"]:
+                direction = "down"
+            else:
+                return None
+            if anchor["r0"] <= small["r1"] and anchor["r1"] >= small["r0"]:
+                return None
+            if direction == "up" and anchor["r0"] <= small["r1"]:
+                return None
+        else:
+            if barrier["c1"] < small["c0"]:
+                direction = "left"
+            elif barrier["c0"] > small["c1"]:
+                direction = "right"
+            else:
+                return None
+            if anchor["c0"] <= small["c1"] and anchor["c1"] >= small["c0"]:
+                return None
+
+        # Anchor must be on the opposite side of small from barrier.
+        if motion_axis == "vertical":
+            if direction == "up" and anchor["r0"] < small["r0"]:
+                return None
+            if direction == "down" and anchor["r1"] > small["r1"]:
+                return None
+        else:
+            if direction == "left" and anchor["c0"] < small["c0"]:
+                return None
+            if direction == "right" and anchor["c1"] > small["c1"]:
+                return None
+
+        # Build output.
+        output = [row[:] for row in raw_in]
+        # Erase small + barrier.
+        for r, c in small["cells"]:
+            output[r][c] = bg
+        for r, c in barrier["cells"]:
+            output[r][c] = bg
+
+        sh = small["h"]
+        sw = small["w"]
+        if direction == "up":
+            new_r0, new_c0 = 0, small["c0"]
+        elif direction == "down":
+            new_r0, new_c0 = h - sh, small["c0"]
+        elif direction == "left":
+            new_r0, new_c0 = small["r0"], 0
+        else:  # right
+            new_r0, new_c0 = small["r0"], w - sw
+
+        new_r1 = new_r0 + sh - 1
+        new_c1 = new_c0 + sw - 1
+        if new_r0 < 0 or new_c0 < 0 or new_r1 >= h or new_c1 >= w:
+            return None
+        for r in range(new_r0, new_r1 + 1):
+            for c in range(new_c0, new_c1 + 1):
+                output[r][c] = small_color
+
+        # Place modified barrier with a hole.
+        bcolor = barrier["color"]
+        if motion_axis == "vertical":
+            # perpendicular = cols
+            s_p0, s_p1 = small["c0"], small["c1"]
+            hole_w = s_p1 - s_p0 + 1
+            pad_left = hole_w // 2
+            pad_right = hole_w - pad_left
+            new_p0 = barrier["c0"] - pad_left
+            new_p1 = barrier["c1"] + pad_right
+            if new_p0 < 0 or new_p1 >= w:
+                return None
+            for r in range(barrier["r0"], barrier["r1"] + 1):
+                for c in range(new_p0, new_p1 + 1):
+                    if s_p0 <= c <= s_p1:
+                        continue
+                    output[r][c] = bcolor
+        else:
+            # perpendicular = rows
+            s_p0, s_p1 = small["r0"], small["r1"]
+            hole_h = s_p1 - s_p0 + 1
+            pad_top = hole_h // 2
+            pad_bot = hole_h - pad_top
+            new_p0 = barrier["r0"] - pad_top
+            new_p1 = barrier["r1"] + pad_bot
+            if new_p0 < 0 or new_p1 >= h:
+                return None
+            for r in range(new_p0, new_p1 + 1):
+                for c in range(barrier["c0"], barrier["c1"] + 1):
+                    if s_p0 <= r <= s_p1:
+                        continue
+                    output[r][c] = bcolor
+
+        return output
+
     # ---- strategy: gravity to floor -------------------------------------
 
     def _try_gravity_to_floor(self, example_pairs):
@@ -5054,6 +5286,8 @@ class PredictOperator(Operator):
             return self._apply_arrow_to_rectangle(rule, input_grid)
         if rule_type == "zigzag_grid_shear":
             return self._apply_zigzag_grid_shear(rule, input_grid)
+        if rule_type == "barrier_passage":
+            return self._apply_barrier_passage(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5824,6 +6058,13 @@ class PredictOperator(Operator):
                     new_row[c] = raw[r][src_c]
             out[r] = new_row
         return out
+
+    def _apply_barrier_passage(self, rule, input_grid):
+        raw = input_grid.raw
+        result = GeneralizeOperator._barrier_passage_predict(raw)
+        if result is None:
+            return [row[:] for row in raw]
+        return result
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw
