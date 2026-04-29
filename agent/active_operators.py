@@ -459,7 +459,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_framed_recolor_legend(example_pairs)
 
-        # Strategy 28: simple 1:1 color mapping
+        # Strategy 28: interior/exterior recolor — one input fill color is
+        #   split into two output colors based on whether each cell is
+        #   reachable from the grid border via 4-connected fill cells
+        if rule is None:
+            rule = self._try_interior_exterior_recolor(example_pairs)
+
+        # Strategy 29: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -2915,6 +2921,123 @@ class GeneralizeOperator(Operator):
             out.append(row)
         return out
 
+    # ---- strategy: interior/exterior recolor ----------------------------
+
+    def _try_interior_exterior_recolor(self, example_pairs):
+        """
+        Detect: a single input fill color C is split in the output into two
+        colors X (exterior) and Y (interior) based on 4-connectivity to the
+        grid border. All other cells are unchanged. The (C, X, Y) triple
+        must be consistent across every training example pair.
+
+        This generalises tasks where empty pockets enclosed by foreground
+        cells must be distinguished from open exterior space.
+        """
+        if not example_pairs:
+            return None
+
+        triple = None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if h else 0
+            if h == 0 or w == 0 or len(raw_out) != h:
+                return None
+            for ri, ro in zip(raw_in, raw_out):
+                if len(ri) != w or len(ro) != w:
+                    return None
+
+            in_colors = {v for row in raw_in for v in row}
+            out_colors = {v for row in raw_out for v in row}
+
+            candidates = []
+            for c in in_colors:
+                if c in out_colors:
+                    continue
+                # All non-C cells must be unchanged; C cells map to two
+                # specific output colors.
+                ok = True
+                mapped = set()
+                for r in range(h):
+                    if not ok:
+                        break
+                    for cc in range(w):
+                        if raw_in[r][cc] == c:
+                            mapped.add(raw_out[r][cc])
+                        elif raw_in[r][cc] != raw_out[r][cc]:
+                            ok = False
+                            break
+                if not ok or len(mapped) != 2 or c in mapped:
+                    continue
+
+                ext, intr = self._classify_interior_exterior(
+                    raw_in, raw_out, c, h, w
+                )
+                if ext is None or intr is None or ext == intr:
+                    continue
+                candidates.append((c, ext, intr))
+
+            if len(candidates) != 1:
+                return None
+            cand = candidates[0]
+            if triple is None:
+                triple = cand
+            elif triple != cand:
+                return None
+
+        if triple is None:
+            return None
+        c, ext, intr = triple
+        return {
+            "type": "interior_exterior_recolor",
+            "fill_color": c,
+            "ext_color": ext,
+            "int_color": intr,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _classify_interior_exterior(raw_in, raw_out, fill, h, w):
+        """Return (ext_color, int_color) by flood-filling fill cells from
+        border. Returns (None, None) if the split is inconsistent or one
+        side is empty."""
+        from collections import deque
+        visited = [[False] * w for _ in range(h)]
+        q = deque()
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] == fill and (
+                        r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                    visited[r][c] = True
+                    q.append((r, c))
+        while q:
+            r, c = q.popleft()
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                nr, nc = r + dr, c + dc
+                if (0 <= nr < h and 0 <= nc < w
+                        and not visited[nr][nc]
+                        and raw_in[nr][nc] == fill):
+                    visited[nr][nc] = True
+                    q.append((nr, nc))
+
+        ext = None
+        intr = None
+        for r in range(h):
+            for c in range(w):
+                if raw_in[r][c] != fill:
+                    continue
+                v = raw_out[r][c]
+                if visited[r][c]:
+                    if ext is None:
+                        ext = v
+                    elif ext != v:
+                        return None, None
+                else:
+                    if intr is None:
+                        intr = v
+                    elif intr != v:
+                        return None, None
+        return ext, intr
+
     # ---- strategy: ricochet ray -----------------------------------------
 
     def _try_ricochet_ray(self, example_pairs):
@@ -3573,6 +3696,8 @@ class PredictOperator(Operator):
             return self._apply_mirror_shoot_anchor(rule, input_grid)
         if rule_type == "framed_recolor_legend":
             return self._apply_framed_recolor_legend(rule, input_grid)
+        if rule_type == "interior_exterior_recolor":
+            return self._apply_interior_exterior_recolor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4218,6 +4343,44 @@ class PredictOperator(Operator):
         if v is None:
             return None
         return [[v]]
+
+    def _apply_interior_exterior_recolor(self, rule, input_grid):
+        from collections import deque
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if h else 0
+        fill = rule["fill_color"]
+        ext = rule["ext_color"]
+        intr = rule["int_color"]
+
+        visited = [[False] * w for _ in range(h)]
+        q = deque()
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fill and (
+                        r == 0 or r == h - 1 or c == 0 or c == w - 1):
+                    visited[r][c] = True
+                    q.append((r, c))
+        while q:
+            r, c = q.popleft()
+            for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                nr, nc = r + dr, c + dc
+                if (0 <= nr < h and 0 <= nc < w
+                        and not visited[nr][nc]
+                        and raw[nr][nc] == fill):
+                    visited[nr][nc] = True
+                    q.append((nr, nc))
+
+        out = []
+        for r in range(h):
+            row = []
+            for c in range(w):
+                if raw[r][c] == fill:
+                    row.append(ext if visited[r][c] else intr)
+                else:
+                    row.append(raw[r][c])
+            out.append(row)
+        return out
 
     def _apply_framed_recolor_legend(self, rule, input_grid):
         raw = input_grid.raw

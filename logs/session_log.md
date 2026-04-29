@@ -589,3 +589,50 @@ Verification:
 - `python run_task.py` (regression on 08ed6ac7): CORRECT
 - `python run_learn.py --limit 40 --shuffle`: 27 / 40 (67.5%)
 - Rules: 33 -> 34
+
+---
+## Learning Loop -- 2026-04-29 09:42
+
+- Split: None, Tasks: 40
+- Correct: 27 / 40 (67.5%)
+- Rules: 34 -> 34 (+0 learned)
+- Stored rule hits: 27
+- Time: 19s
+- Log: logs/learn_20260429_094157.log
+
+---
+## Learning Loop -- 2026-04-29 09:47
+
+- Split: None, Tasks: 40
+- Correct: 28 / 40 (70.0%)
+- Rules: 34 -> 35 (+1 learned)
+- Stored rule hits: 27
+- Time: 19s
+- Log: logs/learn_20260429_094701.log
+
+---
+## Session 14 -- 2026-04-29
+
+**Strategy added:** `interior_exterior_recolor`
+
+A single input fill colour C is split in the output into two new colours:
+X for cells that are 4-connected to the grid border through other C
+cells (exterior open space), and Y for cells in fully enclosed pockets
+(interior). All other input cells pass through unchanged. The triple
+(C, X, Y) is verified consistent across every training example pair,
+and the same triple is reused at test time.
+
+- Solves: 84db8fc4 (and category of "label holes by enclosed-ness" tasks)
+- Detection rejects pairs where multiple input colours disappear, where
+  C maps to anything other than exactly two output colours, where any
+  non-C cell changes, or where flood-fill produces an inconsistent
+  side-to-side mapping.
+- Placed after `framed_recolor_legend` and before `color_mapping`.
+
+**Result:** 27/40 -> 28/40 (67.5% -> 70.0%), +1 rule learned (rule_035)
+- 84db8fc4: CORRECT via interior_exterior_recolor (newly discovered)
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 28 / 40 (70.0%)
+- Rules: 34 -> 35
