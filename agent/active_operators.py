@@ -413,7 +413,19 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_square_corner_marker(example_pairs)
 
-        # Strategy 23: simple 1:1 color mapping
+        # Strategy 23: plus center marker — wherever a "+" of 8 fg cells
+        #   surrounds a bg cell (offsets ±2 and ±3 on each axis), the center
+        #   cell becomes a constant marker color
+        if rule is None:
+            rule = self._try_plus_center_marker(example_pairs)
+
+        # Strategy 24: rotational 4-fold kaleidoscope — output is
+        #   4*H by 4*W with each 2x2 tile-quadrant filled by a rotation of
+        #   input tiled 2x2: BR=identity, TR=rot90CW, TL=rot180, BL=rot90CCW
+        if rule is None:
+            rule = self._try_rotational_4fold(example_pairs)
+
+        # Strategy 25: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -2265,6 +2277,154 @@ class GeneralizeOperator(Operator):
                     out[mr][mc] = marker
         return out
 
+    # ---- strategy: plus center marker -----------------------------------
+
+    def _try_plus_center_marker(self, example_pairs):
+        """
+        Detect: same grid size; output introduces exactly one new color
+        (marker), the same in every pair. There exists a single fg color
+        such that for every center (r, c) where the 8 cells at offsets
+        (±2, 0), (±3, 0), (0, ±2), (0, ±3) are all fg and (r, c) is bg,
+        the output places marker at (r, c). All other cells are unchanged.
+        """
+        if not example_pairs:
+            return None
+
+        marker = None
+        fg_color = None
+        had_target = False
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            in_colors = {c for row in raw_in for c in row}
+            out_colors = {c for row in raw_out for c in row}
+            new_colors = out_colors - in_colors
+            if len(new_colors) != 1:
+                return None
+            m = next(iter(new_colors))
+            if marker is None:
+                marker = m
+            elif marker != m:
+                return None
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+            non_bg = [c for c in counts if c != bg]
+            if len(non_bg) != 1:
+                return None
+            fg = non_bg[0]
+            if fg == marker:
+                return None
+            if fg_color is None:
+                fg_color = fg
+            elif fg_color != fg:
+                return None
+            expected = self._draw_plus_center_markers(raw_in, fg, marker)
+            if not had_target:
+                # check at least one center was placed in some pair
+                for r in range(h):
+                    for c in range(w):
+                        if expected[r][c] != raw_in[r][c]:
+                            had_target = True
+                            break
+                    if had_target:
+                        break
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+        if not had_target:
+            return None
+        return {"type": "plus_center_marker",
+                "fg": fg_color, "marker": marker, "confidence": 1.0}
+
+    @staticmethod
+    def _draw_plus_center_markers(raw, fg, marker):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] == fg:
+                    continue
+                if r - 3 < 0 or r + 3 >= h or c - 3 < 0 or c + 3 >= w:
+                    continue
+                if (raw[r - 3][c] == fg and raw[r - 2][c] == fg and
+                        raw[r + 2][c] == fg and raw[r + 3][c] == fg and
+                        raw[r][c - 3] == fg and raw[r][c - 2] == fg and
+                        raw[r][c + 2] == fg and raw[r][c + 3] == fg):
+                    out[r][c] = marker
+        return out
+
+    # ---- strategy: rotational 4-fold kaleidoscope -----------------------
+
+    def _try_rotational_4fold(self, example_pairs):
+        """
+        Detect: output is 4H x 4W with the input projected as four rotated
+        copies, each tiled 2x2 in its own quadrant of tile-cells. Layout:
+          TL (rows 0..2H, cols 0..2W) = rot180(input) tiled 2x2
+          TR (rows 0..2H, cols 2W..4W) = rot90CW(input) tiled 2x2
+          BL (rows 2H..4H, cols 0..2W) = rot90CCW(input) tiled 2x2
+          BR (rows 2H..4H, cols 2W..4W) = input tiled 2x2
+        """
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0 or h != w:
+                return None
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+            if oh != 4 * h or ow != 4 * w:
+                return None
+            expected = self._build_rotational_4fold(raw_in)
+            if expected is None:
+                return None
+            for r in range(oh):
+                for c in range(ow):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+        return {"type": "rotational_4fold", "confidence": 1.0}
+
+    @staticmethod
+    def _build_rotational_4fold(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        # Rotations
+        rot_cw = [[raw[h - 1 - c][r] for c in range(h)] for r in range(w)]
+        rot_ccw = [[raw[c][w - 1 - r] for c in range(h)] for r in range(w)]
+        rot_180 = [[raw[h - 1 - r][w - 1 - c] for c in range(w)]
+                   for r in range(h)]
+        # Each rotated copy preserves shape (h, w) for square; for non-
+        # square inputs rot_cw/rot_ccw have shape (w, h). To keep tiling
+        # uniform, only support square inputs here.
+        if h != w:
+            return None
+        out = [[0] * (4 * w) for _ in range(4 * h)]
+        # Tile each rotated copy 2x2 into its quadrant
+        copies = {
+            (0, 0): rot_180,            # TL
+            (0, 1): rot_cw,             # TR
+            (1, 0): rot_ccw,            # BL
+            (1, 1): [row[:] for row in raw],  # BR
+        }
+        for (qr, qc), g in copies.items():
+            for tr in range(2):
+                for tc in range(2):
+                    base_r = qr * 2 * h + tr * h
+                    base_c = qc * 2 * w + tc * w
+                    for r in range(h):
+                        for c in range(w):
+                            out[base_r + r][base_c + c] = g[r][c]
+        return out
+
     @staticmethod
     def _draw_corner_l_shoot(raw, bg):
         h = len(raw)
@@ -2446,6 +2606,10 @@ class PredictOperator(Operator):
             return self._apply_concentric_ring_reverse(rule, input_grid)
         if rule_type == "square_corner_marker":
             return self._apply_square_corner_marker(rule, input_grid)
+        if rule_type == "plus_center_marker":
+            return self._apply_plus_center_marker(rule, input_grid)
+        if rule_type == "rotational_4fold":
+            return self._apply_rotational_4fold(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -2909,6 +3073,18 @@ class PredictOperator(Operator):
         targets = GeneralizeOperator._square_marker_targets(raw)
         return GeneralizeOperator._draw_square_corner_markers(raw, targets,
                                                               marker)
+
+    def _apply_plus_center_marker(self, rule, input_grid):
+        raw = input_grid.raw
+        fg = rule.get("fg")
+        marker = rule.get("marker")
+        if fg is None or marker is None:
+            return None
+        return GeneralizeOperator._draw_plus_center_markers(raw, fg, marker)
+
+    def _apply_rotational_4fold(self, rule, input_grid):
+        raw = input_grid.raw
+        return GeneralizeOperator._build_rotational_4fold(raw)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

@@ -342,3 +342,52 @@ Added 2 strategies to `agent/active_operators.py`:
 
 Result: 18/40 (45.0%) -> 20/40 (50.0%). 2 new rules stored. Regression
 gate (08ed6ac7) still CORRECT.
+
+---
+## Learning Loop -- 2026-04-29 08:51
+
+- Split: None, Tasks: 40
+- Correct: 20 / 40 (50.0%)
+- Rules: 27 -> 27 (+0 learned)
+- Stored rule hits: 20
+- Time: 21s
+- Log: logs/learn_20260429_085124.log
+
+---
+## Learning Loop -- 2026-04-29 08:59
+
+- Split: None, Tasks: 40
+- Correct: 22 / 40 (55.0%)
+- Rules: 27 -> 29 (+2 learned)
+- Stored rule hits: 20
+- Time: 20s
+- Log: logs/learn_20260429_085918.log
+
+---
+## Learning Loop -- 2026-04-29 08:59
+
+- Split: None, Tasks: 40
+- Correct: 22 / 40 (55.0%)
+- Rules: 27 -> 29 (+2 learned)
+- Stored rule hits: 20
+- Time: 20s
+- Log: logs/learn_20260429_085918.log
+
+### Session 9 (Claude) -- new generalization strategies
+
+Added 2 strategies to `agent/active_operators.py`:
+
+- **plus_center_marker** -- same grid size; output introduces exactly one
+  new color (the marker), consistent across all training pairs. There is
+  exactly one foreground color besides background. For each background
+  cell (r, c) where the 8 cells at offsets (±2, 0), (±3, 0), (0, ±2),
+  (0, ±3) are all foreground, the output places the marker at (r, c).
+  All other cells are unchanged. Solves 9f5f939b.
+- **rotational_4fold** -- square HxH input; output is 4H x 4H built from
+  four rotated copies of the input, each tiled 2x2 inside its own
+  half-grid quadrant: TL = rot180(input) tiled 2x2,
+  TR = rot90CW(input) tiled 2x2, BL = rot90CCW(input) tiled 2x2,
+  BR = input tiled 2x2. Solves cf5fd0ad.
+
+Result: 20/40 (50.0%) -> 22/40 (55.0%). 2 new rules stored. Regression
+gate (08ed6ac7) still CORRECT.
