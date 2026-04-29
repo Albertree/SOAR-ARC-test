@@ -465,7 +465,15 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_interior_exterior_recolor(example_pairs)
 
-        # Strategy 29: simple 1:1 color mapping
+        # Strategy 29: grid summary corners — large grid divided by full
+        #   non-bg gridlines; some intersections carry a third 'marker'
+        #   color. Output is a small grid summarising which (i, j) cell
+        #   of the gridded layout has all 4 corner intersections sharing
+        #   one marker color
+        if rule is None:
+            rule = self._try_grid_summary_corners(example_pairs)
+
+        # Strategy 30: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -3547,6 +3555,122 @@ class GeneralizeOperator(Operator):
                     if 0 <= rr < h and 0 <= cc < w:
                         grid[rr][cc] = color
 
+    # ---- strategy: grid summary corners ---------------------------------
+
+    def _try_grid_summary_corners(self, example_pairs):
+        """
+        Detect: input is a large grid containing a background color (most
+        common) and a 'gridline' color forming complete non-background
+        rows and columns at regular intervals. Some intersections of
+        gridlines carry a third 'marker' color (any non-bg, non-gridline
+        cell). The output is a small grid of size
+        (#marker_rows - 1) x (#marker_cols - 1) where 'marker_rows' are
+        gridline rows containing at least one marker cell (similarly for
+        marker_cols). Each output cell (i, j) corresponds to the gridline
+        rectangle bounded by marker_rows[i..i+1] x marker_cols[j..j+1].
+        If all 4 corner intersections of that rectangle hold the same
+        marker color, the output cell takes that color; otherwise it is
+        background.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            params = self._grid_summary_params(raw_in)
+            if params is None:
+                return None
+            expected = self._grid_summary_apply(params)
+            if expected is None:
+                return None
+            if len(expected) != len(raw_out):
+                return None
+            for r in range(len(expected)):
+                if len(expected[r]) != len(raw_out[r]):
+                    return None
+                for c in range(len(expected[r])):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "grid_summary_corners", "confidence": 1.0}
+
+    @staticmethod
+    def _grid_summary_params(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 5 or w < 5:
+            return None
+
+        counts = {}
+        for row in raw:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        if len(counts) < 3:
+            return None
+
+        # Try each color present as candidate background; pick the first
+        # candidate that yields a valid gridline structure. The 'true' bg
+        # appears in the cells *between* gridlines, so it cannot itself be
+        # the gridline color.
+        for bg in sorted(counts, key=counts.get, reverse=True):
+            grid_rows = [r for r in range(h)
+                         if all(raw[r][c] != bg for c in range(w))]
+            grid_cols = [c for c in range(w)
+                         if all(raw[r][c] != bg for r in range(h))]
+            if len(grid_rows) < 2 or len(grid_cols) < 2:
+                continue
+
+            gl_counts = {}
+            for r in grid_rows:
+                for c in range(w):
+                    v = raw[r][c]
+                    if v != bg:
+                        gl_counts[v] = gl_counts.get(v, 0) + 1
+            if not gl_counts:
+                continue
+            gridline = max(gl_counts, key=gl_counts.get)
+            if gridline == bg:
+                continue
+
+            marker_rows = [r for r in grid_rows
+                           if any(raw[r][c] not in (bg, gridline)
+                                  for c in range(w))]
+            marker_cols = [c for c in grid_cols
+                           if any(raw[r][c] not in (bg, gridline)
+                                  for r in range(h))]
+            if len(marker_rows) < 2 or len(marker_cols) < 2:
+                continue
+
+            return {"bg": bg, "gridline": gridline,
+                    "marker_rows": marker_rows,
+                    "marker_cols": marker_cols,
+                    "raw": raw}
+
+        return None
+
+    @staticmethod
+    def _grid_summary_apply(params):
+        bg = params["bg"]
+        gridline = params["gridline"]
+        mrs = params["marker_rows"]
+        mcs = params["marker_cols"]
+        raw = params["raw"]
+
+        out_h = len(mrs) - 1
+        out_w = len(mcs) - 1
+        if out_h < 1 or out_w < 1:
+            return None
+
+        out = [[bg] * out_w for _ in range(out_h)]
+        for i in range(out_h):
+            for j in range(out_w):
+                r0, r1 = mrs[i], mrs[i + 1]
+                c0, c1 = mcs[j], mcs[j + 1]
+                corners = (raw[r0][c0], raw[r0][c1], raw[r1][c0], raw[r1][c1])
+                if all(v != gridline and v != bg for v in corners) \
+                        and len(set(corners)) == 1:
+                    out[i][j] = corners[0]
+        return out
+
     @staticmethod
     def _find_components(raw, color):
         """Return 4-connected components of `color` in `raw` as lists of (r, c)."""
@@ -3698,6 +3822,8 @@ class PredictOperator(Operator):
             return self._apply_framed_recolor_legend(rule, input_grid)
         if rule_type == "interior_exterior_recolor":
             return self._apply_interior_exterior_recolor(rule, input_grid)
+        if rule_type == "grid_summary_corners":
+            return self._apply_grid_summary_corners(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4343,6 +4469,13 @@ class PredictOperator(Operator):
         if v is None:
             return None
         return [[v]]
+
+    def _apply_grid_summary_corners(self, rule, input_grid):
+        raw = input_grid.raw
+        params = GeneralizeOperator._grid_summary_params(raw)
+        if params is None:
+            return None
+        return GeneralizeOperator._grid_summary_apply(params)
 
     def _apply_interior_exterior_recolor(self, rule, input_grid):
         from collections import deque

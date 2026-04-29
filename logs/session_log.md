@@ -636,3 +636,86 @@ Verification:
 - `python run_task.py` (regression on 08ed6ac7): CORRECT
 - `python run_learn.py --limit 40 --shuffle`: 28 / 40 (70.0%)
 - Rules: 34 -> 35
+
+---
+## Learning Loop -- 2026-04-29 09:48
+
+- Split: None, Tasks: 40
+- Correct: 28 / 40 (70.0%)
+- Rules: 35 -> 35 (+0 learned)
+- Stored rule hits: 28
+- Time: 18s
+- Log: logs/learn_20260429_094756.log
+
+---
+## Learning Loop -- 2026-04-29 09:58
+
+- Split: None, Tasks: 40
+- Correct: 28 / 40 (70.0%)
+- Rules: 35 -> 35 (+0 learned)
+- Stored rule hits: 28
+- Time: 19s
+- Log: logs/learn_20260429_095822.log
+
+---
+## Learning Loop -- 2026-04-29 09:59
+
+- Split: None, Tasks: 40
+- Correct: 28 / 40 (70.0%)
+- Rules: 35 -> 35 (+0 learned)
+- Stored rule hits: 28
+- Time: 19s
+- Log: logs/learn_20260429_095847.log
+
+---
+## Learning Loop -- 2026-04-29 10:01
+
+- Split: None, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 35 -> 36 (+1 learned)
+- Stored rule hits: 28
+- Time: 20s
+- Log: logs/learn_20260429_100138.log
+
+---
+## Learning Loop -- 2026-04-29 10:02
+
+- Split: None, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 36 -> 36 (+0 learned)
+- Stored rule hits: 29
+- Time: 19s
+- Log: logs/learn_20260429_100201.log
+
+---
+## Session 15 -- 2026-04-29
+
+**Strategy added:** `grid_summary_corners`
+
+Input is a large grid containing a background colour (the cells between
+gridlines) and a 'gridline' colour that forms complete non-bg rows and
+columns at regular intervals. Some intersections of those gridlines
+carry a third 'marker' colour. Output is a small grid of size
+`(#marker_rows - 1) x (#marker_cols - 1)` where marker_rows/cols are
+gridline rows/cols that contain at least one marker cell. For each
+output cell `(i, j)`, the four corner intersections of the gridline
+rectangle bounded by `marker_rows[i..i+1] x marker_cols[j..j+1]` are
+checked: if all 4 hold the same marker colour, the output cell takes
+that colour; otherwise it is background.
+
+- Solves: 7837ac64 (and category of "corner-marker grid summary" tasks)
+- Detection iterates candidate bg colours by descending frequency
+  rather than blindly taking the most common, because in some pairs
+  the gridline colour outnumbers the bg (e.g. 4 outnumbers 0 in
+  pair 0 of 7837ac64).
+- Gridline colour is the most common non-bg colour along gridline rows.
+- Placed after `interior_exterior_recolor` and before `color_mapping`
+  so the specific summary rule wins over generic recolour fits.
+
+**Result:** 28/40 -> 29/40 (70.0% -> 72.5%), +1 rule learned (rule_036)
+- 7837ac64: CORRECT via grid_summary_corners (newly discovered)
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 29 / 40 (72.5%)
+- Rules: 35 -> 36
