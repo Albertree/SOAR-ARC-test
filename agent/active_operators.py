@@ -597,6 +597,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_barrier_projection(example_pairs)
 
+        # Strategy 43: panel logic op — input has two equal-size panels
+        #   split by a uniform-color row or column; output is panel-shaped
+        #   and each cell is colored by a logical operation (AND/OR/XOR/...)
+        #   on the (cell != bg) booleans of the two panels.
+        if rule is None:
+            rule = self._try_panel_logic_op(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -5819,6 +5826,115 @@ class GeneralizeOperator(Operator):
                             break
         return out
 
+    # ---- strategy: panel logic op ----------------------------------------
+
+    def _try_panel_logic_op(self, example_pairs):
+        """
+        Detect: input is two equal-size panels (top/bottom or left/right)
+        separated by a uniform-color row or column whose color appears
+        nowhere else. Each cell of the output (panel-shaped) is determined
+        by a logical operation on (panelA[r][c] != bg, panelB[r][c] != bg)
+        that maps consistently across all training pairs.
+
+        Generalises XOR / OR / AND / NOR / etc. between two boolean panels.
+        """
+        if not example_pairs:
+            return None
+
+        truth_table = {}
+        for raw_in, raw_out in example_pairs:
+            parts = GeneralizeOperator._panel_split(raw_in)
+            if parts is None:
+                return None
+            panel_a, panel_b, _axis = parts
+            ph = len(panel_a)
+            pw = len(panel_a[0]) if ph else 0
+            if ph == 0 or pw == 0:
+                return None
+            if len(raw_out) != ph:
+                return None
+            if (len(raw_out[0]) if raw_out else 0) != pw:
+                return None
+            for r in range(ph):
+                for c in range(pw):
+                    a = panel_a[r][c] != 0
+                    b = panel_b[r][c] != 0
+                    key = (a, b)
+                    val = raw_out[r][c]
+                    if key in truth_table:
+                        if truth_table[key] != val:
+                            return None
+                    else:
+                        truth_table[key] = val
+
+        if not truth_table:
+            return None
+        # Require at least one True-mapped output color so we don't trivially
+        # match an all-zero output via identity-like fallback.
+        if all(v == 0 for v in truth_table.values()):
+            return None
+
+        return {
+            "type": "panel_logic_op",
+            "confidence": 1.0,
+            "truth_table": [(int(a), int(b), v) for (a, b), v in truth_table.items()],
+        }
+
+    @staticmethod
+    def _panel_split(raw):
+        """Try to split raw into two equal panels separated by a uniform
+        row or column of a color that does not appear elsewhere. Returns
+        (panel_a, panel_b, axis) where axis is 'row' or 'col', or None."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 3 and w < 3:
+            return None
+
+        # Row separator
+        for r in range(1, h - 1):
+            row = raw[r]
+            if len(set(row)) != 1:
+                continue
+            sep = row[0]
+            top = [list(rr) for rr in raw[:r]]
+            bot = [list(rr) for rr in raw[r + 1:]]
+            if len(top) != len(bot) or len(top) == 0:
+                continue
+            elsewhere = False
+            for rr in top + bot:
+                if sep in rr:
+                    elsewhere = True
+                    break
+            if elsewhere:
+                continue
+            return (top, bot, "row")
+
+        # Column separator
+        for c in range(1, w - 1):
+            col = [raw[r][c] for r in range(h)]
+            if len(set(col)) != 1:
+                continue
+            sep = col[0]
+            left = [row[:c] for row in raw]
+            right = [row[c + 1:] for row in raw]
+            if not left or len(left[0]) != len(right[0]) or len(left[0]) == 0:
+                continue
+            elsewhere = False
+            for row in raw:
+                for cc in range(w):
+                    if cc == c:
+                        continue
+                    if row[cc] == sep:
+                        elsewhere = True
+                        break
+                if elsewhere:
+                    break
+            if elsewhere:
+                continue
+            return (left, right, "col")
+
+        return None
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5976,9 +6092,28 @@ class PredictOperator(Operator):
             return self._apply_hollow_square_gravity(rule, input_grid)
         if rule_type == "barrier_projection":
             return self._apply_barrier_projection(rule, input_grid)
+        if rule_type == "panel_logic_op":
+            return self._apply_panel_logic_op(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
+
+    def _apply_panel_logic_op(self, rule, input_grid):
+        raw = input_grid.raw
+        parts = GeneralizeOperator._panel_split(raw)
+        if parts is None:
+            return [row[:] for row in raw]
+        panel_a, panel_b, _axis = parts
+        ph = len(panel_a)
+        pw = len(panel_a[0]) if ph else 0
+        table = {(bool(a), bool(b)): v for (a, b, v) in rule.get("truth_table", [])}
+        out = [[0] * pw for _ in range(ph)]
+        for r in range(ph):
+            for c in range(pw):
+                a = panel_a[r][c] != 0
+                b = panel_b[r][c] != 0
+                out[r][c] = table.get((a, b), 0)
+        return out
 
     def _apply_recolor_sequential(self, rule, input_grid):
         raw = input_grid.raw

@@ -1699,3 +1699,70 @@ Verification:
 - 200-task shuffle (seed 42): **47 / 200 (23.5%)**, up from 46 / 200 (23.0%).
 - 007bbfb7: previously INCORRECT (identity fallback), now CORRECT via
   stored fractal_self_tile rule.
+
+---
+## Learning Loop -- 2026-04-29 13:45
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 80 -> 80 (+0 learned)
+- Stored rule hits: 39
+- Time: 20s
+- Log: logs/learn_20260429_134456.log
+
+---
+## Learning Loop -- 2026-04-29 13:47
+
+- Split: None, Tasks: 200
+- Correct: 47 / 200 (23.5%)
+- Rules: 80 -> 80 (+0 learned)
+- Stored rule hits: 44
+- Time: 107s
+- Log: logs/learn_20260429_134551.log
+
+---
+## Learning Loop -- 2026-04-29 13:52
+
+- Split: None, Tasks: 200
+- Correct: 50 / 200 (25.0%)
+- Rules: 80 -> 82 (+2 learned)
+- Stored rule hits: 45
+- Time: 110s
+- Log: logs/learn_20260429_135016.log
+
+---
+## Learning Loop -- 2026-04-29 13:52
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 82 -> 82 (+0 learned)
+- Stored rule hits: 39
+- Time: 20s
+- Log: logs/learn_20260429_135223.log
+
+---
+## Session 35 -- 2026-04-29 13:52
+
+The 40-task shuffle was already 100% (40/40), so used the 200-task pool to
+find INCORRECT tasks. Picked two with shared structure: 99b1bc43 (9x4
+input → 4x4 output, panels split by row of 4s, output = XOR) and 506d28a5
+(9x5 → 4x5, panels split by row of 4s, output = OR).
+
+Added one generalization strategy in `agent/active_operators.py`:
+
+- **`panel_logic_op`** — detects when the input is two equal-size panels
+  separated by a uniform-color row OR column whose color appears nowhere
+  else, and the output has panel shape. Builds a truth-table from training
+  pairs over (panel_a[r][c] != bg, panel_b[r][c] != bg) → output_color;
+  returns a rule only when the table is consistent across all pairs.
+  Generalises XOR / OR / AND / NOR / NAND / etc. between two boolean
+  panels, with the output color free to differ from both panel colors.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- 40-task shuffle (seed 42): 40 / 40 (100.0%); rules 80 → 82 (+2 learned).
+- 200-task shuffle (seed 42): **50 / 200 (25.0%)**, up from 47 / 200 (23.5%).
+- 99b1bc43, 506d28a5 — previously INCORRECT — now CORRECT via pipeline.
+- ce4f8723 (third task in the same category) also CORRECT via stored
+  `panel_logic_op` rule from 506d28a5 — confirms the strategy is
+  category-level, not single-task.
