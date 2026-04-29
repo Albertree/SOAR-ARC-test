@@ -801,3 +801,46 @@ Each connected non-bg component is one filler color plus a single anchor cell wi
     cell extended into a straight line toward its matching border
 - Result: 30/40 -> 31/40 (75.0% -> 77.5%), +1 rule learned
 - run_task.py 08ed6ac7: CORRECT (regression gate passing)
+
+---
+## Learning Loop -- 2026-04-29 10:29
+
+- Split: None, Tasks: 40
+- Correct: 31 / 40 (77.5%)
+- Rules: 38 -> 38 (+0 learned)
+- Stored rule hits: 31
+- Time: 19s
+- Log: logs/learn_20260429_102852.log
+
+---
+## Learning Loop -- 2026-04-29 10:39
+
+- Split: None, Tasks: 40
+- Correct: 32 / 40 (80.0%)
+- Rules: 38 -> 39 (+1 learned)
+- Stored rule hits: 31
+- Time: 18s
+- Log: logs/learn_20260429_103930.log
+
+---
+## Learning Loop -- 2026-04-29 10:45
+
+- Split: None, Tasks: 40
+- Correct: 33 / 40 (82.5%)
+- Rules: 39 -> 40 (+1 learned)
+- Stored rule hits: 32
+- Time: 19s
+- Log: logs/learn_20260429_104505.log
+
+---
+## Session 18 -- 2026-04-29
+
+Targeted failures: 6350f1f4, 5a719d11.
+
+Added two strategies in `agent/active_operators.py`:
+
+- **quadrant_repair** — input is split by mostly-bg row(s)/col(s) into a regular N×M grid of equal-sized quadrants. Iterates candidate bg colors so the divider color need not be the most common. Each quadrant's dominant color is computed; the most common dominant becomes the *primary*. A canonical pattern is built by per-cell majority vote across primary-dominant quadrants. Output: any quadrant containing the primary color is filled with all-primary; any quadrant lacking the primary (only accent + noise) receives the canonical pattern. Divider rows/cols are wiped to bg. Solves 6350f1f4 and any future "voted-canonical" repair task.
+
+- **panel_swap** — grid is split by uniform-bg rows into stacked panels; each panel is split by a contiguous uniform-bg column run into Left/Right halves of equal width. Each side has its own sub-bg and a noise-colored shape. Output swaps shapes between sides when their sub-bgs differ, recoloring the moved shape to the destination side's noise role (= source side's sub-bg). Same-bg panels become uniform bg. Solves 5a719d11 and any "two-cell symmetric panel swap" task.
+
+Result: 31/40 → 33/40 (77.5% → 82.5%), +2 stored rules.

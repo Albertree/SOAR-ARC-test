@@ -491,6 +491,27 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_directional_line_extract(example_pairs)
 
+        # Strategy 32: quadrant repair — input divided by mostly-bg row(s)
+        #   and column(s) into an N×M grid of equal-size cells. A canonical
+        #   pattern is derived by majority-voting cells from quadrants whose
+        #   dominant color is the primary. Output: quadrants that contain
+        #   the primary color get filled with all-primary; quadrants that
+        #   contain no primary (only accent + noise) get the canonical
+        #   pattern. Divider rows/cols become uniform background.
+        if rule is None:
+            rule = self._try_quadrant_repair(example_pairs)
+
+        # Strategy 33: panel swap — input is split by uniform-bg rows into
+        #   N stacked panels, and each panel is split by a uniform-bg
+        #   column into Left and Right halves. Each half has its own
+        #   sub-bg color and a noise-colored shape. Output: panels where
+        #   left.bg != right.bg get their shapes swapped (left receives
+        #   right's shape recolored to right.bg; right receives left's
+        #   shape recolored to left.bg). Panels where bgs match are
+        #   cleared to bg.
+        if rule is None:
+            rule = self._try_panel_swap(example_pairs)
+
         # Strategy 31: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -4030,6 +4051,285 @@ class GeneralizeOperator(Operator):
 
         return out
 
+    # ---- strategy: quadrant repair --------------------------------------
+
+    def _try_quadrant_repair(self, example_pairs):
+        """
+        Detect: input is divided by mostly-background rows/columns into a
+        regular N×M grid of equal-sized 'quadrants'. A canonical pattern
+        is derived by majority-vote across primary-dominant quadrants.
+        Output: quadrants that contain the primary color become uniform
+        primary; quadrants that contain no primary (accent + noise only)
+        receive the canonical pattern. Divider rows/cols become bg.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            r = GeneralizeOperator._compute_quadrant_repair(raw_in)
+            if r is None:
+                return None
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            for i in range(h):
+                for j in range(w):
+                    if r["output"][i][j] != raw_out[i][j]:
+                        return None
+
+        return {"type": "quadrant_repair", "confidence": 1.0}
+
+    @staticmethod
+    def _compute_quadrant_repair(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 5 or w < 5:
+            return None
+
+        cnt_total = {}
+        for row in raw:
+            for c in row:
+                cnt_total[c] = cnt_total.get(c, 0) + 1
+        candidates = sorted(cnt_total.keys(), key=lambda k: -cnt_total[k])
+
+        for bg in candidates:
+            r = GeneralizeOperator._compute_quadrant_repair_bg(raw, bg, h, w)
+            if r is not None:
+                return r
+        return None
+
+    @staticmethod
+    def _compute_quadrant_repair_bg(raw, bg, h, w):
+        is_div_row = [
+            sum(1 for c in raw[r] if c == bg) > w // 2 for r in range(h)
+        ]
+        is_div_col = [
+            sum(1 for r in range(h) if raw[r][c] == bg) > h // 2 for c in range(w)
+        ]
+        if not any(is_div_row) or not any(is_div_col):
+            return None
+
+        def runs(flags):
+            out = []
+            i = 0
+            n = len(flags)
+            while i < n:
+                if flags[i]:
+                    i += 1
+                    continue
+                j = i
+                while j < n and not flags[j]:
+                    j += 1
+                out.append((i, j - 1))
+                i = j
+            return out
+
+        row_bands = runs(is_div_row)
+        col_bands = runs(is_div_col)
+        if len(row_bands) < 2 or len(col_bands) < 2:
+            return None
+
+        qh = row_bands[0][1] - row_bands[0][0] + 1
+        qw = col_bands[0][1] - col_bands[0][0] + 1
+        if qh < 2 or qw < 2:
+            return None
+        for r0, r1 in row_bands:
+            if r1 - r0 + 1 != qh:
+                return None
+        for c0, c1 in col_bands:
+            if c1 - c0 + 1 != qw:
+                return None
+
+        quadrants = []
+        for r0, r1 in row_bands:
+            for c0, c1 in col_bands:
+                block = [
+                    [raw[r][c] for c in range(c0, c1 + 1)]
+                    for r in range(r0, r1 + 1)
+                ]
+                quadrants.append({"r0": r0, "c0": c0, "block": block})
+
+        for q in quadrants:
+            cnt = {}
+            for row in q["block"]:
+                for c in row:
+                    cnt[c] = cnt.get(c, 0) + 1
+            q["counts"] = cnt
+            q["dominant"] = max(cnt, key=cnt.get)
+
+        dom_counts = {}
+        for q in quadrants:
+            dom_counts[q["dominant"]] = dom_counts.get(q["dominant"], 0) + 1
+        primary = max(dom_counts, key=dom_counts.get)
+
+        healthy = [q for q in quadrants if q["dominant"] == primary]
+        if len(healthy) < 2:
+            return None
+
+        canonical = [[primary] * qw for _ in range(qh)]
+        for r in range(qh):
+            for c in range(qw):
+                cell_counts = {}
+                for q in healthy:
+                    v = q["block"][r][c]
+                    cell_counts[v] = cell_counts.get(v, 0) + 1
+                canonical[r][c] = max(cell_counts, key=cell_counts.get)
+
+        accent_counts = {}
+        for row in canonical:
+            for c in row:
+                if c != primary:
+                    accent_counts[c] = accent_counts.get(c, 0) + 1
+        if not accent_counts:
+            return None
+
+        if not any(primary not in q["counts"] for q in quadrants):
+            return None
+
+        out = [[bg] * w for _ in range(h)]
+        for q in quadrants:
+            r0, c0 = q["r0"], q["c0"]
+            block = canonical if primary not in q["counts"] else [
+                [primary] * qw for _ in range(qh)
+            ]
+            for r in range(qh):
+                for c in range(qw):
+                    out[r0 + r][c0 + c] = block[r][c]
+
+        return {
+            "output": out,
+            "primary": primary,
+            "canonical": canonical,
+            "bg": bg,
+        }
+
+    # ---- strategy: panel swap -------------------------------------------
+
+    def _try_panel_swap(self, example_pairs):
+        """
+        Detect: grid split by uniform-bg rows into stacked panels; each
+        panel split by a uniform-bg column run into a Left and Right half
+        of equal width. Each half has a sub-bg color and (optional) shape
+        cells in a noise color. Output swaps the two sides' shapes when
+        their sub-bgs differ; recolors using the other side's sub-bg as
+        noise.
+        """
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            res = GeneralizeOperator._compute_panel_swap(raw_in)
+            if res is None:
+                return None
+            for r in range(h):
+                for c in range(w):
+                    if res[r][c] != raw_out[r][c]:
+                        return None
+        return {"type": "panel_swap", "confidence": 1.0}
+
+    @staticmethod
+    def _compute_panel_swap(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 5 or w < 5:
+            return None
+
+        # Divider color = color of any fully-uniform row.
+        bg = None
+        for r in range(h):
+            if len(set(raw[r])) == 1:
+                bg = raw[r][0]
+                break
+        if bg is None:
+            return None
+
+        is_div_row = [all(c == bg for c in raw[r]) for r in range(h)]
+        if not any(is_div_row):
+            return None
+
+        panels = []
+        i = 0
+        while i < h:
+            if is_div_row[i]:
+                i += 1
+                continue
+            j = i
+            while j < h and not is_div_row[j]:
+                j += 1
+            panels.append((i, j - 1))
+            i = j
+        if len(panels) < 2:
+            return None
+
+        out = [list(row) for row in raw]
+
+        for r0, r1 in panels:
+            div_cols = [
+                c for c in range(w)
+                if all(raw[r][c] == bg for r in range(r0, r1 + 1))
+            ]
+            if not div_cols:
+                return None
+            runs = []
+            i = 0
+            while i < len(div_cols):
+                j = i
+                while j + 1 < len(div_cols) and div_cols[j + 1] == div_cols[j] + 1:
+                    j += 1
+                runs.append((div_cols[i], div_cols[j]))
+                i = j + 1
+            valid = [(a, b) for a, b in runs if a > 0 and b < w - 1]
+            if not valid:
+                return None
+            a, b = valid[0]
+            l0, l1 = 0, a - 1
+            rc0, rc1 = b + 1, w - 1
+            if (l1 - l0) != (rc1 - rc0):
+                return None
+
+            cl_counts = {}
+            cr_counts = {}
+            for r in range(r0, r1 + 1):
+                for c in range(l0, l1 + 1):
+                    cl_counts[raw[r][c]] = cl_counts.get(raw[r][c], 0) + 1
+                for c in range(rc0, rc1 + 1):
+                    cr_counts[raw[r][c]] = cr_counts.get(raw[r][c], 0) + 1
+            bg_l = max(cl_counts, key=cl_counts.get)
+            bg_r = max(cr_counts, key=cr_counts.get)
+
+            left_shape = [
+                (r - r0, c - l0)
+                for r in range(r0, r1 + 1)
+                for c in range(l0, l1 + 1)
+                if raw[r][c] != bg_l
+            ]
+            right_shape = [
+                (r - r0, c - rc0)
+                for r in range(r0, r1 + 1)
+                for c in range(rc0, rc1 + 1)
+                if raw[r][c] != bg_r
+            ]
+
+            for r in range(r0, r1 + 1):
+                for c in range(l0, l1 + 1):
+                    out[r][c] = bg_l
+                for c in range(rc0, rc1 + 1):
+                    out[r][c] = bg_r
+
+            if bg_l == bg_r:
+                continue
+
+            for (rr, cc) in right_shape:
+                out[r0 + rr][l0 + cc] = bg_r
+            for (rr, cc) in left_shape:
+                out[r0 + rr][rc0 + cc] = bg_l
+
+        return out
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -4161,6 +4461,10 @@ class PredictOperator(Operator):
             return self._apply_anchor_dotted_ray(rule, input_grid)
         if rule_type == "directional_line_extract":
             return self._apply_directional_line_extract(rule, input_grid)
+        if rule_type == "quadrant_repair":
+            return self._apply_quadrant_repair(rule, input_grid)
+        if rule_type == "panel_swap":
+            return self._apply_panel_swap(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4876,6 +5180,17 @@ class PredictOperator(Operator):
         if info is None:
             return None
         return GeneralizeOperator._build_directional_line_output(raw, info)
+
+    def _apply_quadrant_repair(self, rule, input_grid):
+        raw = input_grid.raw
+        info = GeneralizeOperator._compute_quadrant_repair(raw)
+        if info is None:
+            return None
+        return info["output"]
+
+    def _apply_panel_swap(self, rule, input_grid):
+        raw = input_grid.raw
+        return GeneralizeOperator._compute_panel_swap(raw)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

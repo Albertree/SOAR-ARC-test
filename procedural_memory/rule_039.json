@@ -1,0 +1,15 @@
+{
+  "id": 39,
+  "concept": "quadrant repair",
+  "category": "other",
+  "rule": {
+    "type": "quadrant_repair",
+    "confidence": 1.0
+  },
+  "covers": [
+    "6350f1f4"
+  ],
+  "source_task": "6350f1f4",
+  "created_at": "2026-04-29T10:39:45.116215",
+  "times_reused": 1
+}
