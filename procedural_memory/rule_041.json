@@ -1,0 +1,15 @@
+{
+  "id": 41,
+  "concept": "template replication",
+  "category": "other",
+  "rule": {
+    "type": "template_replication",
+    "confidence": 0.9
+  },
+  "covers": [
+    "0e206a2e"
+  ],
+  "source_task": "0e206a2e",
+  "created_at": "2026-04-29T11:01:58.700780",
+  "times_reused": 0
+}

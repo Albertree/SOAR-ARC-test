@@ -512,6 +512,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_panel_swap(example_pairs)
 
+        # Strategy 34: template replication — input has one or more "template"
+        #   shapes (each: connector cells + unique anchor cells) and several
+        #   "scattered" anchor cells. Output erases the templates and draws
+        #   the matching template (under d8 transform) at each scattered
+        #   group's anchor positions.
+        if rule is None:
+            rule = self._try_template_replication(example_pairs)
+
         # Strategy 31: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -4330,6 +4338,221 @@ class GeneralizeOperator(Operator):
 
         return out
 
+    # ---- strategy: template replication ---------------------------------
+
+    def _try_template_replication(self, example_pairs):
+        """
+        Detect: input contains one or more "templates" (connected components
+        with a connector color used multiple times plus distinct anchor
+        colors used once each) and "scattered" anchor cells outside the
+        templates. Output erases templates and redraws the matching template
+        (under a d8 transform) at each scattered group's positions.
+        """
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            result = GeneralizeOperator._compute_template_replication(raw_in)
+            if result is None:
+                return None
+            if [list(r) for r in result] != [list(r) for r in raw_out]:
+                return None
+        return {"type": "template_replication", "confidence": 0.9}
+
+    @staticmethod
+    def _compute_template_replication(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+
+        counts = {}
+        for row in raw:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        visited = [[False] * w for _ in range(h)]
+        components = []
+        for r in range(h):
+            for c in range(w):
+                if visited[r][c] or raw[r][c] == bg:
+                    continue
+                comp = []
+                stack = [(r, c)]
+                while stack:
+                    rr, cc = stack.pop()
+                    if not (0 <= rr < h and 0 <= cc < w):
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] == bg:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc, raw[rr][cc]))
+                    for dr in (-1, 0, 1):
+                        for dc in (-1, 0, 1):
+                            if dr == 0 and dc == 0:
+                                continue
+                            stack.append((rr + dr, cc + dc))
+                components.append(comp)
+
+        if len(components) < 2:
+            return None
+
+        candidates = []
+        for cidx, comp in enumerate(components):
+            col_counts = {}
+            for r, c, col in comp:
+                col_counts[col] = col_counts.get(col, 0) + 1
+            rep = [col for col, cnt in col_counts.items() if cnt > 1]
+            if len(rep) == 1 and len(col_counts) >= 3:
+                candidates.append((cidx, comp, col_counts, rep[0]))
+
+        if not candidates:
+            return None
+
+        connector_set = set(c[3] for c in candidates)
+        if len(connector_set) != 1:
+            return None
+        connector = next(iter(connector_set))
+
+        anchor_colors = None
+        for cidx, comp, col_counts, _ in candidates:
+            anchors_here = set(col_counts.keys()) - {connector}
+            if any(col_counts[ac] != 1 for ac in anchors_here):
+                return None
+            if anchor_colors is None:
+                anchor_colors = anchors_here
+            elif anchors_here != anchor_colors:
+                return None
+
+        if anchor_colors is None or len(anchor_colors) < 2:
+            return None
+
+        template_indices = set(cidx for cidx, _, _, _ in candidates)
+        for cidx, comp in enumerate(components):
+            if cidx in template_indices:
+                continue
+            for r, c, col in comp:
+                if col == connector:
+                    return None
+
+        ref_anchor = min(anchor_colors)
+        templates_data = []
+        for cidx, comp, col_counts, _ in candidates:
+            anchor_pos = {}
+            for r, c, col in comp:
+                if col in anchor_colors:
+                    anchor_pos[col] = (r, c)
+            if set(anchor_pos.keys()) != anchor_colors:
+                return None
+            ref_pos = anchor_pos[ref_anchor]
+            cells_rel = [
+                (r - ref_pos[0], c - ref_pos[1], col) for r, c, col in comp
+            ]
+            anchor_offsets = {
+                col: (pos[0] - ref_pos[0], pos[1] - ref_pos[1])
+                for col, pos in anchor_pos.items()
+            }
+            templates_data.append({
+                "cells_rel": cells_rel,
+                "anchor_offsets": anchor_offsets,
+            })
+
+        free_cells_set = {ac: set() for ac in anchor_colors}
+        for cidx, comp in enumerate(components):
+            if cidx in template_indices:
+                continue
+            for r, c, col in comp:
+                if col not in anchor_colors:
+                    return None
+                free_cells_set[col].add((r, c))
+
+        transforms = [
+            (lambda r, c: (r, c)),
+            (lambda r, c: (-r, c)),
+            (lambda r, c: (r, -c)),
+            (lambda r, c: (-r, -c)),
+            (lambda r, c: (c, r)),
+            (lambda r, c: (-c, r)),
+            (lambda r, c: (c, -r)),
+            (lambda r, c: (-c, -r)),
+        ]
+
+        used = set()
+        scattered_groups = []
+
+        while True:
+            ref_candidates = [
+                cell for cell in free_cells_set[ref_anchor] if cell not in used
+            ]
+            if not ref_candidates:
+                break
+            match = None
+            for ref_cell in ref_candidates:
+                rr, cc = ref_cell
+                for tdata in templates_data:
+                    for t in transforms:
+                        group = {ref_anchor: ref_cell}
+                        ok = True
+                        for col in anchor_colors:
+                            if col == ref_anchor:
+                                continue
+                            dr, dc = tdata["anchor_offsets"][col]
+                            tdr, tdc = t(dr, dc)
+                            expected = (rr + tdr, cc + tdc)
+                            if expected in used:
+                                ok = False
+                                break
+                            if expected not in free_cells_set[col]:
+                                ok = False
+                                break
+                            group[col] = expected
+                        if ok:
+                            match = (ref_cell, t, tdata, group)
+                            break
+                    if match:
+                        break
+                if match:
+                    break
+            if not match:
+                return None
+            ref_cell, t, tdata, group = match
+            for cell in group.values():
+                used.add(cell)
+            scattered_groups.append((ref_cell, t, tdata))
+
+        all_scattered = set()
+        for cells in free_cells_set.values():
+            all_scattered.update(cells)
+        if used != all_scattered:
+            return None
+        if not scattered_groups:
+            return None
+
+        output = [list(row) for row in raw]
+        for tidx in template_indices:
+            for r, c, col in components[tidx]:
+                output[r][c] = bg
+        for cidx, comp in enumerate(components):
+            if cidx in template_indices:
+                continue
+            for r, c, col in comp:
+                output[r][c] = bg
+
+        for ref_cell, t, tdata in scattered_groups:
+            rr, cc = ref_cell
+            for dr, dc, col in tdata["cells_rel"]:
+                tdr, tdc = t(dr, dc)
+                nr, nc = rr + tdr, cc + tdc
+                if not (0 <= nr < h and 0 <= nc < w):
+                    return None
+                output[nr][nc] = col
+
+        return output
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -4465,6 +4688,8 @@ class PredictOperator(Operator):
             return self._apply_quadrant_repair(rule, input_grid)
         if rule_type == "panel_swap":
             return self._apply_panel_swap(rule, input_grid)
+        if rule_type == "template_replication":
+            return self._apply_template_replication(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5191,6 +5416,10 @@ class PredictOperator(Operator):
     def _apply_panel_swap(self, rule, input_grid):
         raw = input_grid.raw
         return GeneralizeOperator._compute_panel_swap(raw)
+
+    def _apply_template_replication(self, rule, input_grid):
+        raw = input_grid.raw
+        return GeneralizeOperator._compute_template_replication(raw)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

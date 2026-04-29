@@ -844,3 +844,49 @@ Added two strategies in `agent/active_operators.py`:
 - **panel_swap** — grid is split by uniform-bg rows into stacked panels; each panel is split by a contiguous uniform-bg column run into Left/Right halves of equal width. Each side has its own sub-bg and a noise-colored shape. Output swaps shapes between sides when their sub-bgs differ, recoloring the moved shape to the destination side's noise role (= source side's sub-bg). Same-bg panels become uniform bg. Solves 5a719d11 and any "two-cell symmetric panel swap" task.
 
 Result: 31/40 → 33/40 (77.5% → 82.5%), +2 stored rules.
+
+---
+## Learning Loop -- 2026-04-29 10:46
+
+- Split: None, Tasks: 40
+- Correct: 33 / 40 (82.5%)
+- Rules: 40 -> 40 (+0 learned)
+- Stored rule hits: 33
+- Time: 19s
+- Log: logs/learn_20260429_104600.log
+
+---
+## Learning Loop -- 2026-04-29 11:02
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 40 -> 41 (+1 learned)
+- Stored rule hits: 33
+- Time: 20s
+- Log: logs/learn_20260429_110156.log
+
+---
+## Session 19 -- 2026-04-29 11:02
+
+Added one generalization strategy in `agent/active_operators.py`:
+
+- **`template_replication`** -- detects inputs that contain one or more
+  "template" connected components (each with a connector color used multiple
+  times plus distinct anchor colors used exactly once each) and "scattered"
+  anchor cells outside the templates. The output erases all templates and
+  redraws the matching template at each scattered group's anchor positions
+  under one of 8 d8 transformations (rotations + reflections). Solves
+  0e206a2e, which has multiple templates of different shapes; each
+  scattered group is matched to whichever template's anchor offsets fit.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 34 / 40 (85.0%), up from 33 / 40
+  - 0e206a2e: CORRECT via template_replication (newly discovered)
+- Rules: 40 -> 41 (+1 new strategy stored)
+
+Remaining failures (6): 878187ab (size mismatch 15->16), 825aa9e9
+(gravity within enclosed regions), 1c56ad9f (perspective-shear projection),
+9f669b64 (three-shape Newton's-cradle interaction), afe3afe9 (output size
+differs from input — shape extraction with palette), a2d730bd (rect+dot
+arrow projection with asymmetric special cases).
