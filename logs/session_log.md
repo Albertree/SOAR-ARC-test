@@ -1210,3 +1210,50 @@ no single-rule unification across train pairs.
 - run_task.py: CORRECT (regression intact)
 - Newly solved: 9f669b64 via barrier_passage
 - Remaining failures: 878187ab (V/triangle drawing), afe3afe9 (multi-color pattern composition)
+
+---
+## Learning Loop -- 2026-04-29 12:28
+
+- Split: None, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 45 -> 45 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_122800.log
+
+---
+## Learning Loop -- 2026-04-29 12:31
+
+- Split: None, Tasks: 40
+- Correct: 38 / 40 (95.0%)
+- Rules: 45 -> 45 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_123126.log
+
+---
+## Session 27 -- 2026-04-29
+
+- Failed tasks before: 878187ab, afe3afe9
+- Re-analysed 878187ab (V/triangle drawing): pattern dims map cleanly
+  to scatter-point counts (width = count of more-frequent non-bg color,
+  height = count of less-frequent), shape is a V from the bottom-left
+  corners drawn in a 2/4 palette with optional X-mirror when height >=
+  width/2. The blocker is output dimensions: ex0 input 16x16 -> 16x16,
+  ex1 input 15x15 -> 16x16, test 16x16 -> 16x16. No single deterministic
+  function of the input maps to the observed output sizes (constant 16
+  works for this task only and would not generalise as a category).
+- afe3afe9 (multi-color macro-grid -> dual-panel summary): each input is
+  a 30x30 macro grid of 3x3 hollow rings in 2-3 colours plus a 1-line
+  border on one of the four edges indicating read direction; output is a
+  small (6/7-wide) compositional encoding combining cell-wise presence
+  of each ring colour. Each train pair uses different colour roles and
+  the small-grid composition rule differs per pair -- no single
+  unification across train pairs.
+- No new strategy added this session: both remaining failures have
+  per-pair specifics (output dimensions in 878187ab; encoding rule in
+  afe3afe9) that would only solve one task each rather than a category,
+  violating the "category, not single task" requirement.
+- Result: 38/40 (95.0%) -- unchanged from session 26
+- run_task.py: CORRECT (regression intact)
+- Remaining failures: 878187ab, afe3afe9
