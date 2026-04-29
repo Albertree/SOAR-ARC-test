@@ -1370,3 +1370,81 @@ Verification:
 - `python run_learn.py --limit 40 --shuffle`: 39 / 40 (97.5%)
   - afe3afe9: still INCORRECT (only failure)
 - Rules: 46 -> 46 (no new strategies)
+
+---
+## Learning Loop -- 2026-04-29 12:47
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 46 -> 46 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_124726.log
+
+---
+## Learning Loop -- 2026-04-29 12:50
+
+- Split: None, Tasks: 200
+- Correct: 42 / 200 (21.0%)
+- Rules: 46 -> 75 (+29 learned)
+- Stored rule hits: 38
+- Time: 133s
+- Log: logs/learn_20260429_124825.log
+
+---
+## Learning Loop -- 2026-04-29 12:54
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 75 -> 75 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_125408.log
+
+---
+## Learning Loop -- 2026-04-29 12:56
+
+- Split: None, Tasks: 200
+- Correct: 43 / 200 (21.5%)
+- Rules: 75 -> 76 (+1 learned)
+- Stored rule hits: 39
+- Time: 102s
+- Log: logs/learn_20260429_125459.log
+
+---
+## Learning Loop -- 2026-04-29 12:57
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 76 -> 76 (+0 learned)
+- Stored rule hits: 38
+- Time: 22s
+- Log: logs/learn_20260429_125649.log
+
+---
+## Session 30 -- 2026-04-29 12:57
+
+Added strategy: **marker_stamp_offsets**
+
+Detects: same-shape input/output where each pair has bg + exactly one
+non-bg cell of a fixed marker color. Output replaces the marker with bg
+and writes a fixed (offset -> color) stamp around the marker, clipped
+at grid bounds. Across all pairs, marker color and offset->color map
+are consistent; offsets that fall in-bounds for a pair must appear in
+that pair's output (only out-of-bounds offsets may be missing).
+
+Target task: **a9f96cdd** -- a 2 marker on bg becomes a 4-corner
+diagonal stamp {(-1,-1):3, (-1,+1):6, (+1,-1):8, (+1,+1):7}, clipped at
+edges. Rule learned: marker_color=2, 4 diagonal offsets.
+
+The strategy is general: any "single-marker -> fixed stamp" task with
+bounds-clipping should now be solvable. (afe3afe9 still deferred.)
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_task.py a9f96cdd`: CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 39 / 40 (97.5%) (unchanged)
+- `python run_learn.py --limit 200 --shuffle`: 43 / 200 (vs 42 / 200
+  before this session) (+1 task solved by new strategy)
+- Rules: 75 -> 76 (rule_076 = marker_stamp_offsets for a9f96cdd)
+

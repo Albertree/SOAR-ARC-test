@@ -1,0 +1,18 @@
+{
+  "id": 49,
+  "concept": "bbox fill",
+  "category": "fill_transform",
+  "rule": {
+    "type": "bbox_fill",
+    "marker": 2,
+    "background": 0,
+    "foreground": 8,
+    "confidence": 1.0
+  },
+  "covers": [
+    "6d75e8bb"
+  ],
+  "source_task": "6d75e8bb",
+  "created_at": "2026-04-29T12:48:52.022332",
+  "times_reused": 1
+}

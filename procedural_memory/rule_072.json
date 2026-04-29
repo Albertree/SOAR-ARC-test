@@ -1,0 +1,20 @@
+{
+  "id": 72,
+  "concept": "recolor_objects_sequentially",
+  "category": "color_transform",
+  "rule": {
+    "type": "recolor_sequential",
+    "sort_key": "top_row",
+    "start_color": 8,
+    "source_colors": [
+      0
+    ],
+    "confidence": 1.0
+  },
+  "covers": [
+    "e88171ec"
+  ],
+  "source_task": "e88171ec",
+  "created_at": "2026-04-29T12:50:17.286272",
+  "times_reused": 0
+}

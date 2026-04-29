@@ -562,6 +562,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_count_wedge_v_pattern(example_pairs)
 
+        # Strategy 39: marker stamp at fixed offsets — input has exactly one
+        #   non-bg cell of a constant marker color; output replaces that cell
+        #   with bg and writes a fixed stamp (offset -> color map) around it,
+        #   clipping at grid bounds.
+        if rule is None:
+            rule = self._try_marker_stamp_offsets(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -5283,6 +5290,94 @@ class GeneralizeOperator(Operator):
 
         return {"wedge_bg": wedge_bg, "wedge_line": wedge_line}
 
+    # ---- strategy: marker stamp at fixed offsets ------------------------
+
+    def _try_marker_stamp_offsets(self, example_pairs):
+        """
+        Detect: same-shape input/output. Each pair's input has bg + exactly
+        one non-bg cell of a fixed marker color. Output equals bg
+        everywhere except a fixed stamp written at constant relative
+        offsets from the marker (possibly clipped at grid bounds). The
+        marker cell itself becomes bg in the output.
+
+        The offset->color map and the marker color must be consistent
+        across all pairs. For each pair, every offset that lies in-bounds
+        for that pair must appear in that pair's output (so the only
+        offsets allowed to be missing are the ones clipped).
+        """
+        if not example_pairs:
+            return None
+
+        marker_color = None
+        per_pair = []
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            non_bg = [(r, c, raw_in[r][c]) for r in range(h) for c in range(w)
+                      if raw_in[r][c] != bg]
+            if len(non_bg) != 1:
+                return None
+            mr, mc, mcol = non_bg[0]
+            if mcol == bg:
+                return None
+            if marker_color is None:
+                marker_color = mcol
+            elif marker_color != mcol:
+                return None
+
+            if raw_out[mr][mc] != bg:
+                return None
+
+            local_map = {}
+            for r in range(h):
+                for c in range(w):
+                    v = raw_out[r][c]
+                    if v == bg:
+                        continue
+                    if (r, c) == (mr, mc):
+                        return None
+                    local_map[(r - mr, c - mc)] = v
+
+            per_pair.append((h, w, mr, mc, local_map))
+
+        offset_map = {}
+        for _, _, _, _, local_map in per_pair:
+            for off, col in local_map.items():
+                if off in offset_map and offset_map[off] != col:
+                    return None
+                offset_map[off] = col
+
+        if not offset_map:
+            return None
+
+        for h, w, mr, mc, local_map in per_pair:
+            for off in offset_map:
+                dr, dc = off
+                tr, tc = mr + dr, mc + dc
+                if 0 <= tr < h and 0 <= tc < w:
+                    if off not in local_map:
+                        return None
+
+        offsets = [(dr, dc, col) for (dr, dc), col in sorted(offset_map.items())]
+        return {
+            "type": "marker_stamp_offsets",
+            "marker_color": marker_color,
+            "offsets": offsets,
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5430,6 +5525,8 @@ class PredictOperator(Operator):
             return self._apply_barrier_passage(rule, input_grid)
         if rule_type == "count_wedge_v_pattern":
             return self._apply_count_wedge_v_pattern(rule, input_grid)
+        if rule_type == "marker_stamp_offsets":
+            return self._apply_marker_stamp_offsets(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6239,6 +6336,33 @@ class PredictOperator(Operator):
                     out[r][c] = wedge_line
                 else:
                     out[r][c] = wedge_bg
+        return out
+
+    def _apply_marker_stamp_offsets(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return [row[:] for row in raw]
+
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+        marker_color = rule.get("marker_color")
+
+        markers = [(r, c) for r in range(h) for c in range(w)
+                   if raw[r][c] == marker_color]
+        if len(markers) != 1:
+            return [row[:] for row in raw]
+        mr, mc = markers[0]
+
+        out = [[bg] * w for _ in range(h)]
+        for dr, dc, col in rule.get("offsets", []):
+            tr, tc = mr + dr, mc + dc
+            if 0 <= tr < h and 0 <= tc < w:
+                out[tr][tc] = col
         return out
 
     def _apply_diamond_connector(self, rule, input_grid):
