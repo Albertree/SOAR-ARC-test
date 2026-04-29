@@ -584,6 +584,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_hollow_square_gravity(example_pairs)
 
+        # Strategy 42: barrier projection — a single-line barrier (row or
+        #   column of one color) with marker cells scattered on either
+        #   side; output preserves the barrier and gravity-projects each
+        #   side's nearest marker to the cell adjacent to the barrier.
+        if rule is None:
+            rule = self._try_barrier_projection(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -5631,6 +5638,119 @@ class GeneralizeOperator(Operator):
                     return None
         return {"type": "hollow_square_gravity", "confidence": 1.0}
 
+    # ---- strategy: barrier projection -----------------------------------
+
+    def _try_barrier_projection(self, example_pairs):
+        """
+        Detect: same input/output dimensions. Input contains a "barrier"
+        line: cells of one color confined to a single row OR a single
+        column, with at least 3 cells (gaps along the line are allowed).
+        Outside the barrier line, the rest of the input contains
+        "marker" cells (any non-bg, non-barrier colors) scattered around.
+        Output: bg everywhere except the barrier (preserved) and, for
+        each barrier cell at perpendicular index k, the marker cells
+        nearest to the barrier on each side along the perpendicular
+        axis are gravity-projected onto the cell directly adjacent to
+        the barrier on that side. Markers in rows/cols where the barrier
+        is absent (gap or beyond extent) are dropped.
+        """
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            predicted = GeneralizeOperator._barrier_projection_predict(raw_in)
+            if predicted is None:
+                return None
+            if len(predicted) != len(raw_out):
+                return None
+            for i in range(len(predicted)):
+                if list(predicted[i]) != list(raw_out[i]):
+                    return None
+        return {"type": "barrier_projection", "confidence": 1.0}
+
+    @staticmethod
+    def _barrier_projection_predict(raw_in):
+        h = len(raw_in)
+        w = len(raw_in[0]) if raw_in else 0
+        if h == 0 or w == 0:
+            return None
+        counts = {}
+        for row in raw_in:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        bg = max(counts, key=counts.get)
+        non_bg = [c for c in counts if c != bg]
+        if len(non_bg) < 2:
+            return None
+
+        barrier_info = None
+        for color in non_bg:
+            rows_with = set()
+            cols_with = set()
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] == color:
+                        rows_with.add(r)
+                        cols_with.add(c)
+            if len(rows_with) == 1 and len(cols_with) >= 3:
+                r = next(iter(rows_with))
+                barrier_info = ("row", r, color, set(cols_with))
+                break
+            if len(cols_with) == 1 and len(rows_with) >= 3:
+                c = next(iter(cols_with))
+                barrier_info = ("col", c, color, set(rows_with))
+                break
+        if barrier_info is None:
+            return None
+
+        axis, idx, bcolor, present = barrier_info
+
+        marker_exists = False
+        for r in range(h):
+            for c in range(w):
+                v = raw_in[r][c]
+                if v != bg and v != bcolor:
+                    marker_exists = True
+                    break
+            if marker_exists:
+                break
+        if not marker_exists:
+            return None
+
+        out = [[bg] * w for _ in range(h)]
+        if axis == "row":
+            for c in present:
+                out[idx][c] = bcolor
+            for c in present:
+                if idx - 1 >= 0:
+                    for r in range(idx - 1, -1, -1):
+                        v = raw_in[r][c]
+                        if v != bg and v != bcolor:
+                            out[idx - 1][c] = v
+                            break
+                if idx + 1 < h:
+                    for r in range(idx + 1, h):
+                        v = raw_in[r][c]
+                        if v != bg and v != bcolor:
+                            out[idx + 1][c] = v
+                            break
+        else:
+            for r in present:
+                out[r][idx] = bcolor
+            for r in present:
+                if idx - 1 >= 0:
+                    for c in range(idx - 1, -1, -1):
+                        v = raw_in[r][c]
+                        if v != bg and v != bcolor:
+                            out[r][idx - 1] = v
+                            break
+                if idx + 1 < w:
+                    for c in range(idx + 1, w):
+                        v = raw_in[r][c]
+                        if v != bg and v != bcolor:
+                            out[r][idx + 1] = v
+                            break
+        return out
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5784,6 +5904,8 @@ class PredictOperator(Operator):
             return self._apply_stack_objects_aligned(rule, input_grid)
         if rule_type == "hollow_square_gravity":
             return self._apply_hollow_square_gravity(rule, input_grid)
+        if rule_type == "barrier_projection":
+            return self._apply_barrier_projection(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6720,6 +6842,9 @@ class PredictOperator(Operator):
 
     def _apply_hollow_square_gravity(self, rule, input_grid):
         return GeneralizeOperator._compute_hollow_square_gravity_output(input_grid.raw)
+
+    def _apply_barrier_projection(self, rule, input_grid):
+        return GeneralizeOperator._barrier_projection_predict(input_grid.raw)
 
     # ---- helpers ---------------------------------------------------------
 

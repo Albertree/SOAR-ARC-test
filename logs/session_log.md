@@ -1561,3 +1561,88 @@ Verification:
 - `python run_learn.py --limit 40 --shuffle`: 40 / 40 (100.0%) (was 39/40)
 - afe3afe9 now solves via pipeline -> hollow_square_gravity rule
 - Rules: 77 -> 78 (rule_078 = hollow_square_gravity for afe3afe9)
+
+---
+## Learning Loop -- 2026-04-29 13:17
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 78 -> 78 (+0 learned)
+- Stored rule hits: 39
+- Time: 19s
+- Log: logs/learn_20260429_131729.log
+
+---
+## Session 33 -- 2026-04-29 (f83cb3f6)
+
+The 40-task shuffle was already at 100%. Expanded to 200 tasks
+(45 / 200) and picked an INCORRECT clean target: `f83cb3f6`.
+
+Decoded transformation:
+- Input has a "barrier" line: cells of one non-bg color confined
+  to a single row OR a single column, >= 3 cells along the line
+  (gaps along the line are allowed).
+- Outside the barrier, scattered "marker" cells of any other
+  non-bg color(s).
+- Output: bg everywhere except the barrier (preserved at the
+  same positions) and, for each barrier cell at perpendicular
+  index k, the nearest marker on each side along the
+  perpendicular axis is gravity-projected onto the cell directly
+  adjacent to the barrier on that side.
+- Markers in rows/cols where the barrier is absent (gap or
+  beyond extent) are dropped.
+
+Strategy added: `_try_barrier_projection` /
+`_apply_barrier_projection` (uses shared static
+`_barrier_projection_predict` helper). Parameter-free: succeeds
+only when the deterministic decode reproduces every training
+output exactly. Guards: barrier color confined to a single row
+or col with >= 3 cells; at least one non-barrier marker present.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_task.py f83cb3f6`: CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 40 / 40 (100.0%)
+- `python run_learn.py --limit 200 --shuffle`: 46 / 200
+  (was 45 / 200) -- +1 from `f83cb3f6` solved by the new strategy.
+- Rules: 78 -> 79 (rule_079 = barrier_projection for f83cb3f6)
+
+---
+## Learning Loop -- 2026-04-29 13:37
+
+- Split: None, Tasks: 200
+- Correct: 46 / 200 (23.0%)
+- Rules: 78 -> 79 (+1 learned)
+- Stored rule hits: 42
+- Time: 105s
+- Log: logs/learn_20260429_133558.log
+
+---
+## Learning Loop -- 2026-04-29 13:19
+
+- Split: None, Tasks: 200
+- Correct: 45 / 200 (22.5%)
+- Rules: 78 -> 78 (+0 learned)
+- Stored rule hits: 42
+- Time: 107s
+- Log: logs/learn_20260429_131810.log
+
+---
+## Learning Loop -- 2026-04-29 13:35
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 78 -> 78 (+0 learned)
+- Stored rule hits: 39
+- Time: 21s
+- Log: logs/learn_20260429_133533.log
+
+---
+## Learning Loop -- 2026-04-29 13:37
+
+- Split: None, Tasks: 200
+- Correct: 46 / 200 (23.0%)
+- Rules: 78 -> 79 (+1 learned)
+- Stored rule hits: 42
+- Time: 105s
+- Log: logs/learn_20260429_133558.log
