@@ -1,0 +1,15 @@
+{
+  "id": 44,
+  "concept": "zigzag grid shear",
+  "category": "other",
+  "rule": {
+    "type": "zigzag_grid_shear",
+    "confidence": 1.0
+  },
+  "covers": [
+    "1c56ad9f"
+  ],
+  "source_task": "1c56ad9f",
+  "created_at": "2026-04-29T12:14:15.499503",
+  "times_reused": 0
+}

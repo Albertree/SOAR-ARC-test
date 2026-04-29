@@ -1148,3 +1148,34 @@ no single-rule unification across train pairs.
 - Strategy added: each color has one solid rectangle + N singleton dots; output erases each singleton, draws a 4-cell '+' around it, connects plus to rectangle with 1-wide shaft and a 3-wide perpendicular cap at the rectangle edge.
 - Result: 35/40 (87.5%) -> 36/40 (90.0%)
 - run_task.py: CORRECT (regression intact)
+
+---
+## Learning Loop -- 2026-04-29 12:09
+
+- Split: None, Tasks: 40
+- Correct: 36 / 40 (90.0%)
+- Rules: 43 -> 43 (+0 learned)
+- Stored rule hits: 36
+- Time: 19s
+- Log: logs/learn_20260429_120930.log
+
+---
+## Learning Loop -- 2026-04-29 12:14
+
+- Split: None, Tasks: 40
+- Correct: 37 / 40 (92.5%)
+- Rules: 43 -> 44 (+1 learned)
+- Stored rule hits: 36
+- Time: 19s
+- Log: logs/learn_20260429_121412.log
+
+---
+## Session 25 -- 2026-04-29
+
+- Failed tasks before: 878187ab, 1c56ad9f, 9f669b64, afe3afe9
+- Picked: 1c56ad9f (zigzag_grid_shear pattern)
+- Strategy added: input has a single non-bg color forming a hollow rectangular grid (top + bottom horizontal lines with internal horizontal/vertical dividers). Output keeps the same shape but each row r in the fg bbox is shifted horizontally by an offset cycling through [0, -1, 0, +1] going UP from the bottom row. Rows outside the bbox are unchanged.
+- Result: 36/40 (90.0%) -> 37/40 (92.5%)
+- run_task.py: CORRECT (regression intact)
+- Newly solved: 1c56ad9f via zigzag_grid_shear
+- Remaining failures: 878187ab (V/triangle drawing), 9f669b64 (object split/relocate), afe3afe9 (multi-color pattern composition)

@@ -539,6 +539,15 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_arrow_to_rectangle(example_pairs)
 
+        # Strategy 36: zigzag grid shear — input has a single non-bg color
+        #   forming a hollow rectangle filled with internal horizontal and
+        #   vertical divider lines (a tiled grid pattern). Output keeps the
+        #   same shape but each row r in the bbox is shifted horizontally
+        #   by an offset cycling through [0, -1, 0, +1] going up from the
+        #   bottom row of the bbox.
+        if rule is None:
+            rule = self._try_zigzag_grid_shear(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -4709,6 +4718,71 @@ class GeneralizeOperator(Operator):
             return None
         return out
 
+    # ---- strategy: zigzag grid shear ------------------------------------
+
+    def _try_zigzag_grid_shear(self, example_pairs):
+        """
+        Detect: input has a single non-bg color forming a rectangular
+        grid pattern (hollow rectangle with internal horizontal +
+        vertical divider lines). Output: each row r within the input's
+        fg bbox is shifted horizontally by an offset cycling through
+        [0, -1, 0, +1] going UP from the bottom row of the bbox.
+        Rows outside the bbox are unchanged.
+        """
+        if not example_pairs:
+            return None
+
+        bg = 0
+        offsets_cycle = (0, -1, 0, 1)
+
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            fg_cells = [
+                (r, c)
+                for r in range(h)
+                for c in range(w)
+                if raw_in[r][c] != bg
+            ]
+            if len(fg_cells) < 6:
+                return None
+            fg_colors = {raw_in[r][c] for (r, c) in fg_cells}
+            if len(fg_colors) != 1:
+                return None
+
+            rs = [r for (r, _c) in fg_cells]
+            cs = [c for (_r, c) in fg_cells]
+            r_top, r_bot = min(rs), max(rs)
+            c_left, c_right = min(cs), max(cs)
+            if r_bot - r_top < 2 or c_right - c_left < 2:
+                return None
+
+            # Top and bottom rows of bbox must be solid horizontal lines
+            if any(raw_in[r_top][c] == bg for c in range(c_left, c_right + 1)):
+                return None
+            if any(raw_in[r_bot][c] == bg for c in range(c_left, c_right + 1)):
+                return None
+
+            # Verify the per-row shear transformation against output
+            for r in range(h):
+                if r < r_top or r > r_bot:
+                    if raw_out[r] != raw_in[r]:
+                        return None
+                    continue
+                offset = offsets_cycle[(r_bot - r) % 4]
+                for c in range(w):
+                    src_c = c - offset
+                    expected = raw_in[r][src_c] if 0 <= src_c < w else bg
+                    if raw_out[r][c] != expected:
+                        return None
+
+        return {"type": "zigzag_grid_shear", "confidence": 1.0}
+
     # ---- strategy: gravity to floor -------------------------------------
 
     def _try_gravity_to_floor(self, example_pairs):
@@ -4978,6 +5052,8 @@ class PredictOperator(Operator):
             return self._apply_gravity_to_floor(rule, input_grid)
         if rule_type == "arrow_to_rectangle":
             return self._apply_arrow_to_rectangle(rule, input_grid)
+        if rule_type == "zigzag_grid_shear":
+            return self._apply_zigzag_grid_shear(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5716,6 +5792,38 @@ class PredictOperator(Operator):
     def _apply_arrow_to_rectangle(self, rule, input_grid):
         raw = input_grid.raw
         return GeneralizeOperator._arrow_to_rect_predict(raw)
+
+    def _apply_zigzag_grid_shear(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        bg = 0
+
+        fg_cells = [
+            (r, c)
+            for r in range(h)
+            for c in range(w)
+            if raw[r][c] != bg
+        ]
+        if not fg_cells:
+            return [row[:] for row in raw]
+
+        rs = [r for (r, _c) in fg_cells]
+        r_top, r_bot = min(rs), max(rs)
+        offsets_cycle = (0, -1, 0, 1)
+
+        out = [row[:] for row in raw]
+        for r in range(h):
+            if r < r_top or r > r_bot:
+                continue
+            offset = offsets_cycle[(r_bot - r) % 4]
+            new_row = [bg] * w
+            for c in range(w):
+                src_c = c - offset
+                if 0 <= src_c < w:
+                    new_row[c] = raw[r][src_c]
+            out[r] = new_row
+        return out
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw
