@@ -6328,3 +6328,13 @@ from extracted objects.
 - Stored rule hits: 6
 - Time: 37s
 - Log: logs/learn_20260429_161557.log
+
+---
+## Learning Loop -- 2026-04-29 16:17
+
+- Split: training, Tasks: 20
+- Correct: 6 / 20 (30.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 6
+- Time: 37s
+- Log: logs/learn_20260429_161643.log
