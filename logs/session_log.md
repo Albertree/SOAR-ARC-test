@@ -719,3 +719,43 @@ Verification:
 - `python run_task.py` (regression on 08ed6ac7): CORRECT
 - `python run_learn.py --limit 40 --shuffle`: 29 / 40 (72.5%)
 - Rules: 35 -> 36
+
+---
+## Learning Loop -- 2026-04-29 10:03
+
+- Split: None, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 36 -> 36 (+0 learned)
+- Stored rule hits: 29
+- Time: 19s
+- Log: logs/learn_20260429_100302.log
+
+---
+## Learning Loop -- 2026-04-29 10:16
+
+- Split: None, Tasks: 40
+- Correct: 29 / 40 (72.5%)
+- Rules: 36 -> 36 (+0 learned)
+- Stored rule hits: 29
+- Time: 19s
+- Log: logs/learn_20260429_101557.log
+
+---
+## Learning Loop -- 2026-04-29 10:17
+
+- Split: None, Tasks: 40
+- Correct: 30 / 40 (75.0%)
+- Rules: 36 -> 37 (+1 learned)
+- Stored rule hits: 29
+- Time: 19s
+- Log: logs/learn_20260429_101718.log
+
+---
+## Session 16 -- 2026-04-29 10:17
+
+**New strategy: `anchor_dotted_ray`**
+Each connected non-bg component is one filler color plus a single anchor cell with a unique color and exactly one open cardinal direction (no shape cells along that ray to the edge). Output adds, per anchor, a dotted ray (every other cell, starting at offset 2) of anchor color in the open direction, plus a full boundary edge fill of anchor color. Where two rays' boundary edges meet at a corner, the cell is reset to 0.
+
+**Solved**: 13f06aa5 (anchor + dotted ray to edge with full boundary fill)
+**Score**: 29/40 -> 30/40 (72.5% -> 75.0%)
+**Rules**: 36 -> 37 (+1 learned)

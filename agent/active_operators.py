@@ -473,7 +473,16 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_grid_summary_corners(example_pairs)
 
-        # Strategy 30: simple 1:1 color mapping
+        # Strategy 30: anchor dotted ray — each connected component is one
+        #   filler color plus a single anchor cell with a unique color and
+        #   exactly one open cardinal direction; output adds, per anchor, a
+        #   dotted ray (every other cell) in the open direction plus a
+        #   boundary edge fill of anchor color, with corner intersections of
+        #   different anchors' boundary lines reset to background
+        if rule is None:
+            rule = self._try_anchor_dotted_ray(example_pairs)
+
+        # Strategy 31: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -3697,6 +3706,150 @@ class GeneralizeOperator(Operator):
                 comps.append(comp)
         return comps
 
+    # ---- strategy: anchor dotted ray ------------------------------------
+
+    def _try_anchor_dotted_ray(self, example_pairs):
+        """
+        Detect: input has one or more 4-connected non-bg components. Each
+        such component consists of a single 'filler' color (>=1 cells) and
+        exactly one 'anchor' cell with a different color. Each component
+        has exactly one cardinal direction (up/down/left/right) from the
+        anchor along which the entire ray to the grid edge contains no
+        component cell — call this the OPEN direction. Output preserves
+        every input cell and adds, for each anchor: a dotted ray of anchor
+        color (offsets 2, 4, 6, ... from the anchor in the OPEN direction)
+        plus filling the boundary edge in that direction with anchor color.
+        Where two rays' boundary edges meet at a corner, the corner cell is
+        reset to bg.
+        """
+        if not example_pairs:
+            return None
+
+        had_anchor = False
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            anchors_dirs = self._find_anchor_dirs(raw_in, bg)
+            if anchors_dirs is None:
+                return None
+            if anchors_dirs:
+                had_anchor = True
+
+            expected = self._draw_anchor_dotted_rays(raw_in, bg, anchors_dirs)
+            for r in range(h):
+                for c in range(w):
+                    if expected[r][c] != raw_out[r][c]:
+                        return None
+
+        if not had_anchor:
+            return None
+        return {"type": "anchor_dotted_ray", "confidence": 1.0}
+
+    @staticmethod
+    def _find_anchor_dirs(raw, bg):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        visited = [[False] * w for _ in range(h)]
+        anchors_dirs = []
+        for r0 in range(h):
+            for c0 in range(w):
+                if visited[r0][c0] or raw[r0][c0] == bg:
+                    continue
+                stack = [(r0, c0)]
+                comp = []
+                while stack:
+                    rr, cc = stack.pop()
+                    if rr < 0 or rr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] == bg:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc))
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        stack.append((rr + dr, cc + dc))
+                color_counts = {}
+                for r, c in comp:
+                    v = raw[r][c]
+                    color_counts[v] = color_counts.get(v, 0) + 1
+                anchors = [v for v, n in color_counts.items() if n == 1]
+                fillers = [v for v, n in color_counts.items() if n > 1]
+                if len(anchors) != 1 or len(fillers) != 1:
+                    # Component is not anchor+filler shaped.
+                    # Single-cell components or other patterns: invalid for
+                    # this strategy unless the component is a single cell
+                    # treated as a stray (we reject to avoid false positives).
+                    return None
+                anchor_color = anchors[0]
+                ar, ac = next((r, c) for r, c in comp if raw[r][c] == anchor_color)
+                shape_pos = set(comp)
+                open_dirs = []
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    has_shape = False
+                    rr, cc = ar + dr, ac + dc
+                    while 0 <= rr < h and 0 <= cc < w:
+                        if (rr, cc) in shape_pos:
+                            has_shape = True
+                            break
+                        rr, cc = rr + dr, cc + dc
+                    if not has_shape:
+                        open_dirs.append((dr, dc))
+                if len(open_dirs) != 1:
+                    return None
+                anchors_dirs.append(((ar, ac), anchor_color, open_dirs[0]))
+        return anchors_dirs
+
+    @staticmethod
+    def _draw_anchor_dotted_rays(raw, bg, anchors_dirs):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        out = [row[:] for row in raw]
+        boundary_lines = []  # list of ('row'|'col', index)
+        for (ar, ac), color, (dr, dc) in anchors_dirs:
+            offset = 1
+            while True:
+                rr = ar + dr * offset
+                cc = ac + dc * offset
+                if not (0 <= rr < h and 0 <= cc < w):
+                    break
+                if offset % 2 == 0:
+                    out[rr][cc] = color
+                offset += 1
+            if dr == -1:
+                for ccc in range(w):
+                    out[0][ccc] = color
+                boundary_lines.append(('row', 0))
+            elif dr == 1:
+                for ccc in range(w):
+                    out[h - 1][ccc] = color
+                boundary_lines.append(('row', h - 1))
+            elif dc == -1:
+                for rrr in range(h):
+                    out[rrr][0] = color
+                boundary_lines.append(('col', 0))
+            elif dc == 1:
+                for rrr in range(h):
+                    out[rrr][w - 1] = color
+                boundary_lines.append(('col', w - 1))
+        for i in range(len(boundary_lines)):
+            for j in range(i + 1, len(boundary_lines)):
+                a, b = boundary_lines[i], boundary_lines[j]
+                if a[0] == 'row' and b[0] == 'col':
+                    out[a[1]][b[1]] = 0
+                elif a[0] == 'col' and b[0] == 'row':
+                    out[b[1]][a[1]] = 0
+        return out
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -3824,6 +3977,8 @@ class PredictOperator(Operator):
             return self._apply_interior_exterior_recolor(rule, input_grid)
         if rule_type == "grid_summary_corners":
             return self._apply_grid_summary_corners(rule, input_grid)
+        if rule_type == "anchor_dotted_ray":
+            return self._apply_anchor_dotted_ray(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4518,6 +4673,20 @@ class PredictOperator(Operator):
     def _apply_framed_recolor_legend(self, rule, input_grid):
         raw = input_grid.raw
         return GeneralizeOperator._apply_framed_recolor_legend(raw)
+
+    def _apply_anchor_dotted_ray(self, rule, input_grid):
+        raw = input_grid.raw
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        if not counts:
+            return [row[:] for row in raw]
+        bg = max(counts, key=counts.get)
+        anchors_dirs = GeneralizeOperator._find_anchor_dirs(raw, bg)
+        if anchors_dirs is None:
+            return [row[:] for row in raw]
+        return GeneralizeOperator._draw_anchor_dotted_rays(raw, bg, anchors_dirs)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw
