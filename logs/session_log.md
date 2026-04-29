@@ -1313,3 +1313,60 @@ Verification:
   - 878187ab: CORRECT via count_wedge_v_pattern (pipeline)
 - Rules: 45 -> 46 (+1 new strategy stored in procedural_memory/)
 - Remaining failure: afe3afe9 (complex meta-puzzle deferred)
+
+---
+## Learning Loop -- 2026-04-29 12:41
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 46 -> 46 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_124139.log
+
+---
+## Learning Loop -- 2026-04-29 12:46
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 46 -> 46 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_124556.log
+
+---
+## Session 29 -- 2026-04-29 12:46
+
+No new generalization strategy added this session.
+
+The only failing task is **afe3afe9**, a complex meta-puzzle with these
+properties (decoded this session):
+
+- A 1-pixel border on one of the four edges of a 30x30 grid; the border
+  side determines orientation (top / bottom / left / right).
+- Pattern primitives are 3x3 hollow squares (frame), each acting like a
+  single "pixel" in a compressed representation.
+- Three colors are present: one "long" color always renders an Mx3 or
+  3xM grid of 1..21 hollow squares (the M-axis aligned away from the
+  border), and two "small" colors each render a 3x3 grid of squares.
+- The output dimensions are not a clean function of the input shape;
+  empirically the long axis matches the long color's pattern (e.g. 7x6
+  output when long color is 7x3 of squares, 6x7 when long color is 3x7).
+- The long color's pattern in the output is NOT a pure mirror or 180
+  rotation of the input pattern; some rows match the input directly,
+  others are mirrored, with the small-color cells "filling in" some of
+  the dropped/added cells.
+
+Conclusion: the transformation likely encodes a layered overlay between
+the long pattern and the two small patterns with orientation-dependent
+priorities. A faithful category-level strategy would need to model
+border orientation, square detection, pattern decoding, and the
+overlay/priority rules. Given the regression risk and the rule that
+each strategy must handle a category (not a single task), this remains
+deferred for a future session with deeper analysis.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 39 / 40 (97.5%)
+  - afe3afe9: still INCORRECT (only failure)
+- Rules: 46 -> 46 (no new strategies)
