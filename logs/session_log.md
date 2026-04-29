@@ -1119,3 +1119,32 @@ inconsistent placement rule across pairs), afe3afe9 (30x30 macro-grid
 to 7x6/6x7 dual-panel summary), a2d730bd (rect-projects-arrow with
 diamond decoration). All were re-analysed in sessions 21-22 and have
 no single-rule unification across train pairs.
+
+---
+## Learning Loop -- 2026-04-29 11:59
+
+- Split: None, Tasks: 40
+- Correct: 35 / 40 (87.5%)
+- Rules: 42 -> 42 (+0 learned)
+- Stored rule hits: 35
+- Time: 19s
+- Log: logs/learn_20260429_115905.log
+
+---
+## Learning Loop -- 2026-04-29 12:08
+
+- Split: None, Tasks: 40
+- Correct: 36 / 40 (90.0%)
+- Rules: 42 -> 43 (+1 learned)
+- Stored rule hits: 35
+- Time: 19s
+- Log: logs/learn_20260429_120837.log
+
+---
+## Session 24 -- 2026-04-29
+
+- Failed tasks before: 878187ab, 1c56ad9f, 9f669b64, afe3afe9, a2d730bd
+- Picked: a2d730bd (arrow_to_rectangle pattern)
+- Strategy added: each color has one solid rectangle + N singleton dots; output erases each singleton, draws a 4-cell '+' around it, connects plus to rectangle with 1-wide shaft and a 3-wide perpendicular cap at the rectangle edge.
+- Result: 35/40 (87.5%) -> 36/40 (90.0%)
+- run_task.py: CORRECT (regression intact)

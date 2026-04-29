@@ -1,0 +1,15 @@
+{
+  "id": 43,
+  "concept": "arrow to rectangle",
+  "category": "other",
+  "rule": {
+    "type": "arrow_to_rectangle",
+    "confidence": 1.0
+  },
+  "covers": [
+    "a2d730bd"
+  ],
+  "source_task": "a2d730bd",
+  "created_at": "2026-04-29T12:08:50.846154",
+  "times_reused": 0
+}

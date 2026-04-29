@@ -530,7 +530,16 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_gravity_to_floor(example_pairs)
 
-        # Strategy 31: simple 1:1 color mapping
+        # Strategy 31: arrow to rectangle — for each color in the input,
+        #   exactly one solid filled rectangle and one or more single-cell
+        #   "satellite" pixels of the same color exist. The output erases
+        #   each satellite, draws a 4-cell '+' around it, then connects the
+        #   plus to the rectangle with a 1-wide shaft and a 3-wide
+        #   perpendicular cap right at the rectangle edge.
+        if rule is None:
+            rule = self._try_arrow_to_rectangle(example_pairs)
+
+        # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -4563,6 +4572,143 @@ class GeneralizeOperator(Operator):
 
         return output
 
+    # ---- strategy: arrow to rectangle -----------------------------------
+
+    def _try_arrow_to_rectangle(self, example_pairs):
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            pred = GeneralizeOperator._arrow_to_rect_predict(raw_in)
+            if pred is None:
+                return None
+            for r in range(h):
+                for c in range(w):
+                    if pred[r][c] != raw_out[r][c]:
+                        return None
+        return {"type": "arrow_to_rectangle", "confidence": 1.0}
+
+    @staticmethod
+    def _arrow_to_rect_predict(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+
+        counts = {}
+        for row in raw:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        visited = [[False] * w for _ in range(h)]
+        components = []
+        for r in range(h):
+            for c in range(w):
+                if visited[r][c] or raw[r][c] == bg:
+                    continue
+                color = raw[r][c]
+                comp = []
+                stack = [(r, c)]
+                while stack:
+                    rr, cc = stack.pop()
+                    if rr < 0 or rr >= h or cc < 0 or cc >= w:
+                        continue
+                    if visited[rr][cc] or raw[rr][cc] != color:
+                        continue
+                    visited[rr][cc] = True
+                    comp.append((rr, cc))
+                    for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                        stack.append((rr + dr, cc + dc))
+                components.append((color, comp))
+
+        if not components:
+            return None
+
+        by_color = {}
+        for color, comp in components:
+            by_color.setdefault(color, []).append(comp)
+
+        out = [row[:] for row in raw]
+        any_singleton = False
+
+        for color, comps in by_color.items():
+            comps_sorted = sorted(comps, key=lambda c: -len(c))
+            rect = comps_sorted[0]
+            others = comps_sorted[1:]
+            if len(rect) < 4:
+                return None
+            for c in others:
+                if len(c) != 1:
+                    return None
+            rs = [p[0] for p in rect]
+            cs = [p[1] for p in rect]
+            r0, r1 = min(rs), max(rs)
+            c0, c1 = min(cs), max(cs)
+            if (r1 - r0 + 1) * (c1 - c0 + 1) != len(rect):
+                return None
+
+            for comp in others:
+                any_singleton = True
+                sr, sc = comp[0]
+                if sr < r0 and c0 <= sc <= c1:
+                    arrow_row = r0 - 1
+                    if arrow_row <= sr:
+                        return None
+                    for dc in (-1, 0, 1):
+                        cc = sc + dc
+                        if 0 <= cc < w:
+                            out[arrow_row][cc] = color
+                    for rr in range(sr + 1, arrow_row):
+                        out[rr][sc] = color
+                elif sr > r1 and c0 <= sc <= c1:
+                    arrow_row = r1 + 1
+                    if arrow_row >= sr:
+                        return None
+                    for dc in (-1, 0, 1):
+                        cc = sc + dc
+                        if 0 <= cc < w:
+                            out[arrow_row][cc] = color
+                    for rr in range(arrow_row + 1, sr):
+                        out[rr][sc] = color
+                elif sc < c0 and r0 <= sr <= r1:
+                    arrow_col = c0 - 1
+                    if arrow_col <= sc:
+                        return None
+                    for dr in (-1, 0, 1):
+                        rr = sr + dr
+                        if 0 <= rr < h:
+                            out[rr][arrow_col] = color
+                    for cc in range(sc + 1, arrow_col):
+                        out[sr][cc] = color
+                elif sc > c1 and r0 <= sr <= r1:
+                    arrow_col = c1 + 1
+                    if arrow_col >= sc:
+                        return None
+                    for dr in (-1, 0, 1):
+                        rr = sr + dr
+                        if 0 <= rr < h:
+                            out[rr][arrow_col] = color
+                    for cc in range(arrow_col + 1, sc):
+                        out[sr][cc] = color
+                else:
+                    return None
+
+                out[sr][sc] = bg
+                for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
+                    rr, cc = sr + dr, sc + dc
+                    if 0 <= rr < h and 0 <= cc < w:
+                        out[rr][cc] = color
+
+        if not any_singleton:
+            return None
+        return out
+
     # ---- strategy: gravity to floor -------------------------------------
 
     def _try_gravity_to_floor(self, example_pairs):
@@ -4830,6 +4976,8 @@ class PredictOperator(Operator):
             return self._apply_template_replication(rule, input_grid)
         if rule_type == "gravity_to_floor":
             return self._apply_gravity_to_floor(rule, input_grid)
+        if rule_type == "arrow_to_rectangle":
+            return self._apply_arrow_to_rectangle(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -5564,6 +5712,10 @@ class PredictOperator(Operator):
     def _apply_gravity_to_floor(self, rule, input_grid):
         raw = input_grid.raw
         return GeneralizeOperator._gravity_simulate(raw)
+
+    def _apply_arrow_to_rectangle(self, rule, input_grid):
+        raw = input_grid.raw
+        return GeneralizeOperator._arrow_to_rect_predict(raw)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw
