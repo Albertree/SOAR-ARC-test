@@ -569,6 +569,12 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_marker_stamp_offsets(example_pairs)
 
+        # Strategy 40: stack same-shape distinct-color objects aligned along
+        #   the axis of greatest spread (objects scattered horizontally are
+        #   concatenated left-to-right; vertically -> top-to-bottom).
+        if rule is None:
+            rule = self._try_stack_objects_aligned(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -5292,6 +5298,102 @@ class GeneralizeOperator(Operator):
 
     # ---- strategy: marker stamp at fixed offsets ------------------------
 
+    def _try_stack_objects_aligned(self, example_pairs):
+        """
+        Detect: input contains K >= 2 distinct non-bg colors. For each color
+        the union of its cells defines an "object" with a bounding box.
+        All objects must share the same bounding-box size (h, w), and the
+        objects' bounding boxes must be pairwise disjoint. The output is
+        the concatenation of each object's bounding-box crop along the
+        axis of greatest spatial spread:
+          - if col-spread > row-spread, stack horizontally sorted by min col
+          - otherwise stack vertically sorted by min row.
+
+        The arrangement axis is determined per-pair from the input layout
+        (no global axis constraint). Output dimensions must match:
+        (h, K*w) horizontal or (K*h, w) vertical.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            ih = len(raw_in)
+            iw = len(raw_in[0]) if raw_in else 0
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+            if ih == 0 or iw == 0 or oh == 0 or ow == 0:
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for v in row:
+                    counts[v] = counts.get(v, 0) + 1
+            bg = max(counts, key=counts.get)
+            non_bg_colors = [c for c in counts if c != bg]
+            if len(non_bg_colors) < 2:
+                return None
+
+            objects = []
+            for col in non_bg_colors:
+                cells = [(r, c) for r in range(ih) for c in range(iw)
+                         if raw_in[r][c] == col]
+                if not cells:
+                    return None
+                rs = [r for r, _ in cells]
+                cs = [c for _, c in cells]
+                r0, r1 = min(rs), max(rs)
+                c0, c1 = min(cs), max(cs)
+                objects.append({
+                    "color": col,
+                    "r0": r0, "r1": r1, "c0": c0, "c1": c1,
+                    "h": r1 - r0 + 1, "w": c1 - c0 + 1,
+                    "cells": set(cells),
+                })
+
+            sizes = {(o["h"], o["w"]) for o in objects}
+            if len(sizes) != 1:
+                return None
+            h_o, w_o = next(iter(sizes))
+
+            for i in range(len(objects)):
+                for j in range(i + 1, len(objects)):
+                    a, b = objects[i], objects[j]
+                    if not (a["r1"] < b["r0"] or b["r1"] < a["r0"]
+                            or a["c1"] < b["c0"] or b["c1"] < a["c0"]):
+                        return None
+
+            row_spread = max(o["r0"] for o in objects) - min(o["r0"] for o in objects)
+            col_spread = max(o["c0"] for o in objects) - min(o["c0"] for o in objects)
+            axis = "horizontal" if col_spread > row_spread else "vertical"
+
+            K = len(objects)
+            if axis == "horizontal":
+                if oh != h_o or ow != K * w_o:
+                    return None
+                ordered = sorted(objects, key=lambda o: o["c0"])
+            else:
+                if oh != K * h_o or ow != w_o:
+                    return None
+                ordered = sorted(objects, key=lambda o: o["r0"])
+
+            for idx, obj in enumerate(ordered):
+                col = obj["color"]
+                for dr in range(h_o):
+                    for dc in range(w_o):
+                        in_cell = ((obj["r0"] + dr, obj["c0"] + dc) in obj["cells"])
+                        if axis == "horizontal":
+                            out_v = raw_out[dr][idx * w_o + dc]
+                        else:
+                            out_v = raw_out[idx * h_o + dr][dc]
+                        expected = col if in_cell else bg
+                        if out_v != expected:
+                            return None
+
+        return {
+            "type": "stack_objects_aligned",
+            "confidence": 1.0,
+        }
+
     def _try_marker_stamp_offsets(self, example_pairs):
         """
         Detect: same-shape input/output. Each pair's input has bg + exactly
@@ -5527,6 +5629,8 @@ class PredictOperator(Operator):
             return self._apply_count_wedge_v_pattern(rule, input_grid)
         if rule_type == "marker_stamp_offsets":
             return self._apply_marker_stamp_offsets(rule, input_grid)
+        if rule_type == "stack_objects_aligned":
+            return self._apply_stack_objects_aligned(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6363,6 +6467,77 @@ class PredictOperator(Operator):
             tr, tc = mr + dr, mc + dc
             if 0 <= tr < h and 0 <= tc < w:
                 out[tr][tc] = col
+        return out
+
+    def _apply_stack_objects_aligned(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+
+        counts = {}
+        for row in raw:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        bg = max(counts, key=counts.get)
+        non_bg_colors = [c for c in counts if c != bg]
+        if len(non_bg_colors) < 2:
+            return None
+
+        objects = []
+        for col in non_bg_colors:
+            cells = [(r, c) for r in range(h) for c in range(w)
+                     if raw[r][c] == col]
+            if not cells:
+                return None
+            rs = [r for r, _ in cells]
+            cs = [c for _, c in cells]
+            r0, r1 = min(rs), max(rs)
+            c0, c1 = min(cs), max(cs)
+            objects.append({
+                "color": col,
+                "r0": r0, "r1": r1, "c0": c0, "c1": c1,
+                "h": r1 - r0 + 1, "w": c1 - c0 + 1,
+                "cells": set(cells),
+            })
+
+        sizes = {(o["h"], o["w"]) for o in objects}
+        if len(sizes) != 1:
+            return None
+        h_o, w_o = next(iter(sizes))
+
+        for i in range(len(objects)):
+            for j in range(i + 1, len(objects)):
+                a, b = objects[i], objects[j]
+                if not (a["r1"] < b["r0"] or b["r1"] < a["r0"]
+                        or a["c1"] < b["c0"] or b["c1"] < a["c0"]):
+                    return None
+
+        row_spread = max(o["r0"] for o in objects) - min(o["r0"] for o in objects)
+        col_spread = max(o["c0"] for o in objects) - min(o["c0"] for o in objects)
+        axis = "horizontal" if col_spread > row_spread else "vertical"
+
+        if axis == "horizontal":
+            ordered = sorted(objects, key=lambda o: o["c0"])
+        else:
+            ordered = sorted(objects, key=lambda o: o["r0"])
+
+        K = len(ordered)
+        if axis == "horizontal":
+            out_h, out_w = h_o, K * w_o
+        else:
+            out_h, out_w = K * h_o, w_o
+        out = [[bg] * out_w for _ in range(out_h)]
+        for idx, obj in enumerate(ordered):
+            for dr in range(h_o):
+                for dc in range(w_o):
+                    in_cell = ((obj["r0"] + dr, obj["c0"] + dc) in obj["cells"])
+                    v = obj["color"] if in_cell else bg
+                    if axis == "horizontal":
+                        out[dr][idx * w_o + dc] = v
+                    else:
+                        out[idx * h_o + dr][dc] = v
         return out
 
     def _apply_diamond_connector(self, rule, input_grid):

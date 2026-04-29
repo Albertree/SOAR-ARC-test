@@ -1448,3 +1448,65 @@ Verification:
   before this session) (+1 task solved by new strategy)
 - Rules: 75 -> 76 (rule_076 = marker_stamp_offsets for a9f96cdd)
 
+
+---
+## Learning Loop -- 2026-04-29 12:58
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 76 -> 76 (+0 learned)
+- Stored rule hits: 38
+- Time: 19s
+- Log: logs/learn_20260429_125746.log
+
+---
+## Learning Loop -- 2026-04-29 13:03
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 76 -> 76 (+0 learned)
+- Stored rule hits: 38
+- Time: 20s
+- Log: logs/learn_20260429_130312.log
+
+---
+## Learning Loop -- 2026-04-29 13:05
+
+- Split: None, Tasks: 200
+- Correct: 44 / 200 (22.0%)
+- Rules: 76 -> 77 (+1 learned)
+- Stored rule hits: 40
+- Time: 103s
+- Log: logs/learn_20260429_130338.log
+
+---
+## Session 31 -- 2026-04-29 13:05
+
+Added strategy: **stack_objects_aligned**
+
+Detects: input has K >= 2 distinct non-bg colors, each color's cells
+form an "object" with a bounding box. All objects share the same
+bbox size (h, w) and have pairwise-disjoint bboxes. The output is the
+concatenation of each object's bbox crop along the axis of greatest
+spatial spread:
+  - col-spread > row-spread -> horizontal stack, sorted by min col
+  - else vertical stack, sorted by min row
+Each pair's axis is determined dynamically from the input layout
+(no global axis lock), so a task with mixed horizontal/vertical
+example pairs is still admissible.
+
+Target task: **67636eac** (10x10 / 13x17 / 17x18 inputs holding 2-3
+small same-shape colored shapes; output is the shapes' bboxes
+concatenated). Pair 0 horizontal (3x9), pair 1 vertical (9x3),
+pair 2 vertical (6x3). Test horizontal (3x12, 4 objects).
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_task.py 67636eac`: CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 39 / 40 (97.5%) (unchanged)
+- `python run_learn.py --limit 200 --shuffle`: 44 / 200 (vs 43 / 200
+  before this session) -- +1 task solved by the new strategy.
+- Rules: 76 -> 77 (rule_077 = stack_objects_aligned for 67636eac)
+
+afe3afe9 remains deferred (complex meta-puzzle requiring panel
+detection + overlay decoding; flagged in earlier sessions).
