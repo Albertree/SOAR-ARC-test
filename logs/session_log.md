@@ -1004,3 +1004,60 @@ Verification:
 - `python run_task.py` (regression on 08ed6ac7): CORRECT
 - `python run_learn.py --limit 40 --shuffle`: 34 / 40 (85.0%) -- no change
 - Rules: 41 -> 41 (no new strategies persisted)
+
+---
+## Learning Loop -- 2026-04-29 11:31
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 25s
+- Log: logs/learn_20260429_113100.log
+
+---
+## Learning Loop -- 2026-04-29 11:38
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 19s
+- Log: logs/learn_20260429_113805.log
+
+---
+## Session 22 -- 2026-04-29
+
+Re-analysed the 6 stable failures (878187ab, 825aa9e9, 1c56ad9f,
+9f669b64, afe3afe9, a2d730bd). All match prior sessions' findings:
+
+- **1c56ad9f**: row offsets cycle {-1,0,+1,0} with starting phase
+  varying by example -- 7-row rect starts 0, 11-row starts 0, 10-row
+  starts -1, 12-row starts +1. Tried correlating phase to rect parity,
+  off-center direction (col-center sign of `grid_center - rect_center`),
+  and internal-line count -- each works for 2-3 training pairs but
+  contradicts the others. No single deterministic rule across pairs.
+- **825aa9e9**: per-compartment shape relocation. train[0] keeps a
+  1-row gap above the wall; train[1] sits flush; train[2] cone-stacks
+  inward; train[3] enters narrow valley. Different "settle" semantics
+  per pair -- not unifiable as a generic gravity strategy without
+  per-pair branching that can't be inferred from input alone.
+- **9f669b64**: shape-collides-with-shape physics; placement rule
+  for the displaced object differs between pairs (above-target vs
+  nested-in-target).
+- **a2d730bd**: rect projects an arrow at a stray dot, with bounded
+  thickening of rect's adjacent rows. Multi-feature decoration.
+- **878187ab**: input scatter -> a different-shape encoded summary.
+- **afe3afe9**: 30x30 macro-grid summarised into 7x6 with side overlay.
+
+Conservative decision: did not add a new strategy this session. The
+remaining failures are all single-task patterns that would require
+brittle heuristics; introducing one risks false-positives on the 34
+currently-correct tasks (sequential recolor and color mapping are
+already aggressive). The loop is at the diminishing-returns plateau
+documented in prior sessions.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 34 / 40 (85.0%) -- no change
+- Rules: 41 -> 41 (no new strategies persisted)
