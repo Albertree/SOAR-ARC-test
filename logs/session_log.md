@@ -950,3 +950,57 @@ Verification:
 - Stored rule hits: 34
 - Time: 20s
 - Log: logs/learn_20260429_111721.log
+
+---
+## Learning Loop -- 2026-04-29 11:18
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 18s
+- Log: logs/learn_20260429_111753.log
+
+---
+## Learning Loop -- 2026-04-29 11:30
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 24s
+- Log: logs/learn_20260429_112942.log
+
+---
+## Session 21 -- 2026-04-29 11:30
+
+No new strategy added this session. The 6 remaining failures are all
+genuinely hard ARC tasks already analyzed in earlier sessions:
+
+- **9f669b64** -- 3 stacked colored objects; middle moves into one
+  neighbor which splits perpendicularly. Re-investigated direction
+  selection: pair 0 (both neighbors equally adjacent + both rectangles)
+  picks the wider-perpendicular neighbor (9s). Pair 1 picks the only
+  rectangle (8s). Pair 2 picks the farther neighbor by gap (4s, gap=4).
+  Combined "farther > more-rectangular > wider-perpendicular" priority
+  gets neighbor selection right, but the *displacement* rule is
+  inconsistent: pair 0 places middle outside target's parallel span
+  (above 9s) while pair 1/2 place middle nested inside target span at
+  the far edge. No single placement rule fits all 3 train pairs.
+- **825aa9e9** -- "shapes settle 2 above floor" works for pairs 0/2/3
+  but pair 1 settles 1 above (sparse-marker floor). Adding a wall-
+  thickness branch then breaks pair 0 where shape 2's two disconnected
+  cells need to stack contiguously, not preserve the gap.
+- **1c56ad9f** -- sawtooth-wave shifts cycling through {-1,0,+1,0}
+  with period 4 but a per-rectangle phase offset. Tried correlating
+  phase to rect height, width, cell width, cell height, w-h sign,
+  internal-cells-count -- none give a consistent map across the 4
+  training pairs.
+- **a2d730bd**, **878187ab**, **afe3afe9** -- multi-feature decoration,
+  output palette/size derivation, and 6×7 lookup-table abstraction
+  respectively (all flagged hard in earlier sessions).
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 34 / 40 (85.0%) -- no change
+- Rules: 41 -> 41 (no new strategies persisted)
