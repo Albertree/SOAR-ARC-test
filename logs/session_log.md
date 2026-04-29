@@ -391,3 +391,50 @@ Added 2 strategies to `agent/active_operators.py`:
 
 Result: 20/40 (50.0%) -> 22/40 (55.0%). 2 new rules stored. Regression
 gate (08ed6ac7) still CORRECT.
+
+---
+## Learning Loop -- 2026-04-29 09:00
+
+- Split: None, Tasks: 40
+- Correct: 22 / 40 (55.0%)
+- Rules: 29 -> 29 (+0 learned)
+- Stored rule hits: 22
+- Time: 20s
+- Log: logs/learn_20260429_090006.log
+
+---
+## Learning Loop -- 2026-04-29 09:08
+
+- Split: None, Tasks: 40
+- Correct: 24 / 40 (60.0%)
+- Rules: 29 -> 31 (+2 learned)
+- Stored rule hits: 22
+- Time: 21s
+- Log: logs/learn_20260429_090746.log
+
+---
+## Session 10 -- 2026-04-29 09:08
+
+Added two generalization strategies in `agent/active_operators.py`:
+
+- **`cross_zone_fill`** -- detects a single full-length 'main' line (one
+  column or row) of color M, intersected by N >= 1 perpendicular
+  cross-lines, each a uniform color C_i (with intersect color X at the
+  cross). Background fills the rest with one color B. Output: each
+  cross-line becomes all-X with M at the intersection (M and X swap at
+  crosses); each background row/col is filled with the color of its
+  NEAREST cross-line; ties between equally-distant cross-lines of
+  DIFFERENT colors -> the entire row/col becomes X. Solves 332202d5.
+- **`plus_majority_color`** -- detects 1x1 outputs derived from a
+  'marker' color M scattered in the input, where each marker cell has
+  all 4 cardinal neighbors equal to one common non-marker color V_i.
+  Output is the most common V across all such markers (smallest color
+  on tie). Solves 642d658d.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 24 / 40 (60.0%), up from
+  22 / 40 (55.0%)
+  - 332202d5: CORRECT via cross_zone_fill (newly discovered)
+  - 642d658d: CORRECT via plus_majority_color (newly discovered)
+- Rules: 29 -> 31 (+2 new strategies stored in procedural_memory/)

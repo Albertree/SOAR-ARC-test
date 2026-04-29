@@ -1,0 +1,19 @@
+{
+  "id": 30,
+  "concept": "cross zone fill",
+  "category": "fill_transform",
+  "rule": {
+    "type": "cross_zone_fill",
+    "orientation": "col",
+    "main_color": 8,
+    "intersect_color": 1,
+    "background": 7,
+    "confidence": 1.0
+  },
+  "covers": [
+    "332202d5"
+  ],
+  "source_task": "332202d5",
+  "created_at": "2026-04-29T09:07:51.619245",
+  "times_reused": 0
+}

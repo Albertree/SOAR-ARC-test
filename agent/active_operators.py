@@ -425,7 +425,20 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_rotational_4fold(example_pairs)
 
-        # Strategy 25: simple 1:1 color mapping
+        # Strategy 25: cross zone fill — single main line + several
+        #   perpendicular cross-lines partition the grid into zones; each
+        #   background row/col gets its nearest cross-line color, main and
+        #   intersect colors swap at intersections
+        if rule is None:
+            rule = self._try_cross_zone_fill(example_pairs)
+
+        # Strategy 26: plus majority color — input has scattered 'marker'
+        #   cells whose 4 cardinal neighbors are all the same color; output
+        #   is 1x1 with the most common surrounding color
+        if rule is None:
+            rule = self._try_plus_majority_color(example_pairs)
+
+        # Strategy 27: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -2425,6 +2438,312 @@ class GeneralizeOperator(Operator):
                             out[base_r + r][base_c + c] = g[r][c]
         return out
 
+    # ---- strategy: cross zone fill --------------------------------------
+
+    def _try_cross_zone_fill(self, example_pairs):
+        """
+        Detect: input has a single full-length 'main' line (one row or one
+        column) of a single 'main' color M plus several full-length
+        cross-lines perpendicular to it. Cross-lines and the main line
+        intersect at a single 'intersection' color X. Background fills the
+        rest with one color B. Each cross-line has its own color C_i (along
+        all cells except the intersection where it's X).
+
+        Output: in each cross-line row (or col), the cross-color cells are
+        replaced by X and the intersection cell becomes M (M and X swap at
+        crosses). Each background row (or col) gets filled with the color
+        of its NEAREST cross-line; ties between equally-distant cross-lines
+        of different colors -> the entire row (or col) becomes X (including
+        the main-line cell). The main-line cell of each background row (col)
+        is X (was M).
+        """
+        if not example_pairs:
+            return None
+
+        # Try main-line as column then as row
+        for orient in ("col", "row"):
+            params = self._check_cross_zone_fill(example_pairs, orient)
+            if params is not None:
+                return {
+                    "type": "cross_zone_fill",
+                    "orientation": orient,
+                    "main_color": params["main_color"],
+                    "intersect_color": params["intersect_color"],
+                    "background": params["background"],
+                    "confidence": 1.0,
+                }
+        return None
+
+    @staticmethod
+    def _check_cross_zone_fill(example_pairs, orient):
+        main_c = inter_c = bg_c = None
+        for raw_in, raw_out in example_pairs:
+            h = len(raw_in)
+            w = len(raw_in[0]) if raw_in else 0
+            if h == 0 or w == 0:
+                return None
+            if h != len(raw_out) or w != (len(raw_out[0]) if raw_out else 0):
+                return None
+            parsed = GeneralizeOperator._parse_cross_zone(raw_in, orient)
+            if parsed is None:
+                return None
+            built = GeneralizeOperator._build_cross_zone(raw_in, orient,
+                                                        parsed)
+            if built is None:
+                return None
+            for r in range(h):
+                for c in range(w):
+                    if built[r][c] != raw_out[r][c]:
+                        return None
+            if main_c is None:
+                main_c = parsed["main_color"]
+                inter_c = parsed["intersect_color"]
+                bg_c = parsed["background"]
+            else:
+                if (main_c != parsed["main_color"]
+                        or inter_c != parsed["intersect_color"]
+                        or bg_c != parsed["background"]):
+                    return None
+        if main_c is None:
+            return None
+        return {"main_color": main_c, "intersect_color": inter_c,
+                "background": bg_c}
+
+    @staticmethod
+    def _parse_cross_zone(raw, orient):
+        """Identify main line, intersect color, background, cross-lines."""
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+
+        counts = {}
+        for row in raw:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        # Find the main line: a column (or row) whose cells are exactly two
+        # values - main_color and intersect_color
+        main_idx = None
+        main_color = None
+        intersect_color = None
+        if orient == "col":
+            for c in range(w):
+                vals = [raw[r][c] for r in range(h)]
+                vset = set(vals)
+                if len(vset) != 2:
+                    continue
+                # the more frequent is the main color
+                a, b = list(vset)
+                ca = vals.count(a)
+                cb = vals.count(b)
+                if ca > cb:
+                    mc, ic = a, b
+                else:
+                    mc, ic = b, a
+                if main_idx is not None:
+                    return None  # more than one candidate
+                main_idx = c
+                main_color = mc
+                intersect_color = ic
+        else:
+            for r in range(h):
+                vals = list(raw[r])
+                vset = set(vals)
+                if len(vset) != 2:
+                    continue
+                a, b = list(vset)
+                ca = vals.count(a)
+                cb = vals.count(b)
+                if ca > cb:
+                    mc, ic = a, b
+                else:
+                    mc, ic = b, a
+                if main_idx is not None:
+                    return None
+                main_idx = r
+                main_color = mc
+                intersect_color = ic
+
+        if main_idx is None:
+            return None
+        if main_color == bg or intersect_color == bg:
+            return None
+
+        # Find cross-line indices: rows (or cols) where main-line cell is the
+        # intersect color (not main color).
+        cross = {}
+        if orient == "col":
+            for r in range(h):
+                if raw[r][main_idx] == intersect_color:
+                    line_vals = [raw[r][c] for c in range(w) if c != main_idx]
+                    line_set = set(line_vals)
+                    if len(line_set) != 1:
+                        return None
+                    color = next(iter(line_set))
+                    if color == bg or color == intersect_color:
+                        return None
+                    cross[r] = color
+        else:
+            for c in range(w):
+                if raw[main_idx][c] == intersect_color:
+                    line_vals = [raw[r][c] for r in range(h) if r != main_idx]
+                    line_set = set(line_vals)
+                    if len(line_set) != 1:
+                        return None
+                    color = next(iter(line_set))
+                    if color == bg or color == intersect_color:
+                        return None
+                    cross[c] = color
+
+        if not cross:
+            return None
+
+        # Background cells should equal bg
+        if orient == "col":
+            for r in range(h):
+                if r in cross:
+                    continue
+                for c in range(w):
+                    if c == main_idx:
+                        if raw[r][c] != main_color:
+                            return None
+                    else:
+                        if raw[r][c] != bg:
+                            return None
+        else:
+            for c in range(w):
+                if c in cross:
+                    continue
+                for r in range(h):
+                    if r == main_idx:
+                        if raw[r][c] != main_color:
+                            return None
+                    else:
+                        if raw[r][c] != bg:
+                            return None
+
+        return {
+            "main_idx": main_idx,
+            "main_color": main_color,
+            "intersect_color": intersect_color,
+            "background": bg,
+            "cross": cross,
+        }
+
+    @staticmethod
+    def _build_cross_zone(raw, orient, parsed):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        main_idx = parsed["main_idx"]
+        mc = parsed["main_color"]
+        ic = parsed["intersect_color"]
+        cross = parsed["cross"]
+        out = [[0] * w for _ in range(h)]
+        cross_keys = sorted(cross.keys())
+        if orient == "col":
+            for r in range(h):
+                if r in cross:
+                    for c in range(w):
+                        out[r][c] = mc if c == main_idx else ic
+                    continue
+                # find nearest cross-line(s)
+                best_d = min(abs(r - k) for k in cross_keys)
+                nearest = [k for k in cross_keys if abs(r - k) == best_d]
+                colors = {cross[k] for k in nearest}
+                if len(colors) == 1:
+                    fill = next(iter(colors))
+                    for c in range(w):
+                        out[r][c] = ic if c == main_idx else fill
+                else:
+                    for c in range(w):
+                        out[r][c] = ic
+        else:
+            for c in range(w):
+                if c in cross:
+                    for r in range(h):
+                        out[r][c] = mc if r == main_idx else ic
+                    continue
+                best_d = min(abs(c - k) for k in cross_keys)
+                nearest = [k for k in cross_keys if abs(c - k) == best_d]
+                colors = {cross[k] for k in nearest}
+                if len(colors) == 1:
+                    fill = next(iter(colors))
+                    for r in range(h):
+                        out[r][c] = ic if r == main_idx else fill
+                else:
+                    for r in range(h):
+                        out[r][c] = ic
+        return out
+
+    # ---- strategy: plus majority color ----------------------------------
+
+    def _try_plus_majority_color(self, example_pairs):
+        """
+        Detect: output is a 1x1 grid. Input contains some 'marker' cells of
+        a constant color M; each marker has its 4 cardinal neighbors all
+        in-bounds and of one common color V_i. The output cell equals the
+        most common V across all such markers in the input. The marker
+        color and the rule are consistent across all examples.
+        """
+        if not example_pairs:
+            return None
+
+        # Output must be 1x1 in every example
+        for _, raw_out in example_pairs:
+            if len(raw_out) != 1 or not raw_out[0] or len(raw_out[0]) != 1:
+                return None
+
+        # Try each candidate marker color (intersect of input colors).
+        all_colors = None
+        for raw_in, _ in example_pairs:
+            colors = {v for row in raw_in for v in row}
+            all_colors = colors if all_colors is None else (all_colors
+                                                            & colors)
+        if not all_colors:
+            return None
+
+        for marker in sorted(all_colors):
+            ok = True
+            for raw_in, raw_out in example_pairs:
+                target = raw_out[0][0]
+                computed = GeneralizeOperator._plus_majority(raw_in, marker)
+                if computed is None or computed != target:
+                    ok = False
+                    break
+            if ok:
+                return {
+                    "type": "plus_majority_color",
+                    "marker": marker,
+                    "confidence": 1.0,
+                }
+        return None
+
+    @staticmethod
+    def _plus_majority(raw, marker):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        counts = {}
+        for r in range(h):
+            for c in range(w):
+                if raw[r][c] != marker:
+                    continue
+                if r - 1 < 0 or r + 1 >= h or c - 1 < 0 or c + 1 >= w:
+                    continue
+                u = raw[r - 1][c]
+                d = raw[r + 1][c]
+                l = raw[r][c - 1]
+                rt = raw[r][c + 1]
+                if u == d == l == rt and u != marker:
+                    counts[u] = counts.get(u, 0) + 1
+        if not counts:
+            return None
+        # Pick max count; on tie, smallest color value
+        best_n = max(counts.values())
+        candidates = [k for k, v in counts.items() if v == best_n]
+        return min(candidates)
+
     @staticmethod
     def _draw_corner_l_shoot(raw, bg):
         h = len(raw)
@@ -2610,6 +2929,10 @@ class PredictOperator(Operator):
             return self._apply_plus_center_marker(rule, input_grid)
         if rule_type == "rotational_4fold":
             return self._apply_rotational_4fold(rule, input_grid)
+        if rule_type == "cross_zone_fill":
+            return self._apply_cross_zone_fill(rule, input_grid)
+        if rule_type == "plus_majority_color":
+            return self._apply_plus_majority_color(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3085,6 +3408,30 @@ class PredictOperator(Operator):
     def _apply_rotational_4fold(self, rule, input_grid):
         raw = input_grid.raw
         return GeneralizeOperator._build_rotational_4fold(raw)
+
+    def _apply_cross_zone_fill(self, rule, input_grid):
+        raw = input_grid.raw
+        orient = rule.get("orientation")
+        if orient not in ("col", "row"):
+            return None
+        parsed = GeneralizeOperator._parse_cross_zone(raw, orient)
+        if parsed is None:
+            return None
+        if (parsed["main_color"] != rule.get("main_color")
+                or parsed["intersect_color"] != rule.get("intersect_color")
+                or parsed["background"] != rule.get("background")):
+            return None
+        return GeneralizeOperator._build_cross_zone(raw, orient, parsed)
+
+    def _apply_plus_majority_color(self, rule, input_grid):
+        raw = input_grid.raw
+        marker = rule.get("marker")
+        if marker is None:
+            return None
+        v = GeneralizeOperator._plus_majority(raw, marker)
+        if v is None:
+            return None
+        return [[v]]
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

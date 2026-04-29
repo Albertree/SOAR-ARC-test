@@ -1,0 +1,16 @@
+{
+  "id": 31,
+  "concept": "plus majority color",
+  "category": "color_transform",
+  "rule": {
+    "type": "plus_majority_color",
+    "marker": 4,
+    "confidence": 1.0
+  },
+  "covers": [
+    "642d658d"
+  ],
+  "source_task": "642d658d",
+  "created_at": "2026-04-29T09:08:05.497911",
+  "times_reused": 0
+}
