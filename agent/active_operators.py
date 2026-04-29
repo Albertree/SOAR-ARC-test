@@ -453,7 +453,13 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_plus_majority_color(example_pairs)
 
-        # Strategy 27: simple 1:1 color mapping
+        # Strategy 27: framed recolor legend — input has a 'main' multicolor
+        #   bordered region plus several 2-cell pairs that act as a color
+        #   recoloring legend; output is the main region's bbox recolored
+        if rule is None:
+            rule = self._try_framed_recolor_legend(example_pairs)
+
+        # Strategy 28: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
 
@@ -2759,6 +2765,156 @@ class GeneralizeOperator(Operator):
         candidates = [k for k, v in counts.items() if v == best_n]
         return min(candidates)
 
+    # ---- strategy: framed recolor legend ---------------------------------
+
+    def _try_framed_recolor_legend(self, example_pairs):
+        """
+        Detect: input has bg + a 'main' connected non-bg region (largest
+        component, multiple colors) plus one or more 2-cell 'legend' pair
+        components. Each pair has two distinct colors, exactly one of which
+        appears inside the main region. The output is the bbox of the main
+        region with each interior color X (that has a legend pair {X, Y})
+        recoloured to its partner Y.
+
+        Cell sizes outside the main and pairs are ignored (no other non-bg
+        components allowed). The main region's "frame" colour (most common
+        within the main) and any other non-mapped colours pass through
+        unchanged. The mapping is re-derived per test input from its own
+        legend pairs, so no per-task parameters need to be learned.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            result = GeneralizeOperator._apply_framed_recolor_legend(raw_in)
+            if result is None:
+                return None
+            if len(result) != len(raw_out):
+                return None
+            for ra, rb in zip(result, raw_out):
+                if len(ra) != len(rb):
+                    return None
+                for a, b in zip(ra, rb):
+                    if a != b:
+                        return None
+
+        return {
+            "type": "framed_recolor_legend",
+            "confidence": 1.0,
+        }
+
+    @staticmethod
+    def _apply_framed_recolor_legend(raw):
+        """
+        Apply the framed-recolor-legend transformation to a single grid.
+        Returns the recolored bbox of the main region, or None if the
+        structure does not match.
+        """
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+
+        counts = {}
+        for row in raw:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        if len(counts) < 4:
+            return None
+        bg = max(counts, key=counts.get)
+
+        # Connected components on non-bg cells (4-connected, color-agnostic).
+        visited = [[False] * w for _ in range(h)]
+        comps = []
+        for r in range(h):
+            for c in range(w):
+                if visited[r][c] or raw[r][c] == bg:
+                    continue
+                stack = [(r, c)]
+                cells = []
+                while stack:
+                    rr, cc = stack.pop()
+                    if (rr < 0 or rr >= h or cc < 0 or cc >= w
+                            or visited[rr][cc] or raw[rr][cc] == bg):
+                        continue
+                    visited[rr][cc] = True
+                    cells.append((rr, cc))
+                    stack.extend([(rr - 1, cc), (rr + 1, cc),
+                                  (rr, cc - 1), (rr, cc + 1)])
+                comps.append(cells)
+
+        if len(comps) < 2:
+            return None
+
+        # Main = component with highest cell count and >=2 distinct colors.
+        comps_sorted = sorted(comps, key=lambda c: -len(c))
+        main = None
+        for cells in comps_sorted:
+            colors = {raw[r][c] for r, c in cells}
+            if len(colors) >= 2:
+                main = cells
+                break
+        if main is None:
+            return None
+
+        main_set = set(main)
+        # Build legend pairs from remaining components: must be exactly 2
+        # cells with 2 distinct colors.
+        pairs = []
+        for cells in comps:
+            if cells is main:
+                continue
+            if len(cells) != 2:
+                return None
+            v1 = raw[cells[0][0]][cells[0][1]]
+            v2 = raw[cells[1][0]][cells[1][1]]
+            if v1 == v2:
+                return None
+            pairs.append((cells, v1, v2))
+        if not pairs:
+            return None
+
+        # Frame color = most common color in the main region.
+        main_color_counts = {}
+        for r, c in main:
+            v = raw[r][c]
+            main_color_counts[v] = main_color_counts.get(v, 0) + 1
+        frame_color = max(main_color_counts, key=main_color_counts.get)
+        inner_colors = set(main_color_counts) - {frame_color}
+        if not inner_colors:
+            return None
+
+        # Build color map from legend pairs.
+        color_map = {}
+        for _, v1, v2 in pairs:
+            in1 = v1 in inner_colors
+            in2 = v2 in inner_colors
+            if in1 == in2:
+                # Both or neither in inner → ambiguous.
+                return None
+            if in1:
+                source, target = v1, v2
+            else:
+                source, target = v2, v1
+            if source in color_map and color_map[source] != target:
+                return None
+            color_map[source] = target
+
+        # Bounding box of main region.
+        rs = [r for r, _ in main]
+        cs = [c for _, c in main]
+        r0, r1 = min(rs), max(rs)
+        c0, c1 = min(cs), max(cs)
+
+        out = []
+        for r in range(r0, r1 + 1):
+            row = []
+            for c in range(c0, c1 + 1):
+                v = raw[r][c]
+                row.append(color_map.get(v, v))
+            out.append(row)
+        return out
+
     # ---- strategy: ricochet ray -----------------------------------------
 
     def _try_ricochet_ray(self, example_pairs):
@@ -3415,6 +3571,8 @@ class PredictOperator(Operator):
             return self._apply_ricochet_ray(rule, input_grid)
         if rule_type == "mirror_shoot_anchor":
             return self._apply_mirror_shoot_anchor(rule, input_grid)
+        if rule_type == "framed_recolor_legend":
+            return self._apply_framed_recolor_legend(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4060,6 +4218,10 @@ class PredictOperator(Operator):
         if v is None:
             return None
         return [[v]]
+
+    def _apply_framed_recolor_legend(self, rule, input_grid):
+        raw = input_grid.raw
+        return GeneralizeOperator._apply_framed_recolor_legend(raw)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

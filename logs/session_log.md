@@ -538,3 +538,54 @@ Verification:
 - `python run_task.py` (regression on 08ed6ac7): CORRECT
 - `python run_learn.py --limit 40 --shuffle`: 26 / 40 (65.0%)
 - Rules: 32 -> 33
+
+---
+## Learning Loop -- 2026-04-29 09:34
+
+- Split: None, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 33 -> 33 (+0 learned)
+- Stored rule hits: 26
+- Time: 19s
+- Log: logs/learn_20260429_093417.log
+
+---
+## Learning Loop -- 2026-04-29 09:41
+
+- Split: None, Tasks: 40
+- Correct: 27 / 40 (67.5%)
+- Rules: 33 -> 34 (+1 learned)
+- Stored rule hits: 26
+- Time: 19s
+- Log: logs/learn_20260429_094056.log
+
+---
+## Session 13 -- 2026-04-29
+
+**Strategy added:** `framed_recolor_legend`
+
+A 'main' multi-color connected non-bg region (the largest 4-connected
+component with >= 2 distinct colors) is accompanied by one or more
+2-cell 'legend' pair components elsewhere in the grid. Each pair has
+two distinct colors, one of which appears inside the main region (the
+'source') and one which does not (the 'target'). The output is the
+bbox of the main region with each source color recolored to its
+partner target color; the frame color and other colors pass through
+unchanged. The mapping is re-derived from the test input itself, so
+no per-task parameters need to be learned.
+
+- Solves: e9b4f6fc (and category of legend-driven inner-recolor tasks)
+- Detection: largest non-bg 4-connected component with multi-colors is
+  the 'main'; all remaining non-bg components must be exactly 2 cells
+  of 2 distinct colors. Frame color = most common color in the main
+  region; inner colors = the other colors in the main.
+- Each legend pair uniquely maps source -> target by checking which of
+  its two colors lies in the main's inner-color set.
+
+**Result:** 26/40 -> 27/40 (65.0% -> 67.5%), +1 rule learned (rule_034)
+- e9b4f6fc: CORRECT via framed_recolor_legend (newly discovered)
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 27 / 40 (67.5%)
+- Rules: 33 -> 34
