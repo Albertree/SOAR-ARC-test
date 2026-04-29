@@ -1,0 +1,16 @@
+{
+  "id": 80,
+  "concept": "fractal self tile",
+  "category": "other",
+  "rule": {
+    "type": "fractal_self_tile",
+    "background": 0,
+    "confidence": 1.0
+  },
+  "covers": [
+    "007bbfb7"
+  ],
+  "source_task": "007bbfb7",
+  "created_at": "2026-04-29T13:42:11.939894",
+  "times_reused": 1
+}

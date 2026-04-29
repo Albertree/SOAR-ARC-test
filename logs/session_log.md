@@ -1646,3 +1646,56 @@ Verification:
 - Stored rule hits: 42
 - Time: 105s
 - Log: logs/learn_20260429_133558.log
+
+---
+## Learning Loop -- 2026-04-29 13:38
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 79 -> 79 (+0 learned)
+- Stored rule hits: 39
+- Time: 20s
+- Log: logs/learn_20260429_133825.log
+
+---
+## Learning Loop -- 2026-04-29 13:42
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 80 -> 80 (+0 learned)
+- Stored rule hits: 39
+- Time: 18s
+- Log: logs/learn_20260429_134215.log
+
+---
+## Learning Loop -- 2026-04-29 13:44
+
+- Split: None, Tasks: 200
+- Correct: 47 / 200 (23.5%)
+- Rules: 80 -> 80 (+0 learned)
+- Stored rule hits: 44
+- Time: 104s
+- Log: logs/learn_20260429_134238.log
+
+---
+## Session 34 -- 2026-04-29 13:42
+
+The 40-task shuffle was already 100% (40/40), but the 200-task pool from
+session 33 showed 46/200 (23.0%) — picked an INCORRECT task from there.
+
+Added one generalization strategy in `agent/active_operators.py`:
+
+- **`fractal_self_tile`** — detects when an NxN input becomes an N²xN²
+  output composed of NxN blocks: each input cell at (i,j) is replaced by a
+  block that is either a copy of the entire input (if the cell is non-bg)
+  or a uniform background block (if the cell is bg). Background color must
+  be consistent across all training pairs and is stored on the rule. Solves
+  007bbfb7 (and any task following the same self-similar tiling category).
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- 40-task shuffle (seed 42): 40 / 40 (100.0%); rules 79 → 80 (+1 learned:
+  fractal_self_tile stored from 007bbfb7).
+- 200-task shuffle (seed 42): **47 / 200 (23.5%)**, up from 46 / 200 (23.0%).
+- 007bbfb7: previously INCORRECT (identity fallback), now CORRECT via
+  stored fractal_self_tile rule.

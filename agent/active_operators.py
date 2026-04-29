@@ -329,6 +329,12 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_stack_with_mirror(example_pairs)
 
+        # Strategy 5b: fractal self-tile — NxN input becomes N²xN² output where
+        #   each input cell is replaced by a copy of the input (if non-bg) or
+        #   a block of background (if bg)
+        if rule is None:
+            rule = self._try_fractal_self_tile(example_pairs)
+
         # Strategy 6: rectangle interior fill — hollow rect borders get interior
         #   filled with a color determined by interior dimensions
         if rule is None:
@@ -998,6 +1004,68 @@ class GeneralizeOperator(Operator):
                 if list(raw_out[r][iw:]) != list(right[r]):
                     return False
             return True
+
+    # ---- strategy: fractal self-tile ------------------------------------
+
+    def _try_fractal_self_tile(self, example_pairs):
+        """
+        Detect: ih*iw input becomes (ih*ih) x (iw*iw) output composed of
+        ih*iw blocks (each of size ih*iw). For each input cell (i,j):
+          - if input[i][j] == background: block is uniform background
+          - else:                          block equals the full input
+        The background color must be consistent across all examples.
+        """
+        if not example_pairs:
+            return None
+
+        bgs = set()
+        for raw_in, raw_out in example_pairs:
+            ih = len(raw_in)
+            iw = len(raw_in[0]) if raw_in else 0
+            oh = len(raw_out)
+            ow = len(raw_out[0]) if raw_out else 0
+            if ih < 2 or iw < 2:
+                return None
+            if oh != ih * ih or ow != iw * iw:
+                return None
+
+            local_bg = None
+            for i in range(ih):
+                for j in range(iw):
+                    vals = set()
+                    for dr in range(ih):
+                        for dc in range(iw):
+                            vals.add(raw_out[i * ih + dr][j * iw + dc])
+                    if len(vals) == 1:
+                        v = next(iter(vals))
+                        if local_bg is None:
+                            local_bg = v
+                        elif local_bg != v:
+                            return None
+            if local_bg is None:
+                return None
+
+            for i in range(ih):
+                for j in range(iw):
+                    if raw_in[i][j] == local_bg:
+                        for dr in range(ih):
+                            for dc in range(iw):
+                                if raw_out[i * ih + dr][j * iw + dc] != local_bg:
+                                    return None
+                    else:
+                        for dr in range(ih):
+                            for dc in range(iw):
+                                if raw_out[i * ih + dr][j * iw + dc] != raw_in[dr][dc]:
+                                    return None
+            bgs.add(local_bg)
+
+        if len(bgs) != 1:
+            return None
+        return {
+            "type": "fractal_self_tile",
+            "background": bgs.pop(),
+            "confidence": 1.0,
+        }
 
     # ---- strategy: rectangle interior fill ------------------------------
 
@@ -5826,6 +5894,8 @@ class PredictOperator(Operator):
             return self._apply_integer_upscale(rule, input_grid)
         if rule_type == "stack_with_mirror":
             return self._apply_stack_with_mirror(rule, input_grid)
+        if rule_type == "fractal_self_tile":
+            return self._apply_fractal_self_tile(rule, input_grid)
         if rule_type == "rect_interior_fill":
             return self._apply_rect_interior_fill(rule, input_grid)
         if rule_type == "staircase_extend_right":
@@ -6041,6 +6111,23 @@ class PredictOperator(Operator):
             left = [row[:] for row in raw] if order == "input_first" else flipped
             right = flipped if order == "input_first" else [row[:] for row in raw]
             return [list(left[r]) + list(right[r]) for r in range(len(raw))]
+
+    def _apply_fractal_self_tile(self, rule, input_grid):
+        raw = input_grid.raw
+        ih = len(raw)
+        iw = len(raw[0]) if raw else 0
+        if ih < 2 or iw < 2:
+            return None
+        bg = rule.get("background", 0)
+        oh, ow = ih * ih, iw * iw
+        out = [[bg] * ow for _ in range(oh)]
+        for i in range(ih):
+            for j in range(iw):
+                if raw[i][j] != bg:
+                    for dr in range(ih):
+                        for dc in range(iw):
+                            out[i * ih + dr][j * iw + dc] = raw[dr][dc]
+        return out
 
     def _apply_rect_interior_fill(self, rule, input_grid):
         raw = input_grid.raw
