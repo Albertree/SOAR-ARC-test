@@ -1,0 +1,33 @@
+[07:52:39] === SOAR Learning Loop ===
+[07:52:39] Split: training | Tasks: 20 | Stored rules: 3
+[07:52:39] Log: logs/learn_20260429_075239.log
+[07:52:39] 
+[07:52:39] [1/20] c9680e90: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.2s)
+[07:52:40] [2/20] 878187ab: INCORRECT  rule=identity  via=pipeline(steps=14)  (0.5s)
+[07:52:40] [3/20] e5790162: INCORRECT  rule=recolor_sequential  via=pipeline(steps=20)  (0.3s)
+[07:52:40] [4/20] e9ac8c9e: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.4s)
+[07:52:41] [5/20] 0e206a2e: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.7s)
+[07:52:41] [6/20] 825aa9e9: INCORRECT  rule=identity  via=pipeline(steps=18)  (0.3s)
+[07:52:42] [7/20] 1c56ad9f: INCORRECT  rule=identity  via=pipeline(steps=18)  (0.8s)
+[07:52:43] [8/20] c0f76784: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.4s)
+[07:52:43] [9/20] 60a26a3e: INCORRECT  rule=color_mapping  via=pipeline(steps=16)  (0.6s)
+[07:52:43] [10/20] 8be77c9e: CORRECT  rule=stack_with_mirror  via=pipeline(steps=16)  (0.0s)
+[07:52:44] [11/20] 332202d5: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.8s)
+[07:52:44] [12/20] d23f8c26: INCORRECT  rule=color_mapping  via=pipeline(steps=16)  (0.1s)
+[07:52:44] [13/20] 6e82a1ae: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.2s)
+[07:52:45] [14/20] 9f669b64: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.3s)
+[07:52:46] [15/20] afe3afe9: INCORRECT  rule=identity  via=pipeline(steps=16)  (1.3s)
+[07:52:46] [16/20] 85c4e7cd: INCORRECT  rule=identity  via=pipeline(steps=18)  (0.4s)
+[07:52:46] [17/20] c59eb873: CORRECT  rule=integer_upscale  via=pipeline(steps=16)  (0.1s)
+[07:52:47] [18/20] 13f06aa5: INCORRECT  rule=identity  via=pipeline(steps=16)  (0.5s)
+[07:52:47] [19/20] bbc9ae5d: INCORRECT  rule=identity  via=pipeline(steps=20)  (0.1s)
+[07:52:48] [20/20] 5a719d11: INCORRECT  rule=identity  via=pipeline(steps=16)  (1.3s)
+[07:52:48] 
+[07:52:48] =======================================================
+[07:52:48] Tasks:       20  (0 errors)
+[07:52:48] Correct:     2 / 20  (10.0%)
+[07:52:48] Rules:       3 -> 5  (+2 learned)
+[07:52:48] Reused:      0 times (stored rule hit)
+[07:52:48] Discovered:  5 new rules from pipeline
+[07:52:48] Time:        9s  (0.5s/task)
+[07:52:48] =======================================================
