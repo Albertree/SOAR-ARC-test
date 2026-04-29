@@ -1510,3 +1510,54 @@ Verification:
 
 afe3afe9 remains deferred (complex meta-puzzle requiring panel
 detection + overlay decoding; flagged in earlier sessions).
+
+---
+## Learning Loop -- 2026-04-29 13:06
+
+- Split: None, Tasks: 40
+- Correct: 39 / 40 (97.5%)
+- Rules: 77 -> 77 (+0 learned)
+- Stored rule hits: 38
+- Time: 20s
+- Log: logs/learn_20260429_130550.log
+
+---
+## Learning Loop -- 2026-04-29 13:16
+
+- Split: None, Tasks: 40
+- Correct: 40 / 40 (100.0%)
+- Rules: 77 -> 78 (+1 learned)
+- Stored rule hits: 38
+- Time: 20s
+- Log: logs/learn_20260429_131637.log
+
+---
+## Session 32 -- 2026-04-29 (afe3afe9)
+
+Picked the only INCORRECT task: `afe3afe9`.
+
+Decoded transformation:
+- 30x30 input has a single full row/col of color 1 ('gravity indicator')
+  on one of the four borders.
+- The remaining region holds a regularly spaced 7x7 cell-grid where each
+  cell is either bg or a 3x3 hollow square of one color (border = color,
+  centre = 0), separated by 1-pixel bg gaps.
+- Output is the cell-grid, with fully-empty cell rows/cols pruned and
+  gravity applied based on the 1-line position:
+    1-line TOP    -> gravity RIGHT  (per row)
+    1-line BOTTOM -> gravity LEFT   (per row)
+    1-line LEFT   -> gravity UP     (per col)
+    1-line RIGHT  -> gravity DOWN   (per col)
+
+Strategy added: `_try_hollow_square_gravity` /
+`_apply_hollow_square_gravity` (uses shared static
+`_compute_hollow_square_gravity_output` helper). Parameter-free: succeeds
+only when the deterministic decode reproduces every training output.
+Restrictive guards: full-border 1-line, exact 3x3 hollow-square shape per
+non-empty cell, 3x3 all-bg per empty cell, >=2x2 cell-grid after pruning.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 40 / 40 (100.0%) (was 39/40)
+- afe3afe9 now solves via pipeline -> hollow_square_gravity rule
+- Rules: 77 -> 78 (rule_078 = hollow_square_gravity for afe3afe9)

@@ -575,6 +575,15 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_stack_objects_aligned(example_pairs)
 
+        # Strategy 41: hollow-square gravity — input has a 1-line border
+        #   (full row/col of 1s) and a regularly spaced cell-grid of 3x3
+        #   hollow squares. Output is the cell-grid (empty rows/cols
+        #   pruned) with gravity applied: 1-line TOP -> right per row,
+        #   BOTTOM -> left per row, LEFT -> up per col, RIGHT -> down per
+        #   col.
+        if rule is None:
+            rule = self._try_hollow_square_gravity(example_pairs)
+
         # Strategy 32: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -5480,6 +5489,148 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: hollow-square gravity --------------------------------
+
+    @staticmethod
+    def _compute_hollow_square_gravity_output(raw_in):
+        """
+        Decode an input grid that contains:
+          - a single full-border row/col of color 1 ('gravity indicator'),
+          - a regularly spaced cell-grid where each cell is either bg (all 0)
+            or a 3x3 hollow square of one color (border = color, centre = 0),
+            with cells separated by a single bg row/col.
+        Drop fully-empty cell rows/cols, then apply gravity:
+          1-line TOP    -> gravity RIGHT  (per row)
+          1-line BOTTOM -> gravity LEFT   (per row)
+          1-line LEFT   -> gravity UP     (per col)
+          1-line RIGHT  -> gravity DOWN   (per col)
+        Returns the resulting 2-D list of ints, or None if the input does
+        not match the pattern.
+        """
+        h = len(raw_in)
+        if h == 0:
+            return None
+        w = len(raw_in[0]) if raw_in else 0
+        if w == 0:
+            return None
+
+        one_dir = None
+        if all(raw_in[0][c] == 1 for c in range(w)):
+            one_dir = "top"
+        elif all(raw_in[h - 1][c] == 1 for c in range(w)):
+            one_dir = "bottom"
+        elif all(raw_in[r][0] == 1 for r in range(h)):
+            one_dir = "left"
+        elif all(raw_in[r][w - 1] == 1 for r in range(h)):
+            one_dir = "right"
+        if one_dir is None:
+            return None
+
+        first_r = 2 if one_dir == "top" else 1
+        first_c = 2 if one_dir == "left" else 1
+        boundary_r = h - 1 if one_dir == "bottom" else h
+        boundary_c = w - 1 if one_dir == "right" else w
+
+        n_cell_rows = 0
+        r = first_r
+        while r + 3 <= boundary_r:
+            n_cell_rows += 1
+            r += 4
+        n_cell_cols = 0
+        c = first_c
+        while c + 3 <= boundary_c:
+            n_cell_cols += 1
+            c += 4
+
+        if n_cell_rows < 2 or n_cell_cols < 2:
+            return None
+
+        bg = 0
+        cell_grid = [[bg] * n_cell_cols for _ in range(n_cell_rows)]
+        for i in range(n_cell_rows):
+            for j in range(n_cell_cols):
+                rr = first_r + i * 4
+                cc = first_c + j * 4
+                if rr + 2 >= h or cc + 2 >= w:
+                    return None
+                color = raw_in[rr][cc]
+                if color == bg:
+                    for dr in range(3):
+                        for dc in range(3):
+                            if raw_in[rr + dr][cc + dc] != bg:
+                                return None
+                else:
+                    if color == 1:
+                        return None
+                    expected = (
+                        (color, color, color),
+                        (color, bg, color),
+                        (color, color, color),
+                    )
+                    for dr in range(3):
+                        for dc in range(3):
+                            if raw_in[rr + dr][cc + dc] != expected[dr][dc]:
+                                return None
+                    cell_grid[i][j] = color
+
+        keep_rows = [i for i in range(n_cell_rows)
+                     if any(cell_grid[i][j] != bg for j in range(n_cell_cols))]
+        keep_cols = [j for j in range(n_cell_cols)
+                     if any(cell_grid[i][j] != bg for i in range(n_cell_rows))]
+        if not keep_rows or not keep_cols:
+            return None
+
+        pruned = [[cell_grid[i][j] for j in keep_cols] for i in keep_rows]
+        nr = len(pruned)
+        nc = len(pruned[0])
+
+        result = [[bg] * nc for _ in range(nr)]
+        if one_dir == "top":
+            for i in range(nr):
+                filled = [v for v in pruned[i] if v != bg]
+                offset = nc - len(filled)
+                for k, v in enumerate(filled):
+                    result[i][offset + k] = v
+        elif one_dir == "bottom":
+            for i in range(nr):
+                filled = [v for v in pruned[i] if v != bg]
+                for k, v in enumerate(filled):
+                    result[i][k] = v
+        elif one_dir == "left":
+            for j in range(nc):
+                filled = [pruned[i][j] for i in range(nr) if pruned[i][j] != bg]
+                for k, v in enumerate(filled):
+                    result[k][j] = v
+        else:  # right
+            for j in range(nc):
+                filled = [pruned[i][j] for i in range(nr) if pruned[i][j] != bg]
+                offset = nr - len(filled)
+                for k, v in enumerate(filled):
+                    result[offset + k][j] = v
+
+        return result
+
+    def _try_hollow_square_gravity(self, example_pairs):
+        """
+        Detect: each example pair has a 1-line border (full row/col of 1s)
+        and a cell-grid of 3x3 hollow squares. The output is the cell-grid
+        with empty rows/cols dropped and gravity applied based on the
+        1-line position. The strategy is parameter-free: it succeeds only
+        if the deterministic decode matches every training output exactly.
+        """
+        if not example_pairs:
+            return None
+        for raw_in, raw_out in example_pairs:
+            predicted = self._compute_hollow_square_gravity_output(raw_in)
+            if predicted is None:
+                return None
+            if len(predicted) != len(raw_out):
+                return None
+            for i in range(len(predicted)):
+                if list(predicted[i]) != list(raw_out[i]):
+                    return None
+        return {"type": "hollow_square_gravity", "confidence": 1.0}
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -5631,6 +5782,8 @@ class PredictOperator(Operator):
             return self._apply_marker_stamp_offsets(rule, input_grid)
         if rule_type == "stack_objects_aligned":
             return self._apply_stack_objects_aligned(rule, input_grid)
+        if rule_type == "hollow_square_gravity":
+            return self._apply_hollow_square_gravity(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -6564,6 +6717,9 @@ class PredictOperator(Operator):
         out = [row[:] for row in raw]
         GeneralizeOperator._draw_diamond_connectors(out, diamonds, connector)
         return out
+
+    def _apply_hollow_square_gravity(self, rule, input_grid):
+        return GeneralizeOperator._compute_hollow_square_gravity_output(input_grid.raw)
 
     # ---- helpers ---------------------------------------------------------
 
