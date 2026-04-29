@@ -1,0 +1,15 @@
+{
+  "id": 38,
+  "concept": "directional line extract",
+  "category": "other",
+  "rule": {
+    "type": "directional_line_extract",
+    "confidence": 1.0
+  },
+  "covers": [
+    "5daaa586"
+  ],
+  "source_task": "5daaa586",
+  "created_at": "2026-04-29T10:27:46.905509",
+  "times_reused": 1
+}

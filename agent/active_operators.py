@@ -482,6 +482,15 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._try_anchor_dotted_ray(example_pairs)
 
+        # Strategy 31: directional line extract — input has two full-row and
+        #   two full-column borders in 4 distinct non-bg colors framing a
+        #   sub-rectangle, plus scattered 'noise' cells whose color matches
+        #   exactly one border. Output is the bounded sub-rectangle, with
+        #   each interior noise cell extended into a line toward its
+        #   matching border.
+        if rule is None:
+            rule = self._try_directional_line_extract(example_pairs)
+
         # Strategy 31: simple 1:1 color mapping
         if rule is None:
             rule = self._try_color_mapping(patterns)
@@ -3850,6 +3859,177 @@ class GeneralizeOperator(Operator):
                     out[b[1]][a[1]] = 0
         return out
 
+    # ---- strategy: directional line extract -----------------------------
+
+    def _try_directional_line_extract(self, example_pairs):
+        """
+        Detect: input has exactly two full-row borders and two full-column
+        borders, each painted in a distinct non-bg color, defining a
+        bounded sub-rectangle. There are scattered 'noise' cells whose
+        color matches exactly one of the four border colors. Output is the
+        bounded sub-rectangle (with the four borders preserved from the
+        input), and each interior noise cell is extended into a straight
+        line of noise color reaching toward the matching border.
+        """
+        if not example_pairs:
+            return None
+
+        for raw_in, raw_out in example_pairs:
+            info = self._detect_directional_line_frame(raw_in)
+            if info is None:
+                return None
+            predicted = self._build_directional_line_output(raw_in, info)
+            if predicted is None:
+                return None
+            if len(predicted) != len(raw_out):
+                return None
+            for r in range(len(predicted)):
+                if len(predicted[r]) != len(raw_out[r]):
+                    return None
+                for c in range(len(predicted[r])):
+                    if predicted[r][c] != raw_out[r][c]:
+                        return None
+
+        return {"type": "directional_line_extract", "confidence": 1.0}
+
+    @staticmethod
+    def _detect_directional_line_frame(raw):
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h < 4 or w < 4:
+            return None
+
+        counts = {}
+        for r in range(h):
+            for c in range(w):
+                counts[raw[r][c]] = counts.get(raw[r][c], 0) + 1
+        if not counts:
+            return None
+        bg = max(counts, key=counts.get)
+
+        full_rows = []
+        for r in range(h):
+            cdict = {}
+            for c in range(w):
+                v = raw[r][c]
+                if v != bg:
+                    cdict[v] = cdict.get(v, 0) + 1
+            if not cdict:
+                continue
+            dom = max(cdict, key=cdict.get)
+            if cdict[dom] >= w - 2 and cdict[dom] >= 3:
+                full_rows.append((r, dom))
+
+        full_cols = []
+        for c in range(w):
+            cdict = {}
+            for r in range(h):
+                v = raw[r][c]
+                if v != bg:
+                    cdict[v] = cdict.get(v, 0) + 1
+            if not cdict:
+                continue
+            dom = max(cdict, key=cdict.get)
+            if cdict[dom] >= h - 2 and cdict[dom] >= 3:
+                full_cols.append((c, dom))
+
+        if len(full_rows) != 2 or len(full_cols) != 2:
+            return None
+
+        full_rows.sort(key=lambda x: x[0])
+        full_cols.sort(key=lambda x: x[0])
+        r0, top_color = full_rows[0]
+        r1, bottom_color = full_rows[1]
+        c0, left_color = full_cols[0]
+        c1, right_color = full_cols[1]
+
+        border_colors = {top_color, bottom_color, left_color, right_color}
+        if len(border_colors) != 4:
+            return None
+        if bg in border_colors:
+            return None
+        if r1 - r0 < 2 or c1 - c0 < 2:
+            return None
+
+        # Find noise color: a border color appearing in the strict interior
+        # (rows r0+1..r1-1, cols c0+1..c1-1).
+        interior_color_counts = {}
+        for r in range(r0 + 1, r1):
+            for c in range(c0 + 1, c1):
+                v = raw[r][c]
+                if v != bg and v in border_colors:
+                    interior_color_counts[v] = interior_color_counts.get(v, 0) + 1
+
+        if len(interior_color_counts) != 1:
+            return None
+        noise_color = next(iter(interior_color_counts))
+
+        if noise_color == top_color:
+            direction = "up"
+        elif noise_color == bottom_color:
+            direction = "down"
+        elif noise_color == left_color:
+            direction = "left"
+        elif noise_color == right_color:
+            direction = "right"
+        else:
+            return None
+
+        bounded_noise = []
+        for r in range(r0 + 1, r1):
+            for c in range(c0 + 1, c1):
+                if raw[r][c] == noise_color:
+                    bounded_noise.append((r, c))
+
+        return {
+            "bg": bg,
+            "r0": r0, "r1": r1, "c0": c0, "c1": c1,
+            "top_color": top_color, "bottom_color": bottom_color,
+            "left_color": left_color, "right_color": right_color,
+            "noise_color": noise_color, "direction": direction,
+            "bounded_noise": bounded_noise,
+        }
+
+    @staticmethod
+    def _build_directional_line_output(raw, info):
+        bg = info["bg"]
+        r0, r1 = info["r0"], info["r1"]
+        c0, c1 = info["c0"], info["c1"]
+        noise_color = info["noise_color"]
+        direction = info["direction"]
+
+        out_h = r1 - r0 + 1
+        out_w = c1 - c0 + 1
+        out = [[bg] * out_w for _ in range(out_h)]
+
+        # Copy the four borders directly from the input slice. This
+        # naturally yields the correct corner colors (whichever border
+        # actually painted that cell in the input).
+        for cc in range(out_w):
+            out[0][cc] = raw[r0][c0 + cc]
+            out[out_h - 1][cc] = raw[r1][c0 + cc]
+        for rr in range(out_h):
+            out[rr][0] = raw[r0 + rr][c0]
+            out[rr][out_w - 1] = raw[r0 + rr][c1]
+
+        for (r, c) in info["bounded_noise"]:
+            rr = r - r0
+            cc = c - c0
+            if direction == "up":
+                for k in range(1, rr + 1):
+                    out[k][cc] = noise_color
+            elif direction == "down":
+                for k in range(rr, out_h - 1):
+                    out[k][cc] = noise_color
+            elif direction == "left":
+                for k in range(1, cc + 1):
+                    out[rr][k] = noise_color
+            elif direction == "right":
+                for k in range(cc, out_w - 1):
+                    out[rr][k] = noise_color
+
+        return out
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -3979,6 +4159,8 @@ class PredictOperator(Operator):
             return self._apply_grid_summary_corners(rule, input_grid)
         if rule_type == "anchor_dotted_ray":
             return self._apply_anchor_dotted_ray(rule, input_grid)
+        if rule_type == "directional_line_extract":
+            return self._apply_directional_line_extract(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -4687,6 +4869,13 @@ class PredictOperator(Operator):
         if anchors_dirs is None:
             return [row[:] for row in raw]
         return GeneralizeOperator._draw_anchor_dotted_rays(raw, bg, anchors_dirs)
+
+    def _apply_directional_line_extract(self, rule, input_grid):
+        raw = input_grid.raw
+        info = GeneralizeOperator._detect_directional_line_frame(raw)
+        if info is None:
+            return None
+        return GeneralizeOperator._build_directional_line_output(raw, info)
 
     def _apply_diamond_connector(self, rule, input_grid):
         raw = input_grid.raw

@@ -759,3 +759,45 @@ Each connected non-bg component is one filler color plus a single anchor cell wi
 **Solved**: 13f06aa5 (anchor + dotted ray to edge with full boundary fill)
 **Score**: 29/40 -> 30/40 (72.5% -> 75.0%)
 **Rules**: 36 -> 37 (+1 learned)
+
+---
+## Learning Loop -- 2026-04-29 10:18
+
+- Split: None, Tasks: 40
+- Correct: 30 / 40 (75.0%)
+- Rules: 37 -> 37 (+0 learned)
+- Stored rule hits: 30
+- Time: 19s
+- Log: logs/learn_20260429_101817.log
+
+---
+## Learning Loop -- 2026-04-29 10:27
+
+- Split: None, Tasks: 40
+- Correct: 31 / 40 (77.5%)
+- Rules: 37 -> 38 (+1 learned)
+- Stored rule hits: 30
+- Time: 19s
+- Log: logs/learn_20260429_102735.log
+
+---
+## Learning Loop -- 2026-04-29 10:28
+
+- Split: None, Tasks: 40
+- Correct: 31 / 40 (77.5%)
+- Rules: 38 -> 38 (+0 learned)
+- Stored rule hits: 31
+- Time: 19s
+- Log: logs/learn_20260429_102758.log
+
+---
+## Session 17 -- 2026-04-29
+
+- Target task: 5daaa586 (directional line extract)
+- New strategy: `directional_line_extract`
+  - Detects 4 full-line borders (2 rows + 2 cols, distinct non-bg colors) framing a sub-rectangle
+  - Identifies a "noise" color among scattered interior cells that matches exactly one border
+  - Outputs the bounded sub-rectangle (borders preserved from input) with each interior noise
+    cell extended into a straight line toward its matching border
+- Result: 30/40 -> 31/40 (75.0% -> 77.5%), +1 rule learned
+- run_task.py 08ed6ac7: CORRECT (regression gate passing)
