@@ -890,3 +890,63 @@ Remaining failures (6): 878187ab (size mismatch 15->16), 825aa9e9
 9f669b64 (three-shape Newton's-cradle interaction), afe3afe9 (output size
 differs from input — shape extraction with palette), a2d730bd (rect+dot
 arrow projection with asymmetric special cases).
+
+---
+## Learning Loop -- 2026-04-29 11:03
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 19s
+- Log: logs/learn_20260429_110249.log
+
+---
+## Session 20 -- 2026-04-29 11:03
+
+No new strategy added this session. Investigated all 6 INCORRECT tasks
+(878187ab, 825aa9e9, 1c56ad9f, 9f669b64, afe3afe9, a2d730bd) and could
+not derive a clean cross-train-pair rule for any of them. Findings:
+
+- **825aa9e9** -- per-compartment shape gravity, but the resting offset
+  varies per pair. Pair 0 (full 8-wall floor row) settles shape bottom
+  at (wall_row - 2); pair 1 (only 2-anchor markers, no full floor)
+  settles at (anchor_row - 1). Pair 3 has a U-cup container into which
+  a single marker enters at the cup-top row, not bottom. No single
+  offset rule fits all 4 train pairs.
+- **1c56ad9f** -- rectangle border sheared into a period-4 sawtooth
+  wave (shifts cycle through {-1, 0, +1, 0}). All 4 train pairs share
+  period 4 but have 3 distinct phases (pair 0/1 -> phase 0,-1,0,+1;
+  pair 2 -> -1,0,+1,0; pair 3 -> +1,0,-1,0). Test pair has a 4th phase
+  (0,+1,0,-1). I could not derive the phase from rectangle width,
+  height, top-row position, or interior cell pattern.
+- **9f669b64** -- three stacked objects; middle object passes through
+  one neighbor which then splits perpendicularly. Direction selection
+  (which neighbor splits) doesn't match a clear rule: pair 1 chose the
+  larger neighbor, pair 2 chose the smaller; pair 0 had equal-sized
+  neighbors with ambiguous tiebreaker.
+- **a2d730bd** -- each "outside dot" projects a diamond-like decoration
+  pattern between itself and the bordered rectangle, plus a row/column
+  of fill connecting them. The decoration shape varies asymmetrically
+  per dot.
+- **878187ab** -- output size and palette differ from input; output is
+  an X pattern in a sub-grid whose dimensions depend on minor-color
+  counts and whose colors are completely new.
+- **afe3afe9** -- 30x30 input encodes a 6x7 or 7x6 lookup table by
+  comparing two side-by-side grids of 3x3 ring patterns. Pure analytic
+  abstraction task, hard to symbolically detect.
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: still 34 / 40 (85.0%)
+- Rules: 41 -> 41 (no new strategies)
+
+---
+## Learning Loop -- 2026-04-29 11:17
+
+- Split: None, Tasks: 40
+- Correct: 34 / 40 (85.0%)
+- Rules: 41 -> 41 (+0 learned)
+- Stored rule hits: 34
+- Time: 20s
+- Log: logs/learn_20260429_111721.log
