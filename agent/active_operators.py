@@ -300,6 +300,14 @@ class GeneralizeOperator(Operator):
         #   sequential-recolor strategy can false-positive on these tasks.
         rule = self._try_ricochet_ray(example_pairs)
 
+        # Strategy 0b: mirror shoot anchor — divider line splits grid into
+        #   top/bottom; bottom has anchor+pointer-trail objects; top has
+        #   marker cells at mirror of anchors. Output: each anchor moves
+        #   to far end of its pointer trail; each marker moves to mirror
+        #   of new anchor position.
+        if rule is None:
+            rule = self._try_mirror_shoot_anchor(example_pairs)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -2939,6 +2947,282 @@ class GeneralizeOperator(Operator):
         return None
 
     @staticmethod
+    def _group_4connected(positions):
+        """Group (row, col) positions into 4-connected components."""
+        pos_set = set(positions)
+        visited = set()
+        groups = []
+        for pos in positions:
+            if pos in visited:
+                continue
+            group = []
+            queue = [pos]
+            while queue:
+                p = queue.pop(0)
+                if p in visited or p not in pos_set:
+                    continue
+                visited.add(p)
+                group.append(p)
+                r, c = p
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb in pos_set and nb not in visited:
+                        queue.append(nb)
+            groups.append(group)
+        return groups
+
+    # ---- strategy: mirror shoot anchor ----------------------------------
+
+    def _try_mirror_shoot_anchor(self, example_pairs):
+        """
+        Detect: a full-row or full-column divider line of color D splits the
+        grid into two regions. One region (the 'object' region) contains
+        connected components built from exactly two foreground colors:
+        anchor color A (one or more cells per component) and pointer color
+        P (one or more cells per component). The other region (the 'marker'
+        region) contains scattered cells of a third color M, each placed at
+        the mirror (across the divider) of an A cell in the object region.
+
+        Output: the divider stays. In the object region, each A cell moves
+        to the farthest connected P cell along its trail (BFS through P
+        cells); the original A and trail P cells become background. In the
+        marker region, each M cell is placed at the mirror of the new A
+        position; original M cells become background.
+        """
+        if not example_pairs:
+            return None
+
+        anchor_color = None
+        pointer_color = None
+        marker_color = None
+        divider_color = None
+        divider_axis = None  # 'row' or 'col'
+        marker_side = None   # which side has markers: 'before' or 'after'
+
+        for raw_in, raw_out in example_pairs:
+            if not raw_in or not raw_out:
+                return None
+            h = len(raw_in)
+            w = len(raw_in[0])
+            if len(raw_out) != h or len(raw_out[0]) != w:
+                return None
+
+            counts = {}
+            for row in raw_in:
+                for c in row:
+                    counts[c] = counts.get(c, 0) + 1
+            bg = max(counts, key=counts.get)
+
+            # Find divider: a full row or column of single non-bg color.
+            div_row = None
+            div_col = None
+            div_color = None
+            for r in range(h):
+                vals = set(raw_in[r])
+                if len(vals) == 1:
+                    v = next(iter(vals))
+                    if v != bg:
+                        if div_row is not None:
+                            # Multiple full rows; pick by uniqueness later
+                            return None
+                        div_row = r
+                        div_color = v
+            for c in range(w):
+                vals = {raw_in[r][c] for r in range(h)}
+                if len(vals) == 1:
+                    v = next(iter(vals))
+                    if v != bg:
+                        if div_col is not None:
+                            return None
+                        # Prefer earlier-found row; only set if no row found
+                        if div_row is None:
+                            div_col = c
+                            div_color = v
+                        else:
+                            return None
+            if div_row is None and div_col is None:
+                return None
+            axis = "row" if div_row is not None else "col"
+
+            # Identify foreground colors (excluding bg and divider).
+            fg_colors = set()
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v != bg and v != div_color:
+                        fg_colors.add(v)
+            if len(fg_colors) != 3:
+                return None
+
+            # Determine which color is the marker (single-cell scattered
+            # in one half) vs anchor/pointer (in the other half).
+            def in_side_a(r, c):
+                if axis == "row":
+                    return r < div_row
+                return c < div_col
+
+            def in_side_b(r, c):
+                if axis == "row":
+                    return r > div_row
+                return c > div_col
+
+            colors_in_a = set()
+            colors_in_b = set()
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v == bg or v == div_color:
+                        continue
+                    if in_side_a(r, c):
+                        colors_in_a.add(v)
+                    elif in_side_b(r, c):
+                        colors_in_b.add(v)
+                    else:
+                        # On divider line — would only be div_color
+                        return None
+
+            if len(colors_in_a) == 1 and len(colors_in_b) == 2:
+                m_color = next(iter(colors_in_a))
+                obj_colors = colors_in_b
+                m_side = "a"
+            elif len(colors_in_b) == 1 and len(colors_in_a) == 2:
+                m_color = next(iter(colors_in_b))
+                obj_colors = colors_in_a
+                m_side = "b"
+            else:
+                return None
+
+            # Find connected components of object colors. Each must
+            # contain at least one anchor cell and at least one pointer
+            # cell. Need to figure out anchor vs pointer: the anchor is
+            # the color whose cell positions in the input match the
+            # mirror of marker cells in the marker region.
+
+            obj_positions = []
+            for r in range(h):
+                for c in range(w):
+                    if raw_in[r][c] in obj_colors:
+                        obj_positions.append((r, c))
+
+            comps = self._group_4connected(obj_positions)
+            if not comps:
+                return None
+
+            marker_positions = sorted(
+                (r, c) for r in range(h) for c in range(w)
+                if raw_in[r][c] == m_color)
+
+            def mirror(r, c):
+                if axis == "row":
+                    return (2 * div_row - r, c)
+                return (r, 2 * div_col - c)
+
+            # Try both candidates as the anchor color.
+            obj_list = sorted(obj_colors)
+            chosen_anchor = None
+            for a_cand in obj_list:
+                p_cand = (obj_list[0] if obj_list[1] == a_cand
+                          else obj_list[1])
+                # Check: input markers = mirror(input anchors)
+                anchor_cells = sorted(
+                    (r, c) for (r, c) in obj_positions
+                    if raw_in[r][c] == a_cand)
+                mirrored = sorted(mirror(r, c) for r, c in anchor_cells)
+                if mirrored == marker_positions:
+                    chosen_anchor = (a_cand, p_cand)
+                    break
+
+            if chosen_anchor is None:
+                return None
+            a_color, p_color = chosen_anchor
+
+            # Compute output: for each anchor cell, BFS through pointers
+            # to find the farthest reachable pointer cell. That's the
+            # destination.
+            new_anchors = []
+            comp_lookup = {}
+            for comp in comps:
+                for cell in comp:
+                    comp_lookup[cell] = comp
+
+            for (ar, ac) in [(r, c) for (r, c) in obj_positions
+                             if raw_in[r][c] == a_color]:
+                comp = comp_lookup[(ar, ac)]
+                comp_set = set(comp)
+                # BFS through pointer cells starting from anchor;
+                # the pointer cell with the max BFS distance is the
+                # destination.
+                visited = {(ar, ac): 0}
+                queue = [(ar, ac)]
+                farthest = (ar, ac)
+                farthest_d = 0
+                while queue:
+                    r, c = queue.pop(0)
+                    d = visited[(r, c)]
+                    for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                        nb = (r + dr, c + dc)
+                        if nb not in comp_set or nb in visited:
+                            continue
+                        if raw_in[nb[0]][nb[1]] != p_color:
+                            continue
+                        visited[nb] = d + 1
+                        queue.append(nb)
+                        if d + 1 > farthest_d:
+                            farthest_d = d + 1
+                            farthest = nb
+                if farthest_d == 0:
+                    # Anchor with no pointer trail — invalid
+                    return None
+                new_anchors.append(farthest)
+
+            # Build expected output and compare
+            expected = [row[:] for row in raw_in]
+            # Erase all anchors, pointers, and markers
+            for r in range(h):
+                for c in range(w):
+                    v = raw_in[r][c]
+                    if v in (a_color, p_color, m_color):
+                        expected[r][c] = bg
+            # Place new anchors and mirrored markers
+            for (nr, nc) in new_anchors:
+                expected[nr][nc] = a_color
+                mr, mc = mirror(nr, nc)
+                if 0 <= mr < h and 0 <= mc < w:
+                    expected[mr][mc] = m_color
+
+            if expected != raw_out:
+                return None
+
+            # Lock in colors / divider across examples
+            if anchor_color is None:
+                anchor_color = a_color
+                pointer_color = p_color
+                marker_color = m_color
+                divider_color = div_color
+                divider_axis = axis
+                marker_side = m_side
+            else:
+                if (anchor_color != a_color or pointer_color != p_color
+                        or marker_color != m_color
+                        or divider_color != div_color
+                        or divider_axis != axis
+                        or marker_side != m_side):
+                    return None
+
+        if anchor_color is None:
+            return None
+        return {
+            "type": "mirror_shoot_anchor",
+            "anchor_color": anchor_color,
+            "pointer_color": pointer_color,
+            "marker_color": marker_color,
+            "divider_color": divider_color,
+            "divider_axis": divider_axis,
+            "marker_side": marker_side,
+            "confidence": 1.0,
+        }
+
+    @staticmethod
     def _draw_corner_l_shoot(raw, bg):
         h = len(raw)
         w = len(raw[0]) if raw else 0
@@ -3129,6 +3413,8 @@ class PredictOperator(Operator):
             return self._apply_plus_majority_color(rule, input_grid)
         if rule_type == "ricochet_ray":
             return self._apply_ricochet_ray(rule, input_grid)
+        if rule_type == "mirror_shoot_anchor":
+            return self._apply_mirror_shoot_anchor(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -3672,6 +3958,98 @@ class PredictOperator(Operator):
                 out[tr][tc] = shooter
             return out
         return None
+
+    def _apply_mirror_shoot_anchor(self, rule, input_grid):
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if raw else 0
+        if h == 0 or w == 0:
+            return None
+        a_color = rule.get("anchor_color")
+        p_color = rule.get("pointer_color")
+        m_color = rule.get("marker_color")
+        div_color = rule.get("divider_color")
+        axis = rule.get("divider_axis")
+        if a_color is None or p_color is None or m_color is None:
+            return None
+        if div_color is None or axis not in ("row", "col"):
+            return None
+
+        counts = {}
+        for row in raw:
+            for c in row:
+                counts[c] = counts.get(c, 0) + 1
+        bg = max(counts, key=counts.get)
+
+        div_row = div_col = None
+        if axis == "row":
+            for r in range(h):
+                if all(v == div_color for v in raw[r]):
+                    div_row = r
+                    break
+            if div_row is None:
+                return None
+        else:
+            for c in range(w):
+                if all(raw[r][c] == div_color for r in range(h)):
+                    div_col = c
+                    break
+            if div_col is None:
+                return None
+
+        def mirror(r, c):
+            if axis == "row":
+                return (2 * div_row - r, c)
+            return (r, 2 * div_col - c)
+
+        obj_positions = [(r, c) for r in range(h) for c in range(w)
+                         if raw[r][c] in (a_color, p_color)]
+        comps = GeneralizeOperator._group_4connected(obj_positions)
+        comp_lookup = {}
+        for comp in comps:
+            for cell in comp:
+                comp_lookup[cell] = comp
+
+        new_anchors = []
+        for (ar, ac) in [(r, c) for (r, c) in obj_positions
+                         if raw[r][c] == a_color]:
+            comp = comp_lookup.get((ar, ac))
+            if comp is None:
+                continue
+            comp_set = set(comp)
+            visited = {(ar, ac): 0}
+            queue = [(ar, ac)]
+            farthest = (ar, ac)
+            farthest_d = 0
+            while queue:
+                r, c = queue.pop(0)
+                d = visited[(r, c)]
+                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                    nb = (r + dr, c + dc)
+                    if nb not in comp_set or nb in visited:
+                        continue
+                    if raw[nb[0]][nb[1]] != p_color:
+                        continue
+                    visited[nb] = d + 1
+                    queue.append(nb)
+                    if d + 1 > farthest_d:
+                        farthest_d = d + 1
+                        farthest = nb
+            if farthest_d == 0:
+                continue
+            new_anchors.append(farthest)
+
+        out = [row[:] for row in raw]
+        for r in range(h):
+            for c in range(w):
+                if out[r][c] in (a_color, p_color, m_color):
+                    out[r][c] = bg
+        for (nr, nc) in new_anchors:
+            out[nr][nc] = a_color
+            mr, mc = mirror(nr, nc)
+            if 0 <= mr < h and 0 <= mc < w:
+                out[mr][mc] = m_color
+        return out
 
     def _apply_plus_majority_color(self, rule, input_grid):
         raw = input_grid.raw

@@ -488,3 +488,53 @@ with shooter color and stops at the grid edge.
   "recolor" group)
 
 **Result:** 24/40 -> 25/40 (60.0% -> 62.5%), +1 rule learned (rule_032)
+
+---
+## Learning Loop -- 2026-04-29 09:22
+
+- Split: None, Tasks: 40
+- Correct: 25 / 40 (62.5%)
+- Rules: 32 -> 32 (+0 learned)
+- Stored rule hits: 25
+- Time: 25s
+- Log: logs/learn_20260429_092227.log
+
+---
+## Learning Loop -- 2026-04-29 09:33
+
+- Split: None, Tasks: 40
+- Correct: 26 / 40 (65.0%)
+- Rules: 32 -> 33 (+1 learned)
+- Stored rule hits: 25
+- Time: 19s
+- Log: logs/learn_20260429_093322.log
+
+---
+## Session 12 -- 2026-04-29
+
+**Strategy added:** `mirror_shoot_anchor`
+
+A full-row or full-column divider line of color D splits the grid into
+two regions. The 'object' region contains connected components made
+from two foreground colors: anchor A and pointer P. The 'marker' region
+contains scattered cells of a third color M, each placed at the mirror
+(across the divider) of an A cell. Output: each anchor moves to the
+farthest connected pointer cell along its trail (BFS through P cells);
+each marker moves to the mirror of the new anchor; original A, P and
+M cells become background.
+
+- Solves: c9680e90 (and category of mirror+pointer-trail tasks)
+- Anchor color discovered by checking which color's cell positions
+  mirror-match the marker positions across the divider.
+- Both row and column dividers are supported.
+- Placed BEFORE `recolor_sequential` (which would false-positive on
+  these tasks since a 2 -> 6 recolor looks like a sequential recolor
+  to the cell-level diff analysis).
+
+**Result:** 25/40 -> 26/40 (62.5% -> 65.0%), +1 rule learned (rule_033)
+- c9680e90: CORRECT via mirror_shoot_anchor (newly discovered)
+
+Verification:
+- `python run_task.py` (regression on 08ed6ac7): CORRECT
+- `python run_learn.py --limit 40 --shuffle`: 26 / 40 (65.0%)
+- Rules: 32 -> 33
