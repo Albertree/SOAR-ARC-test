@@ -1,0 +1,16 @@
+{
+  "id": 135,
+  "concept": "integer upscale",
+  "category": "geometric_transform",
+  "rule": {
+    "type": "integer_upscale",
+    "factor": 3,
+    "confidence": 1.0
+  },
+  "covers": [
+    "9172f3a0"
+  ],
+  "source_task": "9172f3a0",
+  "created_at": "2026-04-29T15:48:07.741694",
+  "times_reused": 0
+}

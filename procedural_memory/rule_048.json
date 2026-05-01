@@ -12,7 +12,10 @@
     "confidence": 1.0
   },
   "covers": [
-    "332efdb3"
+    "332efdb3",
+    "25d487eb",
+    "928ad970",
+    "941d9a10"
   ],
   "source_task": "332efdb3",
   "created_at": "2026-04-29T12:48:45.482877",

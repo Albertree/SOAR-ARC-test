@@ -1,0 +1,20 @@
+{
+  "id": 86,
+  "concept": "swap_two_colors",
+  "category": "color_transform",
+  "rule": {
+    "type": "color_mapping",
+    "mapping": {
+      "0": 1,
+      "2": 1
+    },
+    "confidence": 0.8
+  },
+  "covers": [
+    "0d87d2a6",
+    "ac3e2b04"
+  ],
+  "source_task": "0d87d2a6",
+  "created_at": "2026-04-29T15:41:45.060999",
+  "times_reused": 0
+}

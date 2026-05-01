@@ -1,0 +1,21 @@
+{
+  "id": 137,
+  "concept": "color_remap",
+  "category": "color_transform",
+  "rule": {
+    "type": "color_mapping",
+    "mapping": {
+      "1": 5,
+      "8": 5,
+      "2": 5,
+      "3": 5
+    },
+    "confidence": 0.8
+  },
+  "covers": [
+    "9565186b"
+  ],
+  "source_task": "9565186b",
+  "created_at": "2026-04-29T15:48:20.715003",
+  "times_reused": 0
+}

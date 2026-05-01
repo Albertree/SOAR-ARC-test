@@ -1,0 +1,27 @@
+{
+  "id": 145,
+  "concept": "recolor by size",
+  "category": "color_transform",
+  "rule": {
+    "type": "recolor_by_size",
+    "foreground": 2,
+    "background": 0,
+    "size_to_color": {
+      "4": 6,
+      "6": 6,
+      "3": 2,
+      "1": 2,
+      "2": 2,
+      "8": 6,
+      "5": 6,
+      "7": 6
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "ae58858e"
+  ],
+  "source_task": "ae58858e",
+  "created_at": "2026-04-29T15:49:46.572216",
+  "times_reused": 0
+}

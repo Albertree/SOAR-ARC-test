@@ -1,0 +1,37 @@
+{
+  "id": 83,
+  "concept": "panel logic op",
+  "category": "other",
+  "rule": {
+    "type": "panel_logic_op",
+    "confidence": 1.0,
+    "truth_table": [
+      [
+        1,
+        0,
+        0
+      ],
+      [
+        0,
+        1,
+        0
+      ],
+      [
+        0,
+        0,
+        0
+      ],
+      [
+        1,
+        1,
+        2
+      ]
+    ]
+  },
+  "covers": [
+    "0520fde7"
+  ],
+  "source_task": "0520fde7",
+  "created_at": "2026-04-29T15:41:24.412462",
+  "times_reused": 0
+}

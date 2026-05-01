@@ -1,0 +1,25 @@
+{
+  "id": 132,
+  "concept": "rect interior fill",
+  "category": "fill_transform",
+  "rule": {
+    "type": "rect_interior_fill",
+    "background": 0,
+    "border": 1,
+    "size_to_fill": {
+      "2x2": 2,
+      "1x1": 7,
+      "3x3": 7,
+      "4x4": 2,
+      "5x5": 7,
+      "6x6": 2
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "868de0fa"
+  ],
+  "source_task": "868de0fa",
+  "created_at": "2026-04-29T15:47:33.075112",
+  "times_reused": 0
+}
