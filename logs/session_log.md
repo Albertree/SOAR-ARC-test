@@ -7045,3 +7045,15 @@ unambiguous.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_001310.log
+
+> STAGNATION at iter 60 — 22 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 00:13
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_001329.log
