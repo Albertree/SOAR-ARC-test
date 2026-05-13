@@ -70,9 +70,13 @@ def _patterns_all_three_fire() -> dict:
     }
 
 
-def _patterns_only_grid_size_preserved() -> dict:
-    """grid_size_preserved fires; the other two matchers do not (no
-    change groups means no color mapping to recognise)."""
+def _patterns_identity_pairs() -> dict:
+    """Patterns whose every pair has zero changes AND matching
+    dimensions. Fires both ``grid_size_preserved`` (dimensions match)
+    AND ``identity_transformation`` (zero changes per pair) — they are
+    layered preconditions, not competitors. The colour-mapping and
+    sequential-recoloring matchers do NOT fire here (no change groups
+    means no mapping to recognise)."""
     return {
         "grid_size_preserved": True,
         "pair_analyses": [
@@ -125,13 +129,16 @@ def test_helper_is_importable_from_package_root() -> None:
     assert callable(mod.recognized_conditions)
 
 
-def test_registry_unchanged_when_helper_loaded() -> None:
-    # The new helper must not register itself or pull in anything beyond
-    # the existing matcher modules.
+def test_registry_contents_after_helper_load() -> None:
+    # The applier must not register itself or pull in anything beyond
+    # the matcher modules under ``agent/conditions/``. As of iter 13
+    # there are four such modules; tightening the assertion to ``==``
+    # keeps a stray @register import from sneaking into the package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
         "sequential_recoloring",
+        "identity_transformation",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -144,10 +151,15 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     }, f"expected all three to fire, got {fired}"
 
 
-def test_only_grid_size_preserved_fires_on_no_change_pairs() -> None:
-    fired = recognized_conditions(_patterns_only_grid_size_preserved())
-    assert fired == ["grid_size_preserved"], (
-        f"expected only grid_size_preserved, got {fired}"
+def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
+    # Zero-change pairs with matching dimensions fire BOTH the iter-1
+    # dimensional precondition AND the iter-13 identity matcher; the
+    # colour-mapping / sequential-recoloring matchers do not (they need
+    # at least one changed group to recognise a mapping or sequence).
+    fired = set(recognized_conditions(_patterns_identity_pairs()))
+    assert fired == {"grid_size_preserved", "identity_transformation"}, (
+        f"expected grid_size_preserved + identity_transformation, got "
+        f"{sorted(fired)}"
     )
 
 
@@ -168,7 +180,8 @@ def test_returns_registry_insertion_order() -> None:
     expected_order = [n for n in CONDITION_REGISTRY.keys()
                       if n in {"grid_size_preserved",
                                "consistent_color_mapping",
-                               "sequential_recoloring"}]
+                               "sequential_recoloring",
+                               "identity_transformation"}]
     fired = recognized_conditions(_patterns_all_three_fire())
     fired_in_expected = [n for n in fired if n in expected_order]
     assert fired_in_expected == [n for n in expected_order if n in fired], (
@@ -347,9 +360,9 @@ def test_returns_only_matchers_whose_match_is_strictly_true() -> None:
 def _run_all() -> int:
     tests = [
         test_helper_is_importable_from_package_root,
-        test_registry_unchanged_when_helper_loaded,
+        test_registry_contents_after_helper_load,
         test_all_three_matchers_fire_on_compatible_patterns,
-        test_only_grid_size_preserved_fires_on_no_change_pairs,
+        test_identity_pairs_fire_both_grid_size_and_identity_matchers,
         test_color_mapping_fires_without_grid_size_preserved,
         test_returns_registry_insertion_order,
         test_empty_patterns_dict_fires_nothing,

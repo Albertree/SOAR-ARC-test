@@ -1288,3 +1288,156 @@ whose `condition.type` is one of the three iter-1/8/10 matcher names and
 whose `action.dsl` is `coloring`, the matching `_try_*` method in
 `agent/active_operators.py` becomes deletable — that is the first
 opportunity for a P6 ↓ on this branch.
+
+---
+## Learning Loop -- 2026-05-13 19:06
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_190646.log
+
+---
+## Iter 13 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0, unchanged across iters 1-12. Auto-snapshot
+captures P4=15, P5=3, P1/P2/P3=0.0, P6=600. The iter-8 matcher
+`consistent_color_mapping.py` carries an explicit `(TBD)` note in its docstring
+(lines 36-37): "Empty changed-cell sets (identity-like pairs with zero change
+groups) return False — there is no mapping to recognise, and an identity case is
+properly handled by a separate matcher (TBD), not by misreporting this one."
+This is a *named* gap in the recognition vocabulary — until it lands, an
+all-pairs-unchanged patterns shape either fires only the dimensional precondition
+(`grid_size_preserved`) or, worse, would be misclassified by a future
+loosely-written colour-mapping detector. Standing up `identity_transformation`
+closes that named hole, lifts P5 from 3→4, and adds zero risk: no `_try_*` /
+`_apply_*` introduction (matchers are recognition vocabulary, not transformation
+vocabulary, and adding them is explicitly allowed per CLAUDE.md §6.3), no DSL
+primitive added, no rule files written, no frozen file touched. Smaller than the
+three follow-ups iter-12 named — those all require either an `active_operators.py`
+write (option 1: pair-specific program writer) or a call-site migration in
+`active_agent.py` (option 2: `save_rule_to_ltm` → `save_rule`) or a translator
+that is dead until the writer of option 1 lands (option 3). The matcher addition
+is independently useful AND independently testable.
+
+**Change**:
+- `agent/conditions/identity_transformation.py` (new, +73 LOC) — fourth
+  condition matcher. Returns True iff `pair_analyses` is non-empty AND every
+  analysis has `size_match is True` AND zero change groups
+  (`len(groups) == 0`). Per-pair `size_match` requirement (rather than the
+  top-level `grid_size_preserved` flag) is load-bearing: `_analyze_pair`'s diff
+  iterates only the `min(h, w)` overlap, so a zero-group result with mismatched
+  dimensions is NOT identity (output has cells absent from input) and must be
+  rejected. Follows iter-8/10's "dimension-agnostic on the top-level flag,
+  rigorous on per-pair structure" idiom.
+- `tests/test_identity_transformation.py` (new, +275 LOC, 22 cases) —
+  dependency-free, same runner pattern as iters 1/8/10's tests. Covers
+  registration; adjacent-iter matcher non-displacement (1/8/10); `>= 4`-entry
+  registry P5 assertion; callable contract; single/multi-pair positive cases;
+  rejection on any-pair-changes; rejection on any-pair size mismatch (the
+  overlap-only-diff false-positive guard); strict-`is True` on `size_match`
+  (truthy non-bool rejected); empty/missing `pair_analyses`; non-dict patterns;
+  malformed analysis entries; missing/non-list `groups` field; non-empty groups
+  disqualifying even with size_match True; side-effect-free contract on both
+  args; determinism across repeats; mutual exclusion with
+  `consistent_color_mapping` and `sequential_recoloring` (both require non-zero
+  groups, so the same all-identity input must NOT fire either); co-firing with
+  `grid_size_preserved` (layered preconditions, not competitors); end-to-end
+  agreement with `_analyze_pair`'s zero-change output shape.
+- `tests/test_recognized_conditions.py` (modified, +18/-11 LOC) —
+  - Renamed `_patterns_only_grid_size_preserved` → `_patterns_identity_pairs`
+    and updated docstring to reflect that this shape now fires both
+    `grid_size_preserved` and `identity_transformation`.
+  - Renamed `test_registry_unchanged_when_helper_loaded` →
+    `test_registry_contents_after_helper_load` and tightened the `==`-asserted
+    set to the four-name registry.
+  - Renamed `test_only_grid_size_preserved_fires_on_no_change_pairs` →
+    `test_identity_pairs_fire_both_grid_size_and_identity_matchers` and
+    updated the assertion to expect the two-element set
+    `{grid_size_preserved, identity_transformation}`.
+  - Extended `test_returns_registry_insertion_order`'s filter set to include
+    `identity_transformation` so the order check still operates on the full
+    matcher inventory.
+  - Driver list updated to the new test names.
+- `docs/RULE_FORMAT.md` — §4 condition-type table row added for
+  `identity_transformation` (status, contract, rationale for per-pair
+  `size_match`); §7 status table extended on the `agent/conditions/` row with
+  the iter-13 entry; new row added for `tests/test_identity_transformation.py`
+  describing the 22-case inventory.
+
+No edits to: `agent/active_operators.py` (F2/F8 inert), `procedural_memory/DSL/`
+(F3 inert), `agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` node classes /
+`data/` (F1 inert), `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+`run_1ktasks.py` (F6 inert), no rule JSON written (F4 inert), no
+`semantic_memory/` artifacts (F5 inert), no `except RuleSchemaError` added or
+modified (F7 inert).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=15, P5=3, P6=600
+**Probe after** : (not re-run — this iter does not change the solve algorithm or
+the rule-storage path; it adds a recognition-vocabulary entry that the existing
+iter-12 `solve()` wire-up will surface in the *next* probe's
+`episodic_memory/<task_hex>/attempt_NNN/metadata.json` files via
+`last_solve_info["fired_conditions"]`. The next probe's three attempt folders
+will each include `identity_transformation` in `fired_conditions` IF the
+identity precondition holds for those tasks' example pairs — observable but
+not measured by the snapshot.)
+
+**Invariants** (checker run end-to-end against base HEAD `01563a74` — iter 12):
+- forbidden = none (verdict CLEAN). F1: 0-line diff against frozen paths
+  (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` / `+def _apply_`
+  in `agent/active_operators.py` (file untouched; numstat 0/0). F3: no
+  `procedural_memory/DSL/*.py` diff at all; no new `@register(` decorators
+  inside the DSL package. F4: no `rule_*.json` files exist on disk. F5: no
+  `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to `run_loop.sh` /
+  `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`. F7: no `except
+  RuleSchemaError` added or modified. F8: `agent/active_operators.py` numstat
+  0/0 — the "active_operators grew without companion" clause cannot fire.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 15 → 15,
+  **P5 3 → 4 (+1)**, P6 600 → 600. **CLEAN** verdict from the checker.
+  Breaks the iter-11/iter-12 NEUTRAL streak at 2; INVARIANTS.md §3's STAGNATION
+  signal only fires at N≥3 consecutive NEUTRAL iters, so the counter resets
+  here.
+- All nine test suites pass on this host:
+  `tests/test_identity_transformation.py` 22/22 (new),
+  `tests/test_recognized_conditions.py` 18/18,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Next gap (note for future iter)**: P5 now stands at 4, but P1/P2/P3 remain
+flat at 0.0 — the recognition vocabulary keeps growing while the rule-saving
+path stays cold. The three follow-ups iter-12 named are unchanged in
+attractiveness:
+  1. **Pair-specific program writer** in `agent/active_operators.py:GeneralizeOperator`
+     (still the only avenue to move P1/P2/P3 off zero; F8 is satisfied as long
+     as the same iter touches `agent/memory.py` or `agent/conditions/` or
+     `program/anti_unification.py`).
+  2. **Legacy writer migration** — `agent/active_agent.py:solve()`'s
+     `save_rule_to_ltm` call → `save_rule(rule, related_rules=load_related(...))`.
+     With `identity_transformation` registered the V2 admissible set now includes
+     four `condition.type` values; for the seed=42 probe set only the identity
+     fallback would actually pass through that path today (slow-path discoveries
+     other than identity are filtered out before save), so the migration is
+     low-traffic but eliminates a latent F4 hazard.
+  3. **Translator helper** — `_translate_to_schema(legacy_rule, task_hex, patterns)`
+     in `agent/memory.py` that consults `recognized_conditions(patterns)` to
+     populate `condition.type`. Now strictly more useful with identity_transformation
+     in the registry: a translator for a legacy `{"type": "identity"}` rule could
+     resolve to `condition.type = "identity_transformation"` cleanly — the only
+     remaining block is `action.dsl`, which for identity reduces to a no-op
+     `coloring(selection=[], color=anything)` composition. That makes (3) a
+     genuinely small step independent of (1)'s writer landing — identity is the
+     one rule shape whose `action.dsl` reduces to `coloring`/`make_grid` without
+     needing pair-specific program synthesis.
+A potential P6 ↓ opportunity also remains latent: once anti-unification produces
+a discovered rule whose `condition.type ∈ {grid_size_preserved,
+consistent_color_mapping, sequential_recoloring, identity_transformation}` and
+whose `action.dsl ∈ {coloring, make_grid}`, the matching `_try_*` method in
+`active_operators.py` becomes deletable.
