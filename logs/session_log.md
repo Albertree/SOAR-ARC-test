@@ -5367,3 +5367,197 @@ machinery (unify) is already implemented (iter 5) and the
 save_rule AU-wiring is already implemented (iter 6); only
 the call-site threading of related_rules from _persist_
 pipeline_rule is missing.
+
+---
+## Learning Loop -- 2026-05-13 22:55
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_225500.log
+
+---
+## Iter 32 -- 2026-05-13T23:00Z -- branch test20
+
+**Diagnosis**: Iter 31 Next gap log named four candidate next
+steps (F / E / A / B). Option (F) -- "wire save_rule(rule,
+related_rules=...) to be invoked by _persist_pipeline_rule" --
+turns out to have been ALREADY landed in iter 15: agent/active_
+agent.py:_persist_pipeline_rule() already calls load_related
+and passes related_rules to save_rule (lines 165-173). So
+option (F) is closed by construction; iter 31's diagnosis was
+based on an earlier state of the call graph. Options (E) /
+(A) / (B) are all substantial (new emission branch, new
+derived-selection rule shape, or pair-specific program
+writer); none qualifies as a smallest defensible step under
+the current invariants without risking a forbidden-signal
+trip on the active_operators.py axis. The smallest defensible
+move that cleanly bumps a positive signal without touching
+the slow path is to extend the recognition vocabulary on a
+NEW axis: add the simplest entry on the change-cardinality
+axis -- "the total number of changed cells (summed across all
+groups in a pair) is bit-identical across every pair". This
+axis is orthogonal to the position-content axis iter 30
+named (`change_positions_constant_across_pairs`); positions-
+constant strictly implies count-constant, but not the converse
+(pair 0 changes (0,0), pair 1 changes (1,1) -- both have
+count 1, but positions differ; iter 32 fires, iter 30 does
+not). That non-redundant territory is the recognition
+precondition for a future rule shape whose action affects a
+constant number of cells via a position-DERIVING predicate
+(the iter-31 option (A) derived-selection rule shape).
+
+**Change**:
+- `agent/conditions/change_count_constant_across_pairs.py`
+  (NEW) -- single self-contained matcher predicate. Reads
+  `cell_count` per group (emitted since iter 1) and compares
+  per-pair totals. Strict-bool-subclass rejection (mirroring
+  iters 13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 / 30
+  and `validate_rule` V1). Fail-closed on per-pair total
+  zero (the identity-territory rejection clause that mirrors
+  iter 30's empty-union refusal and iter 18 / 19's zero-
+  group refusal). No `_analyze_pair` change -- the field has
+  been emitted per group since iter 1; iter 32 is matcher-
+  only addition that uses an existing patterns-dict field
+  on a new axis.
+- `tests/test_change_count_constant_across_pairs.py` (NEW)
+  -- 41 dependency-free cases against the live
+  `CONDITION_REGISTRY` + `ExtractPatternOperator._analyze_pair`
+  (no stubs). Mirror of iter 30's test surface on the
+  cardinality axis. Covers registration, adjacent-iter
+  matcher non-displacement (iters 1 / 8 / 10 / 13 / 17 / 18
+  / 19 / 20 / 22 / 23 / 24 / 26 / 28 / 30), `>= 15`-entry
+  registry assertion (P5: 14 → 15), callable contract,
+  single-pair / multi-pair positive cases (same total same
+  positions AND same total DIFFERENT positions -- the
+  iter-32-distinct territory iter 30 does NOT cover),
+  group-partition-differs-but-total-matches case (pair 0 of
+  two single-cell blobs and pair 1 of one two-cell blob,
+  both sum to 2 -- co-fires with iter 32 but neither iter
+  23 nor iter 28 fires alone), multi-blob constant-total
+  positive case, every flavour of malformed input (empty /
+  missing / non-list / non-dict `pair_analyses`, malformed
+  analysis, missing `cell_count`, bool `cell_count`, zero /
+  negative `cell_count`, non-int `cell_count`, non-list
+  `groups`, non-dict group entry), all-zero-groups rejection
+  (identity-territory boundary), mixed-zero rejection, total-
+  differ rejection (single-blob version and multi-blob
+  version), side-effect-free input contract, determinism
+  across repeats, STRICT mutual exclusion with
+  `identity_transformation`, iter 30 refinement chain in
+  BOTH directions (positions-constant ⟹ count-constant; the
+  converse is counter-exampled), co-firing with iter 24 /
+  26 / 28 / 23 / 18 / 19 / `grid_size_preserved`, non-
+  refinement against `grid_size_preserved` (dimension-changed
+  task fires this matcher but not iter 1), end-to-end
+  agreement with the live `_analyze_pair` output on two
+  pairs with single cells at distinct coords (iter 30
+  rejects, iter 32 fires -- the canonical territory
+  partition), end-to-end disagreement on differing totals,
+  and a strict-Boolean return assertion.
+- `docs/RULE_FORMAT.md` (EDIT) -- section 4 condition
+  registry table extended with the iter-32 entry placed
+  immediately above the iter-20 `output_dimensions_constant`
+  entry. Section 7 "As of" header bumped from iter 31 to
+  iter 32.
+- `tests/test_recognized_conditions.py` (EDIT) -- the
+  registry-set membership assertion in
+  `test_registry_contents_after_helper_load` widened from
+  14 to 15 expected matchers (iter 32's name added; comment
+  updated to "As of iter 32 there are fifteen such
+  modules").
+
+No edits to: procedural_memory/DSL/ (F3 inert);
+agent/cycle.py / agent/wm.py / ARCKG/*.py / data/ (F1
+inert); agent/active_operators.py (F2 / F8 inert -- zero
+diff this iter); no new rules persisted (F4 vacuously
+satisfied); no semantic_memory/ artifacts (F5 inert);
+run_loop.sh and friends (F6 inert); no `except
+RuleSchemaError` changes (F7 inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P4=93, P5=14.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81)
+fire grid_size_changed / input_dimensions_constant /
+output_dimensions_constant / consistent_color_mapping / grid_
+size_preserved but do NOT fire any translate_to_schema
+emission gate -- consistent with iter 31's observation.
+Iter 32 adds matcher vocabulary only; the slow path is
+untouched.
+
+**Probe after**: P5 14 → 15 via the iter-32 matcher
+addition. The seed=42 probe tasks now additionally fire
+`change_count_constant_across_pairs` if the patterns dict
+exposes per-pair `cell_count` totals that agree -- a
+content-dependent signal the per-attempt `fired_conditions`
+metadata.json will surface from this iter forward. No
+change to rule emission (no new emission branch this
+iter); the matcher is recognition vocabulary ahead of
+emission, matching iters 17 / 18 / 19 / 20 / 22 / 23 / 24
+/ 26 / 28 / 30's posture.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD
+411e9835):
+- forbidden = none (all eight checks F1-F8 inert this
+  iter).
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0,
+  P4 93 → 93, P5 14 → 15, P6 611 → 611 (lines removed
+  delta 0).
+- verdict: **CLEAN** (1 positive delta -- P5 +1).
+
+**Why this is real progress (not lipstick)**: P5 +1 is
+the only positive signal moved this iter, but it is a
+genuine vocabulary extension on a NEW axis -- not a
+restatement of an existing matcher. Iter 30's `change_
+positions_constant_across_pairs` strictly implies iter
+32's matcher (same coord set → same coord count); but
+the converse does NOT hold, and the territory iter 32
+covers exclusively (count-constant ∧ ¬positions-constant)
+is exactly the recognition precondition for the iter-31
+option (A) derived-selection rule shape ("wherever input
+has colour C") -- where the count of matched cells is
+constant across pairs even though the coords vary by
+input. Naming the precondition before the corresponding
+emission branch lands is the same recognition-vocabulary-
+ahead-of-emission posture iters 17 / 18 / 19 / 20 / 22 /
+23 / 24 / 26 / 28 / 30 all carry. All 41 new test cases
+in test_change_count_constant_across_pairs.py pass; all
+other test suites (every test_*.py file in tests/) pass
+unchanged. No new failure surface.
+
+**Next gap (note for future iter)**: With iter 32's
+matcher landed, the cardinality axis joins the named
+recognition vocabulary alongside iter 30's position-
+content axis. The translate_to_schema emission branches
+still emit only on tasks where iter 30 fires (the
+position-content-constant case); the count-constant ∧
+position-varies territory has named recognition but no
+emission. The next-smallest defensible steps, in order
+of P1 / P3 payoff proximity: (A') a translate_to_schema
+emission branch gated on `change_count_constant_across_
+pairs` + `output_color_uniform` + `input_color_uniform`
++ `input_dimensions_constant` + `grid_size_preserved`
+that emits a `coloring`-action rule whose
+`action.args.selection` is the literal coord list from
+the FIRST pair (relying on `input_color_uniform` to
+imply that the count-constant cells are exactly the
+input cells of colour C -- a derived selection that
+generalises by being "where input has colour C", not
+literal coords). This is the smallest emission-side
+companion to iter 32's matcher; it would actually mint
+rules on tasks where iter 30 does not fire. (E) mint a
+real on-disk rule from the slow-path through
+`_persist_pipeline_rule` -- requires either a real ARC
+task that fires one of the harmonised emission gates
+(the probe tasks do not) or a synthetic task fixture
+wired into the run_learn flow. (B) the pair-specific
+program writer inside GeneralizeOperator -- the load-
+bearing P3 work but a larger surface. Option (A') is
+the next-iter step most directly on the P1 path
+because the recognition stack is now complete on both
+axes (cardinality from iter 32, dimensions from iter 22,
+colour from iters 18 + 19) and the emission branch
+would be a `translate_to_schema` extension only --
+exactly the iter-21 / 25 / 27 / 29 size of change.
