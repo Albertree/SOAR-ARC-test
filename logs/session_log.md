@@ -888,3 +888,124 @@ candidates from iter 8 narrow back to two:
 Both are defensible iter-10 candidates; (1) is the genuine unblock for
 P1-P3 and the natural next-after-P4. (2) is the smaller of the two but
 its payoff is gated on (1) anyway.
+
+---
+## Learning Loop -- 2026-05-13 18:44
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_184441.log
+
+---
+## Iter 10 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-9. Iter 9 wired the
+episodic writer, so the snapshot already captures P4=6 from two probe runs since
+then; P4 cannot move further this iter (no work I can do during my turn writes
+attempts). P1/P2/P3 cannot move honestly either — the pipeline on these three
+seed=42 tasks produces only `identity` rules (filtered out of the save path), so
+no rule file gets written, so the rule-coverage family stays at 0/0 regardless
+of any wiring I add. Iter 9's "Next gap" listed two candidates (pair-program
+writer in `GeneralizeOperator`; legacy→§1 translator in `active_agent.py`),
+but on inspection neither moves a measurable signal this iter: the pair-program
+writer is multi-iter surface area (it needs a way to translate cell changes
+into `coloring`-action compositions and the `coloring`-action rules to flow
+through `save_rule`), and the translator gets exercised by zero current
+discoveries. The genuinely smallest defensible step that produces an honest
+positive delta is the iter-8 move: add the third recognition matcher,
+mirroring the precondition of `_try_recolor_sequential` the way iter 8
+mirrored `_try_color_mapping`. P5 is a unit-monotone counter; adding a
+matcher literally increments it.
+
+**Change**:
+- `agent/conditions/sequential_recoloring.py` (new) — third condition matcher.
+  Returns True iff every example pair has the same non-zero number of change
+  groups, each group has exactly one input colour and one output colour, the
+  per-pair output colours form a contiguous integer range, and at least one
+  of `top_row` / `top_col` orders the groups so the output colours appear in
+  that range. Dimension-agnostic by design — mirrors iter-8's deliberate
+  separation of dimensional and content preconditions. Stricter than
+  `consistent_color_mapping`: it additionally asserts the outputs are a
+  positionally-ordered contiguous range. Defensive against malformed inputs
+  at every level (non-dict patterns, non-dict analysis, non-dict group) —
+  returns False rather than raising, matching the iter-1 / iter-8 tolerance
+  contract.
+- `tests/test_sequential_recoloring.py` (new, dependency-free runner) — 20
+  cases: registration in CONDITION_REGISTRY; non-displacement of the iter-1
+  and iter-8 matchers; ≥3-entry P5 assertion; two-pair positive case sorted
+  by `top_row`; positive case where only `top_col` works; single-group-per-pair
+  acceptance (1-element range is trivially contiguous); non-contiguous output
+  rejection (`[1, 3]` is missing `2`); neither-axis-orders rejection; mismatched
+  group counts across pairs; multi-input and multi-output group rejection;
+  empty/missing `pair_analyses`; pair with zero groups; non-dict patterns;
+  malformed analysis/group; side-effect-free input contract; determinism across
+  repeats; end-to-end agreement against the patterns shape `_try_recolor_sequential`
+  consumes (positive *and* a position-swap negative that breaks ordering while
+  preserving contiguity); explicit non-overlap with `consistent_color_mapping`
+  (a non-contiguous functional mapping must not fire `sequential_recoloring`).
+- `docs/RULE_FORMAT.md` §4 — registry table grew by one row pointing at the
+  new matcher module with the precondition expressed in prose and the
+  iter-8/iter-10 distinction documented.
+- `docs/RULE_FORMAT.md` §7 — implementation-status table updated:
+  `agent/conditions/` row notes the iter-10 addition with the P5 delta; new
+  row added for `tests/test_sequential_recoloring.py` describing the 20 cases.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=6, P5=2
+**Probe after** : (not re-run — this iter does not affect the solve path; the
+new matcher is recognition vocabulary that lights up only when a §1-schema
+rule declares `condition.type = "sequential_recoloring"`, which requires a
+later iter to discover such a rule via anti-unification.)
+
+**Invariants** (checker run end-to-end against base HEAD `ada559ba` — iter 9):
+- forbidden = none (verdict CLEAN). F1: 0-line diff against frozen-file paths
+  (`data/`, `agent/cycle.py`, `agent/wm.py`, `ARCKG/{task,pair,grid,object,pixel}.py`).
+  F2: no `+def _try_` / `+def _apply_` in `agent/active_operators.py` (file
+  untouched). F3: no `procedural_memory/DSL/*.py` diff at all (the new matcher
+  is recognition vocabulary, not DSL). F4: no `rule_*.json` files exist. F5: no
+  `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to `run_loop.sh` /
+  `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`. F7: no `except
+  RuleSchemaError` added or modified. F8: `agent/active_operators.py` numstat
+  0/0 (untouched), so the "grew without companion" clause cannot fire.
+- positives (verdict: CLEAN): **P5 2 → 3 Δ=+1**. P1/P2/P3 0.0 → 0.0 (still
+  pinned at 0/0 — no rule file exists). P4 6 → 6 (snapshot already captured
+  the writer's accumulated output from prior probes; no in-iter attempt
+  writes occurred). P6 600 → 600. Third non-NEUTRAL iter on this branch
+  (iters 8, 9, 10).
+- All seven test suites pass on this host:
+  `tests/test_sequential_recoloring.py` 20/20 (new),
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Next gap (note for future iter)**: With three matchers now in the registry,
+recognition vocabulary is no longer the easiest cheap delta — iters 11+ should
+stop reaching for "+1 matcher" as the default. The two genuinely-unblocking
+candidates remain, in order of growing surface area:
+  1. **Stand up** the pair-specific program writer in
+     `agent/active_operators.py:GeneralizeOperator` — emit a pair-specific
+     `coloring` composition per example pair *before* the abstract rule
+     attempt, then flow the discovered rules through
+     `save_rule(rule, related_rules=load_related(category))` so AU can fire
+     across pairs. This is the path that finally moves P1/P2/P3 above zero
+     on tasks where the pipeline currently bottoms out at `identity`. F8
+     trivially satisfied since the write to `active_operators.py` lands
+     alongside `agent/memory.py` (the `save_rule` call site) or
+     `agent/conditions/` use sites.
+  2. **Migrate** `agent/active_agent.py`'s legacy `save_rule_to_ltm` call
+     site to `save_rule()`. On the current seed=42 probe set only `identity`
+     rules fire (filtered out of the save path), so this writes nothing
+     observable until (1) lands — but it would activate the new writer for
+     any future task category that does discover a non-identity rule.
+A complementary cleanup is now also possible: the iter-8 and iter-10
+matchers each duplicate the precondition logic in their detector siblings
+in `agent/active_operators.py`. Once a future iter produces an AU-derived
+`coloring`-based rule that uses one of these matchers' names, the
+corresponding `_try_*` method becomes deletable (P6 finally moves down) —
+deletion is the architectural payoff for matcher addition, not the
+addition itself.
