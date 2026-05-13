@@ -9722,3 +9722,155 @@ an emission branch that consumes the 00576224 tile-shape fired-
 conditions conjunction would need a 2-DSL-call action shape
 (`make_grid` then `coloring`), beyond the current single-DSL
 `action.dsl` schema. As of this iter all 33 test scripts pass.
+
+> STAGNATION at iter 180 — 5 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 08:32
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_083248.log
+
+---
+## Iter 181 -- 2026-05-14T08:40Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with `rule=identity`; the named bigger
+emission-side options ((a) polymorphic-args, (b) multi-rule mint per
+solve, (iii) 2-DSL-call action shape) are all still atomic three-part
+diffs that don't split into smaller defensible pieces. A
+matcher-by-test cross-check surfaced one concrete gap: 23 of 24
+matchers carry a dedicated `tests/test_<matcher>.py` file, but the
+iter-1 foundational matcher `grid_size_preserved` -- the oldest entry
+in the registry -- has none. Its registry membership is exercised by
+`tests/test_recognized_conditions.py` (smoke check) and incidentally
+by neighbouring matchers' co-fire tests, but the behavioural contract
+(top-level flag short-circuit, per-pair `size_match` conjunction,
+fail-closed posture on malformed analyses, mutual exclusion with
+iter-17 `grid_size_changed`, strict-refinement-of relationship with
+iter-13 `identity_transformation`) is not pinned anywhere. This is
+strictly the iter-177 test-coverage-gap-fill pattern: pure additive,
+no source code touched, no matcher added (P5 stays at 24), zero
+forbidden-signal exposure, closes a real regression risk on the
+oldest matcher in the codebase.
+
+**Change**:
+- `tests/test_grid_size_preserved.py` (NEW, 21 tests) -- dependency-
+  free runner, structural mirror of `tests/test_grid_size_changed.py`
+  (iter 17) with `_preserved_pair` / `_changed_pair` swapped and the
+  cross-matcher references flipped:
+  - Registry membership + callability;
+  - Top-level flag short-circuit on True / False / missing;
+  - Per-pair conjunction (any single `size_match=False` disqualifies
+    the patterns dict); empty `pair_analyses` fail-closed (guard
+    against the vacuous `all(...) == True` trap);
+  - Fail-closed on non-dict patterns, missing `size_match` key, and
+    every falsy `size_match` value (None / 0 / "" / [] / {} / False)
+    -- pins the documented `bool(...)` permissive posture against
+    iter-17's stricter `is True` posture (the asymmetry is a real
+    behavioural difference between the two matchers, intentionally
+    preserved here rather than tightened);
+  - Side-effect freeness on both `patterns` and `params`;
+  - Determinism across repeats;
+  - Mutual exclusion with `grid_size_changed` (symmetric to iter
+    17's `test_mutually_exclusive_with_grid_size_preserved`);
+  - Co-fire with `identity_transformation` (the strict-refinement
+    relationship from iter 13's docstring), plus the asymmetry test
+    proving the implication does NOT reverse (a changes-present
+    preserved-shape patterns dict fires grid_size_preserved but NOT
+    identity_transformation);
+  - End-to-end agreement with `ExtractPatternOperator._analyze_pair`'s
+    output shape (`size_match` is always a literal Boolean from a
+    chained `==` comparison);
+  - Strict-`is True`/`is False` return-value posture so downstream
+    `recognized_conditions(...) is True` filters cannot be silently
+    poisoned by a truthy-int regression.
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0 (not
+re-run -- this iter does not touch the solve path; pure additive
+test coverage)
+
+**Invariants**: forbidden=none, positives=P1 / P2 / P3 / P4 / P5 / P6
+all unchanged. `scripts/check_invariants.sh --check` verdict
+**NEUTRAL** (no positive deltas, no forbidden trips). 34/34 test
+scripts pass (33 prior + the new `test_grid_size_preserved.py` at
+21 tests, all green). F1 inert (no frozen-file touch -- new file
+is under `tests/`); F2 inert (no `_try_*` / `_apply_*` methods); F3
+inert (no DSL primitive); F4 inert (no rule file written); F5
+inert (no `semantic_memory/` touch); F6 inert (no budget growth);
+F7 inert (no exception handling change); F8 inert (no
+`active_operators.py` touch).
+
+**Why a NEUTRAL iter is correct work here**: This is the sixth
+consecutive NEUTRAL after iters 176 / 177 / 178 / 179 / 180; the
+STAGNATION notice the loop appended at iters 178 / 179 / 180 is
+informational only per `INVARIANTS.md` section 3 -- the loop
+continues and the user controls the response, not the auto-revert.
+The available smallest-step options were: (i) a 25th matcher to
+escape NEUTRAL by P5 increment -- explicitly named matcher-treadmill
+behaviour by iters 175 / 176 / 177 / 178 / 179 / 180 and exactly the
+failure mode F2 was designed to prevent on the transformation-
+vocabulary axis; (ii) the named larger emission-side option (b)
+(multi-rule mint per solve) -- still atomic three-part across
+`agent/memory.py` AND `agent/active_agent.py` AND a new emission
+branch, not splittable; (iii) more structural cleanup on
+`agent/memory.py` -- the iter-178 / 179 / 180 line of attack is now
+exhausted on that file (no further unused-public-API candidates, no
+further duplicated module-level literals to consolidate); (iv) close
+the matcher-vs-test-file coverage gap on the iter-1 foundational
+matcher. Option (iv) is the iter-177 pattern applied to the OLDEST
+matcher in the registry rather than a recently-added one. The
+iter-177 framing for "test-coverage gap fill closes a real
+regression risk" applies on this axis: the matcher is one of only
+two matchers in the entire dimensional-axis partition
+(`grid_size_preserved` ∪ `grid_size_changed` = every well-formed
+patterns dict), and an iter that refactors either side without
+running `test_grid_size_preserved.py` would have had no behavioural
+guard at all before this iter. The test file mirrors
+`test_grid_size_changed.py`'s 24-test structure but trimmed to 21
+tests (the strict-truthy / strict-falsy double-test on iter 17
+collapses to a single all-falsies test here because the matcher
+uses permissive `bool(...)` instead of strict `is True`, so the
+dual-truthy test would assert the opposite of the actual behaviour
+and is omitted intentionally; one "P5 >= 5 counter" sanity test
+from iter 17 is also dropped because P5 is now 24 and the lower
+bound is no longer informative).
+
+**Next gap (note for future iter)**: With `tests/test_grid_size_
+preserved.py` added, the matcher-vs-test-file diff is now empty
+(24/24 matchers carry a dedicated test file). The single most
+defensible larger-than-this-iter step remains unchanged from iters
+170 / 171 / 172 / 173 / 174 / 175 / 176 / 177 / 178 / 179 / 180:
+`translate_to_schema` still has no non-identity emission branch
+that fires on the seed=42 probe tasks (00576224 / 007bbfb7 are
+tile-style with non-uniform output colours; 009d5c81 is multi-blob
+with positions varying). The two long-standing candidates remain
+(unchanged from iter 180):
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 +
+`apply_DSL` to let `action.args` carry derived selection (e.g.
+"wherever input has colour C"). The only path that handles
+`00576224` / `007bbfb7` / `009d5c81` without anti-unification first
+lifting `selection`; bigger than a smallest-step iter.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-table-
+emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints
+one `coloring` sibling rule per distinct output colour. Uses only
+the frozen `coloring` primitive (F3 inert) and is the natural setup
+for anti-unification to lift the per-cell coord lists into a colour-
+keyed selection variable across the sibling rules. Still atomic
+three-part across `agent/memory.py` AND `agent/active_agent.py`
+AND a new emission branch; iter 178's `save_rule_to_ltm` removal
+AND iter 179's `load_rules_from_ltm` / `chunk_from_substate`
+removal AND iter 180's palette consolidation shrink the
+`agent/memory.py` half by ~99 cumulative lines, making (b)'s diff
+incrementally easier to review. Tertiary option remains unchanged
+from iter 180: an emission branch that consumes the 00576224
+tile-shape fired-conditions conjunction would need a 2-DSL-call
+action shape (`make_grid` then `coloring`), beyond the current
+single-DSL `action.dsl` schema. As of this iter all 34 test scripts
+pass.
