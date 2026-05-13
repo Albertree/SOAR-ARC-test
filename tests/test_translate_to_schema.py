@@ -1800,6 +1800,527 @@ def test_multi_cell_live_analyze_pair_emits_positions_field() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Iter 29 — multi-blob coloring branch
+#   legacy {"type": "identity"} + patterns firing
+#   multi_group_per_pair (iter 28) + output_color_uniform (iter 18) +
+#   input_dimensions_constant (iter 22) + grid_size_preserved (iter 1)
+#   → `coloring(grid, [(r1,c1), ..., (rM,cM)], K)` rule. The selection is
+#   the row-major-sorted UNION of every blob's `positions` field across
+#   the first pair's groups; the defensive helper requires this unioned
+#   set to be bit-identical across pairs. K from any group's
+#   `output_colors[0]`.
+# ──────────────────────────────────────────────────────────────────────────
+
+def _multi_blob_patterns(n_pairs: int = 2,
+                         blob_positions: list | None = None,
+                         k: int = 7, in_h: int = 5, in_w: int = 5) -> dict:
+    """Patterns mimicking a multi-blob uniform-paint task. Every pair has
+    `len(blob_positions)` change groups; `blob_positions[i]` is a list of
+    (r, c) coords for the i-th blob. `size_match` is True per pair;
+    per-pair `input_height`/`input_width`/`output_height`/`output_width`
+    set to (in_h, in_w) so iter-22 input_dimensions_constant fires. The
+    iter-1 top-level `grid_size_preserved` flag is True. Every blob's
+    `output_colors` is `[k]`. `input_colors` varies per pair to avoid
+    accidentally pinning `input_color_uniform` (iter 19).
+    """
+    if blob_positions is None:
+        blob_positions = [[(0, 0), (0, 1)], [(3, 3)]]
+    blob_canon = [sorted([(int(r), int(c)) for r, c in blob]) for blob in blob_positions]
+    pair_analyses = []
+    for i in range(n_pairs):
+        groups = []
+        total = 0
+        for j, blob in enumerate(blob_canon):
+            top_row = min(r for r, _ in blob)
+            top_col = min(c for _, c in blob)
+            groups.append({
+                "input_colors": [i + j],
+                "output_colors": [k],
+                "top_row": top_row,
+                "top_col": top_col,
+                "cell_count": len(blob),
+                "positions": [tuple(p) for p in blob],
+            })
+            total += len(blob)
+        pair_analyses.append({
+            "total_changes": total,
+            "num_groups": len(blob_canon),
+            "groups": groups,
+            "size_match": True,
+            "input_height": in_h,
+            "input_width": in_w,
+            "output_height": in_h,
+            "output_width": in_w,
+        })
+    return {
+        "grid_size_preserved": True,
+        "pair_analyses": pair_analyses,
+    }
+
+
+def test_multi_blob_branch_fires_when_all_four_matchers_fire() -> None:
+    """Smoke: legacy={"type": "identity"} + patterns firing iter
+    1 / 18 / 22 / 28 should produce a schema rule whose
+    `action.dsl == "coloring"` with the row-major-sorted union of all
+    blob coords as `selection`."""
+    legacy = {"type": "identity", "confidence": 0.0}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_blob_patterns(n_pairs=2,
+                             blob_positions=[[(0, 0), (0, 1)], [(3, 3)]],
+                             k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None, "expected multi-blob schema rule, got None"
+    assert out["action"]["dsl"] == "coloring"
+    assert out["action"]["args"] == {
+        "selection": [[0, 0], [0, 1], [3, 3]], "color": 7,
+    }
+
+
+def test_multi_blob_condition_type_is_multi_group_per_pair() -> None:
+    """The multi-blob branch picks `multi_group_per_pair` as
+    `condition.type` — the strictest of the four gating matchers and the
+    one that directly pins the per-pair group-count regime."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=2, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["condition"]["type"] == "multi_group_per_pair"
+    assert out["condition"]["params"] == {}
+    assert isinstance(out["condition"]["min_evidence"], int)
+    assert out["condition"]["min_evidence"] >= 1
+
+
+def test_multi_blob_rule_passes_validate_rule() -> None:
+    """The translator's output must satisfy V1–V7. V2 checks
+    `condition.type` is registered (multi_group_per_pair is, iter 28);
+    V3 checks `action.dsl` is registered (coloring is, iter 3)."""
+    tmp_root = tempfile.mkdtemp(prefix="arbor_translate_multiblob_")
+    try:
+        legacy = {"type": "identity"}
+        out = translate_to_schema(
+            legacy, "abcdef12", _multi_blob_patterns(),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None
+        validate_rule(out, procedural_memory_root=tmp_root)
+    finally:
+        import shutil
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def test_multi_blob_positions_are_row_major_sorted_union() -> None:
+    """The selection is the row-major-sorted union of every blob's
+    positions, even when input order is scrambled. Anti-unification (and
+    stored-rule lookup) requires deterministic serialization."""
+    legacy = {"type": "identity"}
+    # Same blobs, different orderings.
+    patterns_a = _multi_blob_patterns(
+        blob_positions=[[(3, 3)], [(0, 0), (0, 1)]],
+    )
+    patterns_b = _multi_blob_patterns(
+        blob_positions=[[(0, 1), (0, 0)], [(3, 3)]],
+    )
+    out_a = translate_to_schema(
+        legacy, "abcdef12", patterns_a, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    out_b = translate_to_schema(
+        legacy, "abcdef12", patterns_b, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert out_a is not None and out_b is not None
+    assert out_a["action"]["args"]["selection"] == \
+        out_b["action"]["args"]["selection"] == [[0, 0], [0, 1], [3, 3]]
+
+
+def test_multi_blob_color_matches_uniform_output_color() -> None:
+    """K is extracted from any group's `output_colors[0]`. iter-18 pins
+    uniformity; the helper additionally checks the value is in the
+    coloring primitive's valid colour set (0..9 or 13)."""
+    legacy = {"type": "identity"}
+    for k in (0, 1, 5, 9, 13):
+        out = translate_to_schema(
+            legacy, "abcdef12",
+            _multi_blob_patterns(k=k),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None, f"multi-blob branch should fire for K={k}"
+        assert out["action"]["args"]["color"] == k
+
+
+def test_multi_blob_covers_and_source_task_use_task_hex() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "deadbeef", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["source_task"] == "deadbeef"
+    assert out["covers"] == ["deadbeef"]
+
+
+def test_multi_blob_anti_unification_trace_is_null_for_source_rule() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["anti_unification_trace"] is None
+
+
+def test_multi_blob_times_reused_starts_at_zero() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["times_reused"] == 0
+
+
+def test_multi_blob_min_evidence_reflects_pair_count() -> None:
+    legacy = {"type": "identity"}
+    out2 = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out2 is not None
+    assert out2["condition"]["min_evidence"] == 2
+
+    out4 = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(n_pairs=4),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out4 is not None
+    assert out4["condition"]["min_evidence"] == 4
+
+
+def test_multi_blob_concept_and_category_are_paint_blobs_labels() -> None:
+    """The multi-blob branch coins its own concept/category labels
+    rather than going through `_infer_concept`. The labels are
+    `paint_blobs` / `color_transform` — pluralised counterpart to the
+    iter-27 `paint_blob` (single-blob) labels."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["concept"] == "paint_blobs"
+    assert out["category"] == "color_transform"
+
+
+def test_multi_blob_branch_returns_none_when_color_uniform_fails() -> None:
+    """Two distinct output colours across blobs — output_color_uniform
+    does NOT fire."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(n_pairs=2, k=3)
+    patterns["pair_analyses"][0]["groups"][1]["output_colors"] = [4]
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_input_dims_vary() -> None:
+    """Input dimensions vary across pairs — input_dimensions_constant
+    does NOT fire, so the multi-blob branch is not entered."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(n_pairs=2, in_h=5, in_w=5)
+    patterns["pair_analyses"][1]["input_height"] = 6
+    patterns["pair_analyses"][1]["input_width"] = 6
+    patterns["pair_analyses"][1]["output_height"] = 6
+    patterns["pair_analyses"][1]["output_width"] = 6
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_size_changed() -> None:
+    """At least one pair has size_match=False — grid_size_preserved does
+    NOT fire (top-level flag also False). Break the second pair's output
+    dimensions so the iter-21 make_grid branch does not silently fire
+    instead."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(n_pairs=2)
+    patterns["pair_analyses"][1]["size_match"] = False
+    patterns["pair_analyses"][1]["output_height"] = 6  # break output_dim constancy
+    patterns["grid_size_preserved"] = False
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_single_group() -> None:
+    """A pair with `num_groups == 1` fires iter 25 / 27, not iter 28's
+    matcher — multi_group_per_pair strictly requires num_groups >= 2
+    (strict mutual exclusion with iters 23 / 24 / 26)."""
+    legacy = {"type": "identity"}
+    # A single-blob multi-cell patterns dict fires iter 27, not iter 29.
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_cell_patterns(n_pairs=2, positions=[(1, 1), (1, 2)], k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["condition"]["type"] == "multi_cell_change_group_per_pair"
+
+
+def test_multi_blob_branch_returns_none_when_blob_set_differs_across_pairs() -> None:
+    """The defensive `_extract_multi_blob_paint_args` helper enforces
+    that the unioned position set is bit-identical across all training
+    pairs. The iter-28 matcher does NOT enforce this — it pins
+    cardinality regime only."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(
+        n_pairs=2,
+        blob_positions=[[(0, 0), (0, 1)], [(3, 3)]],
+    )
+    # Pair 1 has same blob count but different coords for the second blob.
+    patterns["pair_analyses"][1]["groups"][1]["positions"] = [(4, 4)]
+    patterns["pair_analyses"][1]["groups"][1]["top_row"] = 4
+    patterns["pair_analyses"][1]["groups"][1]["top_col"] = 4
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_legacy_type_is_not_identity() -> None:
+    """The translator dispatches on legacy_type == 'identity'. A
+    color_mapping legacy rule shape, even with multi-blob patterns, must
+    NOT trigger this branch."""
+    legacy = {"type": "color_mapping", "mapping": {1: 2}, "confidence": 0.8}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_color_out_of_palette() -> None:
+    """K outside the coloring primitive's valid set (0..9 or 13) — the
+    helper rejects rather than minting a malformed rule that
+    `validate_rule` would happily save but `coloring` would later reject."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(n_pairs=2, k=11)
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_positions_missing() -> None:
+    """Defensive: a pre-iter-27 `_analyze_pair` output (no `positions`
+    field) on one of the blobs must produce None — the extractor
+    refuses rather than fabricating a coord list."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(n_pairs=2)
+    del patterns["pair_analyses"][0]["groups"][0]["positions"]
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_positions_length_mismatches_cell_count() -> None:
+    """Defensive: if any blob's `positions` length differs from its
+    `cell_count`, the extractor refuses — the patterns dict is
+    internally inconsistent."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(n_pairs=2)
+    patterns["pair_analyses"][0]["groups"][0]["cell_count"] = 99
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_returns_none_when_blobs_share_a_cell() -> None:
+    """Defensive: two blobs sharing a coord means the connectivity
+    computation is corrupt — strict refusal rather than silent
+    deduplication. (A correctly-emitted patterns dict by iter-1's
+    `_analyze_pair` cannot produce this case; the test guards against
+    a future regression.)"""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns(
+        n_pairs=2,
+        blob_positions=[[(0, 0), (0, 1)], [(0, 1), (0, 2)]],
+    )
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_blob_branch_pure_no_file_io() -> None:
+    """`translate_to_schema` is pure — never writes to disk."""
+    legacy = {"type": "identity"}
+    with tempfile.TemporaryDirectory() as td:
+        cwd = os.getcwd()
+        try:
+            os.chdir(td)
+            before = set(os.listdir("."))
+            translate_to_schema(
+                legacy, "abcdef12", _multi_blob_patterns(),
+                rule_id=1, now="2026-05-13T19:30:00.000000",
+            )
+            after = set(os.listdir("."))
+        finally:
+            os.chdir(cwd)
+        assert before == after, "translate_to_schema must not touch disk"
+
+
+def test_multi_blob_branch_does_not_mutate_inputs() -> None:
+    """Purity: input legacy + patterns must be unchanged after call."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns()
+    legacy_copy = dict(legacy)
+    import copy as _copy
+    patterns_copy = _copy.deepcopy(patterns)
+    translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert legacy == legacy_copy
+    assert patterns == patterns_copy
+
+
+def test_multi_blob_branch_deterministic_across_repeats() -> None:
+    """Same inputs → same output, always."""
+    legacy = {"type": "identity"}
+    patterns = _multi_blob_patterns()
+    a = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    b = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert a == b
+
+
+def test_multi_blob_rule_round_trip_through_apply_DSL() -> None:
+    """End-to-end: a translated multi-blob coloring rule, when applied
+    via the iter-3 DSL primitive, paints exactly the unioned cells with
+    colour K on a test input."""
+    from procedural_memory.DSL.apply import apply_DSL  # local import
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_blob_patterns(n_pairs=2,
+                             blob_positions=[[(0, 0)], [(2, 2)]],
+                             k=4, in_h=3, in_w=3),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    args = out["action"]["args"]
+    test_input = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    painted = apply_DSL("coloring", test_input, **args)
+    assert painted == [[4, 0, 0], [0, 0, 0], [0, 0, 4]]
+    assert test_input == [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+
+
+def test_multi_blob_branch_strict_mutual_exclusion_with_identity() -> None:
+    """Iter-29 vs iter-14: multi_group_per_pair requires num_groups >= 2,
+    identity_transformation requires num_groups == 0 — disjoint on the
+    group-count axis."""
+    legacy = {"type": "identity"}
+    out_id = translate_to_schema(
+        legacy, "abcdef12", _identity_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_id is not None
+    assert out_id["condition"]["type"] == "identity_transformation"
+
+    out_mb = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mb is not None
+    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+
+
+def test_multi_blob_branch_strict_mutual_exclusion_with_single_cell() -> None:
+    """Iter-29 vs iter-25: multi_group_per_pair requires num_groups >= 2,
+    single_cell_change_per_pair requires num_groups == 1 — disjoint on
+    the group-count axis."""
+    legacy = {"type": "identity"}
+    out_sc = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_sc is not None
+    assert out_sc["condition"]["type"] == "single_cell_change_per_pair"
+
+    out_mb = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mb is not None
+    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+
+
+def test_multi_blob_branch_strict_mutual_exclusion_with_multi_cell() -> None:
+    """Iter-29 vs iter-27: multi_group_per_pair requires num_groups >= 2,
+    multi_cell_change_group_per_pair requires num_groups == 1 — disjoint
+    on the group-count axis (despite both matchers's names containing
+    'multi-', they recognise orthogonal cardinality sub-axes)."""
+    legacy = {"type": "identity"}
+    out_mc = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_cell_patterns(n_pairs=2, positions=[(0, 0), (0, 1)], k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mc is not None
+    assert out_mc["condition"]["type"] == "multi_cell_change_group_per_pair"
+
+    out_mb = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mb is not None
+    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+
+
+def test_multi_blob_branch_strict_mutual_exclusion_with_make_grid() -> None:
+    """Iter-29 vs iter-21: grid_size_preserved (this iter's gate)
+    requires every per-pair size_match True; grid_size_changed (iter
+    21's gate) requires at least one per-pair size_match False."""
+    legacy = {"type": "identity"}
+    out_mg = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(out_color=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mg is not None
+    assert out_mg["action"]["dsl"] == "make_grid"
+
+    out_mb = translate_to_schema(
+        legacy, "abcdef12", _multi_blob_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mb is not None
+    assert out_mb["action"]["dsl"] == "coloring"
+    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Driver.
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -1904,6 +2425,35 @@ def _run_all() -> int:
         test_multi_cell_branch_strict_mutual_exclusion_with_identity,
         test_multi_cell_branch_strict_mutual_exclusion_with_make_grid,
         test_multi_cell_live_analyze_pair_emits_positions_field,
+        # Iter 29 — multi-blob coloring branch.
+        test_multi_blob_branch_fires_when_all_four_matchers_fire,
+        test_multi_blob_condition_type_is_multi_group_per_pair,
+        test_multi_blob_rule_passes_validate_rule,
+        test_multi_blob_positions_are_row_major_sorted_union,
+        test_multi_blob_color_matches_uniform_output_color,
+        test_multi_blob_covers_and_source_task_use_task_hex,
+        test_multi_blob_anti_unification_trace_is_null_for_source_rule,
+        test_multi_blob_times_reused_starts_at_zero,
+        test_multi_blob_min_evidence_reflects_pair_count,
+        test_multi_blob_concept_and_category_are_paint_blobs_labels,
+        test_multi_blob_branch_returns_none_when_color_uniform_fails,
+        test_multi_blob_branch_returns_none_when_input_dims_vary,
+        test_multi_blob_branch_returns_none_when_size_changed,
+        test_multi_blob_branch_returns_none_when_single_group,
+        test_multi_blob_branch_returns_none_when_blob_set_differs_across_pairs,
+        test_multi_blob_branch_returns_none_when_legacy_type_is_not_identity,
+        test_multi_blob_branch_returns_none_when_color_out_of_palette,
+        test_multi_blob_branch_returns_none_when_positions_missing,
+        test_multi_blob_branch_returns_none_when_positions_length_mismatches_cell_count,
+        test_multi_blob_branch_returns_none_when_blobs_share_a_cell,
+        test_multi_blob_branch_pure_no_file_io,
+        test_multi_blob_branch_does_not_mutate_inputs,
+        test_multi_blob_branch_deterministic_across_repeats,
+        test_multi_blob_rule_round_trip_through_apply_DSL,
+        test_multi_blob_branch_strict_mutual_exclusion_with_identity,
+        test_multi_blob_branch_strict_mutual_exclusion_with_single_cell,
+        test_multi_blob_branch_strict_mutual_exclusion_with_multi_cell,
+        test_multi_blob_branch_strict_mutual_exclusion_with_make_grid,
     ]
     fails = 0
     for t in tests:

@@ -4778,3 +4778,251 @@ iters and is the architectural goal's load-bearing metric
 (Chollet-style skill-acquisition efficiency); reaching P3 > 0 is
 what makes the system "self-extending" in the way PROMPT.md §1
 names.
+
+---
+## Learning Loop -- 2026-05-13 22:03
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_220346.log
+
+---
+## Iter 29 -- 2026-05-13T22:11Z -- branch test20
+
+**Diagnosis**: Iter 28 landed the `multi_group_per_pair` matcher
+(P5: 12 -> 13) and named two next-gap options: (A) the emission
+branch consuming the new matcher -- the canonical
+iter-23/24/26 -> iter-25/27 cadence (matcher one iter, emission
+consumer the next) -- and (B) wiring an anti-unification call
+chain that would push P3 above 0.0. Option A is the smaller half
+and the explicit continuation of iter 27's "Next gap" log ("the
+emission branch consuming `multi_group_per_pair`, mirroring iter
+25's relationship to iter 24 and iter 27's relationship to iter
+26"). Smallest defensible step is the emission branch only.
+
+**Change**:
+- `agent/memory.py` (EDIT) -- (i) `translate_to_schema` gains a
+  fifth branch: gated on the conjunction of `multi_group_per_pair`
+  (iter 28) + `output_color_uniform` (iter 18) +
+  `input_dimensions_constant` (iter 22) + `grid_size_preserved`
+  (iter 1), an `{"type": "identity"}` legacy rule emits
+  `condition.type = "multi_group_per_pair"`, `action.dsl =
+  "coloring"` with `args = {"selection": [[r1, c1], ..., [rM,
+  cM]], "color": K}`. The selection is the row-major-sorted
+  UNION of every blob's `positions` field across the first
+  pair's groups (iter 27's `_analyze_pair` extension is the
+  data source -- no new `active_operators.py` change). K from
+  any group's `output_colors[0]`. `concept` / `category` labels
+  are `paint_blobs` / `color_transform` (pluralised counterpart
+  to iter 27's `paint_blob`). (ii) New defensive helper
+  `_extract_multi_blob_paint_args(pair_analyses)` mirrors iter
+  27's `_extract_multi_cell_paint_args` posture: returns
+  `(positions_list, color)` only when (1) the unioned position
+  SET is bit-identical across all training pairs (the matcher
+  conjunction pins cardinality regime but not blob layout --
+  without this stability check a stored literal coord list
+  would not generalise to heterogeneous-multi-blob tasks),
+  (2) K is in the `coloring` primitive's valid palette
+  (`range(10) | {13}`), (3) `len(positions) == cell_count` per
+  blob (iter 27's `_analyze_pair` contract), and (4) the
+  unioned coord set has no duplicates across blobs (two blobs
+  sharing a cell is internally-corrupt connectivity -- strict
+  refusal rather than silent deduplication). Pure: no file I/O,
+  no registry mutation, no caller-input mutation.
+- `tests/test_translate_to_schema.py` (EDIT) -- 28 new
+  dependency-free cases plus a `_multi_blob_patterns` fixture
+  that synthesises multi-blob `pair_analyses` shapes mirroring
+  iter 27's `_multi_cell_patterns` fixture style. Coverage:
+  smoke (`action.dsl == "coloring"` with row-major-sorted
+  unioned selection, all four matchers firing), `condition.type
+  == "multi_group_per_pair"`, `validate_rule` round-trip in a
+  tempdir, determinism on different orderings of the same blob
+  set (the union is row-major-sorted regardless of input
+  ordering), K extraction across colour values 0/1/5/9/13,
+  covers/source_task wiring, null `anti_unification_trace`,
+  `times_reused == 0` initial, `min_evidence` reflects
+  `len(pair_analyses)`, concept/category labels (`paint_blobs`
+  / `color_transform`), refusal paths (output_color_uniform
+  fails on per-blob colour mismatch; input_dimensions_constant
+  fails on per-pair dim mismatch; grid_size_preserved fails on
+  at least one pair size_match=False with output dims also
+  broken so iter 21's branch is foreclosed; single-group pairs
+  dispatch to iter 27's branch instead; the iter-29-distinct
+  defensive case -- unioned position SET differs across pairs
+  even though every matcher in the conjunction still fires;
+  legacy_type != identity returns None; K outside palette
+  rejected; missing `positions` on a blob -> None;
+  `len(positions) != cell_count` per blob -> None; two blobs
+  sharing a coord -> None), purity (no file I/O, no input
+  mutation), determinism across repeats, end-to-end round trip
+  through `apply_DSL("coloring", grid, selection=..., color=K)`
+  confirming the rule paints exactly the unioned cells with K
+  on a hand-crafted 3x3 test input, and FOUR strict-mutual-
+  exclusion verifications in both directions (vs iter 14
+  identity, vs iter 25 single-cell, vs iter 27 multi-cell
+  single-blob, vs iter 21 make_grid) -- the iter-28 three-way
+  partition proof on the group-count axis is exercised at
+  every pairwise endpoint.
+- `docs/RULE_FORMAT.md` (EDIT) -- (i) section 7 "As of" header
+  bumped from iter 28 to iter 29; (ii) `translate_to_schema()`
+  row appends the iter-29 branch description with the four-
+  matcher conjunction, the defensive helper's four extra
+  checks, the strict-mutual-exclusion proofs against iters 14
+  / 25 / 27 / 21, the new `paint_blobs` / `color_transform`
+  labels, and the F8-inert classification (no
+  `active_operators.py` diff); (iii)
+  `tests/test_translate_to_schema.py` row appends the 28
+  iter-29 cases summary.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 --
+no new DSL primitive added, `coloring` and `make_grid` remain
+the only two hand-coded primitives, the iter-29 emission
+composes the existing `coloring` primitive on data);
+`agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` node classes /
+`data/` (F1 inert); `agent/active_operators.py` (F2 / F8 inert
+-- emission-only addition consumes the iter-27 `positions`
+field that has been emitted per group since iter 27, so no
+companion touch needed); no new rules persisted (F4 vacuously
+satisfied -- the probe tasks do not fire `multi_group_per_pair`,
+so no rule was minted; the branch is verified by the 28 test
+cases); no `semantic_memory/` artifacts (F5 inert);
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+`run_1ktasks.py` (F6 inert); no `except RuleSchemaError` added
+or modified (F7 inert); F8 net-positive-additions question
+vacuously inert because `agent/active_operators.py` has zero
+diff this iter.
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P4=75, P5=13.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) fire
+`grid_size_changed` / `input_dimensions_constant` /
+`output_dimensions_constant` / `consistent_color_mapping` /
+`grid_size_preserved` but NOT `multi_group_per_pair` -- the
+iter-29 emission branch is latent on this probe set (the probe
+tasks have `make_grid`-shape patterns; the multi-blob territory
+is on different ARC tasks). Same latency pattern as the
+iter-21 / iter-25 / iter-27 emission branches had on their
+respective first-iter probe sets; the branch is verified by
+the 28 test cases against the live `CONDITION_REGISTRY` +
+`DSL_REGISTRY` + `validate_rule` + `apply_DSL` chain (no
+stubs).
+
+**Probe after**: Correct 0/3 (0.0%), Rules 0 (no rule saved --
+probe tasks do not fire the iter-29 matcher). P4 grew 75 -> 78
+from the three new episodic entries written by
+`_record_attempt()` on the iter-29 probe re-run -- the solve
+loop continues to write attempt folders correctly through the
+extended translator.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`e3afbd2b`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+  - F1: no diff against `data/`, `agent/cycle.py`,
+    `agent/wm.py`, or any `ARCKG/*.py` node class.
+  - F2: no new `_try_<name>` / `_apply_<name>` method --
+    `agent/active_operators.py` has zero diff this iter.
+  - F3: no diff against `procedural_memory/DSL/*.py`.
+  - F4: no new files under `procedural_memory/` (no rule was
+    minted because the probe tasks do not fire iter 28's
+    matcher).
+  - F5: no diff in `semantic_memory/`.
+  - F6: no diff in `run_loop.sh` / `run_pipeline.sh` /
+    `run_learn.py` / `run_1ktasks.py`.
+  - F7: no `except RuleSchemaError` added or modified -- the
+    new helper's failure mode is `return None`, not exception
+    swallow.
+  - F8: `agent/active_operators.py` numstat 0/0 this iter; the
+    F8 net-positive-additions guard cannot fire on a zero-diff
+    file. Companion-touch question vacuously inert.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 75 -> 78, P5 13 -> 13, P6 611 -> 611.
+- verdict: **CLEAN** (1 positive delta -- P4 +3 from the
+  iter-29 probe re-run).
+
+**Why this is real progress (not lipstick)**: Iter 27's "Next
+gap" log named the multi-blob emission branch explicitly:
+"extend the recognition axis with a `multi_group_per_pair`
+matcher (`num_groups >= 2` per pair -- the simplest entry on
+the deferred multi-blob axis from iter 23's territory), then
+write the emission branch that consumes it." Iter 28 landed
+the matcher; iter 29 lands its emission consumer -- the
+canonical iter-26 -> iter-27 cadence applied to iter 28. P4
++3 confirms the new `translate_to_schema` branch does not
+break the live solve loop on the probe set. The FOURTH
+non-identity rule shape any iter has been able to mint
+without anti-unification or polymorphic args lands on disk --
+make_grid (iter 21), single-cell (iter 25), multi-cell single-
+blob (iter 27), and now multi-blob (iter 29) -- each with
+literal-coord-or-constant args fixed by training data per
+`_extract_*_paint_args` defensive helpers. The iter-16
+polymorphic-args obstacle is now closed on the `coloring`
+argument list across THREE selection cardinality regimes
+(single-cell, multi-cell single-blob, multi-blob), with the
+same row-major-sorted literal-coord-list shape providing the
+deterministic serialization anti-unification will need to
+compare these rules. P6 holds at 611 (no `_try_*` accretion);
+P1 / P2 / P3 unchanged (no rule minted, no anti-unification
+fire). All 28 new test cases pass on this host; all 22
+previously-passing test suites continue to pass
+(consistent_color_mapping, dsl, episodic,
+fast_path_schema_rule, grid_size_changed,
+identity_transformation, input_color_uniform,
+input_dimensions_constant, load_related,
+multi_cell_change_group_per_pair, multi_group_per_pair,
+next_rule_id, output_color_uniform,
+output_dimensions_constant, persist_pipeline_rule,
+recognized_conditions, save_rule, sequential_recoloring,
+single_cell_change_per_pair, single_change_group_per_pair,
+translate_to_schema, unify) -- the iter-29-extended
+translate_to_schema suite now stands at 124 cases (96 from
+iters 14/21/25/27 + 28 new).
+
+**Next gap (note for future iter)**: With four non-identity
+rule shapes now mintable
+(`make_constant_grid` / `paint_single_cell` / `paint_blob` /
+`paint_blobs`), three of them (single-cell / multi-cell
+single-blob / multi-blob) share the same `(condition.type,
+action.dsl)` skeleton-spine `(*, coloring)` with selection
+cardinalities of 1 / N / M respectively -- the FIRST time
+iter 6's wired
+`save_rule(rule, related_rules=load_related(category=
+"color_transform", ...))` anti-unification call site would
+have multiple sibling rules on disk to unify across, were a
+real ARC task to mint two such rules in succession. P3 has
+been at 0.0 for 29 iters and is the architectural goal's
+load-bearing metric (Chollet-style skill-acquisition
+efficiency); reaching P3 > 0 is what makes the system
+"self-extending" in the way PROMPT.md section 1 names. The
+canonical-next-step is one of: (A) extend the `coloring`
+single-blob multi-cell branch to a derived-selection rule
+(input-side predicate "wherever input has colour C" gated on
+iter 19's `input_color_uniform` + iter 22's
+`input_dimensions_constant`) -- a different rule shape that
+lifts selection off literal coords, the natural prerequisite
+for anti-unification to lift `selection` into a variable
+across cardinalities; (B) the pair-specific program writer
+inside `GeneralizeOperator` so the slow path emits per-pair
+programs whose composition could then feed
+`anti_unification.unify` -- the load-bearing P3 work but a
+larger surface than the smallest-step contract;
+(C) construct a synthetic three-blob test task that fires
+`multi_group_per_pair` to verify the iter-29 branch end-to-
+end through a `_persist_pipeline_rule` call, minting a real
+on-disk rule -- a P1 + P2 incremental signal but no P3
+movement. Option (A) is the smaller half if anti-unification
+is to fire; option (C) is the smaller half on the
+"verify-emission-end-to-end" axis. Both are valid next-iter
+steps depending on which metric the next iter prioritises.
+
+---
+## Learning Loop -- 2026-05-13 22:11
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_221116.log
