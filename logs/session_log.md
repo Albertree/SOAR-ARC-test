@@ -5026,3 +5026,190 @@ steps depending on which metric the next iter prioritises.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260513_221116.log
+
+---
+## Learning Loop -- 2026-05-13 22:14
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_221416.log
+
+---
+## Learning Loop -- 2026-05-13 22:25
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_222512.log
+
+---
+## Iter 30 -- 2026-05-13T22:25Z -- branch test20
+
+**Diagnosis**: Iter 29's "Next gap" log named three candidate
+next steps (A: derived-selection coloring rule; B: pair-specific
+program writer in GeneralizeOperator; C: synthetic multi-blob
+test fixture). Option A requires extending coloring's selection
+semantics or adding a translate_to_schema branch with derived-
+extraction semantics -- both bigger than a matcher-only step.
+Option B is the load-bearing P3 work but a larger surface than
+the smallest-step contract. Option C mints one rule, no P3
+movement. The cross-pair changed-coord-set equality predicate is
+re-implemented privately in all three of the iter-25 / 27 / 29
+emission helpers (`_extract_single_cell_paint_args` /
+`_extract_multi_cell_paint_args` /
+`_extract_multi_blob_paint_args`) -- naming it as a single
+recognition matcher is a smaller-defensible step that fits the
+canonical iter pattern (matcher in advance of emission),
+surfaces the predicate to `episodic_memory/<task>/attempt_NNN/
+metadata.json`'s `fired_conditions` list, and provides a SHARED
+`condition.type` candidate the three sibling `coloring` rules
+could declare instead of the cardinality-specific labels --
+widening the anti-unification skeleton-match domain across
+cardinality regimes for the first time since iter 29's emission
+branch landed.
+
+**Change**:
+- `agent/conditions/change_positions_constant_across_pairs.py`
+  (NEW) -- 14th condition matcher. True iff every pair analysis
+  carries a non-empty unioned changed-coord set (over every
+  group's `positions` field) AND those unioned sets are bit-
+  identical across pairs. First entry on the position-content
+  recognition axis (orthogonal to dimensional / colour-content /
+  group-count / cell-count axes). Strict bool-subclass rejection
+  on `cell_count` and on each row / col of `positions`, mirroring
+  iters 13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 and
+  `validate_rule` V1. Fail-closed on missing `positions` / non-
+  list `positions` / length mismatch with `cell_count` / non-
+  2-tuple position entries / negative or non-int row/col / bool
+  row/col / missing `cell_count` / bool `cell_count` / zero
+  `cell_count` / non-list `groups` / non-dict group / non-dict
+  analysis / empty `pair_analyses` / empty union (identity case)
+  / duplicate coords within a pair's union. Position-content
+  axis is orthogonal to the group-count axis: pair 0 of 2
+  single-cell blobs at {(0,0),(0,1)} and pair 1 of 1 two-cell
+  blob at {(0,0),(0,1)} BOTH fire (the unions match) even though
+  per-pair `num_groups` differs.
+- `tests/test_change_positions_constant_across_pairs.py` (NEW)
+  -- 46 dependency-free cases against the live `CONDITION_
+  REGISTRY` (no stubs). Covers: registry membership, P5 unit-
+  monotone counter (>= 14), prior-matcher persistence invariant,
+  callable, iter-25 happy path (single-cell + same coord
+  across pairs), iter-27 happy path (multi-cell single-blob with
+  same positions), iter-29 happy path (multi-blob with same
+  union), the position-content-vs-group-count axis-orthogonality
+  case (different blob partitions but same union), position-
+  order-insensitivity within a group (matcher canonicalises via
+  sorted), 22 refusal paths (empty / missing / non-dict /
+  malformed / coord-mismatch / multi-blob-union-mismatch /
+  missing or wrong-typed positions or cell_count / corrupt-
+  duplicate-coords), purity, determinism, strict mutual-
+  exclusion with `identity_transformation`, CAN co-fire with
+  the four group-count matchers + `output_color_uniform` +
+  `input_color_uniform` + `grid_size_preserved`, does NOT
+  require `grid_size_preserved`, end-to-end agreement with the
+  live `ExtractPatternOperator._analyze_pair` extractor, and
+  Boolean-literal-not-truthy on return.
+- `tests/test_recognized_conditions.py` (EDIT) -- the existing
+  `test_registry_contents_after_helper_load` test asserts the
+  exact set of registry entries. Extended the expected set to
+  include `change_positions_constant_across_pairs` and bumped
+  the comment from "iter 28 / thirteen modules" to "iter 30 /
+  fourteen modules". Mirror of the iter-by-iter updates iters
+  13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 made.
+- `docs/RULE_FORMAT.md` (EDIT) -- (i) appended a row to the
+  section 4 "Condition Type Registry" table documenting the
+  matcher's contract, the per-pair union semantics, all strict-
+  type / fail-closed postures, the orthogonality / refinement
+  relations with iters 1 / 8 / 10 / 13 / 17 / 18 / 19 / 20 /
+  22 / 23 / 24 / 26 / 28, and F8-inert classification; (ii)
+  section 7 "As of" header bumped from iter 29 to iter 30.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; `coloring` and
+`make_grid` remain the only two hand-coded primitives);
+`agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` / `data/` (F1
+inert); `agent/active_operators.py` (F2 / F8 inert -- matcher-
+only addition consuming the `positions` field emitted since
+iter 27); no new rules persisted (F4 vacuously satisfied --
+probe tasks do not fire the iter-30 matcher in a rule-emitting
+configuration); no `semantic_memory/` artifacts (F5 inert);
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+`run_1ktasks.py` (F6 inert); no `except RuleSchemaError` added
+or modified (F7 inert); F8 net-positive-additions question
+vacuously inert because `agent/active_operators.py` has zero
+diff this iter.
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P4=81, P5=13.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) fire
+`grid_size_changed` / `input_dimensions_constant` /
+`output_dimensions_constant` / `consistent_color_mapping` /
+`grid_size_preserved` but do NOT fire
+`change_positions_constant_across_pairs` -- same latency
+pattern as iters 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28
+had on their respective probe sets. The matcher is verified by
+the 46 test cases against the live `CONDITION_REGISTRY`
+end-to-end through `recognized_conditions(...)` and the live
+`ExtractPatternOperator._analyze_pair` extractor (no stubs).
+
+**Probe after**: Correct 0/3 (0.0%), Rules 0. P4 grew 81 -> 84
+from the three new episodic entries written by
+`_record_attempt()` on the iter-30 probe re-run -- the solve
+loop continues to write attempt folders correctly with the new
+matcher in the registry.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD `53be46ab`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 81 -> 84, P5 13 -> 14, P6 611 -> 611.
+- verdict: **CLEAN** (2 positive deltas -- P4 +3, P5 +1).
+
+**Why this is real progress (not lipstick)**: Iter 29's "Next
+gap" log named the canonical-next-step trichotomy. The smallest-
+step contract favours a matcher addition that names a
+precondition the existing emission helpers already check three
+times privately. The new matcher is the FIRST entry on the
+position-content axis (cross-pair coord-set constancy);
+together with the existing 13 matchers spanning the dimensional
+axis (4) + colour-content axis (4) + group-count axis (3) +
+cell-count sub-axis (2), the recognition vocabulary now spans
+FIVE orthogonal axes for the first time. P5 +1 confirms the
+matcher is registered and the live recognizer returns it via
+`recognized_conditions(...)`. P4 +3 confirms the matcher does
+not break the live solve loop. All 46 new test cases pass; all
+22 previously-passing test suites continue to pass (one needed
+its expected-registry-contents set extended -- the same `==`
+assertion update iters 13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 /
+26 / 28 each performed when their matcher landed). P6 holds at
+611 (no `_try_*` accretion); P1 / P2 / P3 unchanged (no rule
+minted, no anti-unification fire).
+
+**Next gap (note for future iter)**: The recognition vocabulary
+now has 14 matchers across 5 orthogonal axes; the position-
+content axis has its FIRST entry. The smallest-step options
+ranking the same way iter 29's "Next gap" log did, now updated
+with the iter-30 vocabulary: (D) a translate_to_schema sixth
+branch that gates emission on
+`change_positions_constant_across_pairs` directly (instead of
+or in addition to the cardinality-specific labels), letting
+future anti-unification across the three sibling `coloring`
+rules use the shared `condition.type` skeleton instead of
+failing on cardinality-label mismatch -- the smallest step that
+actually unblocks P3 movement once two sibling rules of the
+same `condition.type` exist on disk; (A) the derived-selection
+rule shape (input-side predicate "wherever input has colour C"
+gated on iter 19 + iter 22) -- the natural prerequisite for
+anti-unification to lift `selection` off literal coords; (B)
+the pair-specific program writer inside `GeneralizeOperator`
+-- the load-bearing P3 work but a larger surface; (C) a
+synthetic multi-blob test task that fires the iter-29 emission
+branch through `_persist_pipeline_rule`, minting a real
+on-disk rule. Option (D) is the next-iter step most directly
+on the P3 path -- once two `change_positions_constant_across_
+pairs`-typed rules exist on disk, anti-unification can lift
+their `selection` lists into a variable for the first time.
+
