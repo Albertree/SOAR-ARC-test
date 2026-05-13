@@ -9991,3 +9991,127 @@ Tertiary option remains unchanged from iter 180 / 181: an emission
 branch that consumes the 00576224 tile-shape fired-conditions
 conjunction would need a 2-DSL-call action shape (`make_grid` then
 `coloring`), beyond the current single-DSL `action.dsl` schema.
+
+---
+## Learning Loop -- 2026-05-14 08:52
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_085211.log
+
+---
+## Iter 183 — 2026-05-14T08:55:00 — branch test20
+
+**Diagnosis**: Iter 182 named the per-pair shape-regularity property
+"input grid is square (H == W)" via `input_dimensions_square` and
+explicitly flagged the symmetric output-side dual as the smallest-
+step next iter to close the axis. With the input side covered but
+the output side unnamed, an abstract rule whose action emits a
+square canvas (transpose, dihedral on the output, `make_grid(N, N,
+color)` composition) has no recognition handle for its output-side
+shape precondition — it can declare an input-square gate but not an
+output-square gate. Iter 183 fills the dual: `output_dimensions_
+square`, matcher-only, no solve-path touch, completing the bipartite
+shape-regularity axis with zero risk against any forbidden signal.
+
+**Change**:
+- `agent/conditions/output_dimensions_square.py` (new) — symmetric
+  dual of iter 182. Strict positive-int gate on per-pair
+  `output_height` / `output_width`, universal-over-pairs `oh == ow`
+  conjunction, fail-closed posture on empty / non-list /
+  non-dict / bool / zero / negative / non-int dim. Auto-registers
+  via `@register("output_dimensions_square")` and is picked up by
+  `_autoload_matchers()`. Reuses the existing per-pair `output_
+  height` / `output_width` fields `_analyze_pair` has emitted since
+  iter 19 — matcher-only, no `agent/active_operators.py` change.
+- `tests/test_output_dimensions_square.py` (new) — 34 cases mirroring
+  iter 182's structure: registry membership + callability smoke (2),
+  positive cases including 1x1 / input-non-square but output-square
+  / per-pair varying square outputs (5), negative cases including
+  single / any / every non-square / empty / missing / non-list /
+  non-dict / non-dict-analysis (8), strict-type-gate cases (missing /
+  bool / zero / negative / float / string on both axes — 9),
+  behavioural-contract cases (side-effect-free, deterministic,
+  literal-Boolean return, ignores input dims, ignores size_match —
+  5), orthogonality cases against `grid_size_preserved`,
+  `output_dimensions_constant`, `input_dimensions_square`, and
+  `output_dimensions_multiple_of_input` — including the full
+  2x2 input-square / output-square independence matrix (4), plus a
+  wiring check via `recognized_conditions` (1).
+- `tests/test_recognized_conditions.py` (edit) — bump the iter-182
+  twenty-five-element registry-contents assertion to include the new
+  matcher (now twenty-six elements); update the inline count
+  comment from "iter 182" to "iter 183".
+
+**Probe before**: 0/3 correct, 0 rules, P5=25, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5=26, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter
+adds recognition vocabulary that no `translate_to_schema` branch
+currently consumes, so the probe outcome is by construction
+unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 25 → 26 (+1)
+
+F1 inert — no frozen file touched.
+F2 inert — no `_try_*` / `_apply_*` method added (no diff to
+`agent/active_operators.py` at all).
+F3 inert — no DSL primitive added; the change is in
+`agent/conditions/` and `tests/`.
+F4 inert — no rule file touched.
+F5 inert — `semantic_memory/` untouched.
+F6 inert — no `run_loop.sh` / budget-script change.
+F7 inert — no `try/except RuleSchemaError` added.
+F8 inert — `agent/active_operators.py` line count unchanged
+(0 additions, 0 deletions). The companion-touch gate doesn't apply.
+
+All 36 test scripts pass (the iter-182 set of 35 plus the new
+`tests/test_output_dimensions_square.py`).
+
+**Next gap (note for future iter)**: With this iter the per-pair
+shape-regularity axis is now bipartite-complete on the matcher side
+(input + output both named). The natural matcher-only continuations
+would all require new patterns-dict fields from `_analyze_pair` and
+are therefore F8 multi-file changes rather than pure matcher-only
+iters: (i) `input_output_dimensions_equal_when_both_square` (a
+compound that strictly implies `grid_size_preserved` on the square
+subset — diminishing returns since the iter-1 matcher already covers
+it on the size-match axis); (ii) `output_dimensions_square_constant`
+(co-fire of iter 20 AND iter 183 — composable via `recognized_
+conditions`, no new matcher needed); (iii) `input_dimensions_
+square_constant` (symmetric). All three are derivable by composition
+of already-named matchers, so adding any of them as a new matcher
+would be over-equipping the recognition vocabulary against the
+under-equip principle (CLAUDE.md §6.1 / wiki [[arbor]] note 2026-
+04-25). The remaining axes that ARE still unnamed and would not be
+derivable by composition — colour-palette overlap input∩output,
+output-color-subset-of-input, output-uses-only-new-colors — all
+require new patterns-dict fields from `_analyze_pair`, which is a
+coordinated F8 multi-file change rather than a pure matcher-only
+iter. The two long-standing larger-than-smallest-step candidates
+remain unchanged from iters 180 / 181 / 182:
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 +
+`apply_DSL` to let `action.args` carry derived selection (e.g.
+"wherever input has colour C"). The only path that handles
+`00576224` / `007bbfb7` / `009d5c81` without anti-unification first
+lifting `selection`; bigger than a smallest-step iter.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-table-
+emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints
+one `coloring` sibling rule per distinct output colour. Uses only
+the frozen `coloring` primitive (F3 inert) and is the natural setup
+for anti-unification to lift the per-cell coord lists into a colour-
+keyed selection variable across the sibling rules. Still atomic
+three-part across `agent/memory.py` AND `agent/active_agent.py`
+AND a new emission branch.
+Tertiary option remains unchanged from iter 180 / 181 / 182: an
+emission branch that consumes the 00576224 tile-shape fired-
+conditions conjunction would need a 2-DSL-call action shape
+(`make_grid` then `coloring`), beyond the current single-DSL
+`action.dsl` schema. Iter 183's bipartite-complete shape-regularity
+axis makes (c) marginally easier: the make_grid-output-square
+precondition is now declarable as a literal `condition.type`.
