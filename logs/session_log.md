@@ -6016,3 +6016,241 @@ axis because the cross-axis symmetry with iters 30 / 32 makes
 the three-axis recognition vocabulary's "set-constancy" row
 complete, a structural milestone the projection refinements do
 not provide.
+
+---
+## Learning Loop -- 2026-05-13 23:29
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_232952.log
+
+---
+## Iter 35 -- 2026-05-13T14:37Z -- branch test20
+
+**Diagnosis**: Iter 34's "Next gap" log enumerated four candidates
+(A''' translate_to_schema recolour emission branch, B''' derived-
+selection emission requiring an apply-layer extension, C''' the
+pair-specific program writer inside `GeneralizeOperator`, D''' the
+`change_input_colors_constant_across_pairs` projection matcher) and
+explicitly named A''' and D''' as the two next-iter steps most
+directly on the P1 / P5 path. Of those, D''' is strictly the
+smallest defensible single-commit step: a single new matcher under
+`agent/conditions/` plus its dependency-free test file plus the
+`docs/RULE_FORMAT.md` registry-table entry, with zero touches to
+`agent/active_operators.py`, `agent/memory.py`, or
+`program/anti_unification.py`. Option A''' is on the emission side
+(P3 trajectory) but a larger surface — it would require a new
+emission branch in `translate_to_schema` plus a defensive helper
+plus end-to-end tests against the live `_analyze_pair` + `apply_DSL`
+pipeline. Option B''' is blocked by the apply-layer obstacle iter
+31 / 32 deferred (the `coloring` primitive takes literal coords,
+not a derived predicate). Option C''' is the load-bearing P3 work
+but a multi-file surface that conflates GeneralizeOperator + pair-
+program writer + AU input shape. Iter 35 picks D''' on the
+recognition-vocabulary-ahead-of-emission posture iters 17 / 18 /
+19 / 20 / 22 / 23 / 24 / 26 / 28 / 30 / 32 / 33 / 34 all carry:
+name the precondition before the corresponding emission branch
+lands. The new matcher is strictly weaker than BOTH iter 19 (the
+input-uniform matcher's `len(union) == 1` clause is stricter than
+per-pair-set-constant — iter 35 fires on multi-input-colour
+per-pair sets like pair 0 `{1, 2}` / pair 1 `{1, 2}` where iter 19
+rejects) AND iter 34 (full `(ic, oc)` set-constant strictly implies
+input-side set-constant by first-coordinate projection — iter 35
+fires on the output-side-varying case pair 0 `1 → 2` / pair 1
+`1 → 3` where iter 34 rejects). The iter-35-exclusive territory is
+exactly the union of those two — multi-input-cross-pair-pinned
+sets and output-side-varying input-pinned cases — neither named by
+any prior recognition matcher.
+
+**Change**:
+- `agent/conditions/change_input_colors_constant_across_pairs.py`
+  (NEW) -- single self-contained matcher predicate. Reads
+  `patterns["pair_analyses"][i]["groups"][j]["input_colors"]`
+  (emitted since iter 1), requires `len == 1` per group (multi-
+  input-colour groups have an ill-defined `ic` projection and
+  fail-close mirroring iters 18 / 19 / 34's strict per-group
+  cardinality-1 posture), collects the per-pair frozenset of
+  group-level `input_colors[0]` values, and compares cross-pair
+  for equality. Strict-bool-subclass rejection on colour values
+  mirroring iters 13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 /
+  30 / 32 / 33 / 34 and `validate_rule` V1. Fail-closed on: empty
+  per-pair sets (the identity-territory rejection clause,
+  mirroring iter 30's empty-union, iter 32's per-pair-total-zero,
+  and iter 34's per-pair empty-set rejections), multi-input-colour
+  groups (the per-group `len == 1` posture), non-list / missing
+  `input_colors`, non-int / bool / out-of-range colour entries
+  (ARC colours are `0..9`; `_analyze_pair` only emits colours
+  observed in actual grids), non-list `groups`, non-dict group,
+  non-dict analysis, non-list / empty `pair_analyses`. The matcher
+  is INDIFFERENT to `output_colors` cardinality / value — that is
+  the input-projection design intent (the
+  `test_returns_true_on_multi_output_colors_in_group` test
+  exercises this). No `_analyze_pair` change -- iter 35 is matcher
+  -only addition using existing patterns-dict fields on a new
+  projection sub-axis of the colour-content territory.
+- `tests/test_change_input_colors_constant_across_pairs.py` (NEW)
+  -- 47 dependency-free cases against the live `CONDITION_REGISTRY`
+  + `ExtractPatternOperator._analyze_pair` (no stubs). Mirror of
+  iter 34's test surface adapted to the input projection. Covers
+  registration, adjacent-iter matcher non-displacement (iters
+  1 / 8 / 10 / 13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 /
+  30 / 32 / 33 / 34), `>= 18`-entry registry assertion (P5:
+  17 -> 18), callable contract, single-pair / multi-pair / multi-
+  group positive cases (including the iter-35-exclusive multi-
+  input-colour-per-pair fixture pair 0 `{1, 3}` / pair 1 `{1, 3}`
+  that iter 19 rejects), the iter-34 refinement-chain implication
+  and strict-one-direction (`(1, 2)` / `(1, 3)` -- iter 35 fires,
+  iter 34 rejects), the iter-19 refinement implication and strict-
+  one-direction (multi-input case), INDEPENDENCE from
+  `consistent_color_mapping` in BOTH directions (iter 8 fires
+  alone via differing inputs with functional union; iter 35 fires
+  alone via constant inputs with non-functional union), empty /
+  missing / non-list / non-dict `pair_analyses`, malformed
+  analysis, every-pair-zero-groups (identity rejection), one-pair-
+  zero-groups rejection, distinct per-pair input sets rejection,
+  extra-input-colour rejection (superset case), multi-input-
+  colours-in-group rejection, multi-output-colours-in-group
+  ACCEPTANCE (the iter-35-distinct posture vs iter 34's rejection
+  -- iter 35 inspects only inputs), empty / missing / non-list
+  `input_colors`, bool-subclass, out-of-range colours (-1, 10, 13,
+  100), non-int colours (`0.5`, `"1"`, `None`, `[1]`), non-list
+  `groups`, non-dict group, side-effect-free input contract,
+  determinism across repeats, STRICT mutual exclusion with
+  `identity_transformation`, co-firing with `output_color_uniform`
+  / `input_color_uniform` (the simplest uniform-paint stack),
+  co-firing with iter 34 (`change_colors_constant_across_pairs`
+  -- by the refinement implication), co-firing with
+  `change_positions_constant_across_pairs` (iter 30 -- positions
+  AND inputs both pinned), co-firing with
+  `change_count_constant_across_pairs` (iter 32 -- counts AND
+  inputs both pinned), the iter-32 strict-orthogonality case
+  (constant input sets with varying cell counts -- iter 35 fires,
+  iter 32 rejects), co-firing with `single_cell_change_per_pair`
+  / `multi_group_per_pair`, dimensional-axis independence (fires
+  on dimension-changed pairs and co-fires with
+  `output_dimensions_constant` / `input_dimensions_constant`),
+  end-to-end agreement with the live `_analyze_pair` output on a
+  3x3 -> 3x3 single-cell pair pair (positions differ, input set
+  pinned), end-to-end agreement on the iter-35-exclusive case
+  where ONLY the input projection is constant (pair 0 `1 -> 2`,
+  pair 1 `1 -> 3` -- iter 35 fires, iter 34 + iter 8 reject), and
+  a strict-Boolean return assertion.
+- `tests/test_recognized_conditions.py` (EDIT) -- the registry-
+  set membership assertion in
+  `test_registry_contents_after_helper_load` widened from 17 to
+  18 expected matchers (iter 35's name added; comment updated to
+  "As of iter 35 there are eighteen such modules"). The
+  `test_all_three_matchers_fire_on_compatible_patterns`
+  assertion expanded to include
+  `change_input_colors_constant_across_pairs` -- the fixture's
+  two pairs share identical per-pair input-colour sets
+  `{0, 1, 2}` (by the iter-34 strictly-implies-iter-35 chain
+  operating on the fixture's bit-identical `(0, 3) / (1, 4) /
+  (2, 5)` mapping set), so iter 35 legitimately fires on the
+  fixture; comment refreshed to note the matcher growth.
+- `docs/RULE_FORMAT.md` (EDIT) -- section 4 condition registry
+  table extended with the iter-35 entry placed immediately above
+  the iter-34 `change_colors_constant_across_pairs` entry.
+  Section 7 "As of" header bumped from iter 34 to iter 35.
+
+No edits to: `procedural_memory/DSL/` (F3 inert); `agent/cycle.py`
+/ `agent/wm.py` / `ARCKG/*.py` / `data/` (F1 inert);
+`agent/active_operators.py` (F2 / F8 inert -- zero diff this
+iter); no new rules persisted (F4 vacuously satisfied); no
+`semantic_memory/` artifacts (F5 inert); `run_loop.sh` and
+friends (F6 inert); no `except RuleSchemaError` changes (F7
+inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P4=102, P5=17. The
+seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) -- the first
+two tile-style (2x2 -> 6x6 and 3x3 -> 9x9 with
+`(k_h, k_w) = (3, 3)`, firing iter 17 `grid_size_changed` and
+iter 33 `output_dimensions_multiple_of_input`), the third 14x14
+-> 14x14 size-preserved. Iter 35 adds matcher vocabulary on the
+input-colour projection sub-axis of the cross-pair set-constancy
+recognition territory. The slow path is untouched.
+
+**Probe after**: P5 17 -> 18 via the iter-35 matcher addition.
+Whether the new matcher fires on a given probe task depends on
+per-pair input-colour-set bit-identity which the `_analyze_pair`
+extractor's `min(h_in, h_out)` overlap clipping constrains for
+tile tasks; the per-attempt `fired_conditions` metadata.json will
+surface that signal from this iter forward. No change to rule
+emission (no new emission branch); the matcher is recognition
+vocabulary ahead of emission, matching iters 17 / 18 / 19 / 20 /
+22 / 23 / 24 / 26 / 28 / 30 / 32 / 33 / 34's posture.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD 7d0c0b21):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4
+  102 -> 102, P5 17 -> 18, P6 611 -> 611 (lines removed delta 0).
+- verdict: **CLEAN** (1 positive delta -- P5 +1).
+
+**Why this is real progress (not lipstick)**: P5 +1 is the only
+positive signal moved this iter, but it is a genuine vocabulary
+extension on a NEW projection sub-axis -- not a restatement of an
+existing matcher. iter 19 (`input_color_uniform`) requires the
+union of all input colours to be a singleton; iter 35 fires
+whenever the per-pair set is bit-identical with any cardinality
+`>= 1`, naming the multi-input-colour-per-pair territory iter 19
+cannot name (e.g. pair 0 inputs `{1, 2}`, pair 1 inputs `{1, 2}`
+-- iter 35 fires, iter 19 rejects). iter 34
+(`change_colors_constant_across_pairs`) requires the per-pair full
+`(ic, oc)` set to be bit-identical; iter 35 fires whenever the
+per-pair input projection is bit-identical, naming the output-
+varying input-pinned territory iter 34 cannot name (e.g. pair 0
+maps `1 -> 2`, pair 1 maps `1 -> 3` -- per-pair input set `{1}` on
+both, per-pair `(ic, oc)` sets differ; iter 35 fires, iter 34
+rejects). The iter-35-exclusive territory is the union of those
+two cases. Naming the precondition before the corresponding
+emission branch lands is the same recognition-vocabulary-ahead-
+of-emission posture iters 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 /
+28 / 30 / 32 / 33 / 34 all carry. All 47 new test cases pass; all
+27 other test files in `tests/` pass unchanged. The
+`test_recognized_conditions.py` assertion-expansion accommodates
+the new matcher's legitimate firing on the existing fixture
+(per-pair input-colour set `{0, 1, 2}` is bit-identical across
+the fixture's two pairs by construction). No new failure surface.
+
+**Next gap (note for future iter)**: With iter 35's matcher
+landed, the colour-content axis now has three named matchers in
+the projection / union chain on the cross-pair sub-axis: full set
+constancy (iter 34 -- `(ic, oc)` set), input projection
+(iter 35 -- `ic` set), and uniformity / singleton union
+(iter 19 -- `len(union) == 1` on `ic`). The most glaring next-
+smallest defensible step is the OUTPUT-side symmetric completion:
+`change_output_colors_constant_across_pairs` (the `oc` projection
+of iter 34), strictly weaker than iter 34 AND strictly weaker
+than iter 18 (`output_color_uniform`), naming the output-side
+recognition vocabulary mirror to iter 35's input-side and
+completing the input/output x projection symmetry on the cross-
+pair set-constancy axis the same way iters 18 / 19 / 20 / 22
+completed the symmetry on the uniformity sub-axis. Other
+candidates: (A'''') the `translate_to_schema` recolour emission
+branch (option A''' deferred from iter 34 -- gated on iter 19 +
+iter 24 + iter 30 + iter 1, would mint a
+`coloring(grid, [[r, c]], K)` rule with K the canonical pair-0
+output colour and `[[r, c]]` the pair-0 single-cell coord;
+touches `agent/memory.py` only, F8 inert by the iter-25 / 27 / 29
+pattern); (C'''') the pair-specific program writer inside
+`GeneralizeOperator` (the load-bearing P3 work but a larger
+multi-file surface); (D'''') a
+`change_input_color_count_constant_across_pairs` matcher: true
+iff the per-pair count of distinct input colours involved is
+constant across pairs (strictly weaker than iter 35 -- bit-
+identical sets imply equal cardinality, but equal cardinality
+does not imply identical sets; e.g. pair 0 inputs `{1, 2}`, pair
+1 inputs `{3, 4}` -- same cardinality 2, distinct sets; iter 35
+rejects, this matcher fires), the cardinality-projection
+refinement analogous to iter 32's relation to iter 30 on the
+cardinality axis. The OUTPUT-side mirror is the structural-
+symmetry completion most directly continuing the iter-35 input-
+side projection on the projection sub-axis, with the same
+recognition-vocabulary-ahead-of-emission posture; the iter-34 /
+35 / future-iter-36 trio would then form the same input/output x
+projection completion shape the iter-18 / iter-19 pair did on the
+uniformity sub-axis.
