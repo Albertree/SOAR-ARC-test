@@ -352,9 +352,12 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
       list.
 
     * ``{"type": "identity", ...}`` + ``single_cell_change_per_pair`` +
+      ``change_positions_constant_across_pairs`` (iter 31 added) +
       ``output_color_uniform`` + ``input_dimensions_constant`` +
-      ``grid_size_preserved`` all fire (iter 25) →
-      ``condition.type = "single_cell_change_per_pair"``,
+      ``grid_size_preserved`` all fire (iter 25, iter 31 condition.type
+      harmonisation) →
+      ``condition.type = "change_positions_constant_across_pairs"``
+      (iter 31 — was ``single_cell_change_per_pair`` in iters 25 → 30),
       ``action.dsl = "coloring"`` with
       ``args = {"selection": [[r, c]], "color": K}``. The (r, c) coord
       is the first pair's single group's ``(top_row, top_col)`` — for a
@@ -368,11 +371,18 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
       dimension stability, and per-pair input==output shape, but they
       do NOT pin the coord's position across pairs; a stored
       literal-coord rule only generalises when training pairs share
-      the same (r, c). The chosen ``condition.type``
-      (``single_cell_change_per_pair``) is the strictest of the four
-      gating matchers and the one that directly pins the selection's
-      cardinality + shape; the other three matchers contribute to
-      determining the action's args without naming a new label. STRICT
+      the same (r, c). The chosen ``condition.type`` (iters 25 → 30:
+      ``single_cell_change_per_pair``; iter 31 onward:
+      ``change_positions_constant_across_pairs``) — the iter-31
+      harmonisation surfaces the cross-pair coord predicate the helper
+      privately enforced AND lets the three sibling ``coloring`` rules
+      share a ``(condition.type, action.dsl)`` skeleton, the prerequisite
+      for ``unify`` to lift their ``selection`` lists into a variable
+      when two or more such rules exist on disk. The cardinality-specific
+      ``single_cell_change_per_pair`` matcher remains in the gating
+      conjunction (it is the actual ARG-shape precondition); iter-30's
+      matcher is the cross-pair coord predicate, an orthogonal axis.
+      STRICT
       mutual exclusion with the iter-14 identity branch is guaranteed
       by ``single_cell_change_per_pair`` requiring ``num_groups == 1``
       while ``identity_transformation`` requires ``num_groups == 0``,
@@ -392,9 +402,12 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
       colour, and the canvas shape are all fixed by training data.
 
     * ``{"type": "identity", ...}`` + ``multi_group_per_pair`` +
+      ``change_positions_constant_across_pairs`` (iter 31 added) +
       ``output_color_uniform`` + ``input_dimensions_constant`` +
-      ``grid_size_preserved`` all fire (iter 29) →
-      ``condition.type = "multi_group_per_pair"``, ``action.dsl =
+      ``grid_size_preserved`` all fire (iter 29, iter 31 condition.type
+      harmonisation) → ``condition.type =
+      "change_positions_constant_across_pairs"`` (iter 31 — was
+      ``multi_group_per_pair`` in iters 29 → 30), ``action.dsl =
       "coloring"`` with ``args = {"selection": [[r1, c1], ..., [rM, cM]],
       "color": K}``. The selection is the row-major-sorted union of every
       blob's ``positions`` field across the first pair's groups (each
@@ -433,9 +446,12 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
       ("the largest unfilled gap remains P3").
 
     * ``{"type": "identity", ...}`` + ``multi_cell_change_group_per_pair``
-      + ``output_color_uniform`` + ``input_dimensions_constant`` +
-      ``grid_size_preserved`` all fire (iter 27) →
-      ``condition.type = "multi_cell_change_group_per_pair"``,
+      + ``change_positions_constant_across_pairs`` (iter 31 added) +
+      ``output_color_uniform`` + ``input_dimensions_constant`` +
+      ``grid_size_preserved`` all fire (iter 27, iter 31 condition.type
+      harmonisation) → ``condition.type =
+      "change_positions_constant_across_pairs"`` (iter 31 — was
+      ``multi_cell_change_group_per_pair`` in iters 27 → 30),
       ``action.dsl = "coloring"`` with
       ``args = {"selection": [[r1, c1], ..., [rN, cN]], "color": K}``.
       The coord list is the first pair's single group's ``positions``
@@ -556,6 +572,22 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
 
     # Iter 25: single-cell uniform-paint branch. Gated on the conjunction
     # of four named recognition preconditions across iters 1 / 18 / 22 / 24.
+    # Iter 31: ``change_positions_constant_across_pairs`` (iter 30) added
+    # to the gating conjunction AND adopted as the emitted
+    # ``condition.type`` (replacing the cardinality-specific
+    # ``single_cell_change_per_pair`` label used in iters 25 → 30). The
+    # iter-30 matcher names the exact cross-pair coord-set predicate the
+    # defensive helper ``_extract_single_cell_paint_args`` privately
+    # enforced; surfacing it at the gate level and using it as the rule's
+    # ``condition.type`` harmonises the three sibling ``coloring`` branches
+    # (iter 25 / 27 / 29) so they share a ``(condition.type, action.dsl)``
+    # skeleton — the prerequisite for ``program.anti_unification.unify``
+    # to lift their ``selection`` lists into a variable when two or more
+    # rules of this shape land on disk. The cardinality-specific
+    # ``single_cell_change_per_pair`` matcher remains in the gating
+    # conjunction (it is the actual recognition precondition for the
+    # single-cell ARG shape; iter-30's matcher is the cross-pair coord
+    # predicate, an orthogonal axis); both must fire.
     # STRICTLY mutually exclusive with the iter-14 identity branch
     # (single_cell_change_per_pair requires num_groups == 1, identity
     # requires num_groups == 0) and with the iter-21 make_grid branch
@@ -563,6 +595,7 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
     # order of branches above is incidental — any patterns dict that fires
     # one cannot fire the others.
     if ("single_cell_change_per_pair" in fired
+            and "change_positions_constant_across_pairs" in fired
             and "output_color_uniform" in fired
             and "input_dimensions_constant" in fired
             and "grid_size_preserved" in fired):
@@ -575,7 +608,7 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
             "concept": "paint_single_cell",
             "category": "color_transform",
             "condition": {
-                "type": "single_cell_change_per_pair",
+                "type": "change_positions_constant_across_pairs",
                 "params": {},
                 "min_evidence": min_evidence,
             },
@@ -616,7 +649,13 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
     # ``output_colors[0]`` (iter-18 pins it constant). Third
     # non-identity rule shape any iter has been able to mint without
     # anti-unification or polymorphic args.
+    # Iter 31 harmonisation (see iter-25 branch comment): the iter-30
+    # matcher ``change_positions_constant_across_pairs`` is added to the
+    # gating conjunction AND adopted as the emitted ``condition.type``
+    # (replacing the cardinality-specific
+    # ``multi_cell_change_group_per_pair`` label used in iters 27 → 30).
     if ("multi_cell_change_group_per_pair" in fired
+            and "change_positions_constant_across_pairs" in fired
             and "output_color_uniform" in fired
             and "input_dimensions_constant" in fired
             and "grid_size_preserved" in fired):
@@ -629,7 +668,7 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
             "concept": "paint_blob",
             "category": "color_transform",
             "condition": {
-                "type": "multi_cell_change_group_per_pair",
+                "type": "change_positions_constant_across_pairs",
                 "params": {},
                 "min_evidence": min_evidence,
             },
@@ -655,7 +694,13 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
     # multi-cell single-blob branch (both require num_groups == 1), and
     # the iter-21 make_grid branch (grid_size_preserved partitions against
     # grid_size_changed) — so the branch order above is incidental.
+    # Iter 31 harmonisation (see iter-25 branch comment): the iter-30
+    # matcher ``change_positions_constant_across_pairs`` is added to the
+    # gating conjunction AND adopted as the emitted ``condition.type``
+    # (replacing the cardinality-specific ``multi_group_per_pair`` label
+    # used in iter 29 → 30).
     if ("multi_group_per_pair" in fired
+            and "change_positions_constant_across_pairs" in fired
             and "output_color_uniform" in fired
             and "input_dimensions_constant" in fired
             and "grid_size_preserved" in fired):
@@ -668,7 +713,7 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
             "concept": "paint_blobs",
             "category": "color_transform",
             "condition": {
-                "type": "multi_group_per_pair",
+                "type": "change_positions_constant_across_pairs",
                 "params": {},
                 "min_evidence": min_evidence,
             },

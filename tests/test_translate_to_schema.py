@@ -811,7 +811,10 @@ def _single_cell_patterns(n_pairs: int = 2, r: int = 1, c: int = 2,
     `size_match` is True per pair (input dims == output dims); per-pair
     `input_height`/`input_width`/`output_height`/`output_width` set to
     (in_h, in_w) so iter-22 input_dimensions_constant fires. The
-    iter-1 top-level `grid_size_preserved` flag is True."""
+    iter-1 top-level `grid_size_preserved` flag is True. The iter-27
+    `positions` field is emitted per group so the iter-30 matcher
+    `change_positions_constant_across_pairs` fires too — that matcher is
+    in iter 31's gating conjunction for the single-cell branch."""
     pair_analyses = []
     for i in range(n_pairs):
         # Vary input_colors across pairs — output_color_uniform is on output side.
@@ -825,6 +828,7 @@ def _single_cell_patterns(n_pairs: int = 2, r: int = 1, c: int = 2,
                     "top_row": r,
                     "top_col": c,
                     "cell_count": 1,
+                    "positions": [(r, c)],
                 }
             ],
             "size_match": True,
@@ -854,17 +858,29 @@ def test_single_cell_branch_fires_when_all_four_matchers_fire() -> None:
     assert out["action"]["args"] == {"selection": [[1, 2]], "color": 7}
 
 
-def test_single_cell_condition_type_is_single_cell_change_per_pair() -> None:
-    """The single-cell branch picks `single_cell_change_per_pair` as
-    `condition.type` — the strictest of the four gating matchers (and
-    the one that directly pins the action's selection cardinality)."""
+def test_single_cell_condition_type_is_change_positions_constant_across_pairs() -> None:
+    """Iter-31 harmonisation: the single-cell branch now picks
+    `change_positions_constant_across_pairs` (iter 30) as
+    `condition.type`, instead of the cardinality-specific
+    `single_cell_change_per_pair` label used in iters 25 → 30. The
+    rationale: the iter-30 matcher names the cross-pair coord-set
+    predicate the defensive helper `_extract_single_cell_paint_args`
+    privately enforced; surfacing it at the rule's `condition.type`
+    field harmonises the iter-25 / 27 / 29 sibling `coloring` rules so
+    they share a `(condition.type, action.dsl)` skeleton — the
+    prerequisite for `program.anti_unification.unify` to lift their
+    `selection` lists into a variable when two or more such rules
+    exist on disk. The cardinality-specific `single_cell_change_per_pair`
+    matcher remains in the gating conjunction (it is the ARG-shape
+    precondition) — iter-30's matcher is the cross-pair coord predicate,
+    an orthogonal axis."""
     legacy = {"type": "identity"}
     out = translate_to_schema(
         legacy, "abcdef12", _single_cell_patterns(),
         rule_id=2, now="2026-05-13T19:30:00.000000",
     )
     assert out is not None
-    assert out["condition"]["type"] == "single_cell_change_per_pair"
+    assert out["condition"]["type"] == "change_positions_constant_across_pairs"
     assert out["condition"]["params"] == {}
     assert isinstance(out["condition"]["min_evidence"], int)
     assert out["condition"]["min_evidence"] >= 1
@@ -1208,8 +1224,21 @@ def test_single_cell_branch_strict_mutual_exclusion_with_identity() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_sc is not None
-    assert out_sc["condition"]["type"] == "single_cell_change_per_pair"
+    # Iter 31 harmonisation: the single-cell branch now emits
+    # condition.type = change_positions_constant_across_pairs (iter 30),
+    # not the cardinality-specific single_cell_change_per_pair label.
+    assert out_sc["condition"]["type"] == "change_positions_constant_across_pairs"
     assert out_sc["action"]["args"]["selection"] == [[1, 2]]
+    # Mutual-exclusion endpoint check (post-iter-31 condition.type
+    # harmonisation): identity and single-cell are STILL reachable on
+    # disjoint patterns dicts. The condition.type values differ
+    # (identity_transformation vs change_positions_constant_across_pairs),
+    # AND the action.args.selection shapes differ ([] vs [[r, c]]) — the
+    # branch disjointness is anchored on cardinality (num_groups 0 vs 1)
+    # AND on the action's payload, both of which remain strictly disjoint
+    # across the two branches.
+    assert out_id["condition"]["type"] != out_sc["condition"]["type"]
+    assert out_id["action"]["args"]["selection"] != out_sc["action"]["args"]["selection"]
 
 
 def test_single_cell_branch_strict_mutual_exclusion_with_make_grid() -> None:
@@ -1312,16 +1341,25 @@ def test_multi_cell_branch_fires_when_all_four_matchers_fire() -> None:
     }
 
 
-def test_multi_cell_condition_type_is_multi_cell_change_group_per_pair() -> None:
-    """The multi-cell branch picks `multi_cell_change_group_per_pair` as
-    `condition.type` — the strictest of the four gating matchers."""
+def test_multi_cell_condition_type_is_change_positions_constant_across_pairs() -> None:
+    """Iter-31 harmonisation: the multi-cell branch now picks
+    `change_positions_constant_across_pairs` (iter 30) as
+    `condition.type`, instead of the cardinality-specific
+    `multi_cell_change_group_per_pair` label used in iters 27 → 30. The
+    rationale matches the iter-31 single-cell branch update: surfacing
+    the cross-pair coord predicate the defensive helper privately
+    enforced as the `condition.type` lets the three sibling `coloring`
+    rules share a `(condition.type, action.dsl)` skeleton, the
+    prerequisite for `program.anti_unification.unify` to lift their
+    `selection` lists into a variable when two or more such rules exist
+    on disk."""
     legacy = {"type": "identity"}
     out = translate_to_schema(
         legacy, "abcdef12", _multi_cell_patterns(),
         rule_id=2, now="2026-05-13T19:30:00.000000",
     )
     assert out is not None
-    assert out["condition"]["type"] == "multi_cell_change_group_per_pair"
+    assert out["condition"]["type"] == "change_positions_constant_across_pairs"
     assert out["condition"]["params"] == {}
     assert isinstance(out["condition"]["min_evidence"], int)
     assert out["condition"]["min_evidence"] >= 1
@@ -1522,16 +1560,27 @@ def test_multi_cell_branch_returns_none_when_size_changed() -> None:
 def test_multi_cell_branch_returns_none_when_single_cell_group() -> None:
     """A single-cell group fires iter 24, not iter 26 —
     multi_cell_change_group_per_pair requires cell_count >= 2 (strict
-    mutual exclusion with iter 24's matcher)."""
+    mutual exclusion with iter 24's matcher). Post-iter-31 the
+    single-cell branch's `condition.type` is the harmonised
+    `change_positions_constant_across_pairs` (iter 30) label rather
+    than the cardinality-specific `single_cell_change_per_pair`; the
+    cardinality-disjointness with the multi-cell branch is preserved
+    by the matchers in each branch's gating conjunction AND by the
+    action.args.selection cardinality (1 coord here, >= 2 coords for
+    multi-cell)."""
     legacy = {"type": "identity"}
     out = translate_to_schema(
         legacy, "abcdef12",
         _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
-    # This fires iter 25's branch (single-cell), not iter 27's.
+    # This fires iter 25's branch (single-cell), not iter 27's. The
+    # iter-31 harmonised condition.type is the same across the two
+    # branches; what differs is the action.args.selection cardinality.
     assert out is not None
-    assert out["condition"]["type"] == "single_cell_change_per_pair"
+    assert out["condition"]["type"] == "change_positions_constant_across_pairs"
+    assert out["action"]["dsl"] == "coloring"
+    assert len(out["action"]["args"]["selection"]) == 1
 
 
 def test_multi_cell_branch_returns_none_when_multiple_groups() -> None:
@@ -1714,7 +1763,15 @@ def test_multi_cell_branch_strict_mutual_exclusion_with_single_cell() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_sc is not None
-    assert out_sc["condition"]["type"] == "single_cell_change_per_pair"
+    # Iter 31 harmonisation: single-cell and multi-cell branches now
+    # BOTH emit `condition.type = "change_positions_constant_across_pairs"`
+    # (the shared cross-pair coord-set predicate); mutual exclusion of
+    # the two branches is now anchored on the action.args.selection
+    # cardinality (1 coord vs >= 2 coords), not on the condition.type
+    # label — the iter-31 harmonisation goal is precisely that the two
+    # rules share a `(condition.type, action.dsl)` skeleton so
+    # `program.anti_unification.unify` can bridge them.
+    assert out_sc["condition"]["type"] == "change_positions_constant_across_pairs"
     assert out_sc["action"]["args"]["selection"] == [[1, 2]]
 
     out_mc = translate_to_schema(
@@ -1723,8 +1780,16 @@ def test_multi_cell_branch_strict_mutual_exclusion_with_single_cell() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_mc is not None
-    assert out_mc["condition"]["type"] == "multi_cell_change_group_per_pair"
+    assert out_mc["condition"]["type"] == "change_positions_constant_across_pairs"
     assert out_mc["action"]["args"]["selection"] == [[0, 0], [0, 1]]
+    # Iter 31 mutual-exclusion check: the two branches still produce
+    # DIFFERENT rules (different selection cardinality) on disjoint
+    # patterns. Sharing condition.type is the point — the cardinality
+    # differentiation lives in action.args.selection, not in
+    # condition.type.
+    assert len(out_sc["action"]["args"]["selection"]) == 1
+    assert len(out_mc["action"]["args"]["selection"]) >= 2
+    assert out_sc["action"]["args"]["selection"] != out_mc["action"]["args"]["selection"]
 
 
 def test_multi_cell_branch_strict_mutual_exclusion_with_identity() -> None:
@@ -1744,7 +1809,15 @@ def test_multi_cell_branch_strict_mutual_exclusion_with_identity() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_mc is not None
-    assert out_mc["condition"]["type"] == "multi_cell_change_group_per_pair"
+    # Iter 31 harmonisation: the multi-cell branch's condition.type is
+    # now `change_positions_constant_across_pairs` (iter 30), distinct
+    # from identity's `identity_transformation`. The branch disjointness
+    # is preserved on the action side as well: identity action has
+    # selection=[]; multi-cell has selection=[[...], [...], ...].
+    assert out_mc["condition"]["type"] == "change_positions_constant_across_pairs"
+    assert out_id["condition"]["type"] != out_mc["condition"]["type"]
+    assert out_id["action"]["args"]["selection"] == []
+    assert len(out_mc["action"]["args"]["selection"]) >= 2
 
 
 def test_multi_cell_branch_strict_mutual_exclusion_with_make_grid() -> None:
@@ -1878,17 +1951,22 @@ def test_multi_blob_branch_fires_when_all_four_matchers_fire() -> None:
     }
 
 
-def test_multi_blob_condition_type_is_multi_group_per_pair() -> None:
-    """The multi-blob branch picks `multi_group_per_pair` as
-    `condition.type` — the strictest of the four gating matchers and the
-    one that directly pins the per-pair group-count regime."""
+def test_multi_blob_condition_type_is_change_positions_constant_across_pairs() -> None:
+    """Iter-31 harmonisation: the multi-blob branch now picks
+    `change_positions_constant_across_pairs` (iter 30) as
+    `condition.type`, instead of the cardinality-specific
+    `multi_group_per_pair` label used in iters 29 → 30. Same rationale
+    as the iter-31 single-cell / multi-cell branch updates: harmonising
+    the three sibling `coloring` rules' skeleton enables
+    `program.anti_unification.unify` to lift their `selection` lists
+    into a variable when two or more such rules exist on disk."""
     legacy = {"type": "identity"}
     out = translate_to_schema(
         legacy, "abcdef12", _multi_blob_patterns(),
         rule_id=2, now="2026-05-13T19:30:00.000000",
     )
     assert out is not None
-    assert out["condition"]["type"] == "multi_group_per_pair"
+    assert out["condition"]["type"] == "change_positions_constant_across_pairs"
     assert out["condition"]["params"] == {}
     assert isinstance(out["condition"]["min_evidence"], int)
     assert out["condition"]["min_evidence"] >= 1
@@ -2064,7 +2142,12 @@ def test_multi_blob_branch_returns_none_when_size_changed() -> None:
 def test_multi_blob_branch_returns_none_when_single_group() -> None:
     """A pair with `num_groups == 1` fires iter 25 / 27, not iter 28's
     matcher — multi_group_per_pair strictly requires num_groups >= 2
-    (strict mutual exclusion with iters 23 / 24 / 26)."""
+    (strict mutual exclusion with iters 23 / 24 / 26). Post-iter-31
+    the iter-27 branch's `condition.type` is the harmonised
+    `change_positions_constant_across_pairs` label rather than the
+    cardinality-specific `multi_cell_change_group_per_pair`; the
+    cardinality-disjointness with the multi-blob branch is preserved
+    by the matchers in each branch's gating conjunction."""
     legacy = {"type": "identity"}
     # A single-blob multi-cell patterns dict fires iter 27, not iter 29.
     out = translate_to_schema(
@@ -2073,7 +2156,11 @@ def test_multi_blob_branch_returns_none_when_single_group() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out is not None
-    assert out["condition"]["type"] == "multi_cell_change_group_per_pair"
+    assert out["condition"]["type"] == "change_positions_constant_across_pairs"
+    assert out["action"]["dsl"] == "coloring"
+    # Multi-cell single-blob: positions size >= 2 (cell_count >= 2 per
+    # iter 26's matcher).
+    assert len(out["action"]["args"]["selection"]) >= 2
 
 
 def test_multi_blob_branch_returns_none_when_blob_set_differs_across_pairs() -> None:
@@ -2254,34 +2341,66 @@ def test_multi_blob_branch_strict_mutual_exclusion_with_identity() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_mb is not None
-    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+    # Iter 31 harmonisation: the multi-blob branch's condition.type is
+    # now `change_positions_constant_across_pairs` (iter 30), distinct
+    # from identity's `identity_transformation`. The branch disjointness
+    # is anchored on cardinality AND on the action's payload (identity
+    # has selection=[]; multi-blob has selection=[[...], ...]).
+    assert out_mb["condition"]["type"] == "change_positions_constant_across_pairs"
+    assert out_id["condition"]["type"] != out_mb["condition"]["type"]
+    assert out_id["action"]["args"]["selection"] == []
+    assert len(out_mb["action"]["args"]["selection"]) >= 2
 
 
 def test_multi_blob_branch_strict_mutual_exclusion_with_single_cell() -> None:
     """Iter-29 vs iter-25: multi_group_per_pair requires num_groups >= 2,
     single_cell_change_per_pair requires num_groups == 1 — disjoint on
-    the group-count axis."""
+    the group-count axis.
+
+    Iter 31 note: both branches now emit
+    `condition.type = "change_positions_constant_across_pairs"` after
+    the harmonisation; mutual exclusion of the two branches is now
+    anchored on `action.args.selection` cardinality (1 coord vs >= 2
+    coords) AND on the cardinality matchers gating each branch — the
+    iter-31 harmonisation goal is precisely that the two rules share a
+    `(condition.type, action.dsl)` skeleton so `unify` can bridge them
+    across cardinality regimes."""
     legacy = {"type": "identity"}
     out_sc = translate_to_schema(
         legacy, "abcdef12", _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_sc is not None
-    assert out_sc["condition"]["type"] == "single_cell_change_per_pair"
+    assert out_sc["condition"]["type"] == "change_positions_constant_across_pairs"
 
     out_mb = translate_to_schema(
         legacy, "abcdef12", _multi_blob_patterns(),
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_mb is not None
-    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+    assert out_mb["condition"]["type"] == "change_positions_constant_across_pairs"
+    # The two rules share the (condition.type, action.dsl) skeleton
+    # post-iter-31 (the harmonisation goal). Their disjointness lives
+    # in action.args.selection cardinality.
+    assert out_sc["condition"]["type"] == out_mb["condition"]["type"]
+    assert out_sc["action"]["dsl"] == out_mb["action"]["dsl"] == "coloring"
+    assert len(out_sc["action"]["args"]["selection"]) == 1
+    assert len(out_mb["action"]["args"]["selection"]) >= 2
 
 
 def test_multi_blob_branch_strict_mutual_exclusion_with_multi_cell() -> None:
     """Iter-29 vs iter-27: multi_group_per_pair requires num_groups >= 2,
     multi_cell_change_group_per_pair requires num_groups == 1 — disjoint
     on the group-count axis (despite both matchers's names containing
-    'multi-', they recognise orthogonal cardinality sub-axes)."""
+    'multi-', they recognise orthogonal cardinality sub-axes).
+
+    Iter 31 note: both branches now emit
+    `condition.type = "change_positions_constant_across_pairs"` after
+    the harmonisation; group-count disjointness still holds (it is
+    enforced by the cardinality matchers in each branch's gating
+    conjunction), but the rules now share a `(condition.type,
+    action.dsl)` skeleton — `unify` across cardinality regimes is now
+    possible."""
     legacy = {"type": "identity"}
     out_mc = translate_to_schema(
         legacy, "abcdef12",
@@ -2289,14 +2408,20 @@ def test_multi_blob_branch_strict_mutual_exclusion_with_multi_cell() -> None:
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_mc is not None
-    assert out_mc["condition"]["type"] == "multi_cell_change_group_per_pair"
+    assert out_mc["condition"]["type"] == "change_positions_constant_across_pairs"
 
     out_mb = translate_to_schema(
         legacy, "abcdef12", _multi_blob_patterns(),
         rule_id=1, now="2026-05-13T19:30:00.000000",
     )
     assert out_mb is not None
-    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+    assert out_mb["condition"]["type"] == "change_positions_constant_across_pairs"
+    # Shared skeleton, distinct payload (the multi-blob branch's
+    # selection is the union across blobs; the multi-cell branch's is
+    # one blob's positions — different patterns dicts produce different
+    # selections).
+    assert out_mc["condition"]["type"] == out_mb["condition"]["type"]
+    assert out_mc["action"]["dsl"] == out_mb["action"]["dsl"] == "coloring"
 
 
 def test_multi_blob_branch_strict_mutual_exclusion_with_make_grid() -> None:
@@ -2317,7 +2442,14 @@ def test_multi_blob_branch_strict_mutual_exclusion_with_make_grid() -> None:
     )
     assert out_mb is not None
     assert out_mb["action"]["dsl"] == "coloring"
-    assert out_mb["condition"]["type"] == "multi_group_per_pair"
+    # Iter 31 harmonisation: the multi-blob branch's condition.type is
+    # now `change_positions_constant_across_pairs` (iter 30). Mutual
+    # exclusion with the iter-21 make_grid branch is still preserved on
+    # the action.dsl axis (`coloring` vs `make_grid`) and on the
+    # dimensional axis matchers (`grid_size_preserved` vs
+    # `grid_size_changed`).
+    assert out_mb["condition"]["type"] == "change_positions_constant_across_pairs"
+    assert out_mg["action"]["dsl"] != out_mb["action"]["dsl"]
 
 
 # ──────────────────────────────────────────────────────────────────────────
@@ -2372,7 +2504,7 @@ def _run_all() -> int:
         test_make_grid_rule_round_trip_through_apply_DSL,
         # Iter 25 — single-cell uniform-paint branch.
         test_single_cell_branch_fires_when_all_four_matchers_fire,
-        test_single_cell_condition_type_is_single_cell_change_per_pair,
+        test_single_cell_condition_type_is_change_positions_constant_across_pairs,
         test_single_cell_rule_passes_validate_rule,
         test_single_cell_coord_matches_pair_analysis,
         test_single_cell_color_matches_uniform_output_color,
@@ -2397,7 +2529,7 @@ def _run_all() -> int:
         test_single_cell_branch_strict_mutual_exclusion_with_make_grid,
         # Iter 27 — multi-cell single-blob coloring branch.
         test_multi_cell_branch_fires_when_all_four_matchers_fire,
-        test_multi_cell_condition_type_is_multi_cell_change_group_per_pair,
+        test_multi_cell_condition_type_is_change_positions_constant_across_pairs,
         test_multi_cell_rule_passes_validate_rule,
         test_multi_cell_positions_match_pair_analysis,
         test_multi_cell_positions_are_row_major_sorted,
@@ -2427,7 +2559,7 @@ def _run_all() -> int:
         test_multi_cell_live_analyze_pair_emits_positions_field,
         # Iter 29 — multi-blob coloring branch.
         test_multi_blob_branch_fires_when_all_four_matchers_fire,
-        test_multi_blob_condition_type_is_multi_group_per_pair,
+        test_multi_blob_condition_type_is_change_positions_constant_across_pairs,
         test_multi_blob_rule_passes_validate_rule,
         test_multi_blob_positions_are_row_major_sorted_union,
         test_multi_blob_color_matches_uniform_output_color,

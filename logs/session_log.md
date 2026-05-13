@@ -5213,3 +5213,157 @@ on the P3 path -- once two `change_positions_constant_across_
 pairs`-typed rules exist on disk, anti-unification can lift
 their `selection` lists into a variable for the first time.
 
+
+---
+## Learning Loop -- 2026-05-13 22:27
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_222740.log
+
+---
+## Learning Loop -- 2026-05-13 22:40
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_224050.log
+
+---
+## Iter 31 -- 2026-05-13T22:42Z -- branch test20
+
+**Diagnosis**: Iter 30 Next gap log named four candidate next
+steps (D / A / B / C). Option (D) -- harmonise the
+condition.type of the three sibling coloring emission branches
+in translate_to_schema (iter 25 single-cell, iter 27 multi-
+cell single-blob, iter 29 multi-blob) onto a shared label
+sourced from iter-30 matcher change_positions_constant_across_
+pairs -- was explicitly flagged as the next-iter step most
+directly on the P3 path. Pre-iter-31 those three branches
+emitted three DIFFERENT condition.type values (cardinality-
+specific: single_cell_change_per_pair / multi_cell_change_
+group_per_pair / multi_group_per_pair); program.anti_
+unification.unify strictly requires matching (condition.type,
+action.dsl) to avoid raising NoCommonSkeleton, so the three
+sibling rules could literally NEVER unify across cardinality
+regimes. Iter 30 surfaced the cross-pair coord-set predicate
+the three defensive helpers re-implemented privately three
+times over as a named matcher; iter 31 closes the structural
+gap by adopting that matchers name as the harmonised
+condition.type across all three branches AND adding the
+matcher to each branchs gating conjunction.
+
+**Change**:
+- agent/memory.py (EDIT) -- the iter-25 / 27 / 29 branches
+  gating conjunctions each get a new AND-clause
+  ("change_positions_constant_across_pairs" in fired); the
+  emitted condition.type on each branch flips from its
+  cardinality-specific label to the harmonised label
+  "change_positions_constant_across_pairs". Defensive
+  helpers _extract_single_cell_paint_args /
+  _extract_multi_cell_paint_args / _extract_multi_blob_paint_
+  args retain their internal cross-pair equality checks
+  (defense-in-depth at three layers: gate + helper + canonical-
+  positions match). concept / category labels unchanged
+  (paint_single_cell / paint_blob / paint_blobs all under
+  color_transform). Docstring of translate_to_schema updated
+  on all three branch entries plus three companion inline
+  comments documenting the iter-31 rationale.
+- tests/test_translate_to_schema.py (EDIT) -- (i)
+  _single_cell_patterns helper emits a positions field per
+  group so the iter-30 matcher fires on its patterns dicts.
+  (ii) Three condition.type assertion tests renamed to assert
+  the harmonised label. (iii) Three sibling-branch strict
+  mutual-exclusion tests now compare action.args.selection
+  cardinality (1 vs >= 2) instead of condition.type strings
+  (those are now equal across siblings -- the iter-31 design
+  intent). (iv) Six iter-14 / iter-21 mutual-exclusion tests
+  continue to compare condition.type strings (identity_
+  transformation and output_dimensions_constant remain
+  distinct from the harmonised label). (v) Two returns_none_
+  when_X_group tests updated to assert the harmonised label
+  on the branch that actually fires.
+- docs/RULE_FORMAT.md (EDIT) -- section 7 As of header bumped
+  from iter 30 to iter 31; the translate_to_schema() row
+  status banner extended with iter-31 harmonisation; the
+  tests/test_translate_to_schema.py row status banner
+  extended with iter-31 test updates description.
+
+No edits to: procedural_memory/DSL/ (F3 inert); agent/cycle.py
+/ agent/wm.py / ARCKG/*.py / data/ (F1 inert); agent/active_
+operators.py (F2 / F8 inert -- zero diff this iter); no new
+rules persisted (F4 vacuously satisfied); no semantic_memory/
+artifacts (F5 inert); run_loop.sh and friends (F6 inert); no
+except RuleSchemaError changes (F7 inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P4=87, P5=14.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81)
+fire grid_size_changed / input_dimensions_constant /
+output_dimensions_constant / consistent_color_mapping /
+grid_size_preserved but do NOT fire the iter-31 harmonised
+branches gating conjunctions on these tasks. The
+harmonisation is verified by all 124 test cases in
+tests/test_translate_to_schema.py continuing to pass against
+the live CONDITION_REGISTRY (14 matchers) and DSL_REGISTRY
+(2 primitives).
+
+**Probe after**: Correct 0/3 (0.0%), Rules 0. P4 grew 87 ->
+90 from the three new episodic entries written by
+_record_attempt() on the iter-31 probe re-run -- the solve
+loop continues to write attempt folders correctly with the
+harmonised condition.type emission in place.
+
+**Invariants** (scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json against base HEAD c83df8a0):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 87 -> 90, P5 14 -> 14, P6 611 -> 611.
+- verdict: **CLEAN** (1 positive delta -- P4 +3).
+
+**Why this is real progress (not lipstick)**: Iter 30 Next
+gap log explicitly named Option (D) as the smallest step
+that actually unblocks P3 movement once two sibling rules
+of the same condition.type exist on disk. Pre-iter-31, the
+three branches had three distinct condition.type values, so
+unify would have raised NoCommonSkeleton on any attempted
+pairing across cardinality regimes -- AU could literally
+never fire across the three sibling rule shapes. Post-iter-
+31, AU skeleton match passes; the remaining gap to actually-
+fire AU is mint two rules (a separate iter). This is a
+structural change that does not yet move P1 / P2 / P3 by
+itself, but it directly removes the structural blocker named
+in iter 30 gap log. P4 +3 confirms the harmonisation did not
+break the live solve loop. All 124 tests in
+test_translate_to_schema.py pass; all 22 other test suites
+pass unchanged.
+
+**Next gap (note for future iter)**: With the condition.type
+skeleton harmonised across the three sibling coloring
+branches, the structural blocker on P3 movement named by iter
+30 is now removed. The next-smallest defensible steps, in
+order of P3-payoff proximity: (F) wire save_rule(rule,
+related_rules=...) to be invoked by _persist_pipeline_rule
+-- the iter-7 load_related helper already returns category-
+filtered related rules, but the active_agent path does not
+currently pass them to save_rule. Once two (change_positions_
+constant_across_pairs, coloring) rules exist on disk and
+related_rules is wired, AU fires for the first time and P3
+moves > 0. (E) mint a real on-disk rule from the slow-path
+through _persist_pipeline_rule -- requires either a real ARC
+task that fires one of the harmonised emission gates (the
+probe tasks do not) or a synthetic task fixture wired into
+the run_learn flow. (A) the derived-selection rule shape
+gated on iter 19 + iter 22 -- the natural prerequisite for
+AU to lift selection off literal coords. (B) the pair-
+specific program writer inside GeneralizeOperator -- the
+load-bearing P3 work but a larger surface. Option (F) is the
+next-iter step most directly on the P3 path because the AU
+machinery (unify) is already implemented (iter 5) and the
+save_rule AU-wiring is already implemented (iter 6); only
+the call-site threading of related_rules from _persist_
+pipeline_rule is missing.
