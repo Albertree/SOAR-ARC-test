@@ -351,6 +351,46 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
       the iter-16 polymorphic-args obstacle for ``make_grid``'s argument
       list.
 
+    * ``{"type": "identity", ...}`` + ``single_cell_change_per_pair`` +
+      ``output_color_uniform`` + ``input_dimensions_constant`` +
+      ``grid_size_preserved`` all fire (iter 25) →
+      ``condition.type = "single_cell_change_per_pair"``,
+      ``action.dsl = "coloring"`` with
+      ``args = {"selection": [[r, c]], "color": K}``. The (r, c) coord
+      is the first pair's single group's ``(top_row, top_col)`` — for a
+      single-cell group the bounding box collapses to 1×1, so those two
+      fields ARE the cell's literal coord. K comes from any change
+      group's ``output_colors[0]`` (iter-18 pins it constant across all
+      groups in all pairs). The defensive helper
+      ``_extract_single_cell_paint_args`` ALSO verifies the coord is
+      identical across all training pairs — the four matchers pin
+      cardinality (one cell per pair), colour (uniform K), input
+      dimension stability, and per-pair input==output shape, but they
+      do NOT pin the coord's position across pairs; a stored
+      literal-coord rule only generalises when training pairs share
+      the same (r, c). The chosen ``condition.type``
+      (``single_cell_change_per_pair``) is the strictest of the four
+      gating matchers and the one that directly pins the selection's
+      cardinality + shape; the other three matchers contribute to
+      determining the action's args without naming a new label. STRICT
+      mutual exclusion with the iter-14 identity branch is guaranteed
+      by ``single_cell_change_per_pair`` requiring ``num_groups == 1``
+      while ``identity_transformation`` requires ``num_groups == 0``,
+      so the iter-25 branch is reachable only when iter 14's matcher
+      gate is closed (no explicit NOT check required). STRICT mutual
+      exclusion with the iter-21 make_grid branch is guaranteed by
+      ``grid_size_preserved`` (this iter, per-pair size_match True)
+      versus ``grid_size_changed`` (iter 21, existential per-pair
+      size_match False) being exact partitioners of the dimensional
+      axis on any non-empty pair_analyses. The new ``concept`` /
+      ``category`` labels are ``paint_single_cell`` /
+      ``color_transform`` (the latter matches ``_infer_category``'s
+      colour-bucket pattern). Second non-identity rule shape any iter
+      has been able to mint without anti-unification or polymorphic
+      args — closes the iter-16 polymorphic-args obstacle on the
+      ``coloring`` argument list because the selection list, the
+      colour, and the canvas shape are all fixed by training data.
+
     Non-translatable shapes return ``None`` deliberately — a caller that
     wants to attempt a save must check the return value and fall back to
     the legacy writer (or skip the save). ``color_mapping`` and
@@ -436,6 +476,42 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
             "times_reused": 0,
         }
 
+    # Iter 25: single-cell uniform-paint branch. Gated on the conjunction
+    # of four named recognition preconditions across iters 1 / 18 / 22 / 24.
+    # STRICTLY mutually exclusive with the iter-14 identity branch
+    # (single_cell_change_per_pair requires num_groups == 1, identity
+    # requires num_groups == 0) and with the iter-21 make_grid branch
+    # (grid_size_preserved partitions against grid_size_changed), so the
+    # order of branches above is incidental — any patterns dict that fires
+    # one cannot fire the others.
+    if ("single_cell_change_per_pair" in fired
+            and "output_color_uniform" in fired
+            and "input_dimensions_constant" in fired
+            and "grid_size_preserved" in fired):
+        coord_color = _extract_single_cell_paint_args(pair_analyses)
+        if coord_color is None:
+            return None
+        (r, c), k = coord_color
+        return {
+            "id": rule_id,
+            "concept": "paint_single_cell",
+            "category": "color_transform",
+            "condition": {
+                "type": "single_cell_change_per_pair",
+                "params": {},
+                "min_evidence": min_evidence,
+            },
+            "action": {
+                "dsl": "coloring",
+                "args": {"selection": [[r, c]], "color": k},
+            },
+            "covers": [task_hex],
+            "source_task": task_hex,
+            "anti_unification_trace": None,
+            "created_at": created_at,
+            "times_reused": 0,
+        }
+
     return None
 
 
@@ -476,6 +552,79 @@ def _extract_make_grid_args(pair_analyses: list) -> tuple | None:
                     return (h, w, candidate)
                 return None
     return None
+
+
+def _extract_single_cell_paint_args(pair_analyses: list) -> tuple | None:
+    """Pull a ((row, col), color) tuple out of a single-cell-paint patterns
+    dict. Returns ``None`` if any value cannot be extracted cleanly or if
+    the cell coord differs across training pairs.
+
+    Callers must already have confirmed the iter 1 / 18 / 22 / 24 matcher
+    conjunction (``single_cell_change_per_pair`` AND
+    ``output_color_uniform`` AND ``input_dimensions_constant`` AND
+    ``grid_size_preserved``) fired; this helper is defensive
+    re-extraction. Two checks the matcher conjunction does NOT enforce:
+
+      * ``(top_row, top_col)`` is bit-identical across pairs. The
+        ``single_cell_change_per_pair`` matcher pins cardinality (one
+        cell per pair) but not position; a stored literal-coord rule
+        only generalises when training pairs share the same coord.
+        ``input_dimensions_constant`` makes the *domain* of a stored
+        coord safe (the test input's dims match training), but not the
+        coord itself — a task where pair 0 changes (0, 0) and pair 1
+        changes (2, 1) fires every matcher in the conjunction yet does
+        not have a single literal coord that abstracts all training
+        pairs. Such tasks are deferred to a future iter that extracts
+        the coord via an input-side predicate (e.g. anti-unification
+        lifting position to "wherever input has colour C").
+      * ``output_colors[0]`` is in the ``coloring`` primitive's valid
+        colour set (``range(10) | {13}``). ``output_color_uniform``
+        pins the value as constant across all groups in all pairs but
+        does not check the colour palette domain; foreclosing here
+        prevents a malformed rule that ``validate_rule`` would happily
+        save but ``coloring`` would later reject.
+
+    Mirror posture: ``_extract_make_grid_args`` performs the same
+    defensive re-extraction for the iter-21 branch's (H, W, K).
+    """
+    if not pair_analyses:
+        return None
+    coord: tuple | None = None
+    color: int | None = None
+    for analysis in pair_analyses:
+        if not isinstance(analysis, dict):
+            return None
+        groups = analysis.get("groups")
+        if not isinstance(groups, list) or len(groups) != 1:
+            return None
+        group = groups[0]
+        if not isinstance(group, dict):
+            return None
+        r = group.get("top_row")
+        c = group.get("top_col")
+        if not isinstance(r, int) or isinstance(r, bool) or r < 0:
+            return None
+        if not isinstance(c, int) or isinstance(c, bool) or c < 0:
+            return None
+        out_colors = group.get("output_colors")
+        if not isinstance(out_colors, list) or len(out_colors) != 1:
+            return None
+        candidate = out_colors[0]
+        if not isinstance(candidate, int) or isinstance(candidate, bool):
+            return None
+        if candidate not in _VALID_DSL_COLORS:
+            return None
+        if coord is None:
+            coord = (r, c)
+        elif coord != (r, c):
+            return None
+        if color is None:
+            color = candidate
+        elif color != candidate:
+            return None
+    if coord is None or color is None:
+        return None
+    return (coord, color)
 
 
 def save_rule(rule: dict, *,

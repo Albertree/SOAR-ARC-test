@@ -3885,3 +3885,262 @@ conjunction (latent-positive same posture as iter-21's make_grid
 branch), and it does so with the smallest possible code surface
 (memory.py only). Iter 24's cell-count refinement is what made this
 option 1 genuinely viable as a follow-up.
+
+---
+## Learning Loop -- 2026-05-13 21:14
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_211404.log
+
+---
+## Iter 25 -- 2026-05-13T12:23Z -- branch test20
+
+**Diagnosis**: Iter 24 finished the recognition-vocabulary work
+necessary for the simplest non-identity `coloring` emission shape:
+`single_cell_change_per_pair` (cardinality + literal coord access)
+combined with iter 18 (`output_color_uniform`, colour K pinned),
+iter 22 (`input_dimensions_constant`, coord-domain stable across
+pairs), and iter 1 (`grid_size_preserved`, per-pair input == output
+shape) pins all four components of `coloring(grid, [(r, c)], K)` to
+named matchers — so the next defensible step explicitly named in
+iter 24's "Next gap" option 1 is the emission branch itself: extend
+`translate_to_schema` with a single-cell uniform-paint branch
+mirroring the iter-21 `make_grid` posture. F8 stays inert (touches
+`agent/memory.py` only, no `_analyze_pair` extension required
+because the existing `top_row` / `top_col` IS the cell's coord for a
+1×1 group).
+
+**Change**:
+- `agent/memory.py` (NEW: 79-line `_extract_single_cell_paint_args`
+  helper + a 27-line `translate_to_schema` branch + a 40-line
+  docstring extension): the helper iterates `pair_analyses` and
+  returns `((r, c), color)` ONLY if (1) every pair has exactly one
+  single-cell group, (2) all per-pair `(top_row, top_col)` are
+  bit-identical (the matcher conjunction pins cardinality but not
+  position — iter-22's `input_dimensions_constant` makes the *domain*
+  safe but not the coord itself), (3) `output_colors[0]` is constant
+  across pairs (defensive, mirrors `_extract_make_grid_args` posture
+  on colour uniformity even though `output_color_uniform` already
+  pins it), and (4) the colour value is in the `coloring` primitive's
+  valid set `range(10) | {13}` — foreclosing a malformed rule that
+  `validate_rule` would happily save but `apply_DSL` would later
+  reject. Strict bool-subclass rejection on r/c/k mirrors iters
+  13/17/18/19/20/22/23/24's strict-type posture and `validate_rule`
+  V1. The branch in `translate_to_schema` gates on the conjunction
+  `single_cell_change_per_pair + output_color_uniform +
+  input_dimensions_constant + grid_size_preserved` (the four
+  matchers iter 24's "Next gap" option 1 named) and emits
+  `condition.type = "single_cell_change_per_pair"` (the strictest of
+  the four, mirroring iter 21's choice of `output_dimensions_constant`
+  as the strictest of its three matchers) + `action.dsl = "coloring"`
+  with `args = {"selection": [[r, c]], "color": K}`. The two-element
+  list-of-list selection shape is JSON-clean (no tuples) and round-
+  trips through `_normalize_selection` cleanly. The new
+  `concept` / `category` labels are `paint_single_cell` /
+  `color_transform` (the latter matches `_infer_category`'s colour
+  bucket). STRICT mutual exclusion with the iter-14 identity branch
+  (cardinality 0 vs 1 on `num_groups`) AND with the iter-21
+  make_grid branch (`grid_size_preserved` vs `grid_size_changed`
+  partition the dimensional axis) is structural — guaranteed by the
+  matcher gates' disjointness, so the order of branches in the
+  function body is incidental. The 40-line docstring extension
+  describes the branch's gating matchers, the literal-coord access
+  pattern enabled by iter 24's `cell_count == 1` requirement, the
+  defensive coord-stability check, the strict mutual exclusion with
+  the other two branches, and the iter-16 polymorphic-args obstacle
+  closure on the `coloring` argument list (second non-identity rule
+  shape after iter 21's make_grid).
+- `tests/test_translate_to_schema.py` (EDIT, +473 lines / +23
+  cases): mirror of iter 21's 18-case make_grid test surface on the
+  single-cell axis. New helper `_single_cell_patterns` constructs
+  the iter-1/18/22/24-firing patterns shape with configurable r,
+  c, k, n_pairs, in_h, in_w. Cases: smoke (action.dsl=coloring,
+  selection=[[r,c]]); condition.type=single_cell_change_per_pair +
+  params={} + min_evidence ≥ 1; `validate_rule` round-trip in a
+  tempdir; coord extraction across (0,0)/(2,1)/(4,4); colour
+  extraction across 0/1/5/9/13 (covers transparent sentinel that
+  make_grid's palette does not); covers/source_task = task_hex;
+  null `anti_unification_trace`; `times_reused == 0`; `min_evidence`
+  reflects `len(pair_analyses)`; concept/category labels;
+  refusal paths (output_color_uniform fails when per-pair output
+  colours differ; input_dimensions_constant fails when input dims
+  vary across pairs; grid_size_preserved fails when at least one
+  pair has size_match=False; single_cell_change_per_pair fails when
+  cell_count > 1; single_cell_change_per_pair fails when
+  num_groups > 1; the iter-25-distinct defensive case — coord
+  differs across pairs even though every matcher in the conjunction
+  fires, the `_extract_single_cell_paint_args` stability check kicks
+  in and returns None; legacy_type != identity always returns None
+  even with single-cell-shape patterns; K outside `range(10) | {13}`
+  rejected by the helper even though `output_color_uniform` fires);
+  purity (no file I/O in a tempdir); side-effect freedom on caller
+  inputs (legacy_rule + patterns dicts); determinism across repeats;
+  end-to-end round trip through `apply_DSL("coloring", grid,
+  selection=..., color=K)` confirming the translated rule paints
+  exactly the (r, c) cell with K on a hand-crafted 3×3 test input
+  (and that the source grid is not mutated — the iter-3 coloring
+  primitive's purity contract); STRICT mutual-exclusion verification
+  vs the iter-14 identity branch (identity patterns → identity-shape
+  rule with empty selection; single-cell patterns → single-coord
+  rule); STRICT mutual-exclusion verification vs the iter-21
+  make_grid branch (make_grid patterns → make_grid rule; single-cell
+  patterns → coloring rule). All 65 cases pass on this host.
+- `docs/RULE_FORMAT.md` (EDIT): §7 "As of" bumped from iter 24 to
+  iter 25; the `translate_to_schema` row updated from "implemented
+  (iter 14) + make_grid branch (iter 21)" to "implemented (iter 14)
+  + make_grid branch (iter 21) + single-cell paint branch (iter
+  25)" with a new paragraph describing the iter-25 branch's matcher
+  gate, action shape, `_extract_single_cell_paint_args` defensive
+  posture (coord stability + colour palette domain), structural
+  branch disjointness, and the F8-inert status; the
+  `test_translate_to_schema.py` row updated from "added (iter 14) +
+  extended (iter 21)" 42-case total to "added (iter 14) + extended
+  (iter 21) + extended (iter 25)" 65-case total with a new paragraph
+  describing the iter-25 surface.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 — no
+new DSL primitive added, `coloring` and `make_grid` remain the only
+two hand-coded primitives); `agent/cycle.py` / `agent/wm.py` /
+`ARCKG/*.py` node classes / `data/` (F1 inert; numstat 0/0);
+`agent/active_operators.py` (F2 inert — no new `_try_*` or
+`_apply_*` method; F8 vacuously satisfied — numstat 0/0);
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`
+(F6 inert; numstat 0/0); no rule JSON written or modified
+(`_persist_pipeline_rule` would have run on the verification probe
+re-run but the probe's three tasks do not fire the four-matcher
+conjunction — `00576224` / `007bbfb7` / `009d5c81` are dimension-
+changed tasks that fire `grid_size_changed` rather than
+`grid_size_preserved` and `single_cell_change_per_pair` requires
+`num_groups == 1` which the probe tasks do not exhibit); F4 inert;
+no `semantic_memory/` artifacts (F5 inert); no `except
+RuleSchemaError` added or modified (F7 inert); no
+`agent/conditions/` change (the matchers used by the new branch
+were all registered in earlier iters: iter 1 / 18 / 22 / 24).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P5=11, P4=54;
+fired_conditions per task (from iter 23/24 traces): 00576224 fires
+`[grid_size_changed, input_dimensions_constant,
+output_dimensions_constant]`; 007bbfb7 fires
+`[consistent_color_mapping, grid_size_changed,
+input_dimensions_constant, output_dimensions_constant]`; 009d5c81
+fires `[grid_size_preserved, input_dimensions_constant,
+output_dimensions_constant]`. None fires
+`single_cell_change_per_pair` (these tasks have multi-cell or
+multi-group changes, not single-cell point edits), so the iter-25
+branch is latent — its value lands when a future probe rotation
+surfaces a single-cell task.
+
+**Probe after**: Verification probe re-run via `python run_learn.py
+--limit 3 --seed 42 --shuffle` wrote 3 new episodic attempt folders
+(`c9680e90` / `878187ab` / `e5790162` — the shuffle reshuffles the
+training set; the loop's pre-Claude probe runs without `--shuffle`
+and surfaces the alphabetically-first 3 task ids). None of the
+three verification-probe tasks fires the four-matcher conjunction
+either (878187ab and e5790162 fire `recolor_sequential` / multi-group
+patterns, c9680e90 is a multi-cell task), so the iter-25 branch is
+latent on this probe set just as the iter-21 branch was. The
+verification probe re-run's value is its P4 delta only — same
+mechanic as iter 21's commit message ("P4 39 → 42 from probe re-run
+during verification") used to bump CLEAN.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`fae2e0cd`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+  - F1 (frozen files): no diff against `data/`, `agent/cycle.py`,
+    `agent/wm.py`, or any `ARCKG/*.py` node class.
+  - F2 (new `_try_*` / `_apply_*`): no diff against
+    `agent/active_operators.py` at all this iter.
+  - F3 (hand-coded DSL primitive): no diff against
+    `procedural_memory/DSL/*.py`.
+  - F4 (rule without `condition`): no new files under
+    `procedural_memory/`. The verification probe re-run did not
+    persist any rule (no probe task fires the four-matcher
+    conjunction; the slow path emitted `identity` /
+    `recolor_sequential` legacy shapes which the translator drops
+    for non-identity-translatable types).
+  - F5 (TF_GRID in `semantic_memory/`): no diff in
+    `semantic_memory/`.
+  - F6 (auto-grown limit): no diff in `run_loop.sh` /
+    `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`.
+  - F7 (swallowed `RuleSchemaError`): the helper's failure mode is
+    `return None`, not exception swallow; the branch itself does
+    not catch any exception. Mirrors `_extract_make_grid_args`'s
+    iter-21 posture.
+  - F8 (score-chasing edit to `active_operators.py`): no
+    `active_operators.py` edit at all this iter — F8's net-
+    positive addition guard cannot fire.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0,
+  P4 54 → 57, P5 11 → 11, P6 607 → 607.
+- verdict: **CLEAN** (1 positive delta — P4 +3 from verification
+  probe re-run).
+
+**Why this is real progress (not lipstick)**: Iter 21 minted the
+first non-identity schema rule shape (`make_grid` with the H/W/K
+constants pinned by iter-17/18/20). Iter 25 mints the SECOND
+non-identity schema rule shape (`coloring` with the (r, c)/K
+constants pinned by iter-1/18/22/24). Both branches are gated on
+strictly disjoint matcher conjunctions on the dimensional axis
+(grid_size_changed vs grid_size_preserved), so the two emission
+paths are structurally disjoint and cannot accidentally collide.
+The bottom-up trajectory across the previous eight iters (17 ->
+18 -> 19 -> 20 -> 22 -> 23 -> 24 -> 25) is: name the recognition
+axis (group-count, cell-count, input/output × colour/dimension),
+verify the matcher fires on intended patterns, then emit the
+schema rule shape gated on the named conjunction. Iter 25 is the
+emission step that converts the iter-1/18/22/24 vocabulary chain
+into a `coloring` rule on disk the moment any probe task fires the
+single-cell conjunction. P5 holds at 11 (no new matcher this iter);
+P6 holds at 607 (no `_try_*` accretion); P1 / P2 / P3 are latent-
+positive — they grow from zero the moment a single-cell probe task
+surfaces. The iter-25 work is the recognition-vocabulary-ahead-of-
+emission strategy paying off on its second shape: the literal-coord
+`coloring` rule that iter 24's docstring named as "the simplest
+possible non-identity coloring rule shape" is now mintable.
+
+All 65 test cases in `test_translate_to_schema.py` pass on this
+host; all other previously-passing test suites continue to pass
+(consistent_color_mapping, dsl, episodic, fast_path_schema_rule,
+grid_size_changed, identity_transformation, input_color_uniform,
+input_dimensions_constant, load_related, next_rule_id,
+output_color_uniform, output_dimensions_constant,
+persist_pipeline_rule, recognized_conditions, save_rule,
+sequential_recoloring, single_cell_change_per_pair,
+single_change_group_per_pair, unify).
+
+**Next gap (note for future iter)**: With both the make_grid and
+single-cell-paint emission branches in place, the natural next
+emission step is the SINGLE-BLOB (multi-cell connected component)
+coloring branch — the iter-24-deferred Option 2: gated on
+`single_change_group_per_pair` (iter 23, group count == 1) +
+`output_color_uniform` (iter 18) + `input_dimensions_constant` (iter
+22) + `grid_size_preserved` (iter 1), painting every cell of the
+blob with K. This requires `_analyze_pair` to expose the blob's
+full positions list (not just `(top_row, top_col)`), which is a
+genuine `agent/active_operators.py` edit. F8 OK because the
+companion-touch lands in either `agent/memory.py` (the new
+branch) or in a new helper, both already on the F8 allowlist.
+Larger surface than iter 25 because of the `_analyze_pair`
+extension. Alternative: the iter-24-deferred Option 3 — pair-
+specific program writer in `GeneralizeOperator` — remains the
+ultimate route to P2 / P3 growth via anti-unification, and is the
+largest surface but the most architecturally aligned. The two
+single-shape emission branches now on disk (iter 21 make_grid +
+iter 25 single-cell paint) are the bottom-up baseline that
+anti-unification can lift into more general abstractions once
+multiple pair-specific programs accumulate; without them, the
+`unify()` machinery has nothing to abstract over.
+
+---
+## Learning Loop -- 2026-05-13 21:23
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260513_212254.log

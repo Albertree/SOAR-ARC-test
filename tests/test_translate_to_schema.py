@@ -791,6 +791,454 @@ def test_make_grid_rule_round_trip_through_apply_DSL() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Iter 25 — single-cell uniform-paint branch.
+#
+# Shape: legacy `{"type": "identity"}` + the conjunction of
+# `single_cell_change_per_pair` + `output_color_uniform` +
+# `input_dimensions_constant` + `grid_size_preserved` all firing →
+# `condition.type = "single_cell_change_per_pair"`, `action.dsl = "coloring"`
+# with `args = {"selection": [[r, c]], "color": K}`. (r, c) is each pair's
+# single-cell group's `(top_row, top_col)`; the defensive helper requires
+# the coord to be bit-identical across pairs (the matcher conjunction pins
+# cardinality but not position). K from any group's `output_colors[0]`
+# (iter-18 pins it constant).
+# ──────────────────────────────────────────────────────────────────────────
+
+def _single_cell_patterns(n_pairs: int = 2, r: int = 1, c: int = 2,
+                          k: int = 7, in_h: int = 3, in_w: int = 3) -> dict:
+    """Patterns mimicking a single-cell uniform-paint task. Every pair has
+    one change group consisting of one changed cell at (r, c) → colour k.
+    `size_match` is True per pair (input dims == output dims); per-pair
+    `input_height`/`input_width`/`output_height`/`output_width` set to
+    (in_h, in_w) so iter-22 input_dimensions_constant fires. The
+    iter-1 top-level `grid_size_preserved` flag is True."""
+    pair_analyses = []
+    for i in range(n_pairs):
+        # Vary input_colors across pairs — output_color_uniform is on output side.
+        pair_analyses.append({
+            "total_changes": 1,
+            "num_groups": 1,
+            "groups": [
+                {
+                    "input_colors": [i],
+                    "output_colors": [k],
+                    "top_row": r,
+                    "top_col": c,
+                    "cell_count": 1,
+                }
+            ],
+            "size_match": True,
+            "input_height": in_h,
+            "input_width": in_w,
+            "output_height": in_h,
+            "output_width": in_w,
+        })
+    return {
+        "grid_size_preserved": True,
+        "pair_analyses": pair_analyses,
+    }
+
+
+def test_single_cell_branch_fires_when_all_four_matchers_fire() -> None:
+    """Smoke: legacy={"type": "identity"} + patterns firing iter
+    1 / 18 / 22 / 24 should produce a schema rule whose
+    `action.dsl == "coloring"` with a single-coord selection."""
+    legacy = {"type": "identity", "confidence": 0.0}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None, "expected single-cell schema rule, got None"
+    assert out["action"]["dsl"] == "coloring"
+    assert out["action"]["args"] == {"selection": [[1, 2]], "color": 7}
+
+
+def test_single_cell_condition_type_is_single_cell_change_per_pair() -> None:
+    """The single-cell branch picks `single_cell_change_per_pair` as
+    `condition.type` — the strictest of the four gating matchers (and
+    the one that directly pins the action's selection cardinality)."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(),
+        rule_id=2, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["condition"]["type"] == "single_cell_change_per_pair"
+    assert out["condition"]["params"] == {}
+    assert isinstance(out["condition"]["min_evidence"], int)
+    assert out["condition"]["min_evidence"] >= 1
+
+
+def test_single_cell_rule_passes_validate_rule() -> None:
+    """The translator's output must satisfy V1–V7. V2 checks
+    `condition.type` is registered (single_cell_change_per_pair is, iter
+    24); V3 checks `action.dsl` is registered (coloring is, iter 3)."""
+    tmp_root = tempfile.mkdtemp(prefix="arbor_translate_singlecell_")
+    try:
+        legacy = {"type": "identity"}
+        out = translate_to_schema(
+            legacy, "abcdef12", _single_cell_patterns(),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None
+        validate_rule(out, procedural_memory_root=tmp_root)
+    finally:
+        import shutil
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def test_single_cell_coord_matches_pair_analysis() -> None:
+    """The (r, c) coord is extracted from any pair's group's
+    (top_row, top_col). The defensive helper additionally requires the
+    coord to be bit-identical across pairs; iter the values to verify
+    the extraction is correct, not stuck on a constant."""
+    legacy = {"type": "identity"}
+    for r_val, c_val in ((0, 0), (2, 1), (4, 4)):
+        out = translate_to_schema(
+            legacy, "abcdef12",
+            _single_cell_patterns(n_pairs=3, r=r_val, c=c_val, k=5,
+                                  in_h=5, in_w=5),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None, f"single-cell branch should fire for ({r_val},{c_val})"
+        assert out["action"]["args"]["selection"] == [[r_val, c_val]]
+
+
+def test_single_cell_color_matches_uniform_output_color() -> None:
+    """K is extracted from any group's `output_colors[0]`. iter-18
+    pins uniformity; the helper additionally checks the value is in the
+    coloring primitive's valid colour set (0..9 or 13)."""
+    legacy = {"type": "identity"}
+    for k in (0, 1, 5, 9, 13):
+        out = translate_to_schema(
+            legacy, "abcdef12",
+            _single_cell_patterns(k=k),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None, f"single-cell branch should fire for K={k}"
+        assert out["action"]["args"]["color"] == k
+
+
+def test_single_cell_covers_and_source_task_use_task_hex() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "deadbeef", _single_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["source_task"] == "deadbeef"
+    assert out["covers"] == ["deadbeef"]
+
+
+def test_single_cell_anti_unification_trace_is_null_for_source_rule() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["anti_unification_trace"] is None
+
+
+def test_single_cell_times_reused_starts_at_zero() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["times_reused"] == 0
+
+
+def test_single_cell_min_evidence_reflects_pair_count() -> None:
+    legacy = {"type": "identity"}
+    out2 = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out2 is not None
+    assert out2["condition"]["min_evidence"] == 2
+
+    out5 = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(n_pairs=5),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out5 is not None
+    assert out5["condition"]["min_evidence"] == 5
+
+
+def test_single_cell_concept_and_category_are_paint_single_cell_labels() -> None:
+    """The single-cell branch coins its own concept/category labels
+    rather than going through `_infer_concept` (which would label it
+    `identity` since the legacy_type is the fallback). The labels are
+    `paint_single_cell` / `color_transform` — the latter matches
+    `_infer_category`'s colour bucket pattern."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["concept"] == "paint_single_cell"
+    assert out["category"] == "color_transform"
+
+
+def test_single_cell_branch_returns_none_when_color_uniform_fails() -> None:
+    """Two distinct output colours across pairs — output_color_uniform
+    does NOT fire, so the single-cell branch is not entered."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2, k=3)
+    patterns["pair_analyses"][1]["groups"][0]["output_colors"] = [4]
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_input_dims_vary() -> None:
+    """Input dimensions vary across pairs — input_dimensions_constant
+    does NOT fire, so the single-cell branch is not entered (the
+    stored literal coord would not generalise to a heterogeneous-input
+    test task)."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2, in_h=3, in_w=3)
+    patterns["pair_analyses"][1]["input_height"] = 4  # was 3
+    patterns["pair_analyses"][1]["input_width"] = 4
+    patterns["pair_analyses"][1]["output_height"] = 4
+    patterns["pair_analyses"][1]["output_width"] = 4
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_size_changed() -> None:
+    """At least one pair has size_match=False — grid_size_preserved
+    does NOT fire (its top-level flag would be False), so the
+    single-cell branch is not entered. Note this case ALSO blocks
+    iter-21's make_grid branch since cell_count == 1 fires
+    single_cell_change_per_pair, but make_grid additionally requires
+    output_dimensions_constant which is not guaranteed when size
+    varies."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2)
+    patterns["pair_analyses"][1]["size_match"] = False
+    patterns["pair_analyses"][1]["output_height"] = 4  # break shape
+    patterns["grid_size_preserved"] = False
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_multi_cell_group() -> None:
+    """The group has more than one cell — single_cell_change_per_pair
+    does NOT fire (it requires cell_count == 1). single_change_group_per_pair
+    might fire but is not part of the iter-25 gate; the single-cell
+    branch returns None."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2)
+    patterns["pair_analyses"][0]["groups"][0]["cell_count"] = 2
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_multiple_groups() -> None:
+    """A pair has more than one group — single_cell_change_per_pair
+    does NOT fire (it requires num_groups == 1). The single-cell
+    branch returns None even if every group is itself a single cell."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2)
+    patterns["pair_analyses"][0]["num_groups"] = 2
+    patterns["pair_analyses"][0]["groups"].append({
+        "input_colors": [5],
+        "output_colors": [7],
+        "top_row": 2,
+        "top_col": 2,
+        "cell_count": 1,
+    })
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_coord_differs_across_pairs() -> None:
+    """The defensive `_extract_single_cell_paint_args` helper enforces
+    coord stability across pairs even though the matcher conjunction
+    does not. Pair 0 changes (0, 0); pair 1 changes (2, 1). Every
+    matcher in the gate still fires (cardinality, colour, input dims,
+    size_match), but the helper returns None because the stored
+    literal coord would not generalise."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2, r=0, c=0)
+    patterns["pair_analyses"][1]["groups"][0]["top_row"] = 2
+    patterns["pair_analyses"][1]["groups"][0]["top_col"] = 1
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_legacy_type_is_not_identity() -> None:
+    """The single-cell branch is gated on `legacy_type == "identity"`
+    (the slow path's fallback shape). A color_mapping legacy rule even
+    paired with single-cell-shape patterns must return None."""
+    legacy = {"type": "color_mapping", "mapping": {1: 7}, "confidence": 0.9}
+    out = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_returns_none_when_color_out_of_palette() -> None:
+    """The helper additionally rejects an output colour outside
+    `range(10) | {13}` (the coloring primitive's valid set), even when
+    output_color_uniform fires (it only checks uniformity, not domain).
+    Foreclosing here prevents a malformed rule that validate_rule would
+    happily save but coloring would later reject."""
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns(n_pairs=2, k=11)
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_single_cell_branch_pure_no_file_io() -> None:
+    """Same purity contract as the identity / make_grid branches."""
+    tmp_root = tempfile.mkdtemp(prefix="arbor_translate_singlecell_pure_")
+    try:
+        before = set(os.listdir(tmp_root))
+        for i in range(5):
+            translate_to_schema(
+                {"type": "identity"}, "abcdef12", _single_cell_patterns(),
+                rule_id=i + 1, now="2026-05-13T19:30:00.000000",
+            )
+        after = set(os.listdir(tmp_root))
+        assert before == after, "single-cell branch leaked a write to disk"
+    finally:
+        import shutil
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def test_single_cell_branch_does_not_mutate_inputs() -> None:
+    legacy = {"type": "identity"}
+    legacy_before = dict(legacy)
+    patterns = _single_cell_patterns()
+    patterns_pa_count_before = len(patterns["pair_analyses"])
+    patterns_first_keys_before = sorted(patterns["pair_analyses"][0].keys())
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert legacy == legacy_before, "translator mutated legacy_rule"
+    assert len(patterns["pair_analyses"]) == patterns_pa_count_before
+    assert sorted(patterns["pair_analyses"][0].keys()) == patterns_first_keys_before
+
+
+def test_single_cell_branch_deterministic_across_repeats() -> None:
+    legacy = {"type": "identity"}
+    patterns = _single_cell_patterns()
+    a = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    b = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert a == b
+
+
+def test_single_cell_rule_round_trip_through_apply_DSL() -> None:
+    """End-to-end: a translated single-cell coloring rule, when applied
+    via the iter-3 DSL primitive, paints exactly the (r, c) cell with
+    colour K on a test input. This is the path `_predict_with_entry`
+    runs at runtime — if this test passes the iter-25 wiring is
+    end-to-end coherent."""
+    from procedural_memory.DSL.apply import apply_DSL  # local import
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _single_cell_patterns(n_pairs=2, r=1, c=2, k=8, in_h=3, in_w=3),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    args = out["action"]["args"]
+    test_input = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    painted = apply_DSL("coloring", test_input, **args)
+    assert painted == [[0, 0, 0], [0, 0, 8], [0, 0, 0]]
+    # Source grid not mutated (purity).
+    assert test_input == [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+
+
+def test_single_cell_branch_strict_mutual_exclusion_with_identity() -> None:
+    """The iter-25 branch and the iter-14 identity branch are reachable
+    only on disjoint patterns dicts: single_cell_change_per_pair
+    requires num_groups == 1 per pair, identity_transformation requires
+    num_groups == 0. Verify both endpoints: identity patterns produce
+    an identity-shape rule (action `coloring(selection=[], color=0)`);
+    single-cell patterns produce a single-coord rule. Neither shape can
+    accidentally produce the other's output."""
+    legacy = {"type": "identity"}
+    # Identity patterns → identity-shape rule.
+    out_id = translate_to_schema(
+        legacy, "abcdef12", _identity_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_id is not None
+    assert out_id["condition"]["type"] == "identity_transformation"
+    assert out_id["action"]["args"]["selection"] == []
+    # Single-cell patterns → single-coord rule.
+    out_sc = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_sc is not None
+    assert out_sc["condition"]["type"] == "single_cell_change_per_pair"
+    assert out_sc["action"]["args"]["selection"] == [[1, 2]]
+
+
+def test_single_cell_branch_strict_mutual_exclusion_with_make_grid() -> None:
+    """The iter-25 branch and the iter-21 make_grid branch are reachable
+    only on disjoint patterns dicts: grid_size_preserved (this iter)
+    requires every per-pair size_match True AND top-level
+    `grid_size_preserved` True; grid_size_changed (iter 21) requires at
+    least one per-pair size_match False. They are exact partitioners of
+    the dimensional axis. Verify both endpoints: a make_grid patterns
+    dict produces a make_grid rule; a single-cell patterns dict produces
+    a coloring rule; never the other way."""
+    legacy = {"type": "identity"}
+    # make_grid patterns → make_grid-shape rule.
+    out_mg = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(out_color=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mg is not None
+    assert out_mg["action"]["dsl"] == "make_grid"
+    # Single-cell patterns → coloring-shape rule.
+    out_sc = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_sc is not None
+    assert out_sc["action"]["dsl"] == "coloring"
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Driver.
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -840,6 +1288,31 @@ def _run_all() -> int:
         test_make_grid_branch_does_not_mutate_inputs,
         test_make_grid_branch_deterministic_across_repeats,
         test_make_grid_rule_round_trip_through_apply_DSL,
+        # Iter 25 — single-cell uniform-paint branch.
+        test_single_cell_branch_fires_when_all_four_matchers_fire,
+        test_single_cell_condition_type_is_single_cell_change_per_pair,
+        test_single_cell_rule_passes_validate_rule,
+        test_single_cell_coord_matches_pair_analysis,
+        test_single_cell_color_matches_uniform_output_color,
+        test_single_cell_covers_and_source_task_use_task_hex,
+        test_single_cell_anti_unification_trace_is_null_for_source_rule,
+        test_single_cell_times_reused_starts_at_zero,
+        test_single_cell_min_evidence_reflects_pair_count,
+        test_single_cell_concept_and_category_are_paint_single_cell_labels,
+        test_single_cell_branch_returns_none_when_color_uniform_fails,
+        test_single_cell_branch_returns_none_when_input_dims_vary,
+        test_single_cell_branch_returns_none_when_size_changed,
+        test_single_cell_branch_returns_none_when_multi_cell_group,
+        test_single_cell_branch_returns_none_when_multiple_groups,
+        test_single_cell_branch_returns_none_when_coord_differs_across_pairs,
+        test_single_cell_branch_returns_none_when_legacy_type_is_not_identity,
+        test_single_cell_branch_returns_none_when_color_out_of_palette,
+        test_single_cell_branch_pure_no_file_io,
+        test_single_cell_branch_does_not_mutate_inputs,
+        test_single_cell_branch_deterministic_across_repeats,
+        test_single_cell_rule_round_trip_through_apply_DSL,
+        test_single_cell_branch_strict_mutual_exclusion_with_identity,
+        test_single_cell_branch_strict_mutual_exclusion_with_make_grid,
     ]
     fails = 0
     for t in tests:
