@@ -755,3 +755,136 @@ wants to prioritize:
 Option (3) probably gives the next clean positive delta with the smallest
 code surface (~20 LOC + tests). (1) and (2) are the iters that finally
 unblock P1-P3.
+
+---
+## Learning Loop -- 2026-05-13 18:37
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_183743.log
+
+---
+## Learning Loop -- 2026-05-13 18:42
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_184239.log
+
+---
+## Iter 9 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-8. The
+auto-snapshot now confirms what CLAUDE.md §3.3 calls an architecture
+violation: `episodic_memory/` was empty (P4=0) across every probe in iters
+1-8 because no code path ever wrote an `attempt_NNN/` folder. Iter 8's
+"Next gap" called this out as option (3): "smallest code surface (~20 LOC
++ tests)" and "gives the next clean positive delta", independent of the
+P1/P2/P3 unblock work. Smallest defensible step: add the writer, wire one
+call at each `solve()` return site in `active_agent.py`, leave the frozen
+cycle/wm untouched, leave the slow path's rule-write path (legacy
+`save_rule_to_ltm`) untouched.
+
+**Change**:
+- `agent/episodic.py` (new) — `write_attempt(task_hex, *, outcome, info,
+  root="episodic_memory")` lays down `<root>/<task_hex>/attempt_<n>/`
+  with: `metadata.json` (task_hex, attempt_index, ISO timestamp, outcome,
+  deep-copied info), `trace.json` as an empty list (placeholder for the
+  later sidecar-collected cycle log, since `agent/cycle.py` is frozen),
+  and an empty `grids/` dir (same — placeholder for per-step WM grid
+  snapshots once sidecar instrumentation lands). Attempt index is
+  monotonic via directory scan; `exist_ok=False` on the inner dir keeps
+  same-process overwrites from being silently swallowed. Module-level
+  `EPISODIC_MEMORY_ROOT` constant matches the path the checker walks.
+  Raises `ValueError` on malformed `task_hex` / empty `outcome`. ~110
+  LOC including docstring.
+- `agent/active_agent.py` — added `episodic_memory_root` ctor kwarg
+  defaulting to `"episodic_memory"`; imported `write_attempt`; added
+  `_record_attempt(task_hex, predicted)` helper that builds the outcome
+  string (`"submitted"` if `predicted is not None`, else
+  `"no_prediction"`) and calls `write_attempt` with the agent's
+  `last_solve_info` snapshot as `info`. Wired a single call at each of
+  the two `solve()` return sites (fast path stored-rule hit + slow path
+  pipeline submit), so every `solve()` invocation produces exactly one
+  attempt folder per CLAUDE.md §3.3. The helper does not swallow
+  exceptions — a writer failure surfaces directly to the caller; the
+  point of P4 is to *catch* an unwired writer, not to disguise one.
+- `tests/test_episodic.py` (new) — 15 dependency-free cases covering:
+  the root constant matches the checker's hardcoded directory; the
+  three-artifact layout; metadata round-trip with attempt_index +
+  outcome + info; monotonic indexing across repeat calls; recovery
+  after a pre-existing `attempt_005` directory (next call lands at
+  `006`, not `002`); non-`attempt_<int>` siblings ignored when
+  indexing; per-task-hex isolation; deep-copy of `info` (mutating the
+  caller's dict post-write does not corrupt the file); `trace.json` is
+  `[]`; `grids/` is empty; malformed-`task_hex` rejection (six bad
+  values incl. wrong length, wrong charset, non-string); empty-outcome
+  rejection; `"no_prediction"` round-trip; auto-create of missing
+  intermediate root directories; same-process non-overwrite when
+  `attempt_001` already exists.
+- `docs/RULE_FORMAT.md` §7 — added rows for
+  `agent/episodic.py:write_attempt()` and `tests/test_episodic.py`
+  with the contracts and test-case enumeration.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=0
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=3 (one attempt
+folder per task — `00576224`, `007bbfb7`, `009d5c81`, each containing
+`metadata.json` carrying method=pipeline / rule_type=identity / steps=14
+or 20 per `last_solve_info`, plus `trace.json` and `grids/` placeholders).
+
+**Invariants** (checker run end-to-end against base HEAD `03ce4166` —
+iter 8):
+- forbidden = none. F1: 0-line diff against frozen-file paths (`data/`,
+  `agent/cycle.py`, `agent/wm.py`, `ARCKG/{task,pair,grid,object,pixel}.py`).
+  F2: no `+def _try_` / `+def _apply_` in `agent/active_operators.py`
+  (file untouched). F3: no `procedural_memory/DSL/*.py` diff at all.
+  F4: still no `rule_*.json` files exist. F5: no `semantic_memory/.*[Tt][Ff]_`
+  paths added (the new writer lays artifacts under `episodic_memory/`,
+  not `semantic_memory/`; F5 is filesystem-scoped to the latter). F6: no
+  edits to `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: no `except RuleSchemaError` added or modified.
+  F8: `agent/active_operators.py` numstat 0/0 (untouched), so the
+  "grew without companion" clause cannot fire.
+- positives (verdict: CLEAN): **P4 0 → 3 Δ=+3**. P1/P2/P3 0.0 → 0.0
+  (still pinned at 0/0 — no rule file exists). P5 2 → 2. P6 600 → 600.
+  This is the second non-NEUTRAL iter on this branch (iter 8 was first).
+- All six test suites pass on this host: `tests/test_episodic.py` 15/15
+  (new), `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_load_related.py` 11/11, `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14, `tests/test_dsl.py` 17/17. The manual
+  probe run (`python run_learn.py --limit 3 --seed 42`) wrote
+  `episodic_memory/{00576224,007bbfb7,009d5c81}/attempt_001/` cleanly,
+  reproducing the seed=42 task list, so the next loop iteration's probe
+  will continue incrementing P4 from 3 (not reset it) since the
+  attempt-index logic survives reruns.
+
+**Next gap (note for future iter)**: With P4 alive, the three live
+candidates from iter 8 narrow back to two:
+  1. **Stand up** the pair-specific program writer in
+     `agent/active_operators.py:GeneralizeOperator` — emit a pair-specific
+     `coloring` composition per example pair *before* the abstract rule
+     attempt. Two same-skeleton compositions across pairs let AU fire and
+     produce a §1-schema discovered rule, finally moving P1/P2/P3 above
+     zero. F8 requires this edit to land alongside a touch to
+     `agent/memory.py` / `program/anti_unification.py` / `agent/conditions/` —
+     trivially satisfied since the writer's output flows into `save_rule`
+     with `related_rules=load_related(category)`. Larger surface area
+     than iter 9.
+  2. **Migrate** `agent/active_agent.py`'s legacy `save_rule_to_ltm` call
+     site to `save_rule()`. Today only `identity` rules ever fire, and
+     those are filtered out of the save path (`active_agent.py` line ~106),
+     so the migration writes nothing observable on the current probe set
+     — but it unblocks the moment (1) produces non-identity rules. A
+     small `_translate_to_schema(legacy_rule, task_hex)` helper localises
+     the §1-shape construction (concept/category/condition.type from the
+     pipeline's `rule_type`, action.dsl/args from the pair-specific
+     coloring composition once (1) exists).
+
+Both are defensible iter-10 candidates; (1) is the genuine unblock for
+P1-P3 and the natural next-after-P4. (2) is the smaller of the two but
+its payoff is gated on (1) anyway.

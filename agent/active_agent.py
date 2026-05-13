@@ -17,6 +17,7 @@ from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
+from agent.episodic import write_attempt
 
 
 class ActiveSoarAgent:
@@ -28,9 +29,11 @@ class ActiveSoarAgent:
 
     def __init__(self, semantic_memory_root: str = "semantic_memory",
                  procedural_memory_root: str = "procedural_memory",
+                 episodic_memory_root: str = "episodic_memory",
                  max_steps: int = 50):
         self.semantic_memory_root = semantic_memory_root
         self.procedural_memory_root = procedural_memory_root
+        self.episodic_memory_root = episodic_memory_root
         self.max_steps = max_steps
         self._submission_count: int = 0
         self._current_task_hex: str = None
@@ -72,6 +75,7 @@ class ActiveSoarAgent:
                         "rule_source": entry.get("source_task"),
                     })
                     self._submission_count += 1
+                    self._record_attempt(task.task_hex, predicted)
                     return predicted
 
         # --- Slow path: full SOAR pipeline ---
@@ -110,9 +114,21 @@ class ActiveSoarAgent:
             )
 
         self._submission_count += 1
+        self._record_attempt(task.task_hex, predicted)
         return predicted
 
     # ---- helpers --------------------------------------------------------
+
+    def _record_attempt(self, task_hex: str, predicted) -> None:
+        """Persist one episodic_memory/<task_hex>/attempt_NNN/ entry per
+        ``solve()`` invocation (CLAUDE.md §3.3, INVARIANTS.md P4)."""
+        outcome = "submitted" if predicted is not None else "no_prediction"
+        write_attempt(
+            task_hex,
+            outcome=outcome,
+            info=dict(self.last_solve_info),
+            root=self.episodic_memory_root,
+        )
 
     def _rule_matches_examples(self, rule, task) -> bool:
         """Check if a rule produces correct output for ALL example pairs."""
