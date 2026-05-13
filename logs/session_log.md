@@ -527,3 +527,119 @@ slow path's rule writes still flow through `save_rule_to_ltm` legacy until
 
 Either is defensible as iter 7's smallest step. (1) is the cleanest pure
 prerequisite; (2) has the larger payoff but more code surface.
+
+> STAGNATION at iter 6 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-13 18:28
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_182757.log
+
+---
+## Iter 7 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-6. Iter 6 wired
+`program.anti_unification.unify()` into `agent/memory.py:save_rule()` via an
+optional `related_rules` kwarg, but the *retrieval* side is still implicit:
+every prospective caller has to scan `procedural_memory/` itself and filter
+out legacy/malformed rules before invoking `save_rule`. Without a canonical
+read helper, the next iter that migrates `agent/active_agent.py` would have
+to inline that logic, and the temptation to skip the legacy-shape filter is
+exactly the bug pattern that produced the 168-rule failure mode. Iter 6's
+"Next gap" called this out as the smallest defensible follow-up. Smallest
+step: add `load_related(category)` as pure read-only plumbing in
+`agent/memory.py`, with tests, no call-site rewire.
+
+**Change**:
+- `agent/memory.py` — added `load_related(category, *,
+  procedural_memory_root=PROCEDURAL_MEMORY_ROOT)`. Scans the directory,
+  parses each `rule_NNN.json`, returns those whose `category` matches and
+  which carry a dict-shaped `{condition, action}` block with the keys
+  `unify()` reads (`condition.type`, `action.dsl`). Legacy rules (no
+  `condition`/`action`), parse errors, non-JSON garbage, and non-rule
+  filenames are silently skipped — `validate_rule` is intentionally NOT
+  invoked because V6 (id collision against an existing file) would always
+  fire for rules read back from disk. Bad-category input (empty string,
+  non-string) short-circuits to `[]`. ~30 LOC including the docstring;
+  signature matches `save_rule`'s kwarg name (`procedural_memory_root`).
+- `tests/test_load_related.py` (new, dependency-free runner like the
+  other `tests/test_*.py`) — 11 cases covering: (1) category filtering
+  with mixed-category files, (2) legacy-shape rejection (top-level `rule`
+  key, no `condition`/`action`), (3) malformed action (non-dict),
+  (4) malformed condition (missing `type`), (5) non-JSON file tolerance,
+  (6) non-rule-filename ignore (`README.md`, `rule_001.bak`), (7) empty
+  directory → `[]`, (8) missing directory → `[]`, (9) bad-category input
+  (`""`, `None`, `42`) → `[]`, (10) read-only contract (directory listing
+  before/after is identical), (11) end-to-end smoke that pipes
+  `load_related` output directly into `program.anti_unification.unify()`
+  inside a sandbox chdir — asserts the result `is_more_general()`, proving
+  the returned rule shape is the shape `unify` actually consumes.
+- `docs/RULE_FORMAT.md` §7 — added a row for `load_related()` describing
+  the contract, the deliberate non-use of `validate_rule` (V6 reason), and
+  the legacy-skip behavior. Added a row for `tests/test_load_related.py`
+  describing the 11 cases.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0
+**Probe after** : (not re-run — pure read-side plumbing; does not affect
+the solve path. Payoff lands when `active_agent.py` is migrated to call
+`load_related(rule["category"])` ahead of `save_rule(rule,
+related_rules=...)`.)
+
+**Invariants** (checker run end-to-end against base HEAD `a87227b0` —
+iter 6):
+- forbidden = none. F1: 0-line diff against frozen-file paths (`data/`,
+  `agent/cycle.py`, `agent/wm.py`, `ARCKG/{task,pair,grid,object,pixel}.py`).
+  F2: no `+def _try_` / `+def _apply_` in `agent/active_operators.py`.
+  F3: no `procedural_memory/DSL/*.py` diff at all (the new function is in
+  `agent/memory.py`, not the DSL package). F4: still no `rule_*.json`
+  files on disk. F5: no `semantic_memory/.*[Tt][Ff]_` paths added. F6:
+  no edits to `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: no `except RuleSchemaError` added or modified
+  (the new function catches `OSError, json.JSONDecodeError` for the read
+  path — neither is `RuleSchemaError`, so F7 does not engage). F8:
+  `agent/active_operators.py` numstat 0/0 (untouched), so the "grew
+  without companion" clause cannot fire.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 0 → 0,
+  P5 1 → 1, P6 600 → 600. **Neutral on auto-measured signals** —
+  checker exits 2 as expected. This is read-side plumbing that has no
+  observable effect on rule coverage, mean covers, AU-trace fraction,
+  episodic count, condition-matcher count, or active-operators line
+  count. The pure prerequisite character of the change is exactly why
+  iter 6 called it the smaller of the two follow-ups: it does not earn
+  a Δ this iter, but the moment the call-site migration lands, it is
+  *the* function that decides whether AU is actually invoked or
+  silently skipped.
+- All four test suites pass: `tests/test_load_related.py` 11/11 (new),
+  `tests/test_save_rule.py` 14/14, `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17.
+
+**Stagnation note**: This is the 4th consecutive NEUTRAL iter (iters 4-7
+all `Δ=+0` across P1-P6). The cause matches `INVARIANTS.md §3` cause #3:
+"the agent is doing scaffolding work whose payoff lands in a later iter".
+The architecture pipeline P5→V3→`save_rule`→`unify`→`load_related` has
+been built bottom-up across iters 1-7 with no rule ever actually written
+to disk, because the call-site rewire in `active_agent.py` is the final
+gate. That rewire is now the smallest gap that genuinely moves a
+positive signal — every prerequisite below it is in place.
+
+**Next gap (note for future iter)**: Migrate `agent/active_agent.py`'s
+rule-save call site from `save_rule_to_ltm()` to `save_rule()`, using
+`load_related(rule["category"])` to populate `related_rules`. This is
+the iter that finally writes a schema-compliant rule file to
+`procedural_memory/`, moving P1/P2 above zero (and P3 above zero as
+soon as a second rule with the same category lands). The translation
+layer is the surface-area concern: the pipeline currently emits the
+legacy `{type, mapping, ...}` shape, so the call site must (a) infer
+`condition.type` from the discovered pattern (e.g. `grid_size_preserved`
+if dims match across all training pairs), (b) infer `action.dsl` from
+the transformation kind (today: only `coloring` and `make_grid` are
+admissible, so non-coloring/non-canvas rules cannot yet be persisted —
+this is correct-by-construction and surfaces exactly which categories
+need DSL-discovered abstractions next). Recommended: do it task-by-task
+behind a small `_translate_to_schema(legacy_rule, task_hex)` helper in
+`agent/active_agent.py` so the translation logic is auditable.

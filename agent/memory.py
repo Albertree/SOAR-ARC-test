@@ -205,6 +205,54 @@ def validate_rule(rule: dict, *,
         raise RuleSchemaError(f"id collision: {target_name} exists")
 
 
+def load_related(category: str, *,
+                 procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:
+    """Return schema-compliant rules in ``procedural_memory_root`` whose
+    ``category`` equals the argument. Intended as the read step before
+    ``save_rule(rule, related_rules=...)`` per ``CLAUDE.md §8``:
+
+        related = load_related(rule["category"])
+        save_rule(rule, related_rules=related)
+
+    Read-only. Files that fail to parse, lack ``{condition, action,
+    category}`` keys, or whose category does not match are silently
+    skipped — legacy rules (no ``condition``/``action`` block) therefore
+    never reach ``unify()`` through this path. Surfacing such files is
+    the migration tool's job, not the retrieval helper's.
+
+    ``validate_rule`` is intentionally NOT invoked: it enforces V6 (id
+    collision against an existing file on disk), which always fires for
+    rules read back from disk. The lightweight shape check below is the
+    minimum needed to keep ``unify()`` from crashing on malformed input.
+    """
+    if not isinstance(category, str) or not category:
+        return []
+    if not os.path.isdir(procedural_memory_root):
+        return []
+    out: list = []
+    for fname in sorted(os.listdir(procedural_memory_root)):
+        if not (fname.startswith("rule_") and fname.endswith(".json")):
+            continue
+        path = os.path.join(procedural_memory_root, fname)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                rule = json.load(fh)
+        except (OSError, json.JSONDecodeError):
+            continue
+        if not isinstance(rule, dict):
+            continue
+        if rule.get("category") != category:
+            continue
+        cond = rule.get("condition")
+        act = rule.get("action")
+        if not isinstance(cond, dict) or not isinstance(act, dict):
+            continue
+        if not isinstance(cond.get("type"), str) or not isinstance(act.get("dsl"), str):
+            continue
+        out.append(rule)
+    return out
+
+
 def save_rule(rule: dict, *,
               related_rules: Iterable[dict] | None = None,
               procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
