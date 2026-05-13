@@ -8684,3 +8684,93 @@ larger; the matcher one is smaller and lifts P5 to 22. As of this
 iter no other test in the suite is failing (16 -> 18 in
 test_recognized_conditions; spot-checked test_save_rule.py and
 test_translate_to_schema.py both green).
+
+---
+## Learning Loop -- 2026-05-14 06:34
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_063356.log
+
+## Iter 173 -- 2026-05-13T21:38:50Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with `rule=identity`, so the slow path
+never reaches a non-identity emission. Iter 172's "Next gap" explicitly
+named two defensible single-iter steps -- the larger emission branch
+in `translate_to_schema` or the smaller matcher
+`change_group_count_constant_across_pairs` lifting P5 to 22. Per
+PROMPT.md "smallest defensible step", I picked the matcher: it is the
+group-count cardinality projection of iters 23 / 28 (mirroring iter
+32->30 / iter 37->35 / iter 38->36 cardinality projections), uses
+`num_groups` already emitted since iter 1, has F8 inert (no
+`active_operators.py` touch), and exposes the cross-pair-constant-N
+recognition handle that emission branches will need.
+
+**Change**:
+- `agent/conditions/change_group_count_constant_across_pairs.py` --
+  new matcher fires iff every pair's `num_groups` is the same non-zero
+  integer; rejects identity territory (`num_groups == 0` on any pair).
+- `tests/test_change_group_count_constant_across_pairs.py` -- 41
+  dependency-free tests covering registry membership (>= 22), positive
+  fixtures at N=1/2/3, mutual-exclusion with iter 13, strict
+  refinement of iters 23 / 30 / 10, independence from iters 28 / 32,
+  co-fire with iters 24 / 26 / 10 / 18 / 1, type strictness on
+  `num_groups`, side-effect freeness, determinism, strict bool return,
+  and two end-to-end fixtures against `ExtractPatternOperator`.
+- `tests/test_recognized_conditions.py` -- bumped the expected
+  registry set from 21 to 22 entries (added the new name) and added
+  the new name to the firing set in
+  `test_all_three_matchers_fire_on_compatible_patterns` (the iter-10
+  fixture has `num_groups=3` on both pairs, so this matcher
+  legitimately fires).
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0
+
+**Invariants**: forbidden=none, positives=P5: 21 -> 22 (Δ=+1); P1 / P2
+/ P3 / P4 / P6 unchanged. `scripts/check_invariants.sh --check`
+verdict CLEAN. All 30 test scripts pass (29 from the prior baseline +
+the new file).
+
+**Why this is real work despite a flat probe**: The probe is not the
+reward (INVARIANTS.md §2); P5 is. The matcher names the cross-pair
+group-count cardinality precondition that no entry in the recognition
+vocabulary currently carries -- iter 23 pins N == 1, iter 28 requires
+N >= 2 per pair (NOT same N across pairs), iter 13 pins N == 0, and
+iter 10 inlines constant-N as a side effect of its contiguous-range
+content check. A future emission branch that paints N derived blobs
+per pair (the natural multi-blob analogue of iter 27's multi-cell
+single-blob branch) has no named recognition handle for the
+cross-pair invariant the action's apply-time selection must
+reproduce until this matcher lands. Recognition vocabulary ahead of
+emission, the same posture iters 17 / 18 / 19 / 20 / 22 / 23 / 24
+/ 26 / 28 / 30 / 32 / 33 / 34 / 35 / 36 / 37 / 38 all carry. Smaller
+than the alternative emission-branch option iter 172 named; mirrors
+the iter-32-after-iter-30 / iter-37-after-iter-35 /
+iter-38-after-iter-36 cardinality-projection cadence.
+
+**Next gap (note for future iter)**: With the group-count
+cardinality matcher in the registry, the most glaring unfilled gap
+returns to the one iters 170 / 171 / 172 all named:
+`translate_to_schema` still has no non-identity emission branch that
+fires on the seed=42 probe tasks (00576224 / 007bbfb7 are tile-style;
+009d5c81 is multi-blob with positions varying across pairs). Until
+at least one such branch exists, P1 / P2 / P3 cannot start moving.
+A single-iter candidate: a multi-blob-emit branch in
+`translate_to_schema` gated on the conjunction
+(`multi_group_per_pair` AND `change_group_count_constant_across_pairs`
+AND `output_color_uniform`) -- this exactly names the
+"every pair has the SAME constant N blobs painted with the same
+constant colour K" rule shape; with N pinned the action's
+`selection` can carry the per-pair blob-position lists and
+`coloring`'s color argument is K. The matcher just landed makes the
+N-constancy precondition expressible. Alternative smaller step:
+extend `translate_to_schema` with a position-emit branch gated on
+(`single_change_group_per_pair` AND
+`change_positions_constant_across_pairs` AND `output_color_uniform`)
+-- the strictest precondition shape, simplest emission. Either is
+defensible. As of this iter all 30 test scripts pass; no other test
+is failing.
