@@ -276,16 +276,65 @@ Both branches must populate `active-rules` symbolically. No reference to
 apply_DSL(name: str, grid, **kwargs) -> grid
 ```
 
-Adding a new primitive:
-1. Implement the function in the appropriate `DSL/*.py` (transformation /
-   selection / util / layer).
-2. Register the name in `apply.py`'s dispatcher table.
-3. Add a `condition` matcher capable of recognizing when this primitive
-   applies — placed in `agent/memory.py` or its sub-module, **not** in
-   `active_operators.py`.
+### 6.1 Hand-coded primitives are frozen at two
 
-The DSL is the only locus where new transformational vocabulary may be added.
-The pattern-detection vocabulary lives in §3.2's `condition.type` registry.
+The set of hand-coded primitives is **closed** at exactly:
+
+| Name | Signature | Purpose |
+|------|-----------|---------|
+| `coloring` | `coloring(grid, selection, color)` | Paint `selection` (coord or list of coords) with `color` (0–9, or `13` for transparent/erase). |
+| `make_grid` | `make_grid(height, width, color)` | Produce a fresh `height × width` canvas filled with `color`. |
+
+These two are the entire transformation vocabulary the human/LLM is permitted
+to author. Every other transformation (`move`, `rotate`, `flip`, `copy`,
+`scale`, `fill_region`, `recolor_sequential`, …) is a *composition* of these
+two — and must be **discovered by ARBOR at runtime**, not hand-written. This
+is the operational meaning of the "Bottom-up Organized Rules" in ARBOR's name.
+
+Forbidden: adding a new `def <name>(grid, ...)` to `procedural_memory/DSL/`
+or a new `@register("<name>")` decorator (other than the two above). The
+invariant checker (`scripts/check_invariants.sh`, signal **F3**) auto-reverts
+any commit that does this.
+
+### 6.2 Discovered primitives are data, not code
+
+When `program/anti_unification.unify()` finds a recurring `coloring`/
+`make_grid` composition across two or more rules, the resulting abstraction
+is persisted as **data**:
+
+- A new `procedural_memory/rule_NNN.json` with `anti_unification_trace`
+  pointing into `episodic_memory/<task_id>/anti_unification/`.
+- `action.dsl` = name of the abstraction (e.g. `"move_object"`) coined by
+  anti-unification.
+- `action.args` carries the generalization variables, expressible as
+  `coloring` / `make_grid` invocations once instantiated.
+
+`apply_DSL` dispatches both layers:
+
+1. Static layer — the two hand-coded primitives in `DSL/*.py`.
+2. Discovered layer — abstract rules loaded from `procedural_memory/*.json`
+   whose `action.dsl` name resolves to a `coloring`/`make_grid` composition
+   recipe via the `anti_unification_trace`.
+
+The static layer never grows. The discovered layer grows organically and is
+the only avenue for new transformational vocabulary.
+
+### 6.3 Adding a condition matcher (allowed, separate vocabulary)
+
+The *pattern-detection* vocabulary lives in §3.2's `condition.type` registry,
+which is a **separate dimension** from the DSL. New matchers may be added
+by hand:
+
+1. Implement `match(patterns: dict, params: dict) -> bool` in
+   `agent/conditions/<name>.py`.
+2. Register the name via the `@register("<name>")` decorator wired into
+   `agent/conditions/__init__.py:CONDITION_REGISTRY`.
+3. Matchers are deterministic, side-effect-free.
+
+A matcher recognizes *when* a (composed) action applies — it does not
+introduce any new way of *doing* a transformation. Adding matchers is how
+the recognition vocabulary grows; adding DSL primitives is forbidden because
+that is what anti-unification must produce.
 
 ---
 
