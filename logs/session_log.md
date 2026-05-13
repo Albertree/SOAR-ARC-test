@@ -8233,3 +8233,15 @@ unambiguous.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_004613.log
+
+> STAGNATION at iter 159 — 121 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 00:46
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_004634.log
