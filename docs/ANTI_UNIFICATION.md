@@ -175,21 +175,55 @@ existing one — the sequence number monotonically increases.
 
 ---
 
-## 4. Integration Point (forthcoming)
+## 4. Integration Point (wired in iter 6)
 
 `CLAUDE.md §8` names `agent/memory.py:save_rule()` as the *only* permitted
-call site for `unify()`. The wiring has not yet landed; this iter
-stands up `unify()` itself. The next iter wires `save_rule()` to:
+call site for `unify()`. As of iter 6 the wiring is in place:
 
-1. Look up rules in the same `category` as the candidate.
-2. If ≥ 1 found, call `unify(related + [new_rule])`.
-3. If the result `is_more_general()`, replace `new_rule` with
-   `result.abstract_rule` and set `anti_unification_trace = result.trace_path`.
-4. Validate the (possibly abstract) rule against the §1 schema (V1–V7 in
-   `docs/RULE_FORMAT.md` §3) and write it to disk.
+```python
+def save_rule(rule, *, related_rules=None,
+              procedural_memory_root=PROCEDURAL_MEMORY_ROOT):
+    related = list(related_rules) if related_rules else []
+    if related:
+        try:
+            au = unify(related + [rule])
+        except NoCommonSkeleton:
+            au = None
+        if au is not None and au.is_more_general():
+            rule = au.abstract_rule
+    validate_rule(rule, procedural_memory_root=procedural_memory_root)
+    # ... write rule_<id>.json
+```
 
-If `unify()` raises `NoCommonSkeleton`, the caller leaves `new_rule`
-unchanged and saves it as a source rule.
+Behavior summary:
+
+1. Caller passes `related_rules` — typically other rules in the same
+   `category` retrieved from `procedural_memory/`. (Category-based
+   retrieval is the caller's responsibility, not `save_rule`'s.)
+2. If non-empty, `unify(related + [rule])` runs.
+3. If the result `is_more_general()`, `rule` is replaced by
+   `result.abstract_rule`. The trace file that `unify` already wrote to
+   `episodic_memory/<source_task>/anti_unification/au_NNN.json` lets V5
+   pass on the subsequent `validate_rule()` call.
+4. If `unify` raises `NoCommonSkeleton`, the new rule is persisted
+   unchanged as a source rule. The caught exception is **not** a
+   `RuleSchemaError`, so F7 is not engaged by this `try/except`.
+5. If `is_more_general()` is `False` (inputs structurally identical),
+   `rule` is **not** replaced — preserving the new rule's identity. The
+   `covers` merging into the existing rule's file is a separate
+   deduplication concern, deferred to a future iter.
+
+What is **not** yet wired:
+
+- Automatic deletion / archival of the now-redundant source rules whose
+  abstraction was just persisted. The old `rule_NNN.json` files remain on
+  disk; cleanup is a future iter's concern.
+- Category-based retrieval of `related_rules` from the on-disk
+  `procedural_memory/`. Callers currently supply the list directly. A
+  helper `load_related(category)` is the natural follow-up.
+- The legacy `save_rule_to_ltm()` writer used by `agent/active_agent.py`
+  remains untouched. Until the call site migrates to `save_rule()`, the
+  AU wiring sees no production traffic.
 
 ---
 

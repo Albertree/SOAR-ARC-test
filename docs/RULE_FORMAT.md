@@ -411,11 +411,11 @@ As of 2026-05-13, branch `test20`:
 | `agent/conditions/` directory | bootstrapped on `test20`: `CONDITION_REGISTRY` + `grid_size_preserved` matcher |
 | `agent/memory.py:RuleSchemaError` | **implemented (iter 2)** — `ValueError` subclass, never caught silently per F7 |
 | `agent/memory.py:validate_rule()` | **implemented (iter 2)** — enforces V1–V7; as of iter 3 V3 admits `coloring` and `make_grid` |
-| `agent/memory.py:save_rule()` | **implemented (iter 2)** — schema-aware writer producing §1 shape |
+| `agent/memory.py:save_rule()` | **implemented (iter 2) + AU-wired (iter 6)** — schema-aware writer producing §1 shape. Accepts an optional `related_rules` kwarg; when non-empty, calls `program.anti_unification.unify(related + [rule])` and substitutes the abstract rule when `is_more_general()`. `NoCommonSkeleton` is caught silently (not a `RuleSchemaError`, F7 not engaged) and the new rule is saved as-is. This is the sole permitted call site for `unify` per `CLAUDE.md §8`. |
 | `agent/memory.py:save_rule_to_ltm()` (legacy) | still present; emits the pre-test20 shape; sole caller is `agent/active_agent.py`. Migration to `save_rule()` deferred to a later iter |
 | `agent/memory.py:migrate_legacy_rules()` | not implemented |
-| `program/anti_unification.unify()` | **implemented (iter 5)** — positional anti-unification over `condition.params` and `action.args`; returns `UnifyResult` with deep-copied `abstract_rule`, on-disk trace file, and `substitutions` map; raises `NoCommonSkeleton` on `(condition.type, action.dsl)` mismatch. Integration with `save_rule()` still deferred. Full contract in `docs/ANTI_UNIFICATION.md`. |
-| `tests/test_save_rule.py` | **added (iter 2)** — 10 cases covering V1–V7 + happy path + side-effect-free check |
+| `program/anti_unification.unify()` | **implemented (iter 5)** — positional anti-unification over `condition.params` and `action.args`; returns `UnifyResult` with deep-copied `abstract_rule`, on-disk trace file, and `substitutions` map; raises `NoCommonSkeleton` on `(condition.type, action.dsl)` mismatch. Wired into `save_rule()` in iter 6. Full contract in `docs/ANTI_UNIFICATION.md`. |
+| `tests/test_save_rule.py` | **added (iter 2) + extended (iter 6)** — 14 cases covering V1–V7 + happy path + side-effect-free check + (iter 6) four AU-wiring cases: no-related no-unify, more-general-swap with V5-passing trace, NoCommonSkeleton fallback, identical-inputs no-swap |
 | `tests/test_dsl.py` | **added (iter 3)** — 17 cases covering registry contents, `coloring`/`make_grid` happy paths, validation, purity, and `apply_DSL` dispatch |
 | `tests/test_unify.py` | **added (iter 5)** — 14 cases covering `NoCommonSkeleton` paths, identical-input no-trace contract, single/multi-position lifting, partial-key disagreement, `min_evidence` selection, `covers` union ordering, alias safety, V5-regex compliance, and trace-id monotonicity |
 

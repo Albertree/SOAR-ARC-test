@@ -428,3 +428,102 @@ unchanged. This is the iter that finally moves P3 above zero — but only
 when at least two same-skeleton rules already exist, so iter 6 should also
 add a smoke test that constructs two valid rules via `save_rule` and
 verifies the second call produces an abstract rule with a non-null trace.
+
+---
+## Learning Loop -- 2026-05-13 18:23
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_182300.log
+
+---
+## Iter 6 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-5. Behind that,
+iter 5 stood up `program.anti_unification.unify()` with its full §1 contract
+and 14 passing tests, but `agent/memory.py:save_rule()` still does not call
+it. CLAUDE.md §8 names `save_rule()` as the *only* permitted call site for
+`unify()`, so until that wiring exists, P3 (anti_unification_trace fraction)
+is structurally pinned at zero regardless of what the slow path discovers.
+Iter 5's "Next gap" called for exactly this wiring as the smallest defensible
+follow-up. Smallest step: extend `save_rule()` with an optional
+`related_rules` kwarg + the §8 control flow, leave `active_agent.py`
+unrewired (call-site migration is a separate iter).
+
+**Change**:
+- `agent/memory.py` — `save_rule()` now takes `related_rules: Iterable[dict] |
+  None = None`. When non-empty, it locally imports
+  `program.anti_unification.{unify, NoCommonSkeleton}`, calls
+  `unify(list(related_rules) + [rule])`, and substitutes `result.abstract_rule`
+  for `rule` when `is_more_general()`. `NoCommonSkeleton` is caught silently
+  (it is `ValueError`, not `RuleSchemaError`, so F7's "swallowed
+  RuleSchemaError" clause does not engage). The trace file `unify` already
+  wrote is what lets the subsequent V5 check pass on the abstract rule's
+  `anti_unification_trace`. Default behavior (no kwarg / empty kwarg) is
+  bit-identical to iter 5 — verified by a test that monkey-patches
+  `unify` to a tripwire and asserts it is never called.
+- `tests/test_save_rule.py` — four new cases bringing the suite to 14:
+  (1) no-related → unify untouched; (2) more-general → abstract rule written
+  with covers-union and a real on-disk trace file matching V5; (3)
+  `NoCommonSkeleton` (dsl mismatch) → new rule persisted unchanged;
+  (4) identical inputs → `is_more_general() is False`, new rule persisted
+  unchanged (no swap, no trace). All four use `_TEST_DSL_REGISTRY` so V3
+  doesn't gate them out before AU is even reached.
+- `docs/RULE_FORMAT.md` §7 — `save_rule()` row notes AU wiring landed in
+  iter 6 with the F7-safety call-out; `unify()` row updated from
+  "integration deferred" to "wired in iter 6"; `tests/test_save_rule.py`
+  row notes the 4 added cases.
+- `docs/ANTI_UNIFICATION.md` §4 — section retitled "Integration Point
+  (wired in iter 6)" with the actual code snippet, behavior summary,
+  and the explicit list of follow-up work (auto-archive of source rules,
+  `load_related(category)` helper, `active_agent.py` migration).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0  (loop's iter-6 probe)
+**Probe after** : (not re-run — wiring does not touch the solve path; the
+slow path's rule writes still flow through `save_rule_to_ltm` legacy until
+`active_agent.py` migrates).
+
+**Invariants** (checker run end-to-end against base HEAD `14a166d3` — iter 5):
+- forbidden = none. F1: 0-line diff against frozen-file paths. F2: no
+  `+def _try_` / `+def _apply_` in `agent/active_operators.py`. F3: no
+  `procedural_memory/DSL/*.py` diff at all. F4: still no `rule_*.json`
+  files on disk. F5: no `semantic_memory/.*[Tt][Ff]_` paths added. F6:
+  no edits to `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: the new `except NoCommonSkeleton` clause does not
+  catch `RuleSchemaError` and the only `RuleSchemaError` interactions in
+  this diff are `raise` sites (untouched). F8: `agent/active_operators.py`
+  numstat 0/0 (untouched), so the "grew without companion" clause cannot
+  fire.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 0 → 0, P5 1 → 1,
+  P6 600 → 600. **Neutral on auto-measured signals** — checker exits 2 as
+  expected. P3 is structurally pinned at 0/0 until at least one rule
+  exists on disk, and rule existence requires `active_agent.py` to call
+  the new wiring. The payoff lands the first time the solve path
+  discovers two rules sharing a `(condition.type, action.dsl)` skeleton.
+- All three test suites pass on this host: `tests/test_save_rule.py`
+  14/14 (was 10/10 in iter 5), `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17.
+
+**Next gap (note for future iter)**: Two natural follow-ups now that the
+§8 call site exists.
+  1. Add a small `load_related(category, procedural_memory_root)` helper
+     in `agent/memory.py` that returns existing rules sharing the
+     candidate's category. This is the retrieval step `save_rule` is
+     currently silent about — without it, every caller has to load
+     `procedural_memory/` themselves before invoking AU. Pure read-only
+     plumbing; ~10 LOC.
+  2. Migrate `agent/active_agent.py`'s rule-save call site from
+     `save_rule_to_ltm()` to `save_rule()`, supplying the §1 schema
+     fields (condition/action/anti_unification_trace/...) from the
+     pipeline's discovered rule. This is the iter that finally moves
+     P1/P2/P3 above zero — but it has the most surface area in the call
+     site (the pipeline currently emits the legacy `{type, mapping, ...}`
+     shape, so a small translation layer is also needed). The retrieval
+     helper from (1) is its natural prerequisite, making (1) genuinely
+     smaller.
+
+Either is defensible as iter 7's smallest step. (1) is the cleanest pure
+prerequisite; (2) has the larger payoff but more code surface.

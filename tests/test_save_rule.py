@@ -192,6 +192,146 @@ def test_v3_when_dsl_registry_empty(tmp_root: str) -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Iter 6 — anti-unification wiring through save_rule().
+# These tests exercise the CLAUDE.md §8 contract: save_rule is the sole
+# permitted caller of program.anti_unification.unify. The trace_path
+# produced by unify must satisfy V5, so the tests chdir into a sandbox so
+# the default ``episodic_memory_root="episodic_memory"`` resolves cleanly.
+# ──────────────────────────────────────────────────────────────────────────
+
+def test_au_wiring_no_related_rules_behaves_like_iter5(tmp_root: str) -> None:
+    """A call without related_rules must not import or invoke unify().
+    Verified by overriding the unify symbol to raise — if save_rule
+    touched it, the test would fail loudly."""
+    import program.anti_unification as au
+    sentinel = []
+
+    def _trip(*a, **kw):
+        sentinel.append(True)
+        raise RuntimeError("unify was called when it should not have been")
+    real_unify = au.unify
+    au.unify = _trip
+    try:
+        path = save_rule(_valid_rule(rule_id=11), procedural_memory_root=tmp_root)
+    finally:
+        au.unify = real_unify
+    assert os.path.isfile(path)
+    assert sentinel == [], "save_rule called unify with no related_rules"
+
+
+def test_au_wiring_replaces_with_abstract_rule_when_more_general(
+        tmp_root: str) -> None:
+    """Two rules differing on action.args.color produce a non-null
+    abstract rule whose anti_unification_trace points to a real file
+    (so V5 passes) and whose covers is the union of inputs."""
+    cwd = os.getcwd()
+    sandbox = tempfile.mkdtemp(prefix="arbor_au_save_")
+    try:
+        os.chdir(sandbox)
+        pm_root = os.path.join(sandbox, "procedural_memory")
+        os.makedirs(pm_root, exist_ok=True)
+
+        existing = _valid_rule(rule_id=1)
+        existing["source_task"] = "00576224"
+        existing["covers"] = ["00576224"]
+        existing["action"]["args"] = {"color": 3}
+
+        new = _valid_rule(rule_id=2)
+        new["source_task"] = "007bbfb7"
+        new["covers"] = ["007bbfb7"]
+        new["action"]["args"] = {"color": 5}
+
+        path = save_rule(new,
+                         related_rules=[existing],
+                         procedural_memory_root=pm_root)
+        assert os.path.basename(path) == "rule_002.json"
+
+        with open(path, encoding="utf-8") as fh:
+            on_disk = json.load(fh)
+
+        # Abstract rule replaced new — selection/color lifted to a variable.
+        assert on_disk["action"]["args"]["color"].startswith("?v"), (
+            f"action.args.color was not lifted: {on_disk['action']['args']}"
+        )
+        # covers union, first-seen order.
+        assert on_disk["covers"] == ["00576224", "007bbfb7"]
+        # anti_unification_trace is set and points to a real on-disk file.
+        trace = on_disk["anti_unification_trace"]
+        assert trace is not None
+        assert trace.startswith("episodic_memory/"), trace
+        assert "/anti_unification/" in trace, trace
+        assert os.path.isfile(trace), f"trace file missing: {trace}"
+    finally:
+        os.chdir(cwd)
+        shutil.rmtree(sandbox, ignore_errors=True)
+
+
+def test_au_wiring_keeps_rule_unchanged_on_no_common_skeleton(
+        tmp_root: str) -> None:
+    """When the related rule disagrees on action.dsl, NoCommonSkeleton
+    fires inside unify and save_rule must persist the new rule
+    unchanged (no abstract_rule, no trace)."""
+    # Install a second DSL primitive so the second rule's dsl="make_grid_stub"
+    # also passes V3 — without this, save_rule would reject the new rule on V3
+    # before AU is even reached.
+    _TEST_DSL_REGISTRY["make_grid_stub"] = object()
+    try:
+        existing = _valid_rule(rule_id=1)
+        existing["source_task"] = "00576224"
+        existing["covers"] = ["00576224"]
+        existing["action"]["dsl"] = "stub_for_test"
+
+        new = _valid_rule(rule_id=2)
+        new["source_task"] = "007bbfb7"
+        new["covers"] = ["007bbfb7"]
+        new["action"]["dsl"] = "make_grid_stub"
+
+        path = save_rule(new,
+                         related_rules=[existing],
+                         procedural_memory_root=tmp_root)
+        with open(path, encoding="utf-8") as fh:
+            on_disk = json.load(fh)
+        # Rule persisted untouched — dsl unchanged, no trace.
+        assert on_disk["action"]["dsl"] == "make_grid_stub"
+        assert on_disk["anti_unification_trace"] is None
+        assert on_disk["covers"] == ["007bbfb7"]
+    finally:
+        _TEST_DSL_REGISTRY.pop("make_grid_stub", None)
+
+
+def test_au_wiring_identical_inputs_no_trace(tmp_root: str) -> None:
+    """When the related rule and the new rule are structurally identical
+    (no substitutions), unify still merges covers but does NOT write a
+    trace. save_rule persists the abstract rule with trace=None — which
+    means save_rule must NOT swap to the abstract rule (otherwise V5
+    passes vacuously but we lose the new rule's source-only identity).
+    The contract per docs/ANTI_UNIFICATION.md §1.1 says is_more_general()
+    is False here, so save_rule does NOT swap. The new rule is persisted
+    as-is."""
+    existing = _valid_rule(rule_id=1)
+    existing["source_task"] = "00576224"
+    existing["covers"] = ["00576224"]
+    existing["action"]["args"] = {"color": 3}
+
+    new = _valid_rule(rule_id=2)
+    new["source_task"] = "007bbfb7"
+    new["covers"] = ["007bbfb7"]
+    new["action"]["args"] = {"color": 3}   # identical to existing
+
+    path = save_rule(new,
+                     related_rules=[existing],
+                     procedural_memory_root=tmp_root)
+    with open(path, encoding="utf-8") as fh:
+        on_disk = json.load(fh)
+    # new rule unchanged: still source_task=007bbfb7, covers=[007bbfb7],
+    # trace=None — the merge happens at no-op-substitution time, but the
+    # caller (this test) hasn't asked save_rule to update existing's covers.
+    assert on_disk["source_task"] == "007bbfb7"
+    assert on_disk["covers"] == ["007bbfb7"]
+    assert on_disk["anti_unification_trace"] is None
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Driver.
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -207,6 +347,10 @@ def _run_all() -> int:
         test_happy_path_writes_schema_compliant_file,
         test_validate_rule_does_not_write,
         test_v3_when_dsl_registry_empty,
+        test_au_wiring_no_related_rules_behaves_like_iter5,
+        test_au_wiring_replaces_with_abstract_rule_when_more_general,
+        test_au_wiring_keeps_rule_unchanged_on_no_common_skeleton,
+        test_au_wiring_identical_inputs_no_trace,
     ]
     fails = 0
     _install_dsl_stub()

@@ -206,12 +206,34 @@ def validate_rule(rule: dict, *,
 
 
 def save_rule(rule: dict, *,
+              related_rules: Iterable[dict] | None = None,
               procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
     """Validate ``rule`` against the §1+§3 schema, then write it to
     ``procedural_memory/rule_<id>.json``. Returns the file path. Raises
     ``RuleSchemaError`` if validation fails — caller must not swallow.
-    """
+
+    When ``related_rules`` is a non-empty iterable, ``save_rule`` is the
+    sole permitted call site for ``program.anti_unification.unify`` per
+    ``CLAUDE.md §8``. It calls ``unify(list(related_rules) + [rule])``;
+    if the result ``is_more_general()`` the abstract rule replaces
+    ``rule`` and its already-written trace file satisfies V5. If
+    ``unify`` raises ``NoCommonSkeleton`` the inputs share no
+    ``(condition.type, action.dsl)`` skeleton and ``rule`` is persisted
+    unchanged. The non-RuleSchemaError caught here does not engage F7."""
     os.makedirs(procedural_memory_root, exist_ok=True)
+
+    related = list(related_rules) if related_rules else []
+    if related:
+        # Local import — keeps agent.memory loadable even if the program
+        # package is unavailable in some narrow test environments.
+        from program.anti_unification import NoCommonSkeleton, unify
+        try:
+            au_result = unify(related + [rule])
+        except NoCommonSkeleton:
+            au_result = None
+        if au_result is not None and au_result.is_more_general():
+            rule = au_result.abstract_rule
+
     validate_rule(rule, procedural_memory_root=procedural_memory_root)
 
     target_name = f"rule_{int(rule['id']):03d}.json"
