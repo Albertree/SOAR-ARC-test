@@ -9050,3 +9050,124 @@ control flow rather than the schema. Defer the choice to next
 iter. As of this iter all 32 test scripts pass; no other test is
 failing.
 
+
+---
+## Learning Loop -- 2026-05-14 06:58
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_065852.log
+
+## Iter 176 -- 2026-05-13T22:06:49Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with `rule=identity`. Iters 170–175 have all
+added +1 P5 matcher each, accreting cardinality / set projections (iters
+38/39/40/41 internally), while emission-side `translate_to_schema` has stayed
+fixed — the recognition vocabulary now has 24 matchers but `procedural_memory/`
+remains empty because no new emission branch consumes the new matchers, and
+the next-gap notes have flagged emission-side polymorphic-args / cell-table-
+emit as the actual blocker for 5+ consecutive iters. The matcher-accretion
+treadmill mirrors the failure mode INVARIANTS.md §1 F2 names (special-case
+detector growth in `_try_*`); doing it again would compound the very pattern
+the project is designed against. Documentation drift, however, is a real and
+underweighted gap: `docs/RULE_FORMAT.md §4 Condition Type Registry` lists
+only 20 of the 24 registered matchers — four matchers (iters 38/39/40/41
+internally; run-loop iters 173/174/175 plus an older addition) ship as code
+without a row in the canonical spec, so the spec no longer matches the
+implementation. Smallest defensible step: sync §4 with the runtime registry,
+NOT add another matcher. Pure doc update; no code touched; P5 stays at 24;
+zero forbidden-signal exposure; breaks the matcher-accretion cadence so the
+next iter can re-examine the emission gap from a cleaner baseline.
+
+**Change**:
+- `docs/RULE_FORMAT.md` §4 -- four missing matcher rows inserted after the
+  existing `output_dimensions_constant` row, in their iter chronology
+  (38 → 39 → 40 → 41):
+  - `change_output_color_count_constant_across_pairs` (iter 38) -- cardinality
+    projection of iter 36's output-colour SET matcher; symmetric output-side
+    mirror of iter 37 on the input axis.
+  - `change_group_count_constant_across_pairs` (iter 39) -- cardinality-axis
+    projection of iters 23 / 28's specific-N group-count predicates.
+  - `change_color_mapping_count_constant_across_pairs` (iter 40) --
+    cardinality projection of iter 34's (ic, oc) joint set matcher; completes
+    the cardinality-projection cadence on every set-axis entry.
+  - `change_cells_constant_across_pairs` (iter 41) -- strictest cell-content
+    joint matcher, including the worked counter-example proving iter 30 +
+    iter 34 conjunction is strictly weaker.
+  Each row follows the existing format: backtick-name, module path, params,
+  active-iter tag, recognition-axis sentence, refinement / orthogonality
+  notes, fail-closed posture, and F8 inert note. No other section of
+  `RULE_FORMAT.md` touched (the §6 example matcher `objects_sortable_by_axis`
+  remains illustrative and was intentionally left as-is — it is documented
+  in §6.5 as a migration example, not a registry entry).
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0 (not re-run --
+this iter does not affect the solve path; doc-only)
+
+**Invariants**: forbidden=none, positives=P1 / P2 / P3 / P4 / P5 / P6 all
+unchanged. `scripts/check_invariants.sh --check` verdict **NEUTRAL** (no
+positive deltas, no forbidden trips). All 32 test scripts pass; doc change
+is not under test coverage by design. F1 inert (no frozen-file touch); F2
+inert (no `_try_*` / `_apply_*`); F3 inert (no DSL primitive); F4 inert (no
+rule file written); F5 inert (no `semantic_memory/` touch); F6 inert (no
+budget growth); F7 inert (no exception handling); F8 inert (no
+`active_operators.py` touch).
+
+**Why a NEUTRAL iter is correct work here**: Per PROMPT.md §5 a no-op iter
+is acceptable when no defensible positive-signal step exists; per INVARIANTS.md
+§2 a NEUTRAL outcome is logged and the loop continues. The matcher-accretion
+treadmill has reached saturation -- five consecutive CLEAN iters all on the
+same +1-P5 pattern with zero P1 / P2 / P3 movement and a "next gap" log that
+keeps naming the same emission-side blocker. Adding a 25th matcher would be
+inertial work, not progress, and would deepen the very local minimum the
+project's INVARIANTS.md §1 F2 / §2 P5 design tension was meant to expose
+(P5 rewards recognition vocabulary growth, F2 forbids transformation
+vocabulary growth -- so the path of least resistance for a Claude
+optimising on P5 alone is exactly "add a matcher per iter"). Documentation
+drift is unrewarded but real: when the canonical spec says 20 matchers and
+the code registry has 24, the next iter cannot trust §4 to enumerate the
+search space and is silently nudged toward another +1 P5 step. Re-syncing
+§4 makes the spec authoritative again, so the next iter can re-diagnose the
+gap from accurate data without one more matcher distorting the baseline.
+
+**Next gap (note for future iter)**: With §4 in sync, the recognition-side
+vocabulary AND its canonical documentation now both reflect 24 matchers
+covering positions × {set, count}, input-colours × {set, count, uniform},
+output-colours × {set, count, uniform}, (ic, oc) × {set, count}, group-count
+× {specific-N=1, specific-N>=2, count}, joint cell-tuple, dimensional ×
+{input-const, output-const, output-mult-of-input, preserved, changed},
+plus `consistent_color_mapping`, `sequential_recoloring`,
+`identity_transformation`. The recognition layer is genuinely saturated on
+the existing patterns-dict data; further matchers would require new fields
+in `_analyze_pair` (e.g. object-level features, axis symmetries, palette
+properties), which is itself architectural work larger than a single iter.
+The single most defensible larger-than-this-iter step remains the one
+iters 170 / 171 / 172 / 173 / 174 / 175 all named:
+`translate_to_schema` still has no non-identity emission branch that fires
+on the seed=42 probe tasks (00576224 / 007bbfb7 are tile-style with
+varying input dims; 009d5c81 is multi-blob with positions varying across
+pairs). Two candidates remain (unchanged from iter 175):
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 + `apply_DSL`
+to let `action.args` carry derived selection (e.g. "wherever input has
+colour C"). Requires touching `validate_rule`, `apply_DSL`, and at least
+one `translate_to_schema` branch -- bigger than a smallest-step iter
+but the only path that handles `00576224` / `007bbfb7` / `009d5c81`
+without anti-unification first lifting `selection`.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` (in
+`agent/active_agent.py`) to accept a list of rules from
+`translate_to_schema`, and add a cell-table-emit branch gated on
+(`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints one
+`coloring` sibling rule per distinct output colour in the constant
+cell set. Uses only the frozen `coloring` primitive (F3 inert) and is
+the natural setup for anti-unification to lift the per-cell coord
+lists into a colour-keyed selection variable across the sibling
+rules. Requires touching `agent/memory.py` AND `agent/active_agent.py`
+in the same iter but is genuinely the smallest step that produces
+saveable rules on training data the current matcher conjunction
+already names. As of this iter all 32 test scripts pass; no other
+test is failing.
