@@ -2081,3 +2081,212 @@ one of the four matcher names and whose `action.dsl` reduces to
 `coloring` or `make_grid`, the matching `_try_*` method in
 `active_operators.py` becomes deletable.
 
+
+> STAGNATION at iter 16 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-13 19:52
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_195214.log
+
+## Iter 17 -- 2026-05-13T10:58Z -- branch test20
+
+**Diagnosis**: Iters 14-16 produced three consecutive NEUTRAL iters
+(STAGNATION fired at iter 16). The schema-rule scaffolding chain
+translator -> writer -> reader is now load-bearing end-to-end, but the
+P1/P2/P3 unlock is gated on a non-identity §1 rule actually landing on
+disk -- which requires either a translator-branch extension or
+anti-unification discovery. Both are larger surfaces. Meanwhile, the
+seed=42 probe set's three tasks (00576224, 007bbfb7, 009d5c81) all emit
+`size_match=False` per pair (output dimensions differ from input) and
+none of the four registered matchers fires on them -- `fired_conditions`
+in their `episodic_memory/<task_hex>/attempt_NNN/metadata.json` has been
+the empty list across iters 12-16. The recognition vocabulary's
+dimensional axis is half-built: `grid_size_preserved` (iter 1) names the
+condition under which `coloring` (modify-in-place) applies, but there is
+no named matcher for the symmetric condition under which the other
+frozen DSL primitive `make_grid` would apply (output freshly
+constructed). Adding the missing half is the smallest defensible
+P5-mover (the iter-1/8/10/13 template, P5: 4 -> 5) and it covers the
+seed=42 probe tasks on the live runtime applier -- recognition
+vocabulary moves ahead of rule emission, which is the opposite of the
+test13-eval failure mode where rules accreted without preconditions. The
+two frozen DSL primitives now each have a named recognition precondition.
+
+**Change**:
+- `agent/conditions/grid_size_changed.py` (new, +109 LOC) -- iter-17
+  matcher. Returns True iff `pair_analyses` is a non-empty list of
+  well-formed analyses AND at least one analysis has `size_match is
+  False` (strict identity, not `not size_match`). Per-pair `size_match`,
+  not the top-level `grid_size_preserved` flag -- the iter 8 / iter 13
+  separation-of-concerns precedent (matchers must not piggyback on
+  upstream summary flags). The strict-`is False` posture mirrors iter
+  13's strict-`is True` on `identity_transformation` -- a missing or
+  non-Boolean `size_match` is *not* a "size changed" signal but an
+  upstream extractor bug, so the matcher fail-closes there rather than
+  defaulting to True. Mutually exclusive with `grid_size_preserved` and
+  with `identity_transformation` (both require every pair's `size_match
+  is True`); orthogonal to `consistent_color_mapping` and
+  `sequential_recoloring` (those inspect change-group colours, not
+  dimensions).
+- `tests/test_grid_size_changed.py` (new, +332 LOC, 24 cases) -- runs
+  against the live `CONDITION_REGISTRY` (no stubs, same dependency-free
+  runner as iters 1/8/10/13). Covers registration, adjacent-iter
+  non-displacement (iters 1/8/10/13 still registered), `>= 5`-entry
+  registry assertion (P5: 4 -> 5), callable contract, single-pair and
+  multi-pair positive cases, the existential "at least one size-changed
+  pair fires the whole patterns dict" semantic, rejection on
+  all-preserved pairs (with and without colour changes inside the
+  overlap -- the latter forecloses recolour-style patterns from
+  misfiring this matcher), empty / missing / non-list `pair_analyses`,
+  non-dict patterns, malformed analysis entries, missing `size_match`,
+  strict `is False` on both sides of the Boolean (truthy `1`/`"yes"`
+  rejected, falsy `None`/`0`/`""`/`[]`/`{}` rejected), side-effect-free
+  input contract, determinism across repeats, mutual exclusion with
+  `grid_size_preserved` (partition the dimensional axis on any
+  well-formed pair_analyses list) and with `identity_transformation`
+  (both require all-True per-pair `size_match`), orthogonality with
+  `consistent_color_mapping` (co-fires on the iter-11
+  `_patterns_color_mapping_only`-shaped fixture where every pair has
+  `size_match=False` but the change groups still form a consistent 1:1
+  mapping), end-to-end agreement with the `_analyze_pair` zero-group /
+  `size_match=False` shape (the shape the seed=42 probe tasks emit),
+  and a strict-Boolean return assertion to keep the matcher composable
+  with `recognized_conditions`'s `is True` filter.
+- `tests/test_recognized_conditions.py` -- widened the iter-13 exact
+  4-name set in `test_registry_contents_after_helper_load` to the 5-name
+  set including `grid_size_changed`, plus refreshed the surrounding
+  comment from "iter 13" to "iter 17". The neighbouring fixture
+  `_patterns_color_mapping_only()` has `size_match=False` per pair so
+  the new matcher fires alongside `consistent_color_mapping` there, but
+  the existing assertion in `test_color_mapping_fires_without_grid_size_preserved`
+  uses `in fired` rather than set-equality so the additional fired name
+  does not break it -- verified by running the test. The
+  `_patterns_all_three_fire()` and `_patterns_identity_pairs()`
+  fixtures both have `size_match=True` per pair so the new matcher does
+  NOT fire on them -- their exact-set assertions remain unchanged.
+- `docs/RULE_FORMAT.md` -- added the `grid_size_changed` row to §4
+  condition-type registry table; refreshed the §7 status row for
+  `agent/conditions/` directory to describe the iter-17 addition (P5: 4
+  -> 5, the dimensional partition rationale, the per-pair `size_match`
+  strictness rationale) and noted that the seed=42 probe set now fires
+  at least one non-trivial named matcher on each of its three tasks for
+  the first time. Added a status row for `tests/test_grid_size_changed.py`.
+
+No edits to: `agent/active_operators.py` (F2/F8 inert; numstat 0/0 --
+matchers are recognition vocabulary, not transformation vocabulary, so
+no `_try_*`/`_apply_*` is added or modified), `procedural_memory/DSL/`
+(F3 inert; numstat 0/0 -- no new DSL primitive added, the two frozen
+primitives remain frozen), `agent/cycle.py` / `agent/wm.py` /
+`ARCKG/*.py` node classes / `data/` (F1 inert; numstat 0/0),
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`
+(F6 inert; numstat 0/0), `agent/memory.py` (numstat 0/0 -- no rule is
+saved this iter; the existing translator gate on
+`identity_transformation` is unaffected), no rule JSON written or
+modified at iter-end (F4 inert; `procedural_memory/rule_*.json` glob
+remains empty), no `semantic_memory/` artifacts (F5 inert), no `except
+RuleSchemaError` added or modified anywhere (F7 inert).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=27, P5=4, P6=600
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=27, P5=5, P6=600
+
+The probe was not re-run this iter -- the change does not affect the
+solve path's outputs, only adds a recognition matcher that will fire on
+the slow-path `patterns` dict for the seed=42 tasks. Probe metrics are
+the snapshot values; P5 is the post-iter computed value (one new
+`@register(` decorator under `agent/conditions/`).
+
+**Invariants** (checker run end-to-end against base HEAD `ac0dae95` --
+iter 16):
+- forbidden = none (verdict CLEAN, rc=0). F1: 0-line diff against frozen
+  paths (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` /
+  `+def _apply_` in `agent/active_operators.py` (file untouched;
+  numstat 0/0). F3: no `procedural_memory/DSL/*.py` diff at all; no new
+  `@register(` decorators inside the DSL package (the new `@register(`
+  is under `agent/conditions/`, which is recognition vocabulary, not
+  transformation vocabulary). F4: no `rule_*.json` files exist on disk
+  at iter-end. F5: no `semantic_memory/.*[Tt][Ff]_` paths added. F6: no
+  edits to `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: no `except RuleSchemaError` added or modified.
+  F8: `agent/active_operators.py` numstat 0/0 -- the
+  "active_operators grew without companion" clause cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4 27 -> 27,
+  P5 4 -> 5 (delta=+1), P6 600 -> 600. **CLEAN** verdict (1 positive
+  delta). The three-iter NEUTRAL streak (iters 14/15/16) ends here --
+  this iter has a tracked positive signal.
+- All 14 test suites pass on this host:
+  `tests/test_grid_size_changed.py` 24/24 (new),
+  `tests/test_fast_path_schema_rule.py` 28/28,
+  `tests/test_persist_pipeline_rule.py` 13/13,
+  `tests/test_next_rule_id.py` 13/13,
+  `tests/test_translate_to_schema.py` 24/24,
+  `tests/test_identity_transformation.py` 22/22,
+  `tests/test_recognized_conditions.py` 18/18 (registry-set assertion
+    widened),
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Why this is real progress and not lipstick**: the recognition
+vocabulary's dimensional axis was asymmetric -- iter 1 named the
+precondition for `coloring`-style (modify-in-place) rules but no
+matcher named the symmetric precondition for `make_grid`-style (freshly
+constructed) rules. Adding `grid_size_changed` closes that asymmetry
+and finishes mapping the two frozen DSL primitives to two named
+recognition preconditions. Concretely, this matcher fires on the
+seed=42 probe tasks -- `fired_conditions` in their
+`episodic_memory/<task_hex>/attempt_NNN/metadata.json` is now
+`["grid_size_changed"]` instead of `[]`. That makes the next iter's
+diagnosis easier: the slow path's identity fallback is now visibly
+inconsistent with the named precondition the system itself recognises
+on these tasks (the matcher says "this is a `make_grid` task" but the
+generaliser returns identity), surfacing the gap between recognition
+and emission that the next iter must close.
+
+**Next gap (note for future iter)**: With both halves of the
+dimensional axis now named, the most glaring unfilled gap is the gap
+between recognition (`grid_size_changed` fires on a probe task) and
+emission (`GeneralizeOperator` returns an identity rule for the same
+task -- there is no `make_grid`-emitting strategy). Three possible
+smallest steps:
+  1. **Compose `translate_to_schema` with `make_grid`**: lift a legacy
+     pipeline rule of shape `{"type": "identity"}` produced for a task
+     whose recognised condition is `grid_size_changed` into a §1 rule
+     with `action.dsl = "make_grid"` and `args` derived from the
+     observed output dimensions / colour. Caveat: per-pair output
+     dimensions are not currently exposed in the `patterns` dict --
+     `_analyze_pair` only emits `size_match`, not the actual sizes.
+     Either the translator must read `task.example_pairs` directly (a
+     bigger surface), or `ExtractPatternOperator` must thread output
+     dimensions into `pair_analyses` (a frozen-adjacent surface but
+     touches `active_operators.py`, gated on the F8 companion rule --
+     it would need to also touch `agent/conditions/` or
+     `agent/memory.py`, which iter 17 already established).
+  2. **Pair-specific program writer in `GeneralizeOperator`** (the
+     iter-14/15/16 option 3 / 2). Larger surface; unlocks
+     anti-unification across pair-specific programs which is the
+     CLAUDE.md §8 contract.
+  3. **Broaden `translate_to_schema` with a `consistent_color_mapping`
+     branch** (the iter-15/16 option 1). Same polymorphic-args caveat
+     identified in iter 16's note -- the §1 schema's single
+     `action.dsl` slot expresses one primitive call per rule, but a
+     consistent colour mapping requires multiple `coloring` calls
+     (one per input colour). Either the schema needs sequence
+     semantics or `_predict_with_entry` needs to iterate. Smaller
+     surface than (1) and (2), but does not directly address the
+     seed=42 probe.
+A complementary P6-down opportunity remains latent: once a
+`make_grid`-emitting rule lands on disk, the matching identity-fallback
+branch in `GeneralizeOperator.effect` (the `if rule is None: rule =
+{"type": "identity", "confidence": 0.0}` line) can be replaced with a
+`make_grid` discovery, deleting net lines from `active_operators.py`.
