@@ -1146,3 +1146,145 @@ defensible:
 (1) is the smaller of the two and the natural follow-up to iter 11 in
 the same way iter 9's episodic writer wired iter 6's `save_rule`
 plumbing to a per-attempt artifact.
+
+---
+## Learning Loop -- 2026-05-13 19:02
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_190228.log
+
+---
+## Iter 12 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-11. Auto-snapshot
+captures P4=12, P5=3, P1/P2/P3=0.0, P6=600. Iter 11 added the
+`recognized_conditions()` applier in `agent/conditions/__init__.py` and named the
+exact follow-up: "wire `recognized_conditions(wm.s1.get("patterns", {}))` into
+`agent/active_agent.py:solve()`'s slow path, persisting the fired names into
+`last_solve_info["fired_conditions"]`. This makes subsequent
+`episodic_memory/<task>/attempt_NNN/metadata.json` entries surface which
+recognition matchers actually fired on each probe task — turning P4's growing
+pile of attempt folders into a readable history of 'what the system thinks it's
+looking at', without writing any rule file. Touches `agent/active_agent.py` +
+`agent/conditions/` (the import companion), so F8 is N/A. ~5 LOC." This is
+unambiguously the smallest defensible step: the helper has been fully tested
+(18 cases in `tests/test_recognized_conditions.py`), the call site is named, the
+shape is symmetric to iter-9's `_record_attempt` wire-up, and the work needed is
+just to flip the helper from "callable in tests" to "called in production." Iter
+11's parallel was iter-7: `load_related` was pure read-side plumbing whose
+payoff landed only when `save_rule` had a caller — iter 12 plays that role for
+`recognized_conditions`.
+
+**Change**:
+- `agent/active_agent.py` (+5/-0):
+  - Added `from agent.conditions import recognized_conditions` to the import
+    block (the companion edit that satisfies the iter-11-noted F8 N/A
+    rationale — although F8 only targets `agent/active_operators.py`, not
+    `active_agent.py`, the companion-touch pattern of touching `agent/conditions/`
+    keeps the change shape consistent with the architectural rationale).
+  - Seeded `last_solve_info["fired_conditions"] = []` in the initial dict
+    constructed at the top of `solve()`. This means the fast path (stored-rule
+    hit, no cycle run, no `patterns` produced) records an empty list — honest:
+    the pipeline didn't observe any patterns because it wasn't asked to.
+  - After the slow-path cycle returns, threaded
+    `recognized_conditions(wm.s1.get("patterns", {}))` into the
+    `last_solve_info.update({...})` block so the fired matcher names are
+    persisted alongside `method`, `rule_type`, and `steps`. The `.get("patterns",
+    {})` default plus the applier's own non-dict defang means a cycle that
+    fails before `ExtractPatternOperator` runs cannot crash the wire-up —
+    it just yields `[]`.
+- `docs/RULE_FORMAT.md` §7 — `agent/conditions/` row extended with the iter-12
+  note that `agent/active_agent.py:solve()`'s slow path is now the first
+  runtime caller of `recognized_conditions(...)`, and that fired matcher
+  names land in `episodic_memory/<task_hex>/attempt_NNN/metadata.json` via
+  `_record_attempt()`.
+
+No new test file: the helper itself is exhaustively tested by
+`tests/test_recognized_conditions.py` (iter 11) and the wire-up is three lines
+following iter-9's `_record_attempt` precedent — that integration was likewise
+not tested via a `solve()` integration test, only via `tests/test_episodic.py`
+on the writer side. Integration would require spinning up a real ARC task and a
+full SOAR cycle; both are heavier than the value justifies for a 5-LOC wire-up.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=12, P5=3, P6=600
+**Probe after** : (not re-run — this iter does not change the solve algorithm or
+the rule-storage path; it adds an observability field to the per-attempt
+metadata. The next probe the loop runs will write three new
+`attempt_NNN/metadata.json` files containing populated `fired_conditions` —
+those land in P4 via folder count, but P4 cannot move *within* my turn since I
+do not invoke `solve()` myself.)
+
+**Invariants** (checker run end-to-end against base HEAD `ca34e22e` — iter 11):
+- forbidden = none (verdict NEUTRAL). F1: 0-line diff against frozen-file paths
+  (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` / `+def _apply_`
+  in `agent/active_operators.py` (file untouched; numstat 0/0). F3: no
+  `procedural_memory/DSL/*.py` diff at all; no new `@register(` decorators
+  inside the DSL package. F4: no `rule_*.json` files exist on disk. F5: no
+  `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to `run_loop.sh` /
+  `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`. F7: no `except
+  RuleSchemaError` added or modified. F8: `agent/active_operators.py` numstat
+  0/0 — only `agent/active_agent.py` (+5/-0) and `docs/RULE_FORMAT.md` changed,
+  so the "active_operators grew without companion" clause cannot fire. (Even
+  though F8 does not target `active_agent.py`, the change still pairs with an
+  import from `agent/conditions/` — the companion architecture-side touch the
+  rationale calls for.)
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 12 → 12, P5 3 → 3,
+  P6 600 → 600. **NEUTRAL** on auto-measured signals — checker exits 2. The
+  wire-up's payoff is *new content in future `metadata.json` files*, which is
+  not a metric the snapshot family measures today (P4 counts folders, not their
+  contents). This mirrors iter-7 (`load_related` was NEUTRAL but is now what
+  iter-6's `save_rule(rule, related_rules=...)` flow depends on) and iter-11
+  (the applier itself was NEUTRAL but is what iter 12 just wired). Stagnation
+  counter: this is the 2nd NEUTRAL in a row on auto-measured signals (iter-11,
+  iter-12); INVARIANTS.md §3 only flags STAGNATION at N≥3.
+- All eight test suites pass on this host:
+  `tests/test_recognized_conditions.py` 18/18,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+  Smoke import `from agent.active_agent import ActiveSoarAgent` succeeds (no
+  circular dependency from the new `from agent.conditions import
+  recognized_conditions` import).
+
+**Next gap (note for future iter)**: With `fired_conditions` flowing into
+episodic metadata, three avenues are now genuinely the smallest defensible
+next moves, in order of growing surface area:
+  1. **Stand up** the pair-specific program writer in
+     `agent/active_operators.py:GeneralizeOperator`, emitting per-pair
+     `coloring`-composition candidates *before* the abstract rule attempt and
+     flowing them through
+     `save_rule(rule, related_rules=load_related(category))` so anti-unification
+     can fire across pairs. This is what finally moves P1/P2/P3 above zero on
+     tasks where the pipeline currently bottoms out at `identity`. F8 is
+     trivially satisfied since the write to `active_operators.py` lands
+     alongside `agent/memory.py` (the `save_rule` call site) and/or
+     `agent/conditions/` use sites. Now that `fired_conditions` is observable
+     per-attempt, the writer's correct/incorrect picks will be debuggable via
+     episodic metadata rather than re-deriving from logs.
+  2. **Migrate** `agent/active_agent.py`'s legacy `save_rule_to_ltm` call to
+     `save_rule()`. On the current seed=42 probe set only `identity` rules
+     fire (filtered out of the save path), so this writes nothing observable
+     until (1) lands — but it would activate the schema-validated writer for
+     any future task category that does discover a non-identity rule.
+  3. **Use** `recognized_conditions(...)` inside a small
+     `_translate_to_schema(legacy_rule, task_hex, patterns)` helper in
+     `agent/memory.py` so that when a future caller emits a legacy
+     `color_mapping`-shape rule, `condition.type` gets populated from the live
+     applier output. Still blocked on `action.dsl` — until a discovered rule's
+     transformation reduces to `coloring`/`make_grid` compositions, V3 cannot
+     admit it. That convergence is precisely where the pair-specific program
+     writer in (1) needs to land.
+A complementary cleanup remains latent: once (1) produces a discovered rule
+whose `condition.type` is one of the three iter-1/8/10 matcher names and
+whose `action.dsl` is `coloring`, the matching `_try_*` method in
+`agent/active_operators.py` becomes deletable — that is the first
+opportunity for a P6 ↓ on this branch.

@@ -15,6 +15,7 @@ from agent.elaboration_rules import build_elaborator
 from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
+from agent.conditions import recognized_conditions
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
 from agent.episodic import write_attempt
@@ -57,6 +58,7 @@ class ActiveSoarAgent:
             "rule_type": "none",
             "steps": 0,
             "rule_source": None,
+            "fired_conditions": [],
         }
 
         # --- Fast path: try stored rules ---
@@ -104,6 +106,9 @@ class ActiveSoarAgent:
             "method": "pipeline",
             "rule_type": rule_type,
             "steps": result["steps_taken"],
+            "fired_conditions": recognized_conditions(
+                wm.s1.get("patterns", {})
+            ),
         })
 
         # --- Learn: save new rule if pipeline discovered one ---
