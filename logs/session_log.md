@@ -6777,3 +6777,13 @@ sub-axes, and the gap shift to EITHER emission territory
 (option A'''''') OR a different recognition axis (e.g.
 selection-shape / boundary-content / etc.) will become
 unambiguous.
+
+---
+## Learning Loop -- 2026-05-14 00:03
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_000315.log
