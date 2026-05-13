@@ -146,9 +146,9 @@ The set of currently-registered `condition.type` values. Each entry points to a
 matcher function returning `bool` given a `patterns` dict (the output of
 `extract_pattern` in `agent/active_operators.py`).
 
-| `condition.type` | Matcher module | Status |
-|------------------|----------------|--------|
-| *(none yet)*     | —              | empty — first entry to be defined in §5's first DSL companion |
+| `condition.type` | Matcher module | Params | Status |
+|------------------|----------------|--------|--------|
+| `grid_size_preserved` | `agent/conditions/grid_size_preserved.py` | *(none)* | active — true iff every example pair has matching input/output dimensions |
 
 Adding a new condition type:
 
@@ -401,7 +401,7 @@ As of the creation of this document (2026-05-13, branch `test20`):
 | `procedural_memory/rule_NNN.json` files (on `main`) | empty (`.gitkeep` only) |
 | `procedural_memory/rule_NNN.json` files (on `test13-eval`) | 168 files, **all violate schema** (Example 6.3 shape) |
 | `procedural_memory/DSL/` directory | **does not exist** on `main`; to be created |
-| `agent/conditions/` directory | **does not exist** on `main`; to be created |
+| `agent/conditions/` directory | bootstrapped on `test20`: `CONDITION_REGISTRY` + `grid_size_preserved` matcher |
 | `agent/memory.py:save_rule()` (new validator) | not implemented; existing `save_rule_to_ltm` produces legacy shape |
 | `agent/memory.py:migrate_legacy_rules()` | not implemented |
 | `program/anti_unification.unify()` | file exists, integration with `save_rule()` not yet wired |
