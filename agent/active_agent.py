@@ -16,7 +16,14 @@ from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.conditions import recognized_conditions
-from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
+from agent.memory import (
+    load_all_rules,
+    increment_reuse_count,
+    load_related,
+    next_rule_id,
+    save_rule,
+    translate_to_schema,
+)
 from agent.wm_logger import reset_wm_snapshot
 from agent.episodic import write_attempt
 
@@ -112,10 +119,10 @@ class ActiveSoarAgent:
         })
 
         # --- Learn: save new rule if pipeline discovered one ---
-        if active_rules and rule_type != "identity":
-            save_rule_to_ltm(
+        if active_rules:
+            self._persist_pipeline_rule(
                 active_rules[0], task.task_hex,
-                self.procedural_memory_root,
+                wm.s1.get("patterns", {}),
             )
 
         self._submission_count += 1
@@ -123,6 +130,46 @@ class ActiveSoarAgent:
         return predicted
 
     # ---- helpers --------------------------------------------------------
+
+    def _persist_pipeline_rule(self, legacy_rule, task_hex: str,
+                               patterns: dict) -> str | None:
+        """Iter 15 migration: post-pipeline save dispatch.
+
+        Routes through the schema-aware writer (``save_rule``) when
+        ``translate_to_schema`` returns a §1-shaped rule — currently only
+        the identity legacy shape, and only when ``identity_transformation``
+        actually fires on ``patterns``. Otherwise the rule is dropped: the
+        non-translatable slow-path shapes (color_mapping,
+        recolor_sequential) still need an anti-unification-discovered
+        abstraction for ``action.dsl`` before they have a §1
+        representation, and the only on-disk shape the legacy writer
+        ``save_rule_to_ltm`` could produce for them is one that violates
+        F4 (no ``condition`` key). Until anti-unification fills that gap,
+        skipping the save is the F4-safe behavior. ``save_rule_to_ltm``
+        remains in ``agent/memory.py`` for future callers but is no longer
+        invoked by ``solve()``.
+
+        Returns the path of the file written, or ``None`` if no rule was
+        persisted. Lifted out of ``solve()`` so the dispatch can be
+        unit-tested without driving the full SOAR cycle.
+        """
+        if not isinstance(legacy_rule, dict):
+            return None
+        schema_rule = translate_to_schema(
+            legacy_rule, task_hex, patterns,
+            rule_id=next_rule_id(self.procedural_memory_root),
+        )
+        if schema_rule is None:
+            return None
+        related = load_related(
+            schema_rule["category"],
+            procedural_memory_root=self.procedural_memory_root,
+        )
+        return save_rule(
+            schema_rule,
+            related_rules=related,
+            procedural_memory_root=self.procedural_memory_root,
+        )
 
     def _record_attempt(self, task_hex: str, predicted) -> None:
         """Persist one episodic_memory/<task_hex>/attempt_NNN/ entry per

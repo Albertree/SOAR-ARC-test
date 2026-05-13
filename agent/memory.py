@@ -205,6 +205,39 @@ def validate_rule(rule: dict, *,
         raise RuleSchemaError(f"id collision: {target_name} exists")
 
 
+def next_rule_id(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> int:
+    """Return the next unused integer id for a new ``rule_NNN.json`` file
+    under ``procedural_memory_root``. Returns 1 when the directory is
+    missing or contains no rule files.
+
+    Read-only. Intended as the id source for the
+    ``translate_to_schema(..., rule_id=next_rule_id(...))`` →
+    ``save_rule(...)`` flow in ``agent/active_agent.py``. Picking
+    ``max(used) + 1`` (rather than ``len(files) + 1``) keeps ids monotonic
+    even after legacy rules have been deleted from disk, satisfying V6 by
+    construction.
+
+    Filenames whose ``NNN`` segment does not parse as an integer are
+    ignored — the convention enforced by ``save_rule`` is the three-digit
+    zero-padded form, but any positive integer width is tolerated here so
+    a future migration that emits four-digit ids does not silently collide.
+    """
+    if not os.path.isdir(procedural_memory_root):
+        return 1
+    used: set[int] = set()
+    for fname in os.listdir(procedural_memory_root):
+        if not (fname.startswith("rule_") and fname.endswith(".json")):
+            continue
+        stem = fname[len("rule_"):-len(".json")]
+        try:
+            value = int(stem)
+        except ValueError:
+            continue
+        if value >= 1:
+            used.add(value)
+    return max(used, default=0) + 1
+
+
 def load_related(category: str, *,
                  procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:
     """Return schema-compliant rules in ``procedural_memory_root`` whose

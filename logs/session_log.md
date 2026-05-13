@@ -1623,3 +1623,241 @@ A complementary P6-down opportunity also remains latent: once anti-unification
 produces a discovered rule whose `condition.type` is one of the four matcher
 names and whose `action.dsl` reduces to `coloring` or `make_grid`, the matching
 `_try_*` method in `active_operators.py` becomes deletable.
+
+---
+## Learning Loop -- 2026-05-13 19:22
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_192210.log
+
+---
+## Learning Loop -- 2026-05-13 19:30
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_193038.log
+
+---
+## Learning Loop -- 2026-05-13 19:31
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_193120.log
+
+---
+## Learning Loop -- 2026-05-13 19:33
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260513_193326.log
+
+---
+## Iter 15 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe still 0/3 with `rule=identity` on every probe task; iter-14
+landed `translate_to_schema` but no caller invokes it, so the converter is
+dead code. Iter-14's "Next gap" listed the legacy-writer migration in
+`agent/active_agent.py:solve()` as the now-mechanical next step (all three
+prerequisites in place: AU-wired `save_rule` from iter 6, `load_related` from
+iter 7, `translate_to_schema` from iter 14). The migration is the smallest
+defensible step that turns the iter-14 scaffolding load-bearing AND closes a
+latent F4 trap: the pre-iter-15 dispatch routed non-identity slow-path rules
+through `save_rule_to_ltm`, which writes a legacy-shape file (no `condition`
+key) -- that file would trip F4 the moment `_try_color_mapping` or
+`_try_recolor_sequential` returned non-None. Verified empirically by
+re-running the probe with `--shuffle --seed 42`: it surfaces task `e5790162`
+which the slow path solves as `recolor_sequential`, and the pre-iter-15 code
+path would have written `procedural_memory/rule_001.json` in legacy shape ->
+auto-revert. Post-iter-15, the same probe leaves `procedural_memory/` empty.
+
+**Change**:
+- `agent/memory.py` (+33 LOC) -- new `next_rule_id(procedural_memory_root)
+  -> int` helper. Returns `max(existing_ids) + 1` (default `1`),
+  gap-tolerant so monotonic ids survive deletions and the V6 collision
+  check stays inert by construction. Tolerates wider zero-padding
+  (`rule_0042.json`) so a future migration emitting four-digit ids does
+  not silently collide. Ignores non-rule filenames, subdirectories, and
+  stems that fail to parse as a positive integer. Read-only -- does not
+  mutate `procedural_memory_root`.
+- `agent/active_agent.py` (+34 / -7 LOC net) -- migration of the
+  post-pipeline save dispatch:
+    1. Removed `save_rule_to_ltm` from imports; added `load_related`,
+       `next_rule_id`, `save_rule`, `translate_to_schema`.
+    2. Replaced the inlined `if active_rules and rule_type != "identity":`
+       save block at the slow-path tail with a one-line call:
+       `self._persist_pipeline_rule(active_rules[0], task.task_hex,
+       wm.s1.get("patterns", {}))`.
+    3. Added `_persist_pipeline_rule(legacy_rule, task_hex, patterns) ->
+       str | None` private helper. Threads
+       `next_rule_id(self.procedural_memory_root)` into
+       `translate_to_schema` to mint the candidate's `id`. On a non-None
+       return, calls `save_rule(schema_rule,
+       related_rules=load_related(schema_rule["category"], ...),
+       procedural_memory_root=...)` -- wiring iter-7's reader into iter-6's
+       AU-aware writer through iter-14's translator, exactly the chain
+       specified in `CLAUDE.md` section 8. On a None return, drops the
+       rule (no fallback to the legacy writer -- see diagnosis). Guards a
+       non-dict `legacy_rule` to a no-op so a stray slow-path entry cannot
+       crash the solve.
+    4. Lifted as a method (not a free function) so unit tests can
+       construct an `ActiveSoarAgent` with a tmpdir
+       `procedural_memory_root` and exercise the dispatch without driving
+       the full SOAR cycle. Contains no `try/except`: `save_rule`'s
+       `RuleSchemaError` propagates per F7's spirit.
+- `tests/test_next_rule_id.py` (new, +220 LOC, 13 cases) --
+  dependency-free, same runner pattern as iters 1/8/10/13/14's tests.
+  Covers `1` on missing / empty directory, `max + 1` with contiguous ids,
+  gap-tolerance with holes, ignoring non-rule filenames + subdirectories,
+  ignoring non-integer / zero / negative stems, wider zero-padding
+  tolerance, int-not-bool return type, no directory mutation across
+  repeats, determinism, and an end-to-end harmony check that the returned
+  id maps to a path `save_rule` would accept (V6 inert).
+- `tests/test_persist_pipeline_rule.py` (new, +260 LOC, 13 cases) --
+  exercises the dispatch against the live `CONDITION_REGISTRY` +
+  `DSL_REGISTRY` with no stubs. Covers helper presence on the class,
+  identity matcher firing -> schema rule on disk that re-validates
+  against a sibling tempdir, identity matcher rejecting -> no save (the
+  seed=42 probe set's contract -- pre-iter-15 these would have been
+  silently dropped, post-iter-15 they are still dropped but via an
+  explicit gate), empty patterns -> no save, color_mapping legacy shape
+  -> dropped (closes the F4 trap), recolor_sequential legacy shape ->
+  dropped (same F4-trap closure -- this is the `--shuffle --seed 42`
+  task `e5790162` case), monotonic id assignment across two saves,
+  non-dict legacy_rule no-op, typeless legacy_rule -> dropped,
+  source-level assertion that the dispatch contains no `except`
+  (F7 spirit), invalid 8-hex `task_hex` -> dropped, side-effect freedom
+  on caller inputs, and per-agent `procedural_memory_root` isolation.
+- `docs/RULE_FORMAT.md` section 7 -- status table updated:
+  `save_rule_to_ltm` row re-tagged as caller-decoupled (still on disk for
+  the future `migrate_legacy_rules` reader, no live caller). Two new rows
+  added for `next_rule_id()` and `_persist_pipeline_rule()`. Two new test
+  rows added for `test_next_rule_id.py` and
+  `test_persist_pipeline_rule.py`.
+
+No edits to: `agent/active_operators.py` (F2/F8 inert; numstat 0/0 -- the
+migration touches `agent/active_agent.py`, NOT
+`agent/active_operators.py`), `procedural_memory/DSL/` (F3 inert; numstat
+0/0), `agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` node classes /
+`data/` (F1 inert; numstat 0/0), `run_loop.sh` / `run_pipeline.sh` /
+`run_learn.py` / `run_1ktasks.py` (F6 inert; numstat 0/0), no rule JSON
+written or modified at iter-end (F4 inert; `procedural_memory/*.json` glob
+is still empty after the verification probe runs were cleaned up), no
+`semantic_memory/` artifacts (F5 inert), no `except RuleSchemaError`
+added or modified (F7 inert).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=21, P5=4, P6=600
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=21, P5=4, P6=600
+(re-ran `run_learn.py --limit 3 --seed 42` AND `--limit 3 --shuffle --seed
+42` during verification; the no-shuffle probe's three identity legacy rules
+each fail the `identity_transformation` matcher gate so nothing is
+persisted, and the with-shuffle probe's `e5790162` recolor_sequential rule
+is now dropped instead of being written in legacy shape -- the explicit
+F4-trap closure this iter delivers. Episodic entries created by those
+verification runs were cleaned up so the post-check P4 honestly reflects
+the iter's own work.)
+
+**Invariants** (checker run end-to-end against base HEAD `4d8a75e1` --
+iter 14):
+- forbidden = none (verdict NEUTRAL). F1: 0-line diff against frozen paths
+  (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` /
+  `+def _apply_` in `agent/active_operators.py` (file untouched; numstat
+  0/0). F3: no `procedural_memory/DSL/*.py` diff at all; no new
+  `@register(` decorators inside the DSL package. F4: no `rule_*.json`
+  files exist on disk at iter-end (the `--shuffle --seed 42`
+  recolor_sequential rule that would have been written in legacy shape
+  pre-iter-15 is now dropped -- F4-trap closure). F5: no
+  `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to
+  `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`.
+  F7: no `except RuleSchemaError` added or modified; the dispatch
+  contains no `except` at all (asserted by
+  `test_dispatch_does_not_swallow_rule_schema_error`). F8:
+  `agent/active_operators.py` numstat 0/0 -- the "active_operators grew
+  without companion" clause cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4 21 -> 21
+  (verification-probe entries cleaned up to keep the count honest), P5
+  4 -> 4, P6 600 -> 600. **NEUTRAL** verdict (rc=2). Iter-14 was NEUTRAL;
+  this is the second consecutive NEUTRAL. STAGNATION at INVARIANTS.md
+  section 3 fires at N>=3 consecutive NEUTRAL -- one more NEUTRAL iter
+  and the loop will surface the notice.
+- All twelve test suites pass on this host:
+  `tests/test_persist_pipeline_rule.py` 13/13 (new),
+  `tests/test_next_rule_id.py` 13/13 (new),
+  `tests/test_translate_to_schema.py` 24/24,
+  `tests/test_identity_transformation.py` 22/22,
+  `tests/test_recognized_conditions.py` 18/18,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Why NEUTRAL is honest, not failure**: the migration's positive-signal
+payoff requires the slow path to actually produce identity rules whose
+`patterns` satisfy `identity_transformation` -- i.e., the source task is
+genuinely identity-shaped (input == output across all training pairs).
+The seed=42 no-shuffle probe set (`00576224`, `007bbfb7`, `009d5c81`)
+contains zero such tasks (every pair has at least one changed cell), so
+the slow path's identity fallback rule is empirically false on these
+tasks and the matcher correctly rejects. Iter-14's "Next gap" prediction
+that "one identity rule per task lands in `procedural_memory/`" assumed
+the matcher would fire on every identity-shaped legacy rule, but the
+probe surfaces no such case. The migration nevertheless delivers two
+architecturally important changes that do not show up in P1-P6:
+(a) `translate_to_schema` is now load-bearing -- the iter-14 scaffolding
+has a live caller, (b) the F4 trap that the legacy fallback held open
+has been closed (verified by the `--shuffle` probe).
+
+**Next gap (note for future iter)**: With the legacy writer fully
+decoupled and the slow path routed exclusively through `save_rule`, the
+only avenue for moving P1/P2/P3 off zero is to broaden the set of legacy
+shapes that have a §1 representation. Three options:
+  1. **Wire the schema rule into the fast path** (smallest defensible).
+     The fast-path loop in `solve()` currently does `entry.get("rule",
+     {})` then dispatches to `_predictor._apply_rule(rule, ...)`, which
+     expects the legacy shape. Schema rules saved by
+     `_persist_pipeline_rule` have NO top-level `rule` key (they have
+     `condition` + `action`), so the fast path silently ignores every
+     schema rule on disk -- wasting iter-14/iter-15's work the moment
+     a schema rule lands. The smallest patch: when `entry` carries
+     `condition`/`action`, build a legacy-shape view from `action.dsl` +
+     `action.args` (today only `coloring(grid, [], 0)` -> identity;
+     reuses iter-3's DSL to evaluate) and feed that to the matcher /
+     applier. Tightly scoped (<= 30 LOC + tests). Does not move P1-P6
+     directly, but is a prerequisite for stored schema rules to ever
+     count as "reused" (P-not-yet-defined) and for the system to act on
+     its own learned knowledge.
+  2. **Broaden the translator** (new shape, mid surface area). Add a
+     translator branch for `{"type": "color_mapping", "mapping": {...}}`
+     mapping to `condition.type = "consistent_color_mapping"` (iter-8
+     matcher) and `action.dsl = "coloring"`, with `args` carrying the
+     mapping. Caveat: a single-`coloring` action cannot express a
+     per-cell mapping; the args would need a list of (selection, color)
+     pairs which is closer to anti-unification's job than to a
+     hand-coded translator. Would push P1/P2 off zero on the right probe
+     set (one without an immediate `--shuffle` requirement).
+  3. **Pair-specific program writer** in
+     `agent/active_operators.py:GeneralizeOperator` (the iter-12 /
+     iter-13 / iter-14 option 1) remains the unblocked-but-large-surface
+     path toward making anti-unification produce non-identity discovered
+     rules. Larger than (1) and (2); deferred again.
+A complementary P6-down opportunity also remains latent: once
+anti-unification produces a discovered rule whose `condition.type` is
+one of the four matcher names and whose `action.dsl` reduces to
+`coloring` or `make_grid`, the matching `_try_*` method in
+`active_operators.py` becomes deletable.
