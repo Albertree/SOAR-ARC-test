@@ -8467,3 +8467,114 @@ to 21 -- two pre-existing test-bookkeeping failures unrelated to
 this iter's deletion, surfaced by running the suite locally. They
 are a separate single-commit fix.
 
+
+---
+## Learning Loop -- 2026-05-14 06:24
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 8s
+- Log: logs/learn_20260514_062451.log
+
+---
+## Iter 171 -- 2026-05-14T06:25Z -- branch test20
+
+**Diagnosis**: Iter 170's next-gap log identified `DescendOperator` in
+`agent/active_operators.py` (lines 412-429) as the symmetric P6 deletion
+after `VerifyOperator`: it raises `NotImplementedError` from both
+`precondition()` and `effect()`, is never imported by `agent/rules.py`
+or anything else outside its own module, and its `"descend"` name slot
+in `PREFERENCE_ORDER` is never matched because no `ProductionRule`
+proposes a descend operator. This is the smallest defensible step --
+pure dead-placeholder removal that improves P6 (the strongest
+architectural-progress signal per INVARIANTS.md §2 P6) without touching
+the closed `_try_*` / `_apply_*` family, any frozen file, or any
+emission/recognition vocabulary.
+
+**Change**:
+- `agent/active_operators.py` (EDIT, -20 lines) -- removed the
+  `DescendOperator` class block (lines 412-430 inclusive: banner
+  comment, class body raising `NotImplementedError`, trailing blank).
+  Pure deletion; F2 (no new `_try_*` / `_apply_*`) inert; F8 stays
+  inert via the "Pure deletions / refactors that *remove* code" net-
+  negative exception (no companion edit to `agent/memory.py` /
+  `program/anti_unification.py` / `agent/conditions/` required).
+- `agent/preferences.py` (EDIT, -2 lines) -- removed `"descend",`
+  from `PREFERENCE_ORDER` (was rank 5, unused since no operator was
+  ever named `"descend"` at runtime); also dropped the
+  `descend (for impasse resolution) ->` line from the pipeline-order
+  docstring above the list, so the comment matches actual runtime
+  pipeline `[solve-task, select_target, compare, extract_pattern,
+  generalize, predict, submit]`.
+
+No edits to: `procedural_memory/DSL/` (F3 inert); `agent/cycle.py` /
+`agent/wm.py` / `ARCKG/*.py` / `data/` (F1 inert); no new rule files
+under `procedural_memory/` (F4 vacuously satisfied); no
+`semantic_memory/` artifacts (F5 inert); `run_loop.sh` and friends
+(F6 inert); no `except RuleSchemaError` changes (F7 inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P6=603 lines (post iter 170).
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) all still fall
+through to the identity fallback because emission (`translate_to_schema`)
+remains unchanged this iter. This iter is recognition- and
+emission-vocabulary-neutral.
+
+**Probe after**: P6 603 -> 583 (20 lines removed from
+`agent/active_operators.py`). Verified `from agent.active_operators
+import DescendOperator` now raises `ImportError`, confirming the
+deletion is total and nothing imported it. `PREFERENCE_ORDER` is now
+length 7 with `"descend"` absent.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD 6c82f558):
+- forbidden = none (F1-F8 all inert; F8 specifically stays inert by
+  the "Pure deletions" exception since the only line-diff on
+  `agent/active_operators.py` is a net -20).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 510 -> 510, P5 21 -> 21, P6 603 -> 583 (Δ=+20 lines removed).
+- verdict: **CLEAN** (1 positive delta -- P6 +20 lines removed).
+
+**Why this is real progress (not lipstick)**: P6 is the architecture's
+intended direction of motion -- anti-unification doing its job means
+`agent/active_operators.py` shrinks, not grows. `DescendOperator` was
+never `_try_*`-family code (so it sits outside the closed-family rule),
+but it WAS dead pipeline scaffolding from an earlier design phase
+where the cycle was imagined to descend into deeper KG levels on
+impasse. The current cycle uses substate push/pop (S1/S2 in
+`agent/cycle.py`) for impasse handling, so `DescendOperator` plus
+its `"descend"` rank slot were vestigial. Removing them brings the
+static operator inventory into exact correspondence with what
+`agent/rules.py` actually proposes -- the same alignment iter 170
+achieved for `VerifyOperator`. Together iters 170+171 deleted 28
+lines of unused operator scaffolding and 3 dead `PREFERENCE_ORDER`
+slots.
+
+**Next gap (note for future iter)**: With both placeholder operators
+gone, `agent/active_operators.py` is now ~583 lines and the remaining
+mass is the closed `_try_*` / `_apply_*` family inside
+`ExtractPatternOperator` and `GeneralizeOperator`. Further P6 wins
+must come from anti-unification superseding specific `_try_*` methods
+(allowed by `CLAUDE.md §5.1`'s "Removal of methods superseded by
+anti-unification-based generalization") -- but that requires
+`program/anti_unification.unify()` to actually produce abstract rules
+that the discovery layer can dispatch, which currently it does not
+because the probe tasks never reach `save_rule()` with related rules
+(0/3 correct, 0 rules saved). The dependency chain is:
+`extract_pattern` must produce non-identity patterns -> `generalize`
+must persist a per-task rule -> `save_rule()` must invoke
+`anti_unification.unify()` when ≥1 related rule exists (this is the
+CLAUDE.md §8 contract). The first link is where the probe currently
+breaks. So the most glaring unfilled gap is: a non-identity branch in
+`translate_to_schema` for at least one of the three probe-task shapes
+(tile/replicate for 00576224 + 007bbfb7, or multi-blob preservation
+for 009d5c81). That is an emission-vocabulary change, larger than a
+deletion -- exactly the territory iter 170's next-gap log flagged as
+"option A''''' or C'''''". A single-iter version would be a minimal
+tile-emit branch gated on a tile recognition matcher that already
+exists in the registry, but verifying that matcher recognizes the
+probe shapes correctly is the prerequisite. Pre-existing
+`test_recognized_conditions.py` bookkeeping mismatch (asserts 20,
+registry has 21) remains a separate single-commit fix orthogonal to
+this iter.

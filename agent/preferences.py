@@ -10,7 +10,6 @@ preferences -- Operator selection priority.
 # Pipeline order: select_target/compare (compare phase) ->
 #                 extract_pattern (collect phase) ->
 #                 generalize ->
-#                 descend (for impasse resolution) ->
 #                 predict ->
 #                 submit
 PREFERENCE_ORDER: list = [
@@ -19,7 +18,6 @@ PREFERENCE_ORDER: list = [
     "compare",
     "extract_pattern",
     "generalize",
-    "descend",
     "predict",
     "submit",
 ]

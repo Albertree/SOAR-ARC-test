@@ -410,26 +410,6 @@ class GeneralizeOperator(Operator):
 
 
 # ======================================================================
-# DescendOperator -- placeholder for deeper KG exploration
-# ======================================================================
-
-class DescendOperator(Operator):
-    """
-    Placeholder: moves focus to a deeper KG level when current-level
-    analysis is insufficient. Not yet needed for the basic pipeline.
-    """
-
-    def __init__(self):
-        super().__init__("descend")
-
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("DescendOperator.precondition() not implemented.")
-
-    def effect(self, wm):
-        raise NotImplementedError("DescendOperator.effect() not implemented.")
-
-
-# ======================================================================
 # PredictOperator -- apply rule to test input
 # ======================================================================
 
