@@ -137,18 +137,17 @@ class ActiveSoarAgent:
         """Iter 15 migration: post-pipeline save dispatch.
 
         Routes through the schema-aware writer (``save_rule``) when
-        ``translate_to_schema`` returns a §1-shaped rule — currently only
-        the identity legacy shape, and only when ``identity_transformation``
-        actually fires on ``patterns``. Otherwise the rule is dropped: the
-        non-translatable slow-path shapes (color_mapping,
-        recolor_sequential) still need an anti-unification-discovered
-        abstraction for ``action.dsl`` before they have a §1
-        representation, and the only on-disk shape the legacy writer
-        ``save_rule_to_ltm`` could produce for them is one that violates
-        F4 (no ``condition`` key). Until anti-unification fills that gap,
-        skipping the save is the F4-safe behavior. ``save_rule_to_ltm``
-        remains in ``agent/memory.py`` for future callers but is no longer
-        invoked by ``solve()``.
+        ``translate_to_schema`` returns a §1-shaped rule. Otherwise the
+        rule is dropped: the non-translatable slow-path shapes
+        (color_mapping, recolor_sequential) still need an
+        anti-unification-discovered abstraction for ``action.dsl`` before
+        they have a §1 representation, and any on-disk file lacking a
+        ``condition`` key would trip F4. Until anti-unification fills
+        that gap, skipping the save is the F4-safe behavior. Iter 178
+        removed the legacy ``save_rule_to_ltm`` writer entirely; the
+        schema-aware ``save_rule`` is now the sole persistence path,
+        so a missing ``translate_to_schema`` branch is the only way a
+        slow-path rule fails to persist.
 
         Returns the path of the file written, or ``None`` if no rule was
         persisted. Lifted out of ``solve()`` so the dispatch can be

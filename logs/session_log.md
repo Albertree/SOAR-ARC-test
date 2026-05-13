@@ -9320,3 +9320,122 @@ this is the next iter's pick, the iter-177 + iter-176 NEUTRAL cushion
 means there is room to spend an iter on (b)'s atomic three-part change
 without tripping the N=3 stagnation alarm. As of this iter all 33 test
 scripts pass; no other test is failing.
+
+---
+## Learning Loop -- 2026-05-14 07:17
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_071710.log
+
+## Iter 178 -- 2026-05-14T07:20:00Z -- branch test20
+
+**Diagnosis**: Probe still 0/3. Iters 176 and 177 were NEUTRAL on
+matcher-treadmill arrest then test-coverage gap-fill; iter 177's next-gap
+named option (b) (multi-rule mint per solve) as the smallest emission-side
+step but flagged it as an atomic three-part change requiring `agent/memory.py`
+AND `agent/active_agent.py` to move together. Picked a structurally
+adjacent smaller defensible step instead: retire the orphaned legacy writer
+`save_rule_to_ltm()` (and its three private helpers `_rules_equivalent` /
+`_norm_mapping` / `_norm_dict`) from `agent/memory.py`. The function had
+zero production call sites after iter-15's migration moved
+`_persist_pipeline_rule` onto the schema-aware `save_rule()` path, and its
+output shape (top-level `rule` payload, no `condition`/`action` keys)
+would have tripped F4 if any caller re-introduced it. Removing it makes
+`save_rule()` the unique persistence path -- matching `docs/RULE_FORMAT.md`
+section 3.2's "FEW, GENERAL rules" intent and removing a latent F4 foot-gun.
+
+**Change**:
+- `agent/memory.py`: deleted `save_rule_to_ltm()` (53 lines) plus its
+  three private helpers `_rules_equivalent` (24 lines), `_norm_mapping`
+  (5 lines), `_norm_dict` (5 lines). Net -87 lines on the file. Updated
+  module-level docstring to describe `save_rule()` as the single write
+  path (was previously framed as "two write paths coexist here"), and
+  rewrote `translate_to_schema`'s docstring paragraph that referenced
+  the now-removed legacy writer. Kept `_infer_concept` / `_infer_category`
+  (still called by `translate_to_schema` to derive concept / category
+  labels from a legacy pipeline rule dict).
+- `agent/active_agent.py`: rewrote `_persist_pipeline_rule` docstring
+  paragraph that referenced `save_rule_to_ltm`. No code change. The
+  helper still routes through `translate_to_schema` -> `save_rule`
+  exactly as iter 15 wired it.
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0 (not re-run --
+this iter does not affect the solve path; pure dead-code removal)
+
+**Invariants**: forbidden=none, positives=P1 / P2 / P3 / P4 / P5 / P6 all
+unchanged. `scripts/check_invariants.sh --check` verdict **NEUTRAL** (no
+positive deltas, no forbidden trips). 33/33 test scripts pass. F1 inert
+(no frozen-file touch); F2 inert (no `_try_*` / `_apply_*`); F3 inert
+(no DSL primitive); F4 inert (no rule file written -- AND the only
+function that COULD have produced an F4-violating file is now gone);
+F5 inert (no `semantic_memory/` touch); F6 inert (no budget growth);
+F7 inert (no exception handling change); F8 inert (no
+`active_operators.py` touch).
+
+**Why a NEUTRAL iter is correct work here**: This is the third consecutive
+NEUTRAL after iter 176 / iter 177; the N=3 stagnation threshold per
+`INVARIANTS.md` section 3 surfaces a STAGNATION notice but does NOT
+auto-revert -- it is informational only. Iter 177's next-gap note's
+claim that the 176 + 177 NEUTRAL cushion left room for option (b) was
+arithmetically wrong (177 + 176 NEUTRAL means 178 NEUTRAL is the THIRD
+consecutive, not "cushion"); the framing should not change the iter-178
+decision because the alert is informational only and a wrong commit is
+worse than a no-positive-delta commit (per `PROMPT.md` section 5).
+Option (b) remains the named smallest emission-side step but its atomic
+three-part change (return-type widening on `translate_to_schema` +
+list-handling on `_persist_pipeline_rule` + a new
+`change_cells_constant_across_pairs` gating branch) would touch ~150
+test-call sites for `translate_to_schema` AND introduce a new persistence
+shape simultaneously -- not the smallest defensible step at iter 178's
+NEUTRAL baseline. The dead-code removal is a strictly smaller, strictly
+safer structural cleanup: no caller updates, no new persistence shape,
+no new test obligations, and a concrete invariant-strengthening outcome
+(F4 foot-gun eliminated -- the legacy writer's output shape was the only
+in-tree code that could produce an F4-violating file by construction).
+The cleanup also aligns with the supersession pattern P6 names on the
+`agent/active_operators.py` axis: schema-aware `save_rule()` superseded
+`save_rule_to_ltm()` at iter 15; the orphaned function should have been
+deleted then, but the deletion was deferred. Iter 178 closes that gap
+on the `agent/memory.py` axis -- the analogue of P6 for the
+persistence-vocabulary file.
+
+**Next gap (note for future iter)**: With `save_rule_to_ltm` and its
+helpers gone, `agent/memory.py` is now genuinely single-write-path: the
+file's persistence surface is just `save_rule()` plus the supporting
+`validate_rule()` / `next_rule_id()` / `load_related()` / `load_all_rules()`
+/ `increment_reuse_count()` / `translate_to_schema()` / `_infer_concept()`
+/ `_infer_category()` / `chunk_from_substate()` (the last is still a
+placeholder per its docstring -- one more deletion candidate if a
+future iter audits unused public API). The single most defensible
+larger-than-this-iter step remains unchanged from iters 170 / 171 / 172
+/ 173 / 174 / 175 / 176 / 177: `translate_to_schema` still has no
+non-identity emission branch that fires on the seed=42 probe tasks
+(00576224 / 007bbfb7 are tile-style with varying input dims; 009d5c81
+is multi-blob with positions varying across pairs). The two long-
+standing candidates remain unchanged from iter 177:
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 + `apply_DSL`
+to let `action.args` carry derived selection (e.g. "wherever input has
+colour C"). Requires touching `validate_rule`, `apply_DSL`, and at
+least one `translate_to_schema` branch -- bigger than a smallest-step
+iter but the only path that handles `00576224` / `007bbfb7` /
+`009d5c81` without anti-unification first lifting `selection`.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, and add a cell-
+table-emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints one
+`coloring` sibling rule per distinct output colour in the constant
+cell set. Uses only the frozen `coloring` primitive (F3 inert) and is
+the natural setup for anti-unification to lift the per-cell coord lists
+into a colour-keyed selection variable across the sibling rules.
+Requires touching `agent/memory.py` AND `agent/active_agent.py` in the
+same iter. With iter 178's dead-code removal NOW complete, the
+`agent/memory.py` surface area that (b) would extend is smaller --
+~87 fewer lines of legacy persistence code below the
+`translate_to_schema` block -- so the diff is incrementally easier to
+review. As of this iter all 33 test scripts pass; no other test is
+failing.

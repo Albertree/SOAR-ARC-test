@@ -1,24 +1,21 @@
 """
 memory — SOAR procedural memory (rule storage and retrieval).
 
-Two write paths coexist here:
+Single write path: ``save_rule()`` — the canonical writer specified in
+``docs/RULE_FORMAT.md`` §1. Enforces validation rules V1–V7 from §3 via
+``validate_rule()`` and raises ``RuleSchemaError`` on any violation. Iter
+178 removed the legacy ``save_rule_to_ltm()`` writer (and its private
+helpers ``_rules_equivalent``, ``_norm_mapping``, ``_norm_dict``): the
+function had no production call site after iter 15's migration moved
+``ActiveSoarAgent._persist_pipeline_rule`` onto the schema-aware
+``save_rule`` path, and the legacy writer's output shape (top-level
+``rule`` payload, no ``condition``/``action`` keys) would have tripped
+F4 if any caller re-introduced it.
 
-  * Legacy (``save_rule_to_ltm``): the historical writer used by
-    ``agent/active_agent.py``. Emits the pre-test20 schema with a top-level
-    ``rule`` payload and no ``condition``/``action`` keys. Retained only so
-    the existing call site keeps compiling; any file it produces will fail
-    the F4 invariant if it is left on disk at iter-end.
-
-  * Schema-aware (``save_rule``): the canonical writer specified in
-    ``docs/RULE_FORMAT.md`` §1. Enforces validation rules V1–V7 from §3
-    via ``validate_rule()`` and raises ``RuleSchemaError`` on any
-    violation. This is the only path that may persist rules into
-    ``procedural_memory/`` going forward; call-site migration happens in a
-    later iter.
-
-Design goal: FEW, GENERAL rules — not many specific ones. When a new rule
-is equivalent to an existing one, the existing rule's ``covers`` list is
-extended rather than creating a duplicate file.
+Design goal: FEW, GENERAL rules — not many specific ones. Generalization
+across sibling rules is the job of
+``program.anti_unification.unify``, called exclusively from
+``save_rule()`` per ``CLAUDE.md §8``.
 """
 
 from __future__ import annotations
@@ -297,11 +294,11 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
     This is the bridge function between the slow-path output of
     ``GeneralizeOperator`` (legacy shapes like ``{"type": "identity", ...}``
     or ``{"type": "color_mapping", "mapping": {...}, ...}``) and the
-    schema-aware ``save_rule()`` writer. The legacy writer
-    ``save_rule_to_ltm()`` still embeds the legacy dict under a top-level
-    ``rule`` key — files it produces would trip F4 (rule lacking
-    ``condition``). ``translate_to_schema`` is the lossless converter that a
-    future ``active_agent.py`` migration will call before invoking
+    schema-aware ``save_rule()`` writer — the sole persistence path since
+    iter 178 retired the legacy ``save_rule_to_ltm()`` writer whose output
+    shape (top-level ``rule`` payload, no ``condition``/``action`` keys)
+    would trip F4. ``translate_to_schema`` is the lossless converter
+    ``ActiveSoarAgent._persist_pipeline_rule`` invokes before
     ``save_rule``.
 
     Pure function: no file I/O, no registry mutation. ``recognized_conditions``
@@ -1093,61 +1090,6 @@ def save_rule(rule: dict, *,
 # Public API
 # ======================================================================
 
-def save_rule_to_ltm(rule: dict, task_hex: str,
-                     procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
-    """
-    Save a learned rule to procedural_memory.
-
-    If an equivalent rule already exists, extend its "covers" list and return
-    its path — no duplicate file is created.
-
-    Returns the file path of the saved (or updated) rule.
-    """
-    os.makedirs(procedural_memory_root, exist_ok=True)
-
-    existing = sorted(
-        f for f in os.listdir(procedural_memory_root)
-        if f.startswith("rule_") and f.endswith(".json")
-    )
-
-    # Check for equivalent rule — update covers instead of duplicating
-    for fname in existing:
-        path = os.path.join(procedural_memory_root, fname)
-        try:
-            with open(path, "r") as fh:
-                stored = json.load(fh)
-            if _rules_equivalent(stored.get("rule", {}), rule):
-                covers = stored.get("covers", [stored.get("source_task", "")])
-                if task_hex not in covers:
-                    covers.append(task_hex)
-                    stored["covers"] = covers
-                    with open(path, "w") as fh:
-                        json.dump(stored, fh, indent=2)
-                return path
-        except (json.JSONDecodeError, IOError):
-            continue
-
-    # New rule — assign next ID and build full entry
-    next_id = len(existing) + 1
-    entry = {
-        "id": next_id,
-        "concept": _infer_concept(rule),
-        "category": _infer_category(rule),
-        "rule": rule,
-        "covers": [task_hex],
-        "source_task": task_hex,
-        "created_at": datetime.now().isoformat(),
-        "times_reused": 0,
-    }
-
-    filename = f"rule_{next_id:03d}.json"
-    path = os.path.join(procedural_memory_root, filename)
-    with open(path, "w") as fh:
-        json.dump(entry, fh, indent=2)
-
-    return path
-
-
 def load_all_rules(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:
     """
     Load all stored rules. Returns list of entry dicts sorted by
@@ -1200,48 +1142,11 @@ def chunk_from_substate(substate: dict) -> dict:
 
 
 # ======================================================================
-# Internal helpers
+# Internal helpers — used by ``translate_to_schema`` to derive concept /
+# category labels from a legacy pipeline rule dict. The legacy
+# ``save_rule_to_ltm`` writer used to call them too; that path was
+# removed in iter 178.
 # ======================================================================
-
-def _rules_equivalent(a: dict, b: dict) -> bool:
-    """
-    Return True if two rules produce identical transformations.
-
-    Keys in JSON are always strings; keys produced by the pipeline may be
-    integers. Both sides are normalised to string keys before comparison.
-    """
-    if a.get("type") != b.get("type"):
-        return False
-
-    t = a.get("type")
-
-    if t == "color_mapping":
-        return _norm_mapping(a.get("mapping")) == _norm_mapping(b.get("mapping"))
-
-    if t == "recolor_sequential":
-        return (
-            a.get("sort_key") == b.get("sort_key")
-            and a.get("start_color") == b.get("start_color")
-            and sorted(a.get("source_colors") or []) == sorted(b.get("source_colors") or [])
-        )
-
-    # For all other types compare the full rule dicts after key normalisation
-    return _norm_dict(a) == _norm_dict(b)
-
-
-def _norm_mapping(mapping) -> dict:
-    """Normalise a color mapping to {str: int} regardless of source key type."""
-    if not mapping:
-        return {}
-    return {str(k): int(v) for k, v in mapping.items()}
-
-
-def _norm_dict(d: dict) -> dict:
-    """Recursively normalise all dict keys to strings."""
-    if not isinstance(d, dict):
-        return d
-    return {str(k): _norm_dict(v) for k, v in d.items()}
-
 
 def _infer_concept(rule: dict) -> str:
     """Derive a short concept name from the rule type and parameters."""
