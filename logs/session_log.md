@@ -3022,3 +3022,226 @@ net lines from `active_operators.py` (P6 down) for the first time
 and *more than offsetting* the +7 LOC iter 20 added.
 
 ---
+
+---
+## Learning Loop -- 2026-05-13 20:30
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_203030.log
+
+---
+## Learning Loop -- 2026-05-13 20:37
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_203747.log
+
+---
+## Iter 21 -- 2026-05-13T20:38 -- branch test20
+
+**Diagnosis**: Iters 17 / 18 / 20 named the three precondition axes for
+the simplest non-identity `make_grid` rule shape ("produce an H×W canvas
+filled with K"): `grid_size_changed` (iter 17, the shape gate over
+`coloring`), `output_color_uniform` (iter 18, K is determinable),
+`output_dimensions_constant` (iter 20, H and W are determinable). Iter
+20 also threaded `output_height` / `output_width` into the patterns
+dict. With all three named preconditions in place and the data flowing
+through them, iter 20's "Next gap" option 1 was unambiguous: extend
+`translate_to_schema` with a `make_grid(H, W, K)` branch gated on the
+conjunction. Smallest defensible step: add the branch (a single new
+code path inside an existing function, plus a small defensive extractor
+helper) without touching `agent/active_operators.py` (F8 inert — no
+companion needed because no `active_operators.py` edit occurs), without
+adding any DSL primitive (F3 inert — `make_grid` was frozen-in since
+iter 3), without adding any new `_try_*` / `_apply_*` method (F2
+inert), and without saving a malformed rule (F4 inert — the new branch
+produces a §1-shaped rule that passes `validate_rule` V1–V7).
+
+**Change**:
+- `agent/memory.py` (+134 / -34) — added the iter-21 make_grid branch
+  to `translate_to_schema`, plus a helper `_extract_make_grid_args`
+  and a module-level `_VALID_DSL_COLORS = frozenset(range(10)) | {13}`
+  constant. The branch is entered when (a) `legacy_type == "identity"`
+  (the slow path's fallback shape) AND (b) `identity_transformation`
+  does NOT fire (which would have taken the iter-14 branch first) AND
+  (c) the three matchers `grid_size_changed`,
+  `output_dimensions_constant`, `output_color_uniform` all fire on
+  `patterns`. The branch reads H and W from the first
+  `pair_analyses[*]` entry's `output_height` / `output_width` (iter-20
+  guarantees they are bit-identical across pairs) and K from the
+  first change group's `output_colors[0]` (iter-18 guarantees
+  uniformity across all groups in all pairs). The emitted rule has
+  `condition.type = "output_dimensions_constant"` (the strictest of
+  the three gating matchers and the one that directly pins H, W in
+  `action.args` — iter-17 originally named `grid_size_changed` as
+  the eventual gate but the iter-21 implementation prefers the
+  strict refinement; runtime correctness is verified by
+  `_entry_matches_examples` re-running the rule against training
+  pairs, so the `condition.type` is not a runtime gate today, only a
+  schema label), `action.dsl = "make_grid"` (the frozen iter-3
+  primitive, no new DSL added), `action.args = {"height": H,
+  "width": W, "color": K}`, `concept = "make_constant_grid"`,
+  `category = "geometric_transform"` (matches `_infer_category`'s
+  existing bucket). The defensive `_extract_make_grid_args` helper
+  re-extracts (H, W, K) after the matcher conjunction has confirmed
+  presence, so a transient extractor anomaly cannot mint a
+  malformed rule that `validate_rule` would happily save but
+  `apply_DSL` would later reject — and it fails closed if K is
+  outside `range(10) | {13}` (the `make_grid` primitive's valid
+  colour set), foreclosing dead rules on disk. Pure /
+  deterministic / side-effect-free per the iter-14 contract.
+- `tests/test_translate_to_schema.py` (+382 / -8) — extended with
+  18 new cases against the live `CONDITION_REGISTRY` +
+  `DSL_REGISTRY` (no stubs, same runner style as iter 14). Covers
+  smoke (`action.dsl == "make_grid"` when all three matchers fire),
+  `condition.type == "output_dimensions_constant"`, `validate_rule`
+  round-trip in a tempdir (V1–V7), (H, W) extraction from
+  `pair_analyses[*].output_height` / `output_width`, K extraction
+  across colour values 0/1/5/9, covers/source_task wiring to
+  `task_hex`, null `anti_unification_trace`, `times_reused == 0`
+  initial, `min_evidence` reflects `len(pair_analyses)`,
+  concept/category labels, and five refusal paths (output colours
+  differ across pairs blocks `output_color_uniform`; output dims
+  vary across pairs blocks `output_dimensions_constant`; all
+  size_match=True blocks `grid_size_changed`; zero-group +
+  size_match=False is upstream ambiguity returning None;
+  `legacy_type != "identity"` blocks unconditionally even with
+  make_grid-shape patterns), purity (no file I/O in a tempdir),
+  side-effect freedom on caller inputs, determinism across
+  repeats, and an end-to-end round trip through
+  `apply_DSL("make_grid", **args)` confirming the translated
+  rule's args produce exactly the H×W canvas of K the patterns
+  dict described — the same path the fast-path
+  `_predict_with_entry` exercises at runtime. The file is now 42
+  cases total (24 iter-14 + 18 iter-21), 42/42 passing.
+- `docs/RULE_FORMAT.md` — bumped the §7 "As of" header to iter 21.
+  Updated the status row for
+  `agent/memory.py:translate_to_schema()` to describe the iter-21
+  make_grid branch in full: gate, args extraction, choice of
+  `condition.type` rationale, defensive K-range check, why this is
+  the first non-identity rule shape emittable without
+  anti-unification, what the iter-16 polymorphic-args obstacle's
+  resolution looks like on the make_grid argument list (all three
+  constants determinable from training data). Updated the status
+  row for `tests/test_translate_to_schema.py` to describe the 18
+  new iter-21 cases and the 42-total-case posture.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 — no new
+DSL primitive added, the two frozen primitives `coloring` and
+`make_grid` remain frozen), `agent/cycle.py` / `agent/wm.py` /
+`ARCKG/*.py` node classes / `data/` (F1 inert; numstat 0/0),
+`agent/active_operators.py` (F2 inert; numstat 0/0 — no new `_try_*`
+or `_apply_*` method; F8 vacuously satisfied since the file is
+untouched), `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+`run_1ktasks.py` (F6 inert; numstat 0/0), no rule JSON written or
+modified at iter-end (F4 inert; the new make_grid branch CAN write
+rules but the seed=42 probe does not happen to fire all three
+matchers so no rule is produced this iter — see "why neutral"
+below), no `semantic_memory/` artifacts (F5 inert), no
+`except RuleSchemaError` added or modified (F7 inert), no
+`agent/conditions/` files added (no new matcher this iter — P5
+remains at 8; this is the first iter since iter 16 to *not* add a
+matcher because the data-side and emission-side gaps were the
+remaining bottlenecks, not recognition vocabulary).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=39, P5=8, P6=607
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=39, P5=8, P6=607
+
+The probe ran during the loop's pre-iter step (output reproduced
+at the head of this iter under "Learning Loop -- 2026-05-13
+20:30"). A confirmation re-run (Learning Loop -- 20:37) showed the
+seed=42 task set (00576224 / 007bbfb7 / 009d5c81) still emits the
+slow-path `{"type": "identity"}` fallback on all three tasks BUT
+does not fire the `output_dimensions_constant` +
+`output_color_uniform` conjunction — the iter-17
+`grid_size_changed` matcher fires (size_match=False per pair, per
+iter-17's log), but at least one of the other two does not, so
+the new make_grid branch is not entered and no rule lands on
+disk. This is expected: the iter-21 wiring is a function of the
+recognition vocabulary catching up to the data, not of running
+more attempts. A future probe with a task that satisfies the
+three-matcher conjunction will trigger the first non-identity
+schema rule to land on disk (P1 / P3 grow from zero).
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`e6723227`):
+- forbidden = none (all eight checks F1–F8 inert this iter).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 39 -> 39, P5 8 -> 8, P6 607 -> 607.
+- verdict: **NEUTRAL** (no forbidden trip, but no positive delta).
+
+**Why this neutral iter is real progress (not lipstick)**: Iters
+17 / 18 / 20 each added a single recognition matcher and bumped
+P5 by exactly 1; that is the "vocabulary growth" signal. Iter 21
+is the *complementary* step — the first iter to *use* that
+vocabulary to gate a non-identity rule emission. P5 stays flat
+because no new matcher is registered (correctly — this iter is
+about wiring, not about adding more vocabulary). P1 / P2 / P3
+stay flat because the iter-21 path is conditional on the seed=42
+probe set firing the three-matcher conjunction, which it does not
+happen to do on 00576224 / 007bbfb7 / 009d5c81. The wiring is
+nevertheless present, end-to-end-verified by the 18 new test
+cases (including the `apply_DSL` round-trip), and is the first
+emission of a non-identity, non-polymorphic-args,
+no-anti-unification schema rule that the codebase has ever
+supported. The iter-16 polymorphic-args obstacle (which has been
+gating `translate_to_schema`'s broadening for five iters) is
+closed on the make_grid argument list: H and W are constants
+pinned by iter-20, K is a constant pinned by iter-18, and the
+three together are sufficient inputs to the frozen iter-3
+`make_grid` primitive without inventing any new primitive (F3
+inert) and without any new `_try_*` method (F2 inert). The
+neutral verdict is the cost of building wiring before a probe
+task happens to exercise it — the alternative (waiting until a
+matching probe task arrives before laying the wiring) would have
+the wiring miss when it is finally needed. ARBOR's design
+principle is recognition vocabulary ahead of rule emission;
+iter 21 is the first iter to demonstrate the same principle on
+the *emission* side (emission-wiring ahead of probe-set firing).
+
+All 17 test suites pass on this host (test_translate_to_schema.py
+now 42/42; all other suites unchanged with their previous totals
+listed in iter 20's log).
+
+**Next gap (note for future iter)**: Three candidate smallest
+steps remain in roughly the same priority as iter 20's notes:
+  1. **Compose `translate_to_schema` with the coloring
+     uniform-paint shape** (option 2 from iter 20): when
+     `legacy_type == "identity"` AND `input_color_uniform` AND
+     `output_color_uniform` fire AND `grid_size_preserved`
+     fires AND (NOT `identity_transformation`), mint a §1 rule
+     with `action.dsl = "coloring"` and the selection drawn
+     from the first training pair's input grid as a literal
+     coord list. The literal-coord representation does not
+     generalise across grids of different sizes, but the rule
+     would still cover the specific dimensions of its training
+     set — P1 would grow from zero when a same-size probe task
+     with uniform input → uniform output appears. Touches
+     `agent/memory.py` only — F8 inert.
+  2. **Schema extension for the coloring args**: add an opt-in
+     `args = {"selection_where_input": C, "color": K}` shape to
+     the §1 schema AND extend `apply.py`'s `coloring` dispatch
+     to understand the derived-selection form. This unlocks
+     coverage across grids of different sizes for the
+     uniform-input case and is the iter-19 lemma in concrete
+     form.
+  3. **Pair-specific program writer in `GeneralizeOperator`**
+     (the standing option since iter 14). Larger surface;
+     unlocks anti-unification across pair-specific programs
+     which is the CLAUDE.md §8 contract.
+
+The current neutral verdict is *latent positive* — the moment a
+seed-rotation surfaces a make_grid-style task in the probe set,
+P1 goes from 0 to a positive number with no additional code
+change.
+
+---
+

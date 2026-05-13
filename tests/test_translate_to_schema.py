@@ -1,6 +1,6 @@
 """
 tests/test_translate_to_schema.py — exercise the legacy→§1 translator
-added in iter 14.
+added in iter 14, extended with the make_grid branch in iter 21.
 
 Runs without pytest. Invoke directly:
 
@@ -9,16 +9,29 @@ Runs without pytest. Invoke directly:
 Exits 0 on success, non-zero on first failed assertion (with traceback).
 
 Scope: `agent/memory.py:translate_to_schema(legacy_rule, task_hex, patterns,
-*, rule_id, now=None)`. The translator currently handles exactly one legacy
-shape — `{"type": "identity"}` — gated on the `identity_transformation`
-matcher firing for the supplied `patterns` dict. Every other legacy type
-returns `None` until a follow-up iter wires the pair-specific program
-writer (see iter-13's "Next gap" note option 1).
+*, rule_id, now=None)`. As of iter 21 the translator handles two legacy→§1
+shape pairs, both gated on the source `legacy_type == "identity"` (the slow
+path's fallback shape when none of its hand-coded matchers fire):
+
+  * identity_transformation fires  → no-op `coloring(selection=[], color=0)`
+    rule. The iter-14 happy path.
+  * grid_size_changed + output_dimensions_constant + output_color_uniform
+    all fire → `make_grid(height=H, width=W, color=K)` rule. The iter-21
+    upgrade — the first non-identity rule shape any iter has been able to
+    mint without anti-unification or polymorphic args. H, W come from any
+    pair's `output_height` / `output_width` (iter-20 pins them constant);
+    K from any group's `output_colors[0]` (iter-18 pins it constant).
+
+Every other legacy type / matcher combination returns `None` until a
+follow-up iter wires anti-unification or extends the matcher chain.
 
 Tests run against the live `agent.conditions.CONDITION_REGISTRY` and the
 live `procedural_memory.DSL.apply.DSL_REGISTRY` — no stubs. This forces
-the test to be coherent with the four-matcher registry iter-13 stood up
-and the two-primitive DSL frozen by F3.
+the test to be coherent with the eight-matcher registry as of iter 20
+(grid_size_preserved / consistent_color_mapping / sequential_recoloring /
+identity_transformation / grid_size_changed / output_color_uniform /
+input_color_uniform / output_dimensions_constant) and the two-primitive
+DSL frozen by F3.
 """
 
 from __future__ import annotations
@@ -437,6 +450,347 @@ def test_concept_and_category_inferred_from_legacy_rule() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Iter 21 — make_grid(H, W, K) branch.
+#
+# Shape: legacy `{"type": "identity"}` + the conjunction of `grid_size_changed`
+# + `output_dimensions_constant` + `output_color_uniform` all firing →
+# `condition.type = "output_dimensions_constant"`, `action.dsl = "make_grid"`
+# with `args = {"height": H, "width": W, "color": K}`. H and W from any pair's
+# `output_height` / `output_width`; K from any change group's `output_colors[0]`.
+# ──────────────────────────────────────────────────────────────────────────
+
+def _make_grid_patterns(n_pairs: int = 2, out_h: int = 5, out_w: int = 5,
+                        out_color: int = 7,
+                        in_h: int = 3, in_w: int = 3) -> dict:
+    """Patterns mimicking a make_grid task. Input is `in_h × in_w` of mixed
+    colours; output is `out_h × out_w` of a single colour `out_color`. The
+    diff over the overlap region produces at least one change group whose
+    `output_colors` is `[out_color]`. `size_match` is False (the iter-17
+    matcher's gate). `output_height` / `output_width` are the iter-20 keys.
+    """
+    pair_analyses = []
+    for i in range(n_pairs):
+        # One change group in overlap, painting input != out_color cells to out_color.
+        # Use a single group with `output_colors=[out_color]` to satisfy the
+        # iter-18 uniformity contract.
+        pair_analyses.append({
+            "total_changes": 1,
+            "num_groups": 1,
+            "groups": [
+                {
+                    "input_colors": [i],  # vary across pairs — uniformity is on output side
+                    "output_colors": [out_color],
+                    "top_row": 0,
+                    "top_col": 0,
+                    "cell_count": 1,
+                }
+            ],
+            "size_match": False,
+            "input_height": in_h,
+            "input_width": in_w,
+            "output_height": out_h,
+            "output_width": out_w,
+        })
+    return {
+        "grid_size_preserved": False,
+        "pair_analyses": pair_analyses,
+    }
+
+
+def test_make_grid_branch_fires_when_all_three_matchers_fire() -> None:
+    """The smoke test: a `legacy={"type": "identity"}` rule + a patterns
+    dict that fires grid_size_changed + output_dimensions_constant +
+    output_color_uniform should produce a schema rule whose
+    `action.dsl == "make_grid"`. Confirms the iter-21 wiring."""
+    legacy = {"type": "identity", "confidence": 0.0}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _make_grid_patterns(n_pairs=2, out_h=5, out_w=5, out_color=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None, "expected make_grid schema rule, got None"
+    assert out["action"]["dsl"] == "make_grid"
+    assert out["action"]["args"] == {"height": 5, "width": 5, "color": 7}
+
+
+def test_make_grid_condition_type_is_output_dimensions_constant() -> None:
+    """The make_grid branch picks the strictest of the three gating
+    matchers (`output_dimensions_constant`) as `condition.type` because
+    that matcher directly pins (H, W) in `action.args`. Documented in
+    `translate_to_schema`'s iter-21 docstring section."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(),
+        rule_id=2, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["condition"]["type"] == "output_dimensions_constant"
+    assert out["condition"]["params"] == {}
+    assert isinstance(out["condition"]["min_evidence"], int)
+    assert out["condition"]["min_evidence"] >= 1
+
+
+def test_make_grid_rule_passes_validate_rule() -> None:
+    """The translator's output must satisfy V1–V7. V2 checks
+    `condition.type` is registered (output_dimensions_constant is, iter
+    20); V3 checks `action.dsl` is registered (make_grid is, iter 3)."""
+    tmp_root = tempfile.mkdtemp(prefix="arbor_translate_makegrid_")
+    try:
+        legacy = {"type": "identity"}
+        out = translate_to_schema(
+            legacy, "abcdef12", _make_grid_patterns(),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None
+        validate_rule(out, procedural_memory_root=tmp_root)
+    finally:
+        import shutil
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def test_make_grid_dimensions_match_pair_analysis() -> None:
+    """H and W are extracted from any pair's output_height / output_width.
+    The iter-20 matcher guarantees they are constant across pairs, so any
+    pair's values work; verify the extracted (H, W) equal those values."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _make_grid_patterns(n_pairs=3, out_h=7, out_w=4, out_color=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["action"]["args"]["height"] == 7
+    assert out["action"]["args"]["width"] == 4
+    assert out["action"]["args"]["color"] == 2
+
+
+def test_make_grid_color_matches_uniform_output_color() -> None:
+    """K is extracted from any change group's `output_colors[0]`. The
+    iter-18 matcher guarantees uniformity across all groups in all
+    pairs, so any pick equals K."""
+    legacy = {"type": "identity"}
+    for k in (0, 1, 5, 9):
+        out = translate_to_schema(
+            legacy, "abcdef12",
+            _make_grid_patterns(out_color=k),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None, f"make_grid branch should fire for K={k}"
+        assert out["action"]["args"]["color"] == k
+
+
+def test_make_grid_covers_and_source_task_use_task_hex() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "deadbeef", _make_grid_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["source_task"] == "deadbeef"
+    assert out["covers"] == ["deadbeef"]
+
+
+def test_make_grid_anti_unification_trace_is_null_for_source_rule() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["anti_unification_trace"] is None
+
+
+def test_make_grid_times_reused_starts_at_zero() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["times_reused"] == 0
+
+
+def test_make_grid_min_evidence_reflects_pair_count() -> None:
+    legacy = {"type": "identity"}
+    out2 = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out2 is not None
+    assert out2["condition"]["min_evidence"] == 2
+
+    out4 = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(n_pairs=4),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out4 is not None
+    assert out4["condition"]["min_evidence"] == 4
+
+
+def test_make_grid_concept_and_category_are_constant_make_grid_labels() -> None:
+    """The make_grid branch coins its own concept/category labels rather
+    than going through `_infer_concept` (which would label it "identity"
+    since the legacy_type is the fallback). The chosen labels are
+    `make_constant_grid` / `geometric_transform` — the latter matches
+    `_infer_category`'s existing bucket for geometric shape rules."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["concept"] == "make_constant_grid"
+    assert out["category"] == "geometric_transform"
+
+
+def test_make_grid_branch_returns_none_when_color_uniform_fails() -> None:
+    """Two distinct output colours across pairs — output_color_uniform
+    does NOT fire, so the make_grid branch is not entered, translator
+    returns None."""
+    legacy = {"type": "identity"}
+    patterns = _make_grid_patterns(n_pairs=2, out_color=3)
+    # Mutate the second pair's group to a different output colour.
+    patterns["pair_analyses"][1]["groups"][0]["output_colors"] = [4]
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_make_grid_branch_returns_none_when_dimensions_vary() -> None:
+    """Output dimensions vary across pairs — output_dimensions_constant
+    does NOT fire, so the make_grid branch is not entered."""
+    legacy = {"type": "identity"}
+    patterns = _make_grid_patterns(n_pairs=2)
+    patterns["pair_analyses"][1]["output_height"] = 6  # was 5
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_make_grid_branch_returns_none_when_size_preserved_everywhere() -> None:
+    """size_match=True everywhere — grid_size_changed does NOT fire (it
+    requires at least one False), so the make_grid branch is not entered.
+    Note: with size_match=True AND zero change groups would trigger the
+    identity branch; we use non-empty groups here to make the only
+    blocker grid_size_changed."""
+    legacy = {"type": "identity"}
+    patterns = _make_grid_patterns(n_pairs=2)
+    for pa in patterns["pair_analyses"]:
+        pa["size_match"] = True
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    # With size_match=True everywhere + uniform output colour + constant dims,
+    # this still does not match any defined branch — return None.
+    assert out is None
+
+
+def test_make_grid_branch_returns_none_when_zero_groups() -> None:
+    """If every pair has zero change groups, identity_transformation may
+    fire (if size_match=True) OR neither identity nor make_grid fires (if
+    size_match=False — output_color_uniform requires non-empty groups).
+    Verify the zero-group + size_match=False case returns None: the
+    overlap is identical but dims differ, which is upstream ambiguity, not
+    a translatable rule."""
+    legacy = {"type": "identity"}
+    patterns = _make_grid_patterns()
+    for pa in patterns["pair_analyses"]:
+        pa["groups"] = []
+        pa["num_groups"] = 0
+        pa["total_changes"] = 0
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_make_grid_branch_returns_none_when_legacy_type_is_not_identity() -> None:
+    """The make_grid branch is gated on `legacy_type == "identity"`
+    (the slow path's fallback shape). A legacy color_mapping rule even
+    paired with make_grid-shape patterns must return None — the slow
+    path produced a different rule shape and the translator does not
+    overwrite it."""
+    legacy = {"type": "color_mapping", "mapping": {1: 7}, "confidence": 0.9}
+    out = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_make_grid_branch_pure_no_file_io() -> None:
+    """Same purity contract as the identity branch: no disk writes."""
+    tmp_root = tempfile.mkdtemp(prefix="arbor_translate_makegrid_pure_")
+    try:
+        before = set(os.listdir(tmp_root))
+        for i in range(5):
+            translate_to_schema(
+                {"type": "identity"}, "abcdef12", _make_grid_patterns(),
+                rule_id=i + 1, now="2026-05-13T19:30:00.000000",
+            )
+        after = set(os.listdir(tmp_root))
+        assert before == after, "make_grid branch leaked a write to disk"
+    finally:
+        import shutil
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def test_make_grid_branch_does_not_mutate_inputs() -> None:
+    legacy = {"type": "identity"}
+    legacy_before = dict(legacy)
+    patterns = _make_grid_patterns()
+    patterns_pa_count_before = len(patterns["pair_analyses"])
+    patterns_first_keys_before = sorted(patterns["pair_analyses"][0].keys())
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert legacy == legacy_before, "translator mutated legacy_rule"
+    assert len(patterns["pair_analyses"]) == patterns_pa_count_before
+    assert sorted(patterns["pair_analyses"][0].keys()) == patterns_first_keys_before
+
+
+def test_make_grid_branch_deterministic_across_repeats() -> None:
+    legacy = {"type": "identity"}
+    patterns = _make_grid_patterns()
+    a = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    b = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert a == b
+
+
+def test_make_grid_rule_round_trip_through_apply_DSL() -> None:
+    """End-to-end: a translated make_grid rule, when applied via the
+    iter-3 DSL primitive, produces exactly the H×W canvas of K the
+    patterns dict described. This is what the fast-path
+    `_predict_with_entry` does at runtime — if this test passes, the
+    iter-21 wiring is end-to-end coherent."""
+    from procedural_memory.DSL.apply import apply_DSL  # local import
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _make_grid_patterns(n_pairs=2, out_h=4, out_w=3, out_color=8),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    args = out["action"]["args"]
+    grid = apply_DSL("make_grid", **args)
+    assert grid == [[8, 8, 8], [8, 8, 8], [8, 8, 8], [8, 8, 8]]
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Driver.
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -466,6 +820,26 @@ def _run_all() -> int:
         test_created_at_uses_supplied_now_when_provided,
         test_created_at_uses_now_when_arg_omitted,
         test_concept_and_category_inferred_from_legacy_rule,
+        # Iter 21 — make_grid(H, W, K) branch.
+        test_make_grid_branch_fires_when_all_three_matchers_fire,
+        test_make_grid_condition_type_is_output_dimensions_constant,
+        test_make_grid_rule_passes_validate_rule,
+        test_make_grid_dimensions_match_pair_analysis,
+        test_make_grid_color_matches_uniform_output_color,
+        test_make_grid_covers_and_source_task_use_task_hex,
+        test_make_grid_anti_unification_trace_is_null_for_source_rule,
+        test_make_grid_times_reused_starts_at_zero,
+        test_make_grid_min_evidence_reflects_pair_count,
+        test_make_grid_concept_and_category_are_constant_make_grid_labels,
+        test_make_grid_branch_returns_none_when_color_uniform_fails,
+        test_make_grid_branch_returns_none_when_dimensions_vary,
+        test_make_grid_branch_returns_none_when_size_preserved_everywhere,
+        test_make_grid_branch_returns_none_when_zero_groups,
+        test_make_grid_branch_returns_none_when_legacy_type_is_not_identity,
+        test_make_grid_branch_pure_no_file_io,
+        test_make_grid_branch_does_not_mutate_inputs,
+        test_make_grid_branch_deterministic_across_repeats,
+        test_make_grid_rule_round_trip_through_apply_DSL,
     ]
     fails = 0
     for t in tests:

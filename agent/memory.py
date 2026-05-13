@@ -286,6 +286,9 @@ def load_related(category: str, *,
     return out
 
 
+_VALID_DSL_COLORS = frozenset(range(10)) | {13}
+
+
 def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
                         rule_id: int,
                         now: str | None = None) -> dict | None:
@@ -314,20 +317,46 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
 
     Currently translated shapes
     ---------------------------
-    * ``{"type": "identity", ...}`` → ``condition.type =
-      "identity_transformation"`` (requires the matcher to fire on
-      ``patterns`` — gate ensures the rule's stored precondition is
-      empirically supported by the source task), ``action.dsl = "coloring"``
-      with ``args = {"selection": [], "color": 0}`` (no-op
-      composition — ``coloring(grid, [], 0)`` returns an identity copy of
-      ``grid``). This is the only legacy shape whose ``action.dsl`` reduces
-      to a registered DSL primitive without pair-specific program
-      synthesis; ``color_mapping`` and ``recolor_sequential`` require an
-      anti-unification-discovered abstraction, deferred to a later iter.
+    * ``{"type": "identity", ...}`` + ``identity_transformation`` fires →
+      ``condition.type = "identity_transformation"``,
+      ``action.dsl = "coloring"`` with ``args = {"selection": [], "color":
+      0}`` (no-op composition — ``coloring(grid, [], 0)`` returns an
+      identity copy of ``grid``). The matcher gate ensures the rule's
+      stored precondition is empirically supported by the source task.
+
+    * ``{"type": "identity", ...}`` + ``grid_size_changed`` +
+      ``output_dimensions_constant`` + ``output_color_uniform`` all fire
+      (iter 21) → ``condition.type = "output_dimensions_constant"``,
+      ``action.dsl = "make_grid"`` with ``args = {"height": H, "width": W,
+      "color": K}``. H and W come from any pair's ``output_height`` /
+      ``output_width`` (the iter-20 matcher guarantees they are constant
+      across pairs); K comes from any change group's ``output_colors[0]``
+      (the iter-18 matcher guarantees it is constant across all groups in
+      all pairs). The slow path's hand-coded matchers never recognise the
+      ``make_grid``-style task — they fall through to the identity
+      fallback — so the upgrade from "identity stored" to "make_grid
+      stored" is purely a function of the recognition vocabulary catching
+      up to the data, with no new ``_try_*`` strategy and no new DSL
+      primitive (F2 / F3 inert). The chosen ``condition.type``
+      (``output_dimensions_constant``) is the strictest of the three
+      gating matchers and the one that directly pins ``action.args``'s H,
+      W; iter 17's docstring named ``grid_size_changed`` as the eventual
+      gate for ``make_grid`` rules, but ``output_dimensions_constant`` is a
+      strict refinement (it implies dimension constancy across pairs, the
+      property the saved (H, W) constants depend on), so it is the more
+      informative label for this specific rule shape. The iter-18 +
+      iter-20 conjunction is the recognition-side dual of iter-18's
+      ``output_color_uniform`` naming "K is determinable" — together they
+      pin all three constants in ``args`` to named preconditions, closing
+      the iter-16 polymorphic-args obstacle for ``make_grid``'s argument
+      list.
 
     Non-translatable shapes return ``None`` deliberately — a caller that
     wants to attempt a save must check the return value and fall back to
-    the legacy writer (or skip the save).
+    the legacy writer (or skip the save). ``color_mapping`` and
+    ``recolor_sequential`` shapes still require an anti-unification-
+    discovered abstraction for their ``action.dsl``, deferred to a later
+    iter.
     """
     if not isinstance(legacy_rule, dict):
         return None
@@ -344,38 +373,109 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
     if legacy_type != "identity":
         return None
 
-    # V2 gate: the recognition matcher must actually fire on the patterns
+    # V2 gate: the recognition matchers must actually fire on the patterns
     # the source task produced. This keeps the translator honest — it cannot
     # mint a condition.type that the live recognizer would reject.
     from agent.conditions import recognized_conditions  # local import
     fired = recognized_conditions(patterns)
-    if "identity_transformation" not in fired:
-        return None
 
     pair_analyses = patterns.get("pair_analyses") or []
-    min_evidence = max(1, len(pair_analyses) if isinstance(pair_analyses, list) else 1)
+    if not isinstance(pair_analyses, list):
+        pair_analyses = []
+    min_evidence = max(1, len(pair_analyses))
 
     created_at = now if isinstance(now, str) and now else datetime.utcnow().isoformat()
 
-    return {
-        "id": rule_id,
-        "concept": _infer_concept(legacy_rule),
-        "category": _infer_category(legacy_rule),
-        "condition": {
-            "type": "identity_transformation",
-            "params": {},
-            "min_evidence": min_evidence,
-        },
-        "action": {
-            "dsl": "coloring",
-            "args": {"selection": [], "color": 0},
-        },
-        "covers": [task_hex],
-        "source_task": task_hex,
-        "anti_unification_trace": None,
-        "created_at": created_at,
-        "times_reused": 0,
-    }
+    if "identity_transformation" in fired:
+        return {
+            "id": rule_id,
+            "concept": _infer_concept(legacy_rule),
+            "category": _infer_category(legacy_rule),
+            "condition": {
+                "type": "identity_transformation",
+                "params": {},
+                "min_evidence": min_evidence,
+            },
+            "action": {
+                "dsl": "coloring",
+                "args": {"selection": [], "color": 0},
+            },
+            "covers": [task_hex],
+            "source_task": task_hex,
+            "anti_unification_trace": None,
+            "created_at": created_at,
+            "times_reused": 0,
+        }
+
+    # Iter 21: make_grid(H, W, K) branch. Gated on the conjunction of three
+    # named recognition preconditions named across iters 17 / 18 / 20.
+    if ("grid_size_changed" in fired
+            and "output_dimensions_constant" in fired
+            and "output_color_uniform" in fired):
+        h_w_k = _extract_make_grid_args(pair_analyses)
+        if h_w_k is None:
+            return None
+        h, w, k = h_w_k
+        return {
+            "id": rule_id,
+            "concept": "make_constant_grid",
+            "category": "geometric_transform",
+            "condition": {
+                "type": "output_dimensions_constant",
+                "params": {},
+                "min_evidence": min_evidence,
+            },
+            "action": {
+                "dsl": "make_grid",
+                "args": {"height": h, "width": w, "color": k},
+            },
+            "covers": [task_hex],
+            "source_task": task_hex,
+            "anti_unification_trace": None,
+            "created_at": created_at,
+            "times_reused": 0,
+        }
+
+    return None
+
+
+def _extract_make_grid_args(pair_analyses: list) -> tuple | None:
+    """Pull constant (height, width, color) out of a make_grid-shape
+    patterns dict. Returns ``None`` if any value cannot be extracted
+    cleanly. Callers must already have confirmed the iter-17/18/20
+    matcher conjunction fired; this helper is defensive re-extraction
+    only, so a transient extractor anomaly cannot mint a malformed
+    rule that ``validate_rule`` would happily save but ``apply_DSL``
+    would later reject."""
+    if not pair_analyses:
+        return None
+    first = pair_analyses[0]
+    if not isinstance(first, dict):
+        return None
+    h = first.get("output_height")
+    w = first.get("output_width")
+    if not isinstance(h, int) or isinstance(h, bool) or h < 1:
+        return None
+    if not isinstance(w, int) or isinstance(w, bool) or w < 1:
+        return None
+    for analysis in pair_analyses:
+        if not isinstance(analysis, dict):
+            continue
+        groups = analysis.get("groups")
+        if not isinstance(groups, list):
+            continue
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            colors = group.get("output_colors")
+            if not isinstance(colors, list) or len(colors) < 1:
+                continue
+            candidate = colors[0]
+            if isinstance(candidate, int) and not isinstance(candidate, bool):
+                if candidate in _VALID_DSL_COLORS:
+                    return (h, w, candidate)
+                return None
+    return None
 
 
 def save_rule(rule: dict, *,
