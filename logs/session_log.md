@@ -4555,3 +4555,226 @@ caller of `save_rule(rule, related_rules=load_related(category=
 "color_transform", ...))` would have >= 1 sibling rule to unify
 against, the precondition iter 6's AU wiring needs to actually
 fire.
+
+---
+## Learning Loop -- 2026-05-13 21:52
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_215229.log
+
+---
+## Learning Loop -- 2026-05-13 22:00
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_220003.log
+
+---
+## Iter 28 -- 2026-05-13T13:00Z -- branch test20
+
+**Diagnosis**: Iter 27 landed the multi-cell single-blob `coloring`
+emission branch and explicitly named two next-gap options: (A) a
+`multi_group_per_pair` matcher (`num_groups >= 2` per pair, "the
+simplest entry on the deferred multi-blob axis from iter 23's
+territory"), or (B) the pair-specific program writer in
+`GeneralizeOperator` that would push P3 above 0.0. Option B requires
+edits to `agent/active_operators.py` AND a companion edit (rule
+generation flow), a larger surface than the smallest-step contract --
+and option A is the canonical iter-23 / iter-24 / iter-26 cadence
+(matcher this iter, emission consumer next iter), so it is the
+smaller half and a clean P5 +1 without any F8 risk. Smallest
+defensible step is the matcher only.
+
+**Change**:
+- `agent/conditions/multi_group_per_pair.py` (new) -- strict disjoint
+  partner of iter 23's `single_change_group_per_pair` and iter 13's
+  `identity_transformation` on the per-pair group-count axis. True
+  iff every pair carries `num_groups >= 2` (strict-positive-int,
+  bool rejected per `validate_rule` V1 posture). Together with iters
+  13 / 23 the three matchers now partition the per-pair group-count
+  axis into exactly three pairwise-disjoint regimes:
+  `num_groups == 0` (iter 13), `num_groups == 1` (iter 23),
+  `num_groups >= 2` (this iter). No `_analyze_pair` change -- the
+  `num_groups` field has been emitted per pair since iter 1, so the
+  matcher uses existing data on a stricter cardinality gate.
+- `tests/test_multi_group_per_pair.py` (new) -- 42 dependency-free
+  cases against the live `CONDITION_REGISTRY` +
+  `ExtractPatternOperator._analyze_pair` (no stubs). Mirror of iter
+  23 / iter 26's test surface on the new per-pair group-count axis.
+  Includes the canonical three-way partition invariant
+  (`test_three_matchers_partition_group_count_axis`) via case
+  enumeration on `num_groups` values 0 / 1 / 2 / 4 — verifies iter
+  13 + iter 23 + iter 28 are pairwise disjoint AND that exactly one
+  of the three fires on every well-formed same-size patterns dict;
+  the partition's coverage and disjointness asserted together. Plus
+  strict-disjoint checks against iter 24 and iter 26 on the group-
+  count axis alone (both strictly require `num_groups == 1`,
+  foreclosing co-firing), boundary edges at `num_groups == 0` /
+  `num_groups == 1` (both must NOT fire), strict bool-subclass
+  rejection on `num_groups`, fail-closed on missing field, side-
+  effect-freedom, determinism, co-firing with `output_color_uniform`
+  / `input_color_uniform` / `consistent_color_mapping` /
+  `sequential_recoloring` / `grid_size_preserved`, non-refinement
+  against `grid_size_preserved` (multi-blob on dimension-changed
+  pairs), the iter-28-distinct non-refinement case against iter 10
+  (`does_not_require_constant_group_count_across_pairs`: 2-blob pair
+  next to 4-blob pair fires this matcher but NOT iter 10), and
+  end-to-end agreement with the live `_analyze_pair` output on
+  two-blob / four-blob / single-blob / zero-change 3×3 grids.
+- `tests/test_recognized_conditions.py` (EDIT) -- two assertion
+  updates. The registry-set `==` assertion grows by one entry
+  (`multi_group_per_pair`) to keep iter 11's tight-equality contract
+  intact (a stray @register would still surface immediately).
+  `test_all_three_matchers_fire_on_compatible_patterns` expected
+  exactly `{grid_size_preserved, consistent_color_mapping,
+  sequential_recoloring}` to fire on `_patterns_all_three_fire()`;
+  that fixture has `num_groups: 3` per pair, so
+  `multi_group_per_pair` now legitimately also fires. The expected
+  set grows by one to reflect the registry growth; the comment
+  records the iter-28 expansion explicitly. The other 17 cases pass
+  unchanged.
+- `docs/RULE_FORMAT.md` (EDIT): section 4 gains a new row for
+  `multi_group_per_pair` describing the partition invariant, the
+  strict-disjoint partnerships with iters 13 / 23 / 24 / 26, the
+  non-refinement relation with iter 10, the future multi-blob
+  uniform-paint emission gate it names, and the iter-27 "Next gap"
+  log citation. Section 7 "As of" bumped from iter 27 to iter 28;
+  the `agent/conditions/` row appends an iter-28 entry
+  (P5: 12 → 13); a new row for `tests/test_multi_group_per_pair.py`
+  records the 42 dependency-free cases including the three-way
+  partition invariant.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 -- no
+new DSL primitive added, `coloring` and `make_grid` remain the only
+two hand-coded primitives, the iter-28 matcher composes nothing on
+the DSL side); `agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` node
+classes / `data/` (F1 inert); `agent/active_operators.py` (F2 / F8
+inert -- matcher-only addition uses an existing `num_groups` field);
+`agent/memory.py` (no edits this iter -- the matcher is
+recognition-vocabulary only, the emission branch that consumes this
+matcher is the next-iter step); no new rules persisted (F4
+vacuously satisfied -- the probe tasks do not fire
+`multi_group_per_pair`, so no iter-28 rule was minted this iter;
+the matcher's behaviour is verified by the test surface); no
+`semantic_memory/` artifacts (F5 inert); `run_loop.sh` /
+`run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py` (F6 inert);
+no `except RuleSchemaError` added or modified (F7 inert); F8
+companion-touch question vacuously inert because
+`agent/active_operators.py` has zero diff this iter.
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P5=12, P4=69.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) fire
+`grid_size_changed` / `input_dimensions_constant` /
+`output_dimensions_constant` / `consistent_color_mapping` /
+`grid_size_preserved` but NOT `multi_group_per_pair` -- the
+iter-28 matcher is latent on this probe set (the probe tasks
+have `make_grid`-shape patterns where the per-pair group-count
+axis is not the gating field). Same latency pattern as iters 23 /
+24 / 26 had on their first-iter recognition additions; the
+matcher is verified by the test surface, not by a probe rule
+save.
+
+**Probe after**: Correct 0/3 (0.0%), Rules 0 (no rule saved --
+probe tasks do not fire the iter-28 matcher). P4 grew 69 -> 72
+from the three new episodic entries written by `_record_attempt()`
+on the iter-28 probe re-run -- the solve loop continues to write
+attempt folders correctly through the new registry.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`b7b4477a`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+  - F1: no diff against `data/`, `agent/cycle.py`, `agent/wm.py`,
+    or any `ARCKG/*.py` node class.
+  - F2: no new `_try_<name>` / `_apply_<name>` method --
+    `agent/active_operators.py` has zero diff this iter.
+  - F3: no diff against `procedural_memory/DSL/*.py`.
+  - F4: no new files under `procedural_memory/`.
+  - F5: no diff in `semantic_memory/`.
+  - F6: no diff in `run_loop.sh` / `run_pipeline.sh` /
+    `run_learn.py` / `run_1ktasks.py`.
+  - F7: no `except RuleSchemaError` added or modified -- the new
+    matcher's failure mode is `return False`, not exception
+    swallow.
+  - F8: `agent/active_operators.py` numstat 0/0 this iter; the
+    F8 net-positive-additions guard cannot fire on a zero-diff
+    file. Companion-touch question vacuously inert.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 69 -> 72, P5 12 -> 13, P6 611 -> 611.
+- verdict: **CLEAN** (2 positive deltas -- P5 +1 from
+  `multi_group_per_pair` registration, P4 +3 from the iter-28
+  probe re-run).
+
+**Why this is real progress (not lipstick)**: P5 is the
+recognition-vocabulary counter, and iter 28 grows it by 1 in the
+specific direction iter 27's "Next gap" log named -- the deferred
+multi-blob axis. The matcher completes a canonical partition on the
+per-pair group-count axis: together with iter 13 (zero) and iter 23
+(one) the three matchers now partition the per-pair group-count
+axis into three pairwise-disjoint regimes with full coverage (every
+same-size patterns dict fires exactly one of the three, no
+overlap). Iter 23's "Next gap" log named "selection-shape
+recognition, group-count recognition, position recognition
+matchers" as the territory; iter 28 closes the simplest entry on
+the multi-blob side of the group-count axis. Iter 27's "Next gap"
+log explicitly named this addition: "extend the recognition axis
+with a `multi_group_per_pair` matcher (`num_groups >= 2` per pair
+-- the simplest entry on the deferred multi-blob axis from iter
+23's territory), then write the emission branch that consumes it"
+-- iter 28 lands the matcher; the emission consumer is the
+canonical iter-23 / iter-24 / iter-26 cadence's next step (matcher
+this iter, emission consumer one iter later). P6 holds at 611 (no
+`_try_*` accretion); P1 / P2 / P3 unchanged (matcher-only addition
+does not affect slow-path output or rule generality). All 42 new
+test cases pass on this host; all 20 previously-passing test
+suites continue to pass (consistent_color_mapping, dsl, episodic,
+fast_path_schema_rule, grid_size_changed, identity_transformation,
+input_color_uniform, input_dimensions_constant, load_related,
+multi_cell_change_group_per_pair, next_rule_id,
+output_color_uniform, output_dimensions_constant,
+persist_pipeline_rule, recognized_conditions, save_rule,
+sequential_recoloring, single_cell_change_per_pair,
+single_change_group_per_pair, translate_to_schema, unify) -- the
+iter-28-expanded set assertion in `test_recognized_conditions.py`
+is the canonical iter-28 declaration site.
+
+**Next gap (note for future iter)**: The canonical next step is the
+emission branch consuming `multi_group_per_pair`, mirroring iter
+25's relationship to iter 24 and iter 27's relationship to iter 26.
+Option (a) -- per-blob uniform paint: emit
+`coloring(grid, selection=all_blobs_positions_flat, color=K)` gated
+on `multi_group_per_pair` + `output_color_uniform` (iter 18) +
+`input_dimensions_constant` (iter 22) + `grid_size_preserved`
+(iter 1), where `all_blobs_positions_flat` is the row-major-sorted
+concatenation of every group's `positions` field. This is the
+smaller half and an F8-INERT edit -- `agent/active_operators.py`
+already emits `positions` per group (iter 27), so the emission
+branch is a pure `agent/memory.py` addition with no
+`active_operators.py` touch needed (in contrast to iter 27's
+`positions` extension which DID require a companion touch).
+Defensive helper `_extract_multi_blob_paint_args` would mirror
+iter 27's `_extract_multi_cell_paint_args` posture: assemble the
+union of all blob positions per pair, verify the position SET is
+bit-identical across all training pairs, verify K is in the
+`coloring` primitive's valid palette. Option (b) -- per-blob
+distinct paint -- needs anti-unification or a richer action
+shape; option (a) is the smaller half. The largest unfilled gap
+remains P3: anti-unification has been wired into `save_rule` since
+iter 6 but has never fired because no two rules have ever shared
+a `(condition.type, action.dsl)` skeleton on disk. Once the
+iter-29 multi-blob emission lands (rule shape #4 on disk), the
+input preconditions for AU to actually do work exist -- multiple
+saved `coloring`-action rules with potentially different selection
+cardinalities are exactly the inputs anti-unification would lift
+`selection` into a variable across. P3 has been at 0.0 for 28
+iters and is the architectural goal's load-bearing metric
+(Chollet-style skill-acquisition efficiency); reaching P3 > 0 is
+what makes the system "self-extending" in the way PROMPT.md §1
+names.
