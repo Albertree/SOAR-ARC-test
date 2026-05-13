@@ -7105,3 +7105,15 @@ unambiguous.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_001449.log
+
+> STAGNATION at iter 65 — 27 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 00:15
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260514_001510.log
