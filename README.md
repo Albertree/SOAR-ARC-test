@@ -54,7 +54,7 @@ ARC-solver2/
 │   ├── preferences.py       select_operator() — PREFERENCE_ORDER-based selection
 │   ├── cycle.py             run_cycle() — Elaborate→Propose→Select→Apply loop
 │   ├── agent_common.py      build_wm_from_task / goal_satisfied / answers_from_wm
-│   ├── memory.py            chunk_from_substate / LTM save/load
+│   ├── memory.py            translate_to_schema / save_rule / validate_rule (LTM)
 │   └── active_agent.py      ActiveSoarAgent — env-compatible agent interface
 │
 ├── env/                     ← Evaluation environment

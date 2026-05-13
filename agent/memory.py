@@ -1130,17 +1130,6 @@ def increment_reuse_count(entry: dict) -> None:
         pass
 
 
-def load_rules_from_ltm(task_hex: str,
-                        semantic_memory_root: str = "semantic_memory") -> list:
-    """Legacy interface — task_hex unused, loads all rules."""
-    return load_all_rules()
-
-
-def chunk_from_substate(substate: dict) -> dict:
-    """Placeholder — extract rule from resolved substate."""
-    return {}
-
-
 # ======================================================================
 # Internal helpers — used by ``translate_to_schema`` to derive concept /
 # category labels from a legacy pipeline rule dict. The legacy

@@ -9439,3 +9439,135 @@ same iter. With iter 178's dead-code removal NOW complete, the
 `translate_to_schema` block -- so the diff is incrementally easier to
 review. As of this iter all 33 test scripts pass; no other test is
 failing.
+
+> STAGNATION at iter 178 — 3 consecutive neutral iters.
+
+---
+## Iter 179 -- 2026-05-14T07:46Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with the same identity fallback the last
+nine iters have logged. Iter 178 retired the legacy `save_rule_to_ltm`
+writer and explicitly named `chunk_from_substate` as the remaining
+unused-public-API deletion candidate; an audit of the rest of
+`agent/memory.py`'s public surface confirms `load_rules_from_ltm` is the
+adjacent twin (one-line wrapper around `load_all_rules`, zero call
+sites in the repo). Both functions are pure dead code: no production
+code, test, script, or other module references them. Smallest defensible
+step closes the audit iter 178 opened on the same file. The README
+description of `agent/memory.py` still lists `chunk_from_substate` as
+the headline export -- a doc-drift artefact from the iter-178 cleanup
+that wasn't carried into the README -- so the removal is paired with a
+sync to the actual current main exports (`translate_to_schema`,
+`save_rule`, `validate_rule`).
+
+**Change**:
+- `agent/memory.py`: deleted `load_rules_from_ltm` (4 lines incl. def
+  / docstring) and `chunk_from_substate` (3 lines incl. def /
+  docstring) -- both orphans confirmed by repo-wide grep. Net -11 lines.
+- `README.md`: synced the `agent/memory.py` row of the directory tree
+  from "chunk_from_substate / LTM save/load" to "translate_to_schema /
+  save_rule / validate_rule (LTM)" -- matches the actual main surface
+  area post-iter-178 single-write-path consolidation.
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0 (not
+re-run -- this iter does not touch the solve path; pure dead-code
+removal + doc sync)
+
+**Invariants**: forbidden=none, positives=P1 / P2 / P3 / P4 / P5 / P6
+all unchanged. `scripts/check_invariants.sh --check` verdict
+**NEUTRAL** (no positive deltas, no forbidden trips). 33/33 test
+scripts pass. F1 inert (no frozen-file touch -- `agent/memory.py` is
+not in the F1 set, only `agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py`
+nodes / `data/` are); F2 inert (no `_try_*` / `_apply_*`); F3 inert
+(no DSL primitive); F4 inert (no rule file written); F5 inert (no
+`semantic_memory/` touch); F6 inert (no budget growth); F7 inert (no
+exception handling change); F8 inert (no `active_operators.py` touch).
+
+**Why a NEUTRAL iter is correct work here**: This is the fourth
+consecutive NEUTRAL after iters 176 / 177 / 178; the STAGNATION
+notice iter 178 surfaced is informational only per `INVARIANTS.md`
+section 3 -- the loop continues and the user controls the response,
+not the auto-revert. The available smallest-step options were:
+(i) add a 25th matcher to escape NEUTRAL by P5 increment -- explicitly
+named matcher-treadmill behaviour by iters 175 / 176 / 177 and
+exactly the failure mode F2 was designed to prevent on the
+transformation-vocabulary axis; (ii) write another sibling test-
+coverage gap-fill file (the iter-177 pattern) -- repeats inertial
+work without the iter-38-specific orthogonality contract that made
+iter 177's coverage gap a real correctness debt; (iii) the named
+larger emission-side option (b) (multi-rule mint per solve) -- still
+atomic three-part across `agent/memory.py` AND `agent/active_agent.py`
+AND a new emission branch, not splittable into a smaller defensible
+piece without leaving a half-wired return-type widening on
+`translate_to_schema` that 168 test-call sites would have to absorb;
+or (iv) close iter 178's named audit by deleting the named candidate
+plus the adjacent twin and syncing the stale README description. Iter
+178's three-NEUTRAL framing argued for the dead-code removal one
+function at a time; iter 179 finishes the audit on a strictly smaller
+diff (11 lines vs iter 178's 87) because both remaining orphans are
+single-purpose wrappers with no internal state to dismantle. The
+README sync is the iter-178 followup that should have happened in the
+same iter: the doc still pointed at `chunk_from_substate` as the
+headline export AFTER iter 178 removed half of `agent/memory.py`'s
+implementation. Deferring it past iter 179 means the next iter
+opening `agent/memory.py` from a fresh start would see the README
+description and assume `chunk_from_substate` is the main entry point.
+
+**Next gap (note for future iter)**: `agent/memory.py`'s public surface
+is now exactly the load / save / validate / next-id / load-related /
+increment-reuse / translate quintet plus the two private label-inference
+helpers -- no further unused-public-API candidates remain on this
+file. The single most defensible larger-than-this-iter step remains
+unchanged from iters 170 / 171 / 172 / 173 / 174 / 175 / 176 / 177 /
+178: `translate_to_schema` still has no non-identity emission branch
+that fires on the seed=42 probe tasks. The post-iter-179 episodic
+record at `episodic_memory/00576224/attempt_176/metadata.json` shows
+`fired_conditions = [grid_size_changed, input_dimensions_constant,
+output_dimensions_constant, output_dimensions_multiple_of_input]` for
+00576224 (the tile task: 4 matchers fire but no branch consumes the
+conjunction; `output_dimensions_multiple_of_input` is the iter-39
+matcher named SPECIFICALLY for the tile-shape rule but has no
+emission branch); 007bbfb7 adds `consistent_color_mapping` to that
+set (5 matchers fire, also no branch); 009d5c81 fires 8 matchers
+including `multi_group_per_pair` AND `change_color_mapping_count_
+constant_across_pairs` but lacks `change_positions_constant_across_
+pairs` (positions vary), so paint_blobs fails its gate. The two
+long-standing candidates remain (unchanged from iter 178):
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 + `apply_
+DSL` to let `action.args` carry derived selection (e.g. "wherever
+input has colour C"). The only path that handles `00576224` /
+`007bbfb7` / `009d5c81` without anti-unification first lifting
+`selection`; bigger than a smallest-step iter.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-table-
+emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints
+one `coloring` sibling rule per distinct output colour. Uses only
+the frozen `coloring` primitive (F3 inert) and is the natural setup
+for anti-unification to lift the per-cell coord lists into a colour-
+keyed selection variable across the sibling rules. Still atomic
+three-part across `agent/memory.py` AND `agent/active_agent.py` AND
+a new emission branch; iter 178's `save_rule_to_ltm` removal AND
+iter 179's `load_rules_from_ltm` / `chunk_from_substate` removal
+shrink the `agent/memory.py` half by ~98 cumulative lines, making
+(b)'s diff incrementally easier to review. Tertiary option: an
+emission branch that consumes the 00576224 tile-shape fired-conditions
+conjunction (iter-17 / iter-20 / iter-39: grid_size_changed AND
+output_dimensions_constant AND output_dimensions_multiple_of_input)
+-- this is a `make_grid`-style canvas-then-tile composition that
+would need a 2-DSL-call action shape (`make_grid` then `coloring`),
+beyond the current single-DSL `action.dsl` schema; would require
+extending `validate_rule` V4 to accept a composition rather than a
+single primitive name. As of this iter all 33 test scripts pass; no
+other test is failing.
+
+---
+## Learning Loop -- 2026-05-14 07:46
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_074555.log
