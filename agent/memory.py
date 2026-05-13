@@ -283,7 +283,7 @@ def load_related(category: str, *,
     return out
 
 
-_VALID_DSL_COLORS = frozenset(range(10)) | {13}
+from procedural_memory.DSL.apply import VALID_COLORS as _VALID_DSL_COLORS
 
 
 def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,

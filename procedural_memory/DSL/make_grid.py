@@ -18,9 +18,7 @@ ship with. See ``CLAUDE.md §6.1`` and ``docs/INVARIANTS.md §1 F3``.
 
 from __future__ import annotations
 
-from procedural_memory.DSL.apply import register
-
-_VALID_COLORS = frozenset(range(10)) | {13}
+from procedural_memory.DSL.apply import VALID_COLORS as _VALID_COLORS, register
 
 
 @register("make_grid")

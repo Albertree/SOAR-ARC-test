@@ -18,6 +18,15 @@ from typing import Any, Callable, Dict
 
 DSL_REGISTRY: Dict[str, Callable[..., Any]] = {}
 
+# Canonical ARC colour palette: the ten paintable colours (0..9) plus the
+# transparent / no-paint sentinel (13). The two hand-coded primitives
+# (``coloring``, ``make_grid``) reject any other value at runtime; the
+# rule-emission helpers in ``agent.memory`` pre-validate against the same
+# domain so a malformed rule cannot reach disk. Single source of truth
+# imported by all four sites — keep them in lockstep by construction
+# instead of by lockstep-edit discipline.
+VALID_COLORS: frozenset[int] = frozenset(range(10)) | {13}
+
 
 def register(name: str) -> Callable[[Callable[..., Any]], Callable[..., Any]]:
     """Decorator: bind a primitive function to ``name`` in ``DSL_REGISTRY``.

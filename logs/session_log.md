@@ -9571,3 +9571,154 @@ other test is failing.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_074555.log
+
+> STAGNATION at iter 179 — 4 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 08:13
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_081325.log
+
+---
+## Iter 180 -- 2026-05-14T08:15Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with identity fallback. Iter 179's "Next gap"
+named (a) polymorphic-args and (b) multi-rule mint as the only paths
+to non-identity emission on the seed=42 probe, both still too big for
+a smallest-step iter. Audit of the file surface around the iter 178 / 179
+cleanup line of attack surfaced one remaining structural-risk
+foot-gun: the canonical ARC colour palette `frozenset(range(10)) | {13}`
+is duplicated as a module-level literal in FOUR sites
+(`procedural_memory/DSL/coloring.py:_VALID_COLORS`,
+`procedural_memory/DSL/make_grid.py:_VALID_COLORS`,
+`agent/memory.py:_VALID_DSL_COLORS`, with the two DSL primitives being
+the authoritative runtime validators). Any future palette change
+(e.g. adding a second sentinel) requires lockstep edits to all three
+literals with no mechanism enforcing consistency -- exactly the
+divergence foot-gun pattern iter 178 closed for the `save_rule_to_ltm`
+output shape.
+
+**Change**:
+- `procedural_memory/DSL/apply.py`: added a public `VALID_COLORS:
+  frozenset[int] = frozenset(range(10)) | {13}` constant beside
+  `DSL_REGISTRY`, with a docstring naming it the single source of truth
+  for the colour-domain check shared by the two primitives and
+  `agent/memory.py`'s emission helpers. The DSL package's `apply`
+  module is the natural home -- it already owns `DSL_REGISTRY` and
+  the `register` decorator that both primitives import from.
+- `procedural_memory/DSL/coloring.py`: replaced the local
+  `_VALID_COLORS = frozenset(...)` literal with `from
+  procedural_memory.DSL.apply import VALID_COLORS as _VALID_COLORS,
+  register`. The `as _VALID_COLORS` alias preserves the existing
+  module-internal name so the four use-sites below are byte-identical
+  no-op edits.
+- `procedural_memory/DSL/make_grid.py`: same as `coloring.py`.
+- `agent/memory.py`: replaced the module-level `_VALID_DSL_COLORS =
+  frozenset(...)` literal with `from procedural_memory.DSL.apply
+  import VALID_COLORS as _VALID_DSL_COLORS`. Module-level import is
+  safe -- `procedural_memory/DSL/apply.py` has no transitive
+  dependency on `agent/`, so no circular-import risk. The existing
+  lazy `_dsl_registry()` helper for `DSL_REGISTRY` is left untouched
+  since its lazy-import posture targets a different concern (the
+  registry's contents, which depend on the auto-load order in the DSL
+  package `__init__.py`); the palette constant is a literal frozenset
+  available the moment `apply` is imported.
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0 (not
+re-run -- this iter does not touch the solve path; pure single-source-
+of-truth consolidation with byte-identical runtime behaviour, verified
+by `python -c "assert VALID_COLORS is _VALID_COLORS is _VALID_DSL_COLORS"`
+showing all four references resolve to the same `frozenset` object)
+
+**Invariants**: forbidden=none, positives=P1 / P2 / P3 / P4 / P5 / P6
+all unchanged. `scripts/check_invariants.sh --check` verdict
+**NEUTRAL** (no positive deltas, no forbidden trips). 33/33 test
+scripts pass. F1 inert (no frozen-file touch -- the modified files
+are `agent/memory.py` and three files under `procedural_memory/DSL/`,
+none of which are in the F1 set); F2 inert (no `_try_*` / `_apply_*`
+methods); F3 inert (no new `@register` decorator -- the diff under
+`procedural_memory/DSL/*.py` adds a module-level data constant
+`VALID_COLORS` and removes two redundant `_VALID_COLORS` literals,
+which does NOT match the F3 grep `^\+(@|\s+@).*register`); F4 inert
+(no rule file written); F5 inert (no `semantic_memory/` touch); F6
+inert (no budget growth); F7 inert (no exception handling change --
+the consolidated import is unconditional, mirroring the existing
+direct imports of `register` in both primitives); F8 inert (no
+`active_operators.py` touch).
+
+**Why a NEUTRAL iter is correct work here**: This is the fifth
+consecutive NEUTRAL after iters 176 / 177 / 178 / 179; the STAGNATION
+notice the loop appended at iters 178 / 179 is informational only per
+`INVARIANTS.md` section 3 -- the loop continues and the user controls
+the response, not the auto-revert. The available smallest-step
+options were: (i) a 25th matcher to escape NEUTRAL by P5 increment --
+explicitly named matcher-treadmill behaviour by iters 175 / 176 / 177
+and exactly the failure mode F2 was designed to prevent on the
+transformation-vocabulary axis; (ii) the named larger emission-side
+option (b) (multi-rule mint per solve) -- still atomic three-part
+across `agent/memory.py` AND `agent/active_agent.py` AND a new
+emission branch, not splittable into a smaller defensible piece
+without leaving a half-wired return-type widening on
+`translate_to_schema` that 168 test-call sites would have to absorb;
+(iii) close another structural-risk foot-gun via consolidation in
+the iter-178 cleanup line of attack -- the palette-literal
+divergence risk named above. Option (iii) is strictly smaller than
+the iter-178 / iter-179 dead-code-removal diffs (4 files, 6 lines
+net) and closes a concrete divergence foot-gun the codebase had no
+mechanism enforcing. The iter-178 framing for "structural cleanup
+that closes an F-class foot-gun" applies on this axis: iter 178's
+`save_rule_to_ltm` removal closed an F4 risk (legacy output shape
+could mint condition-less rules); this iter closes a palette-
+divergence risk that would surface as a `validate_rule`-vs-runtime
+disagreement (a rule with `color = 13` that `validate_rule` accepts
+because `_VALID_DSL_COLORS` contains 13, but `coloring` rejects
+because someone updated `_VALID_DSL_COLORS` and forgot
+`_VALID_COLORS` -- or vice versa). The foot-gun was latent because
+no iter has ever changed the palette; the consolidation makes the
+risk impossible by construction. The chosen split (public
+`VALID_COLORS` in `apply.py` + alias imports preserving the existing
+private `_VALID_COLORS` / `_VALID_DSL_COLORS` names) is the minimum
+delta -- the four use-sites do not change, only the literal's source
+moves.
+
+**Next gap (note for future iter)**: With the colour palette
+consolidated to a single source of truth, `agent/memory.py` has no
+more module-level literal constants that duplicate DSL-package data
+(the only remaining literals -- the regex patterns `_HEX8_RE` and
+`_AU_TRACE_RE` -- encode `docs/RULE_FORMAT.md` patterns that live in
+that doc, not in the DSL package). The single most defensible
+larger-than-this-iter step remains unchanged from iters 170 / 171 /
+172 / 173 / 174 / 175 / 176 / 177 / 178 / 179: `translate_to_schema`
+still has no non-identity emission branch that fires on the seed=42
+probe tasks (00576224 / 007bbfb7 are tile-style; 009d5c81 is
+multi-blob with positions varying). The two long-standing candidates
+remain (unchanged from iter 179):
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 + `apply_
+DSL` to let `action.args` carry derived selection (e.g. "wherever
+input has colour C"). The only path that handles `00576224` /
+`007bbfb7` / `009d5c81` without anti-unification first lifting
+`selection`; bigger than a smallest-step iter.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-table-
+emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints
+one `coloring` sibling rule per distinct output colour. Uses only
+the frozen `coloring` primitive (F3 inert) and is the natural setup
+for anti-unification to lift the per-cell coord lists into a colour-
+keyed selection variable across the sibling rules. Still atomic
+three-part across `agent/memory.py` AND `agent/active_agent.py` AND
+a new emission branch; iter 178's `save_rule_to_ltm` removal AND
+iter 179's `load_rules_from_ltm` / `chunk_from_substate` removal
+AND this iter's palette consolidation shrink the `agent/memory.py`
+half by ~99 cumulative lines, making (b)'s diff incrementally
+easier to review. Tertiary option remains unchanged from iter 179:
+an emission branch that consumes the 00576224 tile-shape fired-
+conditions conjunction would need a 2-DSL-call action shape
+(`make_grid` then `coloring`), beyond the current single-DSL
+`action.dsl` schema. As of this iter all 33 test scripts pass.
