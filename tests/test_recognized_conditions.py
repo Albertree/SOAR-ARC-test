@@ -131,9 +131,10 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 33
-    # there are sixteen such modules; tightening the assertion to ``==``
-    # keeps a stray @register import from sneaking into the package.
+    # the matcher modules under ``agent/conditions/``. As of iter 34
+    # there are seventeen such modules; tightening the assertion to
+    # ``==`` keeps a stray @register import from sneaking into the
+    # package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -151,22 +152,28 @@ def test_registry_contents_after_helper_load() -> None:
         "change_positions_constant_across_pairs",
         "change_count_constant_across_pairs",
         "output_dimensions_multiple_of_input",
+        "change_colors_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
 def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # Iter 28 expanded the set: the fixture has num_groups=3 per pair,
     # so multi_group_per_pair (iter 28's matcher, true iff num_groups
-    # >= 2 per pair) also legitimately fires here. The three matchers
-    # in this test's name remain the iter-10 colour/dimension subset;
-    # the assertion grows with the registry rather than fighting it.
+    # >= 2 per pair) also legitimately fires here. Iter 34 expands it
+    # again: the fixture's two pairs share an identical per-pair colour-
+    # mapping set {(0, 3), (1, 4), (2, 5)}, so
+    # change_colors_constant_across_pairs (iter 34's matcher) also
+    # legitimately fires. The three matchers in this test's name remain
+    # the iter-10 colour/dimension subset; the assertion grows with the
+    # registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
         "consistent_color_mapping",
         "sequential_recoloring",
         "multi_group_per_pair",
-    }, f"expected the four compatible matchers to fire, got {fired}"
+        "change_colors_constant_across_pairs",
+    }, f"expected the five compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
