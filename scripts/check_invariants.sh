@@ -19,10 +19,37 @@ SNAPSHOT_PATH="${2:-logs/_invariant_snapshot.json}"
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 cd "$REPO_ROOT" || exit 99
 
+# ─── interpreter detection ───────────────────────────────────────────
+# On Windows hosts, `python3` is typically the Microsoft Store stub: it
+# exits with rc=49 without executing any script (prints only "Python"),
+# which would silently zero every metric below. Prefer an interpreter
+# that actually runs a one-liner. Honour $PYTHON_BIN if the caller pinned
+# one explicitly.
+if [ -n "${PYTHON_BIN:-}" ]; then
+    :
+else
+    PYTHON_BIN=""
+    for candidate in python3 python; do
+        if command -v "$candidate" >/dev/null 2>&1 \
+            && "$candidate" -c "import sys; sys.exit(0)" >/dev/null 2>&1; then
+            PYTHON_BIN="$candidate"
+            break
+        fi
+    done
+fi
+if [ -z "${PYTHON_BIN:-}" ]; then
+    echo "[invariants] no working python interpreter found (tried python3, python)" >&2
+    exit 99
+fi
+
 # ─── metric computation (pure python, no external deps) ──────────────
 compute_metrics() {
-    python3 - <<'PYEOF'
+    "$PYTHON_BIN" - <<'PYEOF'
 import json, os, glob, re, sys
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except AttributeError:
+    pass
 
 metrics = {}
 
@@ -34,7 +61,7 @@ au_traced = 0
 total = 0
 for path in rule_files:
     try:
-        with open(path) as f:
+        with open(path, encoding="utf-8") as f:
             r = json.load(f)
     except (OSError, json.JSONDecodeError):
         continue
@@ -69,14 +96,14 @@ init_path = "agent/conditions/__init__.py"
 if os.path.isfile(init_path):
     try:
         # parse-by-import would import side effects; just scan text
-        with open(init_path) as f:
+        with open(init_path, encoding="utf-8") as f:
             src = f.read()
-        cond_count = len(re.findall(r'@register\(', src)) + len(re.findall(r'CONDITION_REGISTRY\[[\'"]', src))
+        cond_count = len(re.findall(r'@register\(', src))
         # also count modules registered via decorator in agent/conditions/*.py
         for p in glob.glob("agent/conditions/*.py"):
             if p.endswith("__init__.py"):
                 continue
-            with open(p) as f:
+            with open(p, encoding="utf-8") as f:
                 cond_count += len(re.findall(r'@register\(', f.read()))
     except OSError:
         pass
@@ -85,7 +112,7 @@ metrics["P5_condition_matchers"] = cond_count
 # P6 — active_operators.py line count (lower is better)
 ao_lines = 0
 if os.path.isfile("agent/active_operators.py"):
-    with open("agent/active_operators.py") as f:
+    with open("agent/active_operators.py", encoding="utf-8") as f:
         ao_lines = sum(1 for _ in f)
 metrics["P6_active_operators_lines"] = ao_lines
 
@@ -104,7 +131,17 @@ PYEOF
 # ─── snapshot mode ───────────────────────────────────────────────────
 if [ "$MODE" = "--snapshot" ]; then
     mkdir -p "$(dirname "$SNAPSHOT_PATH")"
-    compute_metrics > "$SNAPSHOT_PATH"
+    if ! compute_metrics > "$SNAPSHOT_PATH"; then
+        rc=$?
+        echo "[invariants] snapshot failed (rc=$rc); removing partial $SNAPSHOT_PATH" >&2
+        rm -f "$SNAPSHOT_PATH"
+        exit "$rc"
+    fi
+    if [ ! -s "$SNAPSHOT_PATH" ]; then
+        echo "[invariants] snapshot produced empty output — refusing to write 0-byte file" >&2
+        rm -f "$SNAPSHOT_PATH"
+        exit 99
+    fi
     echo "[invariants] snapshot saved to $SNAPSHOT_PATH"
     exit 0
 fi
@@ -120,7 +157,7 @@ if [ ! -f "$SNAPSHOT_PATH" ]; then
     exit 99
 fi
 
-BASE_HEAD=$(python3 -c "import json; print(json.load(open('$SNAPSHOT_PATH'))['_head'])")
+BASE_HEAD=$("$PYTHON_BIN" -c "import json; print(json.load(open('$SNAPSHOT_PATH'))['_head'])")
 if [ -z "$BASE_HEAD" ]; then
     BASE_HEAD="HEAD~1"
 fi
@@ -162,10 +199,11 @@ fi
 F4_BAD=""
 for f in procedural_memory/rule_*.json; do
     [ -e "$f" ] || continue
-    if ! python3 -c "
+    if ! "$PYTHON_BIN" -c "
 import json, sys
 try:
-    r = json.load(open('$f'))
+    with open('$f', encoding='utf-8') as _fp:
+        r = json.load(_fp)
 except Exception as e:
     print('parse error: $f:', e); sys.exit(1)
 if 'condition' not in r or 'action' not in r:
@@ -240,10 +278,15 @@ fi
 # Positive-signal deltas
 echo
 echo "Positive signals (after − before):"
-python3 - "$SNAPSHOT_PATH" <<'PYEOF'
+"$PYTHON_BIN" - "$SNAPSHOT_PATH" <<'PYEOF'
 import json, sys, subprocess
+try:
+    sys.stdout.reconfigure(encoding="utf-8")
+except AttributeError:
+    pass
 
-before = json.load(open(sys.argv[1]))
+with open(sys.argv[1], encoding="utf-8") as _f:
+    before = json.load(_f)
 # recompute now
 result = subprocess.run([sys.executable, "-c", """
 import json, os, glob, re, sys
@@ -251,7 +294,8 @@ metrics={}
 rule_files = sorted(glob.glob('procedural_memory/rule_*.json'))
 solved=set(); covers=[]; au=0; total=0
 for p in rule_files:
-    try: r=json.load(open(p))
+    try:
+        with open(p, encoding='utf-8') as _f: r=json.load(_f)
     except: continue
     total+=1
     cv=r.get('covers',[])
@@ -270,17 +314,22 @@ metrics['P4_episodic_entries']=ep
 cc=0
 ip='agent/conditions/__init__.py'
 if os.path.isfile(ip):
-    cc+=len(re.findall(r'@register\\(',open(ip).read()))
+    with open(ip, encoding='utf-8') as _f: cc+=len(re.findall(r'@register\\(',_f.read()))
 for p in glob.glob('agent/conditions/*.py'):
     if p.endswith('__init__.py'): continue
-    cc+=len(re.findall(r'@register\\(',open(p).read()))
+    with open(p, encoding='utf-8') as _f: cc+=len(re.findall(r'@register\\(',_f.read()))
 metrics['P5_condition_matchers']=cc
 al=0
 if os.path.isfile('agent/active_operators.py'):
-    al=sum(1 for _ in open('agent/active_operators.py'))
+    with open('agent/active_operators.py', encoding='utf-8') as _f:
+        al=sum(1 for _ in _f)
 metrics['P6_active_operators_lines']=al
 print(json.dumps(metrics))
 """], capture_output=True, text=True)
+if result.returncode != 0 or not result.stdout.strip():
+    sys.stderr.write("[invariants] post-check recompute failed:\\n")
+    sys.stderr.write(result.stderr or "(no stderr)\\n")
+    sys.exit(99)
 after = json.loads(result.stdout)
 
 keys = ["P1_rule_coverage", "P2_mean_covers", "P3_au_traced_frac",

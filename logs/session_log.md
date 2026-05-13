@@ -225,3 +225,103 @@ deferred so this iter stays scoped to the DSL bootstrap.
      site) but it needs a real `unify()` body or a placeholder that emits the
      trace shape from `docs/ANTI_UNIFICATION.md` (which doesn't exist yet).
 The infra fix (1) is genuinely smaller and unblocks measurement.
+
+---
+## Learning Loop -- 2026-05-13 18:08
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_180819.log
+
+---
+## Iter 4 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Iters 1-3 all flagged the same infra blocker: `scripts/check_invariants.sh`
+hardcoded `python3`, which on this Windows host is the Microsoft Store stub
+(exits rc=49 without executing, garbles the script's exit accounting). The
+snapshot file at `logs/_invariant_snapshot.json` was 0 bytes for three iters
+straight, and the loop driver kept tagging each commit `[ERROR_49]` because its
+post-check verdict was unreachable. With the measurement system silently dead,
+no future iter could *honestly* report positive-signal deltas — every Δ would
+collapse to the baseline regardless of work done. Iter 3's "Next gap" called
+this out explicitly and ranked it ahead of wiring anti-unification, because
+the fix is mechanical and unblocks all subsequent verification. Smallest
+defensible step: make `scripts/check_invariants.sh` actually run end-to-end
+on this host.
+
+**Change**:
+- `scripts/check_invariants.sh` -- (a) detect a working Python interpreter into
+  `$PYTHON_BIN` (honours caller-pinned override; tries `python3` then `python`;
+  validates each candidate with `-c "import sys"` so the MS Store stub is
+  rejected by its rc=49). Replaced every hardcoded `python3` invocation with
+  `"$PYTHON_BIN"` (4 sites: `compute_metrics` heredoc, BASE_HEAD extraction,
+  F4 inner check, post-check positive-delta heredoc).
+- `scripts/check_invariants.sh` -- (b) added `encoding="utf-8"` to every
+  `open()` in the embedded Python (compute_metrics reads
+  `agent/conditions/__init__.py` and `agent/conditions/*.py` which contain
+  UTF-8 em-dashes/section-signs; on a Korean-locale Windows host `open()`
+  defaults to cp949 and raised `UnicodeDecodeError` silently swallowed by the
+  outer `2>/dev/null`). Both compute heredocs plus the F4 inner check now
+  open files as UTF-8 explicitly.
+- `scripts/check_invariants.sh` -- (c) call `sys.stdout.reconfigure(encoding="utf-8")`
+  in both heredocs so the human-readable output (Δ, ↑, ↓, ·, →) renders
+  without cp949 mojibake.
+- `scripts/check_invariants.sh` -- (d) hardened `--snapshot` mode: propagate
+  `compute_metrics`'s exit code instead of unconditionally `exit 0`, and
+  refuse to leave a 0-byte snapshot on disk. Post-check heredoc surfaces a
+  non-zero exit from the recompute subprocess instead of silently treating an
+  empty stdout as `{}`.
+- `scripts/check_invariants.sh` -- (e) made the P5 snapshot and recompute
+  paths agree on the matcher-count regex. Snapshot previously summed
+  `@register(` plus `CONDITION_REGISTRY\[['"]` which double-counted the
+  docstring example on line 30 of `agent/conditions/__init__.py`; the
+  recompute path used only `@register(`. After the fix, both paths use only
+  `@register(`. P5 is now consistently 1 on the current tree (one matcher
+  registered: `grid_size_preserved`). An unchanged repo no longer registers
+  as P5: -1.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0  (loop's iter-4 probe;
+identical to iters 1-3 since the slow path is still unwired).
+**Probe after** : (not re-run -- this iter does not affect the solve path; it
+unblocks the verification *measurement* that runs after every future iter).
+
+**Invariants**:
+- forbidden = none. Verified via the now-working checker against base HEAD
+  `e65cd282` (iter 3): F1 0-line diff in frozen-file paths; F2 no `+def _try_`
+  / `+def _apply_`; F3 untouched DSL Python; F4 no rule files exist; F5 no
+  `semantic_memory/.*[Tt][Ff]_` paths added; F6 no edits to `run_loop.sh` /
+  `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`; F7 no `except
+  RuleSchemaError` changes; F8 `agent/active_operators.py` untouched
+  (numstat 0/0). The checker itself now runs cleanly end-to-end (exit 0 for
+  snapshot, exit 2 for check on unchanged metrics) instead of exiting 49.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 0 → 0, P5 1 → 1,
+  P6 600 → 600. **Neutral on auto-measured signals** — this is pure
+  measurement infra. The payoff is that every *subsequent* iter's
+  positive-delta accounting will now be real instead of stuck-at-zero by a
+  broken interpreter. There is no honest P1–P6 delta to claim for fixing the
+  ruler; the ruler's correctness is a precondition for future Δ claims, not
+  itself a Δ.
+- `tests/test_save_rule.py`: 10/10 OK. `tests/test_dsl.py`: 17/17 OK. (Both
+  ran via direct `python tests/test_X.py` since pytest is unavailable in this
+  env; matches the dependency-free runner iters 2-3 stood up.)
+
+**Infra note (resolved by this iter)**: The `python3` MS Store stub blocker
+flagged in iters 1-3 is gone — `scripts/check_invariants.sh --snapshot`
+produces a valid JSON snapshot on this host, and `--check` against an
+unchanged-state baseline exits 2 (NEUTRAL) cleanly.
+
+**Next gap (note for future iter)**: With measurement unblocked, the next
+smallest-defensible step is to wire `program/anti_unification.py:unify()`
+into `agent/memory.py:save_rule()` per CLAUDE.md §8. `unify()` is currently
+a stub and `save_rule()` never calls it, so P3 (`anti_unification_trace`
+fraction) is structurally pinned at 0 even when rules exist. The integration
+itself is small (≤20 LOC at the call site) but needs either a real `unify()`
+body or a minimal placeholder that emits the trace shape documented in
+(still-to-be-written) `docs/ANTI_UNIFICATION.md`. Parallel candidate of
+similar size: migrate `agent/active_agent.py`'s import from
+`save_rule_to_ltm` to `save_rule` so the schema-aware writer actually fires
+on the solve path — but that one has more surface area in the call site,
+making the anti-unification wiring slightly smaller.
