@@ -394,7 +394,7 @@ the log so a matcher can be authored.
 
 ## 7. Implementation Status
 
-As of the creation of this document (2026-05-13, branch `test20`):
+As of 2026-05-13, branch `test20`:
 
 | Component | State |
 |-----------|-------|
@@ -402,9 +402,13 @@ As of the creation of this document (2026-05-13, branch `test20`):
 | `procedural_memory/rule_NNN.json` files (on `test13-eval`) | 168 files, **all violate schema** (Example 6.3 shape) |
 | `procedural_memory/DSL/` directory | **does not exist** on `main`; to be created |
 | `agent/conditions/` directory | bootstrapped on `test20`: `CONDITION_REGISTRY` + `grid_size_preserved` matcher |
-| `agent/memory.py:save_rule()` (new validator) | not implemented; existing `save_rule_to_ltm` produces legacy shape |
+| `agent/memory.py:RuleSchemaError` | **implemented (iter 2)** — `ValueError` subclass, never caught silently per F7 |
+| `agent/memory.py:validate_rule()` | **implemented (iter 2)** — enforces V1–V7; V3 fails until DSL registry holds ≥1 primitive |
+| `agent/memory.py:save_rule()` | **implemented (iter 2)** — schema-aware writer producing §1 shape |
+| `agent/memory.py:save_rule_to_ltm()` (legacy) | still present; emits the pre-test20 shape; sole caller is `agent/active_agent.py`. Migration to `save_rule()` deferred to a later iter |
 | `agent/memory.py:migrate_legacy_rules()` | not implemented |
-| `program/anti_unification.unify()` | file exists, integration with `save_rule()` not yet wired |
+| `program/anti_unification.unify()` | stub only; integration with `save_rule()` not yet wired |
+| `tests/test_save_rule.py` | **added (iter 2)** — 10 cases covering V1–V7 + happy path + side-effect-free check |
 
 The first session(s) under `PROMPT.md` will be tasked with bringing this
 inventory to a consistent state — see `PROMPT.md` for the current mission.

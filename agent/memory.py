@@ -1,34 +1,224 @@
 """
 memory — SOAR procedural memory (rule storage and retrieval).
 
-Each rule is stored as a JSON file in procedural_memory/:
-  procedural_memory/rule_001.json
-  procedural_memory/rule_002.json
-  ...
+Two write paths coexist here:
 
-Rule schema:
-  {
-    "id":          <int>          — unique sequential ID,
-    "concept":     "<str>"        — short human-readable name (e.g. "swap_two_colors"),
-    "category":    "<str>"        — color_transform | spatial_transform |
-                                    geometric_transform | fill_transform | other,
-    "rule":        { ... }        — the actual rule parameters used by PredictOperator,
-    "covers":      ["<task_id>"]  — all tasks this rule has successfully handled,
-    "source_task": "<task_id>"    — task that first triggered discovery of this rule,
-    "created_at":  "<ISO>"        — creation timestamp,
-    "times_reused": <int>         — how often the fast-path reused this rule
-  }
+  * Legacy (``save_rule_to_ltm``): the historical writer used by
+    ``agent/active_agent.py``. Emits the pre-test20 schema with a top-level
+    ``rule`` payload and no ``condition``/``action`` keys. Retained only so
+    the existing call site keeps compiling; any file it produces will fail
+    the F4 invariant if it is left on disk at iter-end.
 
-Design goal: FEW, GENERAL rules — not many specific ones.
-When a new rule is equivalent to an existing one, the existing rule's
-"covers" list is extended rather than creating a duplicate file.
+  * Schema-aware (``save_rule``): the canonical writer specified in
+    ``docs/RULE_FORMAT.md`` §1. Enforces validation rules V1–V7 from §3
+    via ``validate_rule()`` and raises ``RuleSchemaError`` on any
+    violation. This is the only path that may persist rules into
+    ``procedural_memory/`` going forward; call-site migration happens in a
+    later iter.
+
+Design goal: FEW, GENERAL rules — not many specific ones. When a new rule
+is equivalent to an existing one, the existing rule's ``covers`` list is
+extended rather than creating a duplicate file.
 """
+
+from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime
+from typing import Iterable
 
 PROCEDURAL_MEMORY_ROOT = "procedural_memory"
+
+# ======================================================================
+# Schema-aware path — see docs/RULE_FORMAT.md
+# ======================================================================
+
+_HEX8_RE = re.compile(r"^[0-9a-f]{8}$")
+_AU_TRACE_RE = re.compile(r"^episodic_memory/.+/anti_unification/.+\.json$")
+
+# Exactly the keys listed in docs/RULE_FORMAT.md §1 "required".
+_REQUIRED_TOP_LEVEL_KEYS = (
+    "id",
+    "concept",
+    "category",
+    "condition",
+    "action",
+    "covers",
+    "source_task",
+    "anti_unification_trace",
+    "created_at",
+    "times_reused",
+)
+
+_REQUIRED_CONDITION_KEYS = ("type", "params", "min_evidence")
+_REQUIRED_ACTION_KEYS = ("dsl", "args")
+
+
+class RuleSchemaError(ValueError):
+    """Raised by ``validate_rule`` / ``save_rule`` when a candidate rule does
+    not conform to ``docs/RULE_FORMAT.md`` §1 + §3. Callers must propagate
+    or log-then-re-raise; silently swallowing this exception is an F7
+    invariant violation (see ``docs/INVARIANTS.md`` §1 F7)."""
+
+
+def _condition_registry() -> dict:
+    """Lazy import to avoid a hard dependency at module load."""
+    from agent.conditions import CONDITION_REGISTRY  # local import
+    return CONDITION_REGISTRY
+
+
+def _dsl_registry() -> dict:
+    """Return the DSL primitive registry if available, else an empty dict.
+
+    The DSL package (``procedural_memory/DSL/``) is bootstrapped in a later
+    iter; until then every ``action.dsl`` value fails V3, which is
+    correct-by-construction — no rule may be persisted until at least one
+    DSL primitive is registered.
+    """
+    try:
+        from procedural_memory.DSL.apply import DSL_REGISTRY  # type: ignore
+    except Exception:
+        return {}
+    return DSL_REGISTRY
+
+
+def validate_rule(rule: dict, *,
+                  procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> None:
+    """Enforce V1–V7 from ``docs/RULE_FORMAT.md`` §3. Raises
+    ``RuleSchemaError`` on any failure; returns ``None`` on success."""
+    if not isinstance(rule, dict):
+        raise RuleSchemaError("schema validation failed: rule is not a JSON object")
+
+    # V1 — required top-level keys present, types correct, no extras.
+    missing = [k for k in _REQUIRED_TOP_LEVEL_KEYS if k not in rule]
+    if missing:
+        raise RuleSchemaError(
+            f"schema validation failed: missing required key(s) {missing}"
+        )
+    # V7 — no unexpected top-level keys.
+    extras = [k for k in rule.keys() if k not in _REQUIRED_TOP_LEVEL_KEYS]
+    if extras:
+        raise RuleSchemaError(f"unexpected key: {extras[0]}")
+
+    if not isinstance(rule["id"], int) or isinstance(rule["id"], bool) or rule["id"] < 1:
+        raise RuleSchemaError("schema validation failed: id must be a positive integer")
+    if not isinstance(rule["concept"], str) or not rule["concept"]:
+        raise RuleSchemaError("schema validation failed: concept must be non-empty string")
+    if not isinstance(rule["category"], str) or not rule["category"]:
+        raise RuleSchemaError("schema validation failed: category must be non-empty string")
+
+    cond = rule["condition"]
+    if not isinstance(cond, dict):
+        raise RuleSchemaError("schema validation failed: condition must be an object")
+    cond_missing = [k for k in _REQUIRED_CONDITION_KEYS if k not in cond]
+    if cond_missing:
+        raise RuleSchemaError(
+            f"schema validation failed: condition missing {cond_missing}"
+        )
+    cond_extras = [k for k in cond.keys() if k not in _REQUIRED_CONDITION_KEYS]
+    if cond_extras:
+        raise RuleSchemaError(f"unexpected key: condition.{cond_extras[0]}")
+    if not isinstance(cond["type"], str) or not cond["type"]:
+        raise RuleSchemaError("schema validation failed: condition.type must be non-empty string")
+    if not isinstance(cond["params"], dict):
+        raise RuleSchemaError("schema validation failed: condition.params must be an object")
+    if (not isinstance(cond["min_evidence"], int) or isinstance(cond["min_evidence"], bool)
+            or cond["min_evidence"] < 1):
+        raise RuleSchemaError(
+            "schema validation failed: condition.min_evidence must be integer ≥ 1"
+        )
+
+    act = rule["action"]
+    if not isinstance(act, dict):
+        raise RuleSchemaError("schema validation failed: action must be an object")
+    act_missing = [k for k in _REQUIRED_ACTION_KEYS if k not in act]
+    if act_missing:
+        raise RuleSchemaError(
+            f"schema validation failed: action missing {act_missing}"
+        )
+    act_extras = [k for k in act.keys() if k not in _REQUIRED_ACTION_KEYS]
+    if act_extras:
+        raise RuleSchemaError(f"unexpected key: action.{act_extras[0]}")
+    if not isinstance(act["dsl"], str) or not act["dsl"]:
+        raise RuleSchemaError("schema validation failed: action.dsl must be non-empty string")
+    if not isinstance(act["args"], dict):
+        raise RuleSchemaError("schema validation failed: action.args must be an object")
+
+    covers = rule["covers"]
+    if not isinstance(covers, list) or not covers:
+        raise RuleSchemaError("schema validation failed: covers must be non-empty list")
+    if len(set(covers)) != len(covers):
+        raise RuleSchemaError("schema validation failed: covers entries must be unique")
+    for t in covers:
+        if not (isinstance(t, str) and _HEX8_RE.match(t)):
+            raise RuleSchemaError(
+                f"schema validation failed: covers entry {t!r} not 8-hex-char task id"
+            )
+
+    src = rule["source_task"]
+    if not (isinstance(src, str) and _HEX8_RE.match(src)):
+        raise RuleSchemaError(
+            "schema validation failed: source_task must be 8-hex-char task id"
+        )
+
+    trace = rule["anti_unification_trace"]
+    if trace is not None:
+        if not (isinstance(trace, str) and _AU_TRACE_RE.match(trace)):
+            raise RuleSchemaError(
+                "schema validation failed: anti_unification_trace must be null or "
+                "match ^episodic_memory/.+/anti_unification/.+\\.json$"
+            )
+
+    if not isinstance(rule["created_at"], str) or not rule["created_at"]:
+        raise RuleSchemaError("schema validation failed: created_at must be non-empty string")
+    if (not isinstance(rule["times_reused"], int)
+            or isinstance(rule["times_reused"], bool)
+            or rule["times_reused"] < 0):
+        raise RuleSchemaError(
+            "schema validation failed: times_reused must be non-negative integer"
+        )
+
+    # V2 — condition.type registered.
+    cond_registry = _condition_registry()
+    if cond["type"] not in cond_registry:
+        raise RuleSchemaError(f"unknown condition.type: {cond['type']}")
+
+    # V3 — action.dsl registered. Empty registry until DSL primitives land.
+    dsl_registry = _dsl_registry()
+    if act["dsl"] not in dsl_registry:
+        raise RuleSchemaError(f"unknown action.dsl: {act['dsl']}")
+
+    # V4 — source_task ∈ covers.
+    if src not in covers:
+        raise RuleSchemaError("source_task must appear in covers")
+
+    # V5 — anti_unification_trace path exists if non-null.
+    if trace is not None and not os.path.isfile(trace):
+        raise RuleSchemaError(f"trace file not found: {trace}")
+
+    # V6 — id collision check against existing files.
+    target_name = f"rule_{int(rule['id']):03d}.json"
+    target_path = os.path.join(procedural_memory_root, target_name)
+    if os.path.exists(target_path):
+        raise RuleSchemaError(f"id collision: {target_name} exists")
+
+
+def save_rule(rule: dict, *,
+              procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
+    """Validate ``rule`` against the §1+§3 schema, then write it to
+    ``procedural_memory/rule_<id>.json``. Returns the file path. Raises
+    ``RuleSchemaError`` if validation fails — caller must not swallow.
+    """
+    os.makedirs(procedural_memory_root, exist_ok=True)
+    validate_rule(rule, procedural_memory_root=procedural_memory_root)
+
+    target_name = f"rule_{int(rule['id']):03d}.json"
+    target_path = os.path.join(procedural_memory_root, target_name)
+    with open(target_path, "w", encoding="utf-8") as fh:
+        json.dump(rule, fh, indent=2, sort_keys=False)
+    return target_path
 
 
 # ======================================================================
