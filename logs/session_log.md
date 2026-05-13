@@ -8894,3 +8894,159 @@ the constant set. The matcher just landed expresses the cardinality
 precondition; iter 34 expresses the set precondition. Either is
 defensible. As of this iter all 31 test scripts pass; no other test
 is failing.
+
+---
+## Learning Loop -- 2026-05-14 06:47
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 8s
+- Log: logs/learn_20260514_064721.log
+
+## Iter 175 -- 2026-05-13T21:57:23Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with `rule=identity`. Iters 173 / 174
+completed the cardinality-projection lineage (group COUNT axis and
+(ic, oc) mapping COUNT axis) so every existing set-axis matcher in
+the registry has a named cardinality sibling. Iter 174's "next gap"
+flagged emission-side branches (tile-emit, mapping-table-emit) but
+both require polymorphic action.args (e.g. selection derived from
+the test input's coords, or a recolour table of multiple coloring
+calls) -- larger than a smallest-step iter. The position-content
+axis still has only TWO entries (iter 30 SET + iter 32 COUNT); the
+JOINT axis -- per-cell (r, c, ic, oc) tuple constancy across pairs
+-- has NO named matcher. iter 30 + iter 34 together cover the
+marginals (position SET, (ic, oc) SET) but their CONJUNCTION does
+NOT imply per-cell constancy (the (r, c) -> (ic, oc) assignment can
+permute across pairs while both marginals match -- worked counter-
+example in the matcher docstring). Smallest defensible step: add the
+strictest cell-content matcher `change_cells_constant_across_pairs`
+which fuses position and per-cell (ic, oc) constancy into a single
+predicate. F8 inert (no `agent/active_operators.py` touch).
+
+**Change**:
+- `agent/conditions/change_cells_constant_across_pairs.py` (NEW) --
+  fires iff the per-pair flat union of (r, c, ic, oc) tuples (over
+  all change groups in a pair, requiring per-group input/output
+  cardinality 1) is bit-identical across every pair. Strict
+  refinement of iter 30 (position SET) AND iter 34 ((ic, oc) SET);
+  STRICT mutually exclusive with iter 13 by empty-union rejection;
+  orthogonal to iter 39 (group COUNT) since different group
+  partitions can produce the same flat per-cell set. Same strict-bool
+  / strict-int / strict-colour-range posture as iters 30 / 32 / 34 /
+  37 / 38 / 39 / 40. The docstring carries the worked counter-example
+  proving the iter-30 + iter-34 conjunction is STRICTLY weaker (e.g.
+  pair 0: (0,0):1->2, (1,1):3->4 vs pair 1: (0,0):3->4, (1,1):1->2 --
+  iter 30 fires, iter 34 fires, this matcher rejects).
+- `tests/test_change_cells_constant_across_pairs.py` (NEW) -- 48
+  dependency-free tests covering registry membership (>= 24), four
+  positive fixtures (single-pair, identical pairs, multi-cell, blob
+  uniform), the iter-30 + iter-34 permutation counter-example, two
+  flavours of negative fixture (position mismatch, mapping mismatch),
+  strict type guards (bool subclass / out-of-range colours / negative
+  coords / non-list positions / cell_count-positions lockstep / bool
+  cell_count / malformed entries), duplicate-coord rejection across
+  groups (corrupt connectivity), side-effect freeness, determinism,
+  strict bool return, mutual exclusion with iter 13, both directions
+  of the iter 30 / iter 34 refinement chains, iter-39 orthogonality
+  via the same-flat-set-different-group-partitions case, co-fire
+  with iter 32 / iter 18 / non-grid_size_preserved, and two
+  end-to-end fixtures driving `ExtractPatternOperator._analyze_pair`
+  for both the firing and the permutation-rejection cases.
+- `tests/test_recognized_conditions.py` (EDIT) -- bumped expected
+  registry from 23 to 24 entries (added the new matcher name),
+  updated docstring comment from "iter 40 ... twenty-three" to
+  "iter 41 ... twenty-four". The new matcher does NOT fire on
+  `_patterns_all_three_fire()` (whose groups lack `positions`), so
+  the existing assertion in
+  `test_all_three_matchers_fire_on_compatible_patterns` does not
+  need updating.
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0
+
+**Invariants**: forbidden=none, positives=P5: 23 -> 24 (Δ=+1); P1 /
+P2 / P3 / P4 / P6 unchanged. `scripts/check_invariants.sh --check`
+verdict **CLEAN** (1 positive delta). All 32 test scripts pass
+(31 from the prior baseline + the new file).
+
+**Why this is real work despite a flat probe**: The probe is not the
+reward (INVARIANTS.md §2); P5 is. The matcher names the JOINT
+position-and-colour cell-tuple constancy precondition that no entry
+in the recognition vocabulary currently carries -- the existing 23
+matchers cover the marginals (position SET via iter 30, position
+COUNT via iter 32, (ic, oc) SET via iter 34, (ic, oc) COUNT via iter
+40, input-colour SET / COUNT via iters 35 / 37, output-colour SET /
+COUNT via iters 36 / 38, group COUNT via iter 39) but the JOINT
+distribution across (r, c, ic, oc) tuples per pair is unnamed. The
+matcher is genuinely independent of the conjunction iter 30 AND
+iter 34 (worked counter-example in the docstring: permuted
+(r, c) -> (ic, oc) assignment satisfies both marginals while
+disagreeing on the joint). It is the STRICTEST cell-content
+constancy predicate the recognition layer can express on the
+per-cell (r, c, ic, oc) tuple data already emitted by
+`_analyze_pair` since iter 27 (positions field). A future
+translate_to_schema emission branch for a colour-dependent paint
+rule shape (action paints each cell with the output colour the
+training pair uses at that cell, drawn from a training-derived
+(r, c) -> oc lookup table) has no named recognition handle for the
+cross-pair per-cell invariant the action's apply-time lookup must
+reproduce until this matcher lands -- the position-axis matchers
+(iters 30 / 32) and the colour-axis matchers (iters 34 / 35 / 36 /
+37 / 38 / 40) jointly cover the marginals but leave the JOINT
+unnamed. Recognition vocabulary ahead of emission, the same posture
+iters 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 / 30 / 32 / 33 / 34
+/ 35 / 36 / 37 / 38 / 39 / 40 all carry. Smallest defensible step --
+the alternative emission-branch options iter 174 named (tile-emit,
+mapping-table-emit) both require polymorphic action.args, which is
+an architectural step larger than a single iter; the alternative
+matcher-side options on the orthogonal-cardinality lineage are
+exhausted (iter 174 closed that chain). The joint cell-tuple axis
+is the next genuinely missing axis on the cross-pair-content
+spectrum.
+
+**Next gap (note for future iter)**: With the joint cell-tuple
+constancy axis now named, every named cross-pair-content axis with
+information-theoretically-meaningful constancy has a registry
+entry. The most glaring unfilled gap remains the polymorphic
+action.args question iters 170 / 171 / 172 / 173 / 174 all named:
+`translate_to_schema` still has no non-identity emission branch
+that fires on the seed=42 probe tasks (00576224 / 007bbfb7 are
+tile-style with varying input dims; 009d5c81 is multi-blob with
+positions varying across pairs). The recognition vocabulary has
+nine matchers across the cross-pair-content axes (positions × 2,
+input-colours × 2, output-colours × 2, (ic, oc) × 2, group-count,
+plus the joint cell-tuple) -- the recognition side is now
+expressive enough that the next defensible step likely moves
+emission-side. Two candidates:
+(a) Introduce a derived-args schema extension that lets
+`action.args` carry a reference into the test input rather than a
+literal coord list -- e.g. ``{"selection_where_input": C, "color":
+K}`` for the "paint every cell of colour C with colour K" rule
+shape. Requires extending `validate_rule` (V4 / V7) to accept
+non-literal arg values, and extending `apply_DSL` to resolve them
+at apply time. This is the iter-16 polymorphic-args obstacle the
+session log has named since iter 16; the matcher landed this iter
+provides a named precondition (cells-constant) under which a
+*literal* per-cell-table representation is also possible, which
+is a smaller stepping stone than full polymorphism.
+(b) A cell-table-emit branch in `translate_to_schema` gated on
+the conjunction (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) emitting
+``action.dsl = "coloring"`` with
+``args = {"selection": [literal coord list], "color":
+<output_colour_at_that_position>}`` per cell -- but coloring takes
+a single colour, not a per-cell table. To preserve the
+single-color contract, the branch would need to mint MULTIPLE
+sibling rules (one coloring call per distinct output colour in
+the constant cell set), letting anti-unification later lift them.
+That is genuinely smaller than (a) since it uses only the frozen
+coloring primitive, but it depends on the slow path's
+`_persist_pipeline_rule` being willing to mint multiple rules
+from one solve invocation -- a change to the rule-emission
+control flow rather than the schema. Defer the choice to next
+iter. As of this iter all 32 test scripts pass; no other test is
+failing.
+
