@@ -68,19 +68,20 @@ class ActiveSoarAgent:
             "fired_conditions": [],
         }
 
-        # --- Fast path: try stored rules ---
+        # --- Fast path: try stored rules (legacy or §1-schema shape) ---
         stored_rules = load_all_rules(self.procedural_memory_root)
         for entry in stored_rules:
-            rule = entry.get("rule", {})
-            if rule.get("type") == "identity":
-                continue  # skip identity fallback rules
-            if self._rule_matches_examples(rule, task):
-                predicted = self._apply_rule_to_tests(rule, task)
+            if not isinstance(entry, dict):
+                continue
+            if self._is_identity_rule(entry):
+                continue  # skip identity fallback rules (legacy or schema)
+            if self._entry_matches_examples(entry, task):
+                predicted = self._apply_entry_to_tests(entry, task)
                 if predicted:
                     increment_reuse_count(entry)
                     self.last_solve_info.update({
                         "method": "stored_rule",
-                        "rule_type": rule.get("type", "unknown"),
+                        "rule_type": self._entry_rule_type(entry),
                         "rule_source": entry.get("source_task"),
                     })
                     self._submission_count += 1
@@ -182,27 +183,111 @@ class ActiveSoarAgent:
             root=self.episodic_memory_root,
         )
 
-    def _rule_matches_examples(self, rule, task) -> bool:
-        """Check if a rule produces correct output for ALL example pairs."""
+    def _is_identity_rule(self, entry) -> bool:
+        """True if ``entry`` encodes a no-op identity rule (legacy or §1).
+
+        Both rule shapes can carry an identity rule. Skipping them in the
+        fast path preserves the pre-iter-16 ``rule.get("type") ==
+        "identity"`` short-circuit's semantic: an identity rule "matches"
+        any task whose training pairs all have input == output, but that
+        is almost never the right answer for an unseen test pair. The
+        skip stays until anti-unification produces a non-no-op
+        identity-shaped abstraction.
+        """
+        if not isinstance(entry, dict):
+            return False
+        legacy_rule = entry.get("rule")
+        if isinstance(legacy_rule, dict) and legacy_rule.get("type") == "identity":
+            return True
+        cond = entry.get("condition")
+        if isinstance(cond, dict) and cond.get("type") == "identity_transformation":
+            return True
+        return False
+
+    def _entry_rule_type(self, entry) -> str:
+        """Surface a human-readable type tag for ``last_solve_info``.
+
+        Legacy entries expose ``entry["rule"]["type"]``; schema entries
+        expose ``entry["condition"]["type"]``. Falls back to ``"unknown"``
+        for anything else so the field is always a string.
+        """
+        if not isinstance(entry, dict):
+            return "unknown"
+        legacy_rule = entry.get("rule")
+        if isinstance(legacy_rule, dict) and isinstance(legacy_rule.get("type"), str):
+            return legacy_rule["type"]
+        cond = entry.get("condition")
+        if isinstance(cond, dict) and isinstance(cond.get("type"), str):
+            return cond["type"]
+        return "unknown"
+
+    def _entry_matches_examples(self, entry, task) -> bool:
+        """True iff ``entry``'s action reproduces every example pair's
+        output when applied to its input. Dispatches across legacy and
+        §1-schema shapes via ``_predict_with_entry``."""
         for pair in task.example_pairs:
             if pair.input_grid is None or pair.output_grid is None:
                 continue
-            predicted = self._predictor._apply_rule(rule, pair.input_grid)
+            predicted = self._predict_with_entry(entry, pair.input_grid)
             if predicted is None or predicted != pair.output_grid.raw:
                 return False
         return True
 
-    def _apply_rule_to_tests(self, rule, task) -> list:
-        """Apply a rule to all test inputs. Returns list of predicted grids."""
+    def _apply_entry_to_tests(self, entry, task) -> list:
+        """Apply ``entry``'s action to every test input. Returns a list
+        of predicted grids, or ``None`` if any test pair cannot be
+        predicted (preserving the all-or-nothing semantics of the
+        pre-iter-16 helper)."""
         grids = []
         for test_pair in task.test_pairs:
             if test_pair.input_grid is None:
                 return None
-            predicted = self._predictor._apply_rule(rule, test_pair.input_grid)
+            predicted = self._predict_with_entry(entry, test_pair.input_grid)
             if predicted is None:
                 return None
             grids.append(predicted)
         return grids
+
+    def _predict_with_entry(self, entry, input_grid):
+        """Dispatch rule application across legacy and §1-schema shapes.
+
+        Schema entries (``{condition, action, ...}``) route through
+        ``apply_DSL`` so iter-3's primitive layer is the sole runtime
+        evaluator for §1-shaped rules — schema rules persisted by
+        ``_persist_pipeline_rule`` (iter 15) can now be re-applied here
+        instead of being silently ignored (the pre-iter-16 fast path
+        called ``entry.get("rule", {})`` which returns ``{}`` on a
+        schema entry, then ``PredictOperator._apply_rule({}, ...)``
+        returned ``None``). Legacy entries continue to dispatch through
+        ``PredictOperator._apply_rule``.
+
+        Returns the predicted grid (list of lists of ints) or ``None``
+        if the rule cannot be applied to this input. A primitive that
+        raises ``ValueError``/``KeyError`` at apply time (e.g. OOB
+        selection from a saved rule applied to a smaller grid) is
+        treated as "rule does not apply here" → ``None``, matching the
+        legacy applier's graceful-fail contract. ``RuleSchemaError`` is
+        not caught here (it can only be raised on the save path) so F7
+        stays inert.
+        """
+        if not isinstance(entry, dict) or input_grid is None:
+            return None
+        action = entry.get("action")
+        if isinstance(action, dict) and isinstance(action.get("dsl"), str):
+            from procedural_memory.DSL.apply import DSL_REGISTRY, apply_DSL
+            dsl_name = action["dsl"]
+            if dsl_name not in DSL_REGISTRY:
+                return None
+            args = action.get("args") if isinstance(action.get("args"), dict) else {}
+            try:
+                if dsl_name == "make_grid":
+                    return apply_DSL("make_grid", **args)
+                return apply_DSL(dsl_name, grid=input_grid.raw, **args)
+            except (ValueError, KeyError, TypeError):
+                return None
+        # Legacy shape — preserve pre-iter-16 dispatch.
+        legacy_rule = entry.get("rule") if isinstance(entry.get("rule"), dict) else {}
+        return self._predictor._apply_rule(legacy_rule, input_grid)
 
     @staticmethod
     def _extract_prediction(wm) -> list:

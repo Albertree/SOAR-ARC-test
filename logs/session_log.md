@@ -1861,3 +1861,223 @@ anti-unification produces a discovered rule whose `condition.type` is
 one of the four matcher names and whose `action.dsl` reduces to
 `coloring` or `make_grid`, the matching `_try_*` method in
 `active_operators.py` becomes deletable.
+
+---
+## Learning Loop -- 2026-05-13 19:39
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_193946.log
+
+## Iter 16 -- 2026-05-13T19:49+09:00 -- branch test20
+
+**Diagnosis**: Iter-15's "Next gap" option 1 -- the fast-path loop in
+`solve()` silently ignores every schema-shaped entry on disk because it
+does `entry.get("rule", {})` and then dispatches through
+`PredictOperator._apply_rule`, which expects the pre-iter-14 wrapped
+shape. A section-1 schema entry has NO top-level `rule` key, so
+`_apply_rule({}, ...)` returns `None` and `_rule_matches_examples`
+immediately returns `False`. That made iter-14's `translate_to_schema`
+and iter-15's `_persist_pipeline_rule` write-path migration
+architecturally one-sided: schema rules can land on disk via
+`save_rule`, but the fast path cannot read them, so the system cannot
+reuse its own learned knowledge. Iter-16 closes the read side. Smallest
+defensible step because (a) the write-side scaffolding from iter 15 is
+already in place, (b) the change stays out of `agent/active_operators.py`
+(F2/F8 inert) and out of `agent/cycle.py` (F1 inert) -- the dispatch
+is wholly inside `agent/active_agent.py`, and (c) the iter-3 DSL is
+the canonical evaluator for schema actions, so the new dispatch is a
+one-line call to `apply_DSL` rather than re-implementing the primitive
+layer.
+
+**Change**:
+- `agent/active_agent.py` (+87 / -10 LOC net) -- the fast-path
+  migration:
+    1. Replaced the legacy `for entry in stored_rules: rule =
+       entry.get("rule", {}); if rule.get("type") == "identity":
+       continue; if self._rule_matches_examples(rule, task): ...` loop
+       with an entry-aware loop that calls `_is_identity_rule(entry)`
+       (shape-agnostic skip) and `_entry_matches_examples(entry,
+       task)` / `_apply_entry_to_tests(entry, task)`.
+    2. Added `_predict_with_entry(entry, input_grid) -> list | None`
+       -- the dispatcher. For section-1 schema entries (`{condition,
+       action, ...}`), routes through `apply_DSL(action.dsl, ...)`:
+       when `dsl_name == "make_grid"` the input grid is omitted (the
+       `grid=None` branch in `apply.py`), otherwise the input's `.raw`
+       is passed. Catches `(ValueError, KeyError, TypeError)` from the
+       DSL primitives so an OOB rule (e.g. a saved 5x5 selection
+       applied to a 3x3 task) becomes "rule does not apply here" ->
+       `None`, matching the legacy applier's graceful-fail semantic.
+       `RuleSchemaError` is NOT caught (it can only be raised on the
+       save path, so F7's grep is inert). Legacy entries continue
+       through `self._predictor._apply_rule(entry["rule"],
+       input_grid)`.
+    3. Added `_is_identity_rule(entry) -> bool` -- detects identity
+       across BOTH shapes (legacy `rule.type == "identity"` AND schema
+       `condition.type == "identity_transformation"`). Preserves the
+       pre-iter-16 identity-skip semantic so schema identity rules
+       saved by `_persist_pipeline_rule` (iter-15's headline path)
+       do not over-predict identity for non-identity tasks on the
+       fast path.
+    4. Added `_entry_rule_type(entry) -> str` -- surfaces the
+       human-readable type tag for `last_solve_info["rule_type"]`.
+       Returns legacy `rule.type` OR schema `condition.type` depending
+       on shape; falls back to `"unknown"` for malformed entries.
+       Keeps the episodic log readable for both shapes.
+    5. Renamed (NOT aliased) `_rule_matches_examples` ->
+       `_entry_matches_examples` and `_apply_rule_to_tests` ->
+       `_apply_entry_to_tests`. The shape-aware bodies now thread
+       through `_predict_with_entry`. The rename is asserted by
+       `test_pre_iter_16_helper_names_removed` so a partial future
+       refactor surfaces immediately.
+- `tests/test_fast_path_schema_rule.py` (new, +428 LOC, 28 cases) --
+  exercises the dispatch in isolation plus an end-to-end smoke against
+  the live `CONDITION_REGISTRY` + `DSL_REGISTRY` + `save_rule` writer
+  (no stubs, same runner pattern as iters 1/8/10/13/14/15 tests).
+  Covers helper surface (5 methods present, 2 renamed predecessors
+  absent); `_predict_with_entry` across both shapes (legacy identity,
+  legacy color_mapping, schema coloring with non-empty selection,
+  schema empty-selection no-op, schema `make_grid` ignores input,
+  unknown `action.dsl` -> None, OOB selection -> None not raises,
+  non-dict / None input defensive paths, entry-dict purity);
+  `_is_identity_rule` across both shapes (legacy + schema positive;
+  non-identity legacy + schema negative; non-dict input);
+  `_entry_rule_type` across legacy and schema (returns `rule.type` vs
+  `condition.type`, fallback to "unknown"); `_entry_matches_examples`
+  + `_apply_entry_to_tests` (schema rule accepts matching pair,
+  rejects mismatch, legacy regression on a swap-pair, pair with None
+  grid skipped, multi-test prediction list, None on missing input);
+  end-to-end -- a non-identity schema rule saved via `save_rule` is
+  consumed by `solve()` (`last_solve_info.method == "stored_rule"`,
+  `times_reused` incremented on disk -- the iter-15 -> iter-16 wiring
+  proof, pre-iter-16 this rule would have been silently skipped) AND
+  a schema identity rule saved via `save_rule` is skipped by the fast
+  path (not labeled `stored_rule`).
+- `docs/RULE_FORMAT.md` section 7 -- added one row summarizing the
+  iter-16 fast-path dispatch (the 5 new/renamed helpers), and one row
+  for `tests/test_fast_path_schema_rule.py`. The iter-15 row left
+  unchanged.
+
+No edits to: `agent/active_operators.py` (F2/F8 inert; numstat 0/0 --
+the dispatch lives wholly in `active_agent.py`, NOT
+`active_operators.py`; the existing `_apply_rule` / `_apply_*` family
+in PredictOperator is untouched), `procedural_memory/DSL/` (F3 inert;
+numstat 0/0), `agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` node
+classes / `data/` (F1 inert; numstat 0/0), `run_loop.sh` /
+`run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py` (F6 inert;
+numstat 0/0), `agent/memory.py` (no edits at all this iter -- the
+write side was complete in iter 15), no rule JSON written or modified
+at iter-end (F4 inert; `procedural_memory/*.json` glob still empty
+after verification probe runs were cleaned up), no `semantic_memory/`
+artifacts (F5 inert), no `except RuleSchemaError` added or modified
+anywhere (F7 inert).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=24, P5=4, P6=600
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=24, P5=4, P6=600
+
+The probe set (`run_learn.py --limit 3 --seed 42`: 00576224, 007bbfb7,
+009d5c81) writes nothing to `procedural_memory/` because (a) the slow
+path produces an identity legacy rule for each task, (b) the
+`identity_transformation` matcher rejects every probe task's patterns
+(each has non-zero change groups), so `_persist_pipeline_rule` drops
+each rule. The iter-16 read-side wiring is therefore architecturally
+ready but not yet observable on this probe -- a non-identity schema
+rule would need to land on disk for the fast path's new dispatch to
+fire. That payoff arrives when iter-17 (or later) either extends
+`translate_to_schema` with a non-identity branch OR anti-unification
+discovers an abstraction.
+
+**Invariants** (checker run end-to-end against base HEAD `ecc5c88d` --
+iter 15):
+- forbidden = none (verdict NEUTRAL, rc=2). F1: 0-line diff against
+  frozen paths (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` /
+  `+def _apply_` in `agent/active_operators.py` (file untouched;
+  numstat 0/0). F3: no `procedural_memory/DSL/*.py` diff at all; no
+  new `@register(` decorators inside the DSL package. F4: no
+  `rule_*.json` files exist on disk at iter-end. F5: no
+  `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to
+  `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: no `except RuleSchemaError` added or modified;
+  the schema-shape branch in `_predict_with_entry` catches
+  `(ValueError, KeyError, TypeError)` from the DSL layer (NOT
+  `RuleSchemaError`, which can only be raised on the save path) to
+  preserve the legacy applier's graceful-fail-on-inapplicable-rule
+  semantic. F8: `agent/active_operators.py` numstat 0/0 -- the
+  "active_operators grew without companion" clause cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4 24 -> 24,
+  P5 4 -> 4, P6 600 -> 600. **NEUTRAL** verdict. Iter-14 was NEUTRAL;
+  iter-15 was NEUTRAL; this iter is NEUTRAL. The N>=3 consecutive
+  NEUTRAL threshold from INVARIANTS.md section 3 is reached --
+  STAGNATION notice will fire. Not auto-revert; informational.
+  Architectural reason for the streak: the schema infrastructure
+  (translator iter 14 -> writer iter 15 -> reader iter 16) is a chain
+  of scaffolding whose P1-P6 payoff is gated on a non-identity schema
+  rule actually landing on disk, which in turn is gated on either a
+  translator extension or anti-unification discovery. The next iter's
+  smallest defensible step is the unlock.
+- All 13 test suites pass on this host:
+  `tests/test_fast_path_schema_rule.py` 28/28 (new),
+  `tests/test_persist_pipeline_rule.py` 13/13,
+  `tests/test_next_rule_id.py` 13/13,
+  `tests/test_translate_to_schema.py` 24/24,
+  `tests/test_identity_transformation.py` 22/22,
+  `tests/test_recognized_conditions.py` 18/18,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Why NEUTRAL is honest, not failure**: iter-16 closes the read-side
+half of a three-iter scaffolding (translator -> writer -> reader). The
+P1-P6 movement is gated on a non-identity schema rule actually
+existing on disk. The seed=42 probe surfaces only identity-shape
+slow-path rules (matcher rejects, so nothing is written), making the
+iter-16 dispatch architecturally ready but probe-invisible. End-to-end
+test `test_solve_uses_schema_rule_saved_via_save_rule` proves the
+wiring is load-bearing: a manually-constructed non-identity coloring
+rule saved via `save_rule` IS now picked up by `solve()` -- pre-iter-16
+the same rule would have been silently skipped. The architectural
+progress that does not show up in P1-P6: schema rules are now
+load-bearing at runtime (not just at save time), which is the
+prerequisite for the system to act on its own learned knowledge.
+
+**Next gap (note for future iter)**: With both write side (iter 15)
+and read side (iter 16) of the section-1 schema dispatch now live, the
+P1/P2/P3-movement bottleneck is the absence of a non-identity
+section-1 rule. Three options remain (refined from iter-15's note):
+  1. **Broaden `translate_to_schema`** (smallest defensible). Add a
+     translator branch for the `{"type": "color_mapping",
+     "mapping": {input_color: output_color}}` legacy shape, mapping to
+     `condition.type = "consistent_color_mapping"` and `action.dsl =
+     "coloring"` with `args` carrying a list of (selection, color)
+     pairs derived from the patterns dict (the changed-cell
+     coordinates per input color). Caveat: a single `coloring`
+     invocation paints one color over one selection; expressing a
+     per-color mapping needs either (a) the rule to fire multiple
+     `coloring` calls (the `apply_DSL` dispatch only handles one
+     primitive call per rule today), or (b) `args.selection` to be
+     polymorphic in the condition matcher's eyes -- neither is purely
+     a translator concern. Likely needs `_predict_with_entry` to grow
+     a thin iteration step over a list of `(selection, color)`
+     tuples in `args`. If that step lands, P1/P2/P3 move off zero on
+     the `--shuffle --seed 42` task `e5790162` and similar.
+  2. **Pair-specific program writer in `GeneralizeOperator`** (option
+     3 in iter-15's note). Bigger surface; unlocks anti-unification
+     across pair-specific programs which is the CLAUDE.md section 8
+     contract.
+  3. **Recolor_sequential translator branch** -- analogous to (1) but
+     targeting the `sequential_recoloring` matcher (iter 10). Similar
+     polymorphic-args challenge.
+A complementary P6-down opportunity remains latent: once
+anti-unification produces a discovered rule whose `condition.type` is
+one of the four matcher names and whose `action.dsl` reduces to
+`coloring` or `make_grid`, the matching `_try_*` method in
+`active_operators.py` becomes deletable.
+
