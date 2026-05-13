@@ -2290,3 +2290,229 @@ A complementary P6-down opportunity remains latent: once a
 branch in `GeneralizeOperator.effect` (the `if rule is None: rule =
 {"type": "identity", "confidence": 0.0}` line) can be replaced with a
 `make_grid` discovery, deleting net lines from `active_operators.py`.
+
+---
+## Learning Loop -- 2026-05-13 20:01
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_200152.log
+
+---
+## Iter 18 -- 2026-05-13T11:08:57Z -- branch test20
+
+**Diagnosis**: The probe still solves 0/3, and the seed=42 probe set's
+slow-path output remains "identity" -- but iter 17's `grid_size_changed`
+now correctly fires on those tasks, and the iter 17 note flagged the
+gap between recognition and emission as the most glaring next gap with
+three candidate steps. The asymmetric obstacle reported across iters
+15 / 16 / 17 is that `translate_to_schema` only handles legacy
+`{"type": "identity"}` because broader legacy shapes
+(`color_mapping` / `recolor_sequential`) need *polymorphic* `args`
+(N coloring calls for N input colours), which the iter-15 dispatcher
+correctly drops as F4-risky. The smallest defensible step that moves
+the recognition vocabulary toward closing that obstacle is to name
+the *strict refinement* of `consistent_color_mapping` under which the
+schema's single `action.args["color"]` slot is determinable from
+training data without polymorphism: every changed cell ends up the
+SAME single output colour. That is the precondition under which a
+future `translate_to_schema` extension can mint a single `coloring`
+call whose `color` arg is a constant -- not blocked on iter 16's
+polymorphic-args obstacle.
+
+**Change**:
+- `agent/conditions/output_color_uniform.py` (new, +101 LOC) -- iter-18
+  matcher. Returns True iff `pair_analyses` is a non-empty list of
+  well-formed analyses AND every analysis has at least one change
+  group AND every group has exactly one entry in its `output_colors`
+  list AND all single output colours across all groups in all pairs
+  are bit-identical. Strict refinement of `consistent_color_mapping`
+  (whenever `output_color_uniform` fires, the iter-8 matcher also
+  fires -- the converse is not true). Mutually exclusive with
+  `sequential_recoloring` (cardinality 1 vs >= 2) and
+  `identity_transformation` (>= 1 group required vs 0 groups
+  required). Orthogonal to the dimensional axis -- inspects
+  change-group output colours, not dimensions. Fail-closed on
+  zero-group pairs (vacuously-true would be wrong: identity has its
+  own iter-13 matcher), on multi-element `output_colors` lists
+  (per-group cardinality > 1 is not "uniform"), and on cross-pair
+  colour disagreement (each pair painting its own single colour
+  with the colours differing across pairs is NOT a valid
+  uniform-paint generalisation). The strict-`is True` posture from
+  iter 13 carries through implicitly via `len(...) == 1` /
+  `len(set(...)) == 1` checks -- the matcher returns literal bools.
+- `tests/test_output_color_uniform.py` (new, +361 LOC, 32 cases) --
+  dependency-free, runs against the live `CONDITION_REGISTRY` (no
+  stubs, same runner style as iters 1 / 8 / 10 / 13 / 17). Covers
+  registration, adjacent-iter non-displacement (iters 1 / 8 / 10 /
+  13 / 17), `>= 6`-entry registry assertion (P5: 5 -> 6), callable
+  contract, single-pair / multi-pair / single-group-per-pair /
+  multi-input-collapsing-to-one-output positive cases, rejection on
+  two distinct output colours within a pair, rejection when the
+  per-pair single output colour differs across pairs (the
+  cross-pair-disagreement case), rejection on zero-change-groups
+  per pair and on mixed (one pair uniform-paint + one pair
+  zero-groups), empty / missing / non-list / non-dict
+  `pair_analyses`, malformed analysis entries, missing / non-list /
+  malformed `groups`, malformed group entries, missing / non-list /
+  empty / multi-element `output_colors` in a group, side-effect-free
+  input contract, determinism across repeats, mutual exclusion with
+  `identity_transformation` and with `sequential_recoloring`, the
+  strict-refinement claim against `consistent_color_mapping` (the
+  iter-8 matcher fires on the same patterns dict whenever this one
+  fires), orthogonality with `grid_size_changed` (a uniform repaint
+  on dimension-changed pairs co-fires both), end-to-end agreement
+  with the `_analyze_pair` shape, and a strict-Boolean return
+  assertion.
+- `tests/test_recognized_conditions.py` -- widened the iter-17 exact
+  5-name set in `test_registry_contents_after_helper_load` to the
+  6-name set including `output_color_uniform`, plus refreshed the
+  surrounding comment from "iter 17" to "iter 18". The existing
+  `_patterns_all_three_fire()` fixture has three distinct output
+  colours so `output_color_uniform` does NOT fire there (preserving
+  the exact-set assertion in
+  `test_all_three_matchers_fire_on_compatible_patterns`); the
+  `_patterns_identity_pairs()` fixture has zero change groups so the
+  new matcher does NOT fire there either (preserving the exact-set
+  assertion in `test_identity_pairs_fire_both_grid_size_and_identity_matchers`);
+  and `_patterns_color_mapping_only()` has two distinct output
+  colours [3, 7] so the new matcher does NOT fire there (the
+  existing assertion in `test_color_mapping_fires_without_grid_size_preserved`
+  uses `in fired` / `not in fired` and is unaffected).
+- `docs/RULE_FORMAT.md` -- added the `output_color_uniform` row to
+  §4 condition-type registry table; refreshed the §7 status row for
+  `agent/conditions/` directory to describe the iter-18 addition
+  (P5: 5 -> 6, the strict-refinement-of-`consistent_color_mapping`
+  relation, the polymorphic-args-obstacle rationale, mutual
+  exclusion / orthogonality lattice updated). Added a status row
+  for `tests/test_output_color_uniform.py`.
+
+No edits to: `agent/active_operators.py` (F2/F8 inert; numstat 0/0 --
+matchers are recognition vocabulary, not transformation vocabulary, so
+no `_try_*`/`_apply_*` is added or modified, and the score-chasing
+companion-touch trigger does not fire), `procedural_memory/DSL/`
+(F3 inert; numstat 0/0 -- no new DSL primitive added, the two frozen
+primitives remain frozen), `agent/cycle.py` / `agent/wm.py` /
+`ARCKG/*.py` node classes / `data/` (F1 inert; numstat 0/0),
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`
+(F6 inert; numstat 0/0), `agent/memory.py` (numstat 0/0 -- no rule is
+saved this iter, the iter-14 `translate_to_schema` identity gate is
+unaffected, no `except RuleSchemaError` block touched), no rule JSON
+written or modified at iter-end (F4 inert;
+`procedural_memory/rule_*.json` glob remains empty), no
+`semantic_memory/` artifacts (F5 inert), no `except RuleSchemaError`
+added or modified anywhere (F7 inert).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=30, P5=5, P6=600
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=30, P5=6, P6=600
+
+The probe was not re-run this iter -- the change does not affect the
+solve path's outputs, only adds a recognition matcher that the slow
+path can now discover on a uniform-paint shape. Probe metrics are the
+snapshot values; P5 is the post-iter computed value (one new
+`@register(` decorator under `agent/conditions/`).
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`54b732c8` -- iter 17):
+- forbidden = none (verdict CLEAN, rc=0). F1: 0-line diff against
+  frozen paths (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` /
+  `+def _apply_` in `agent/active_operators.py` (file untouched;
+  numstat 0/0). F3: no `procedural_memory/DSL/*.py` diff at all; no
+  new `@register(` decorators inside the DSL package (the new
+  `@register(` is under `agent/conditions/`, which is recognition
+  vocabulary, not transformation vocabulary). F4: no `rule_*.json`
+  files exist on disk at iter-end. F5: no `semantic_memory/.*[Tt][Ff]_`
+  paths added. F6: no edits to `run_loop.sh` / `run_pipeline.sh` /
+  `run_learn.py` / `run_1ktasks.py`. F7: no `except RuleSchemaError`
+  added or modified. F8: `agent/active_operators.py` numstat 0/0 --
+  the "active_operators grew without companion" clause cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 30 -> 30, P5 5 -> 6 (delta=+1), P6 600 -> 600. **CLEAN**
+  verdict (1 positive delta).
+- All 15 test suites pass on this host:
+  `tests/test_output_color_uniform.py` 32/32 (new),
+  `tests/test_recognized_conditions.py` 18/18 (registry-set
+    assertion widened from 5 to 6),
+  `tests/test_grid_size_changed.py` 24/24,
+  `tests/test_fast_path_schema_rule.py` 28/28,
+  `tests/test_persist_pipeline_rule.py` 13/13,
+  `tests/test_next_rule_id.py` 13/13,
+  `tests/test_translate_to_schema.py` 24/24,
+  `tests/test_identity_transformation.py` 22/22,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Why this is real progress and not lipstick**: the
+polymorphic-args obstacle reported across iters 15 / 16 / 17 has
+been "we can recognise `consistent_color_mapping`, but the schema's
+single `action.args["color"]` slot cannot express the N coloring
+calls a non-trivial colour mapping needs -- so
+`translate_to_schema` drops it instead of risking an F4 violation."
+This iter does not lift the obstacle, but it names the *specific
+shape* under which the obstacle vanishes: a strict-refinement subset
+of colour-mapping cases where the output collapses to one constant.
+For those tasks, the schema's single `color` slot is exactly the
+right shape and no polymorphism is needed. A future iter that
+extends `translate_to_schema` will now gate on `output_color_uniform`
+in `recognized_conditions(patterns)` rather than re-deriving the
+"is this safely-single-color" check inline -- recognition
+vocabulary ahead of rule emission is the opposite of the
+test13-eval failure mode where rules accreted without preconditions.
+The matcher is also useful in isolation as a *negative* signal:
+when `consistent_color_mapping` fires but `output_color_uniform`
+does NOT, that is exactly the case where a single coloring call
+is insufficient -- the precondition for a future
+sequence-of-coloring-calls schema extension or for anti-unification
+discovery of a polymorphic-args abstraction.
+
+**Next gap (note for future iter)**: With the recognition vocabulary
+for the polymorphic-args-free subset of colour-mapping now named, the
+most glaring unfilled gap is the *emission* side: `translate_to_schema`
+still drops legacy `color_mapping` / `recolor_sequential` shapes.
+Three candidate smallest steps:
+  1. **Extend `translate_to_schema` with an `output_color_uniform`
+     branch**: when the legacy rule is a `color_mapping` shape AND
+     `output_color_uniform` fires on the patterns, mint a §1 rule
+     with `action.dsl = "coloring"` and `args = {"selection": <to be
+     decided>, "color": <the uniform output colour>}`. Caveat: the
+     `selection` arg still needs a representation -- the simplest is
+     a list of (row, col) tuples derived from the change groups, but
+     test inputs differ in size from the training inputs so a literal
+     coordinate list will not generalise. The future-proof shape is
+     "selection = where the input has colours C" with C derived from
+     the training data's group `input_colors` union -- but that is a
+     non-trivial step that may benefit from a fresh
+     `selection_predicate` schema slot.
+  2. **Compose `translate_to_schema` with `make_grid`** (iter 17
+     option 1, still open): mint a §1 rule with `action.dsl =
+     "make_grid"` when `grid_size_changed` fires. Still blocked on
+     output dimensions not being threaded through `_analyze_pair` --
+     either thread them (touches `agent/active_operators.py`, gated
+     by F8 companion rule -- iter 18 already established the
+     companion path through `agent/conditions/`) or read the task
+     directly in the translator. The seed=42 probe set would benefit
+     immediately.
+  3. **Pair-specific program writer in `GeneralizeOperator`** (the
+     iter-14/15/16 option 3 / 2). Larger surface; unlocks
+     anti-unification across pair-specific programs which is the
+     CLAUDE.md §8 contract. The iter-18 matcher would still be the
+     precondition that gates the anti-unified abstract rule's
+     `condition.type` in that flow.
+A complementary P6-down opportunity also remains latent: once a
+`coloring(uniform_color)`-emitting rule lands on disk, the matching
+identity-fallback branch in `GeneralizeOperator.effect` becomes
+strictly dominated for uniform-paint tasks, and the
+`_try_color_mapping` legacy detector can be deleted in favour of
+calling `recognized_conditions(...)` and dispatching off the named
+condition -- removing net lines from `active_operators.py` for the
+first time.
