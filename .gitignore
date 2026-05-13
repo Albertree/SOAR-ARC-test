@@ -213,6 +213,11 @@ semantic_memory/*
 !semantic_memory/.gitkeep
 procedural_memory/*
 !procedural_memory/.gitkeep
+# DSL source code lives under procedural_memory/DSL/ — track it. Discovered
+# rule_NNN.json files in procedural_memory/ remain ignored (learned data is
+# regenerated each run, not source).
+!procedural_memory/DSL/
+!procedural_memory/DSL/*.py
 episodic_memory/*
 !episodic_memory/.gitkeep
 # Result code

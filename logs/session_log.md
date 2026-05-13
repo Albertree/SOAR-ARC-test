@@ -125,3 +125,103 @@ smallest:
      primitives (`coloring`, `make_grid`) and a `DSL_REGISTRY`/`apply_DSL`
      dispatcher. Once that exists, V3 starts admitting rules and (1) becomes
      unblocked. This is the natural prerequisite of (1).
+
+---
+## Learning Loop -- 2026-05-13 17:43
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260513_174313.log
+
+---
+## Iter 3 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: The probe again solved 0/3 and saved 0 rules — same surface as
+iters 1-2. Behind that, iter 2 stood up `save_rule()` + `validate_rule()` with
+V3 ("unknown action.dsl") guarding writes, but the DSL primitive registry was
+empty (no `procedural_memory/DSL/` package existed), so V3 unconditionally
+rejected every rule. Iter 2's "Next gap" called out exactly this prerequisite.
+Smallest defensible step: bootstrap the DSL package with the two permitted
+hand-coded primitives (`coloring`, `make_grid`) plus the
+`DSL_REGISTRY`/`apply_DSL` dispatcher — closed at two, the rest must be
+discovered. No touch to `active_operators.py` or `memory.py`.
+
+**Change**:
+- `procedural_memory/DSL/__init__.py` (new) -- transitively imports `apply`,
+  `coloring`, `make_grid` so registrations fire at first use.
+- `procedural_memory/DSL/apply.py` (new) -- `DSL_REGISTRY`, the `register`
+  decorator (rejects re-binding to a different callable; idempotent on same
+  callable), and `apply_DSL(name, grid=None, **kwargs)` dispatcher with the
+  `grid=None` path for grid-producing primitives like `make_grid`.
+- `procedural_memory/DSL/coloring.py` (new) -- `coloring(grid, selection, color)`.
+  Accepts a single coord or a list of coords; validates color in `0..9 ∪ {13}`
+  (the wiki's transparent/erase sentinel); rejects bool-as-int; pure (deep-copies
+  rows); raises `ValueError` on OOB or malformed selection.
+- `procedural_memory/DSL/make_grid.py` (new) -- `make_grid(height, width, color)`.
+  Strict positive-int / color validation; returns a fresh nested list with
+  independent rows (no shared references).
+- `tests/test_dsl.py` (new) -- 17 dependency-free cases covering: registry holds
+  exactly {coloring, make_grid}; coloring single/list coords, transparent 13,
+  invalid colors (incl. bool), OOB rejection, malformed-selection rejection,
+  empty-selection identity, purity, bad-grid rejection; make_grid happy path,
+  row independence, transparent 13, validation of all three args; `apply_DSL`
+  dispatch for both primitives plus unknown-name `KeyError`.
+- `.gitignore` -- added a re-include exception for `procedural_memory/DSL/` and
+  `procedural_memory/DSL/*.py` so the DSL **source** is tracked while the
+  learned `rule_NNN.json` data files remain ignored.
+- `docs/RULE_FORMAT.md` §5 -- DSL registry table now lists `coloring` and
+  `make_grid` with their implementation paths and the explicit closure note.
+- `docs/RULE_FORMAT.md` §7 -- implementation status table refreshed: DSL
+  package marked bootstrapped (iter 3); V3 note updated to "admits `coloring`
+  and `make_grid`"; `tests/test_dsl.py` row added.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0
+**Probe after** : (not re-run -- this iter does not affect the solve path; it
+unlocks V3 so a future iter that calls `save_rule()` for a `coloring`/`make_grid`
+action can finally produce a schema-compliant rule file).
+
+**Invariants**:
+- forbidden = none. Manually verified each (the `python3` MS Store stub
+  prevents `scripts/check_invariants.sh` from running — same blocker as iters
+  1-2). F1: 0 lines in frozen-file diff. F2: no new `_try_*`/`_apply_*` def.
+  F3: the only `^\+.*@.*register\(` lines in the staged DSL diff are
+  `@register("coloring")` and `@register("make_grid")` — both filtered by the
+  checker's allow-list regex. (One docstring in `apply.py` initially mentioned
+  the literal `@register(...)` shape and tripped the grep; rewritten to
+  English-only and re-verified.) F4: no `rule_*.json` files exist. F5: no new
+  paths under `semantic_memory/`. F6: no edits to `run_loop.sh` /
+  `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`. F7: no `try/except
+  RuleSchemaError` added or modified. F8: `agent/active_operators.py`
+  untouched.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 0 → 0, P5 1 → 1,
+  P6 unchanged. **Genuinely neutral on auto-measured signals** — this is
+  scaffolding work: V3 was the gate that kept P1/P2/P3 stuck at zero; it now
+  admits two primitive names. The next iter that wires a real `save_rule()`
+  call site or generalizes a `coloring`-based rule pays out the deltas.
+- `tests/test_dsl.py`: 17/17 OK locally. `tests/test_save_rule.py`: 10/10
+  still OK (the `test_v3_when_dsl_registry_empty` case still passes because
+  its rule uses `action.dsl="stub_for_test"`, which is in neither the real
+  registry nor the test stub — V3 fires with the same `unknown action.dsl`
+  message).
+
+**Infra note (unchanged from iters 1-2)**: `scripts/check_invariants.sh` calls
+`python3`, which on this Windows host is the MS Store stub (prints "Python",
+exits 49). Snapshot at `logs/_invariant_snapshot.json` is 0 bytes. Replacing
+`python3` → `python` in that script remains the mechanical fix, intentionally
+deferred so this iter stays scoped to the DSL bootstrap.
+
+**Next gap (note for future iter)**: With V3 now admitting `coloring` and
+`make_grid`, two parallel candidates again share "smallest defensible":
+  1. Fix the `python3` → `python` invocation in `scripts/check_invariants.sh`
+     so the automated invariant check actually runs on this host. Pure
+     plumbing; ~1 line edit; unblocks every future iter's auto-verification.
+  2. Wire `program/anti_unification.py:unify()` into
+     `agent/memory.py:save_rule()` per CLAUDE.md §8. Currently `unify()` is a
+     stub and `save_rule()` never calls it, so P3 (`anti_unification_trace`
+     fraction) can never move. The integration is small (≤20 LOC at the call
+     site) but it needs a real `unify()` body or a placeholder that emits the
+     trace shape from `docs/ANTI_UNIFICATION.md` (which doesn't exist yet).
+The infra fix (1) is genuinely smaller and unblocks measurement.

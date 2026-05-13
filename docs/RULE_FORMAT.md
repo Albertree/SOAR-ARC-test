@@ -170,7 +170,14 @@ function in `procedural_memory/DSL/` dispatched by `apply.py`.
 
 | `action.dsl` | Implementation | Status |
 |--------------|----------------|--------|
-| *(none yet)* | —              | `procedural_memory/DSL/` to be created in upcoming session |
+| `coloring`   | `procedural_memory/DSL/coloring.py` | active (iter 3) — paint a coord or list of coords with a color in `0..9` or `13` (transparent sentinel). Pure; rejects OOB / malformed selection. |
+| `make_grid`  | `procedural_memory/DSL/make_grid.py` | active (iter 3) — produce a fresh `height × width` canvas filled with a color in `0..9` or `13`. Pure; rows are independent. |
+
+**The set above is closed.** F3 in `docs/INVARIANTS.md` auto-reverts any commit
+that adds a third hand-coded primitive. Further transformations must be
+*discovered* by `program.anti_unification.unify()` and persisted as data in
+`procedural_memory/rule_NNN.json` with `anti_unification_trace` set — see
+`CLAUDE.md §6.2`.
 
 Adding a new primitive:
 
@@ -400,15 +407,16 @@ As of 2026-05-13, branch `test20`:
 |-----------|-------|
 | `procedural_memory/rule_NNN.json` files (on `main`) | empty (`.gitkeep` only) |
 | `procedural_memory/rule_NNN.json` files (on `test13-eval`) | 168 files, **all violate schema** (Example 6.3 shape) |
-| `procedural_memory/DSL/` directory | **does not exist** on `main`; to be created |
+| `procedural_memory/DSL/` directory | **bootstrapped (iter 3)** — `apply.py` (`DSL_REGISTRY` + `@register` + `apply_DSL`) plus `coloring.py` and `make_grid.py`. Two hand-coded primitives; set is closed. |
 | `agent/conditions/` directory | bootstrapped on `test20`: `CONDITION_REGISTRY` + `grid_size_preserved` matcher |
 | `agent/memory.py:RuleSchemaError` | **implemented (iter 2)** — `ValueError` subclass, never caught silently per F7 |
-| `agent/memory.py:validate_rule()` | **implemented (iter 2)** — enforces V1–V7; V3 fails until DSL registry holds ≥1 primitive |
+| `agent/memory.py:validate_rule()` | **implemented (iter 2)** — enforces V1–V7; as of iter 3 V3 admits `coloring` and `make_grid` |
 | `agent/memory.py:save_rule()` | **implemented (iter 2)** — schema-aware writer producing §1 shape |
 | `agent/memory.py:save_rule_to_ltm()` (legacy) | still present; emits the pre-test20 shape; sole caller is `agent/active_agent.py`. Migration to `save_rule()` deferred to a later iter |
 | `agent/memory.py:migrate_legacy_rules()` | not implemented |
 | `program/anti_unification.unify()` | stub only; integration with `save_rule()` not yet wired |
 | `tests/test_save_rule.py` | **added (iter 2)** — 10 cases covering V1–V7 + happy path + side-effect-free check |
+| `tests/test_dsl.py` | **added (iter 3)** — 17 cases covering registry contents, `coloring`/`make_grid` happy paths, validation, purity, and `apply_DSL` dispatch |
 
 The first session(s) under `PROMPT.md` will be tasked with bringing this
 inventory to a consistent state — see `PROMPT.md` for the current mission.
