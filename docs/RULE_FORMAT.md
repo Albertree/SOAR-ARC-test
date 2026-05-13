@@ -149,6 +149,7 @@ matcher function returning `bool` given a `patterns` dict (the output of
 | `condition.type` | Matcher module | Params | Status |
 |------------------|----------------|--------|--------|
 | `grid_size_preserved` | `agent/conditions/grid_size_preserved.py` | *(none)* | active — true iff every example pair has matching input/output dimensions |
+| `consistent_color_mapping` | `agent/conditions/consistent_color_mapping.py` | *(none)* | active (iter 8) — true iff at least one (input_color → output_color) pair is observed in the changed-cell groups *and* every observed input color maps to a single output color across all example pairs. Dimension-agnostic (does not imply `grid_size_preserved`). The recognition counterpart to `_try_color_mapping` in `agent/active_operators.py` — same precondition, surfaced as named recognition vocabulary so a future `coloring`-based rule produced by anti-unification can declare it. |
 
 Adding a new condition type:
 
@@ -408,7 +409,7 @@ As of 2026-05-13, branch `test20`:
 | `procedural_memory/rule_NNN.json` files (on `main`) | empty (`.gitkeep` only) |
 | `procedural_memory/rule_NNN.json` files (on `test13-eval`) | 168 files, **all violate schema** (Example 6.3 shape) |
 | `procedural_memory/DSL/` directory | **bootstrapped (iter 3)** — `apply.py` (`DSL_REGISTRY` + `@register` + `apply_DSL`) plus `coloring.py` and `make_grid.py`. Two hand-coded primitives; set is closed. |
-| `agent/conditions/` directory | bootstrapped on `test20`: `CONDITION_REGISTRY` + `grid_size_preserved` matcher |
+| `agent/conditions/` directory | bootstrapped on `test20`: `CONDITION_REGISTRY` + `grid_size_preserved` matcher (iter 1); `consistent_color_mapping` added in iter 8 (P5: 1 → 2) |
 | `agent/memory.py:RuleSchemaError` | **implemented (iter 2)** — `ValueError` subclass, never caught silently per F7 |
 | `agent/memory.py:validate_rule()` | **implemented (iter 2)** — enforces V1–V7; as of iter 3 V3 admits `coloring` and `make_grid` |
 | `agent/memory.py:save_rule()` | **implemented (iter 2) + AU-wired (iter 6)** — schema-aware writer producing §1 shape. Accepts an optional `related_rules` kwarg; when non-empty, calls `program.anti_unification.unify(related + [rule])` and substitutes the abstract rule when `is_more_general()`. `NoCommonSkeleton` is caught silently (not a `RuleSchemaError`, F7 not engaged) and the new rule is saved as-is. This is the sole permitted call site for `unify` per `CLAUDE.md §8`. |
@@ -420,6 +421,7 @@ As of 2026-05-13, branch `test20`:
 | `tests/test_dsl.py` | **added (iter 3)** — 17 cases covering registry contents, `coloring`/`make_grid` happy paths, validation, purity, and `apply_DSL` dispatch |
 | `tests/test_unify.py` | **added (iter 5)** — 14 cases covering `NoCommonSkeleton` paths, identical-input no-trace contract, single/multi-position lifting, partial-key disagreement, `min_evidence` selection, `covers` union ordering, alias safety, V5-regex compliance, and trace-id monotonicity |
 | `tests/test_load_related.py` | **added (iter 7)** — 11 cases covering category filtering, legacy-shape rejection (no `condition`/`action` block), non-JSON tolerance, non-rule-filename ignore, empty/missing directory, bad-category input, read-only contract (no disk mutation), and an end-to-end smoke that feeds `load_related` output into `unify()` |
+| `tests/test_consistent_color_mapping.py` | **added (iter 8)** — 14 dependency-free cases covering registration, the iter-1 matcher non-displacement check, uniform 1:1 mapping, multi-input 1:1 mapping, conflicting outputs, empty / missing `pair_analyses`, non-dict patterns, malformed analysis/group, side-effect-free input contract, determinism across repeats, and an end-to-end agreement check against the patterns shape `_try_color_mapping` consumes |
 
 The first session(s) under `PROMPT.md` will be tasked with bringing this
 inventory to a consistent state — see `PROMPT.md` for the current mission.

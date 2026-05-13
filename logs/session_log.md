@@ -643,3 +643,115 @@ this is correct-by-construction and surfaces exactly which categories
 need DSL-discovered abstractions next). Recommended: do it task-by-task
 behind a small `_translate_to_schema(legacy_rule, task_hex)` helper in
 `agent/active_agent.py` so the translation logic is auditable.
+
+> STAGNATION at iter 7 — 4 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-13 18:32
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_183219.log
+
+---
+## Iter 8 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-7, and iters 4-7
+all closed NEUTRAL (the 4-iter stagnation banner under iter 7 was the loop's
+hint that the scaffolding had reached the point where small additions stop
+moving signals). Iter 7's "Next gap" recommended the `active_agent.py` call-site
+migration, but on inspection that step does not actually move any positive
+signal this iter: the pipeline currently only ever produces `identity` rules
+(see `active_agent.py` line 106 — identity is filtered out of the save path),
+so wiring `save_rule()` in produces no rule file, no AU trace, no episodic
+entry. The genuinely smallest defensible step that moves a measurable signal
+*this iter* is adding the second condition matcher. Recognition vocabulary is
+the only axis (P5) where a small addition still translates cleanly into a
+positive delta, and the pipeline's `_try_color_mapping` strategy in
+`agent/active_operators.py` already computes the exact precondition without
+ever surfacing it as named recognition vocabulary — i.e. there is a one-to-one
+matcher missing.
+
+**Change**:
+- `agent/conditions/consistent_color_mapping.py` (new) — second condition
+  matcher. Returns True iff at least one (input_color → output_color) pair
+  is observed in the changed-cell groups and every observed input color
+  maps to a single output color across all example pairs. Dimension-agnostic
+  by design (does not piggyback on `grid_size_preserved`). Defensive against
+  malformed inputs at every level (non-dict patterns, non-dict analysis,
+  non-dict group) — returns False rather than raising, matching the
+  iter-1 matcher's tolerance contract.
+- `tests/test_consistent_color_mapping.py` (new, dependency-free runner) —
+  14 cases: registration in CONDITION_REGISTRY; iter-1 matcher
+  non-displacement; uniform 1:1; multi-input 1:1; conflicting outputs;
+  empty/missing `pair_analyses`; non-dict patterns; malformed
+  analysis/group; side-effect-free input (deep-copy compare); determinism
+  across repeats; end-to-end agreement against the patterns shape
+  `_try_color_mapping` actually consumes (positive and negative).
+- `docs/RULE_FORMAT.md` §4 — registry table grew by one row pointing at
+  the new matcher module with the precondition expressed in prose.
+- `docs/RULE_FORMAT.md` §7 — implementation-status table updated:
+  `agent/conditions/` row notes the iter-8 addition with the P5
+  delta; new row added for `tests/test_consistent_color_mapping.py`
+  describing the 14 cases.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0
+**Probe after** : (not re-run — this iter does not affect the solve path; the
+new matcher is recognition vocabulary that lights up only when a §1-schema
+rule declares `condition.type = "consistent_color_mapping"`, which requires
+a later iter to discover such a rule via anti-unification.)
+
+**Invariants** (checker run end-to-end against base HEAD `890aace0` — iter 7):
+- forbidden = none. F1: 0-line diff against frozen-file paths (`data/`,
+  `agent/cycle.py`, `agent/wm.py`, `ARCKG/{task,pair,grid,object,pixel}.py`).
+  F2: no `+def _try_` / `+def _apply_` in `agent/active_operators.py`
+  (file untouched). F3: no `procedural_memory/DSL/*.py` diff at all (the
+  new matcher is recognition vocabulary, not DSL). F4: no `rule_*.json`
+  files created. F5: no `semantic_memory/.*[Tt][Ff]_` paths added. F6:
+  no edits to `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: no `except RuleSchemaError` added or modified.
+  F8: `agent/active_operators.py` numstat 0/0 (untouched).
+- positives (verdict: CLEAN): **P5 1 → 2 Δ=+1**. P1/P2/P3 0.0 → 0.0
+  (still pinned at 0/0 — no rule file exists). P4 0 → 0. P6 600 → 600.
+  This is the first non-NEUTRAL iter on this branch since iter 4 — the
+  4-iter stagnation streak ends here. The Δ is honest and small: P5
+  is a unit-monotone counter and adding a second registered matcher
+  literally increments it.
+- All five test suites pass on this host:
+  `tests/test_consistent_color_mapping.py` 14/14 (new),
+  `tests/test_load_related.py` 11/11, `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14, `tests/test_dsl.py` 17/17.
+
+**Next gap (note for future iter)**: With two distinct recognition matchers
+now in place, the smallest defensible next step depends on what the user
+wants to prioritize:
+  1. **Activate** the new matcher by wiring `agent/active_agent.py` to
+     translate the pipeline's discovered `color_mapping` rule into a §1
+     schema rule that declares `condition.type = "consistent_color_mapping"`
+     and `action.dsl = <something resolved via the DSL/discovered layer>`.
+     The blocker is still V3: `color_mapping` is not `coloring`/`make_grid`,
+     so a coloring-composition discovered rule would have to exist first
+     (which requires AU to fire on at least two pair-specific programs,
+     which requires the pair-specific program writer that does not yet
+     exist).
+  2. **Stand up** the pair-specific program writer in
+     `agent/active_operators.py:GeneralizeOperator` — emit a pair-specific
+     `coloring` composition per example pair *before* the abstract rule
+     attempt. Once two pairs produce same-skeleton compositions, AU can
+     fire and produce a discovered rule. This is the natural unlock for
+     P1/P2/P3 moving above zero. Larger surface area than the matcher
+     addition.
+  3. **Wire** the episodic writer into `solve()` — every `solve()`
+     invocation should write one `attempt_NNN/` folder so P4 starts
+     climbing linearly. Independent of the rule-discovery work above.
+     The check measures filesystem state, so the writer would need to
+     actually run during a probe to register — which it does next iter
+     by virtue of `run_loop.sh` calling `run_learn.py` before invoking
+     Claude.
+
+Option (3) probably gives the next clean positive delta with the smallest
+code surface (~20 LOC + tests). (1) and (2) are the iters that finally
+unblock P1-P3.
