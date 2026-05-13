@@ -8774,3 +8774,123 @@ extend `translate_to_schema` with a position-emit branch gated on
 -- the strictest precondition shape, simplest emission. Either is
 defensible. As of this iter all 30 test scripts pass; no other test
 is failing.
+
+---
+## Learning Loop -- 2026-05-14 06:39
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_063952.log
+
+## Iter 174 -- 2026-05-13T21:46:20Z -- branch test20
+
+**Diagnosis**: Probe still 0/3 with `rule=identity`, slow path unable to
+mint a non-identity schema rule on the seed=42 probe tasks because
+`translate_to_schema`'s gating conjunctions all require
+`change_positions_constant_across_pairs` (positions varying across
+pairs falls through). Iter 173 added the group-count cardinality
+projection `change_group_count_constant_across_pairs` to lift P5 to 22
+along the cardinality-projection cadence (iter 32 -> iter 30, iter 37
+-> iter 35, iter 38 -> iter 36, iter 39 -> iters 23/28). Per
+PROMPT.md "smallest defensible step", iter 174 completes that cadence
+by adding iter 34's missing cardinality projection -- the (ic, oc)
+mapping COUNT axis -- the only set-axis matcher still without a named
+cardinality sibling. F8 inert (no `agent/active_operators.py` touch);
+exposes the cross-pair (ic, oc) cardinality recognition handle that a
+future emission branch lifting `coloring`'s recolour table via
+anti-unification will need.
+
+**Change**:
+- `agent/conditions/change_color_mapping_count_constant_across_pairs.py`
+  -- new matcher fires iff every pair carries the same non-zero count
+  of distinct (input_colors[0], output_colors[0]) tuples across its
+  change groups, regardless of which specific mappings. Strict
+  per-group `len(input_colors) == len(output_colors) == 1` posture
+  (ill-defined (ic, oc) on multi-colour groups), strict colour-range
+  enforcement (0..9, bool rejected), and identity-territory
+  fail-closed on per-pair cardinality 0 -- mirrors iter 34 / 37 / 38 /
+  39.
+- `tests/test_change_color_mapping_count_constant_across_pairs.py` --
+  44 dependency-free tests covering registry membership (>= 23),
+  positive fixtures at cardinality 1/2 with same and distinct
+  mappings, strict refinement of iter 34, independence from iters
+  37 / 38 / 39 in both directions (the iter-40-exclusive territory
+  and the iter-37/38/39-exclusive territories), co-fire with iters
+  18 / 28 / 32, mutual exclusion with iter 13, strict-bool /
+  strict-int / strict-range type enforcement on input AND output
+  colour fields, multi-input AND multi-output rejection, side-effect
+  freeness, determinism, strict bool return, and two end-to-end
+  fixtures against `ExtractPatternOperator`.
+- `tests/test_recognized_conditions.py` -- bumped the expected
+  registry set from 22 to 23 entries (added the new name), bumped
+  the assertion comment from "iter 39" to "iter 40", and added the
+  new name to the firing set in
+  `test_all_three_matchers_fire_on_compatible_patterns` (the iter-10
+  fixture's per-pair (ic, oc) set is {(0, 3), (1, 4), (2, 5)} with
+  cardinality 3 on both pairs, so this matcher legitimately fires).
+
+**Probe before**: 0 / 3 (0.0%), rule count 0, mean covers 0.0
+**Probe after** : 0 / 3 (0.0%), rule count 0, mean covers 0.0
+
+**Invariants**: forbidden=none, positives=P5: 22 -> 23 (Δ=+1); P1 / P2
+/ P3 / P4 / P6 unchanged. `scripts/check_invariants.sh --check`
+verdict CLEAN. All 31 test scripts pass (30 from the prior baseline +
+the new file).
+
+**Why this is real work despite a flat probe**: The probe is not the
+reward (INVARIANTS.md §2); P5 is. The matcher names the cross-pair
+(ic, oc) mapping cardinality precondition that no entry in the
+recognition vocabulary currently carries -- iter 34 pins the per-pair
+SET bit-identical, iter 37 pins the input-side projection's
+cardinality, iter 38 pins the output-side projection's cardinality,
+but the *combined* mapping cardinality is a strict third axis (a
+single input mapping to multiple outputs across cells expands the
+(ic, oc) cardinality beyond both projections). The matcher is
+genuinely independent in both directions from iters 37 / 38 / 39
+(verified in test fixtures 33 / 34 / 35 / 36 / 37 / 38 of the test
+file). A future emission branch that paints N recolour slots per
+pair (the natural multi-mapping analogue of iter 21's constant-K
+output_color_uniform branch) has no named recognition handle for
+the cross-pair (ic, oc) cardinality invariant the action's
+apply-time mapping table must reproduce until this matcher lands.
+Recognition vocabulary ahead of emission, the same posture iters
+17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 / 30 / 32 / 33 / 34 / 35
+/ 36 / 37 / 38 / 39 all carry. Completes the cardinality-projection
+lineage: positions (iter 30 -> 32), input colours (iter 35 -> 37),
+output colours (iter 36 -> 38), group count (iters 23/28 -> 39),
+and now the combined (ic, oc) mapping axis (iter 34 -> THIS iter).
+Every set-axis matcher in the registry now has a named cardinality
+sibling.
+
+**Next gap (note for future iter)**: With every existing set-axis
+matcher now paired with a named cardinality projection, the most
+glaring unfilled gap returns to the one iters 170 / 171 / 172 / 173
+all named: `translate_to_schema` still has no non-identity emission
+branch that fires on the seed=42 probe tasks (00576224 / 007bbfb7
+are tile-style; 009d5c81 is multi-blob with positions varying
+across pairs). Until at least one such branch exists, P1 / P2 / P3
+cannot start moving. With the recognition vocabulary expansion now
+covering the {position, input colour, output colour, combined
+mapping, group count} × {set, cardinality} grid, the next defensible
+single-iter candidate moves to the emission side. Two options:
+(a) a tile-emit branch in `translate_to_schema` gated on
+`output_dimensions_multiple_of_input` (iter 33's matcher) AND
+`output_color_uniform` (iter 18) -- specifically for the
+"replicate input as a sub-tile in a larger output canvas" rule
+shape iter 33's matcher names; the action would be a sequence of
+`coloring` invocations over the test input's coords scaled by the
+output/input ratio, which requires the iter-25 `paint_single_cell`
+extraction generalised to a tile-count parameter. (b) a
+mapping-table-emit branch gated on
+(`change_colors_constant_across_pairs` AND
+`change_color_mapping_count_constant_across_pairs` AND
+`consistent_color_mapping`) -- this names the
+"every pair has the SAME (ic, oc) mapping set" rule shape and the
+action could be a sequence of `coloring` calls, one per mapping in
+the constant set. The matcher just landed expresses the cardinality
+precondition; iter 34 expresses the set precondition. Either is
+defensible. As of this iter all 31 test scripts pass; no other test
+is failing.
