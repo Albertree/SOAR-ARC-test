@@ -325,3 +325,106 @@ similar size: migrate `agent/active_agent.py`'s import from
 `save_rule_to_ltm` to `save_rule` so the schema-aware writer actually fires
 on the solve path — but that one has more surface area in the call site,
 making the anti-unification wiring slightly smaller.
+
+---
+## Learning Loop -- 2026-05-13 18:15
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_181454.log
+
+---
+## Iter 5 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-4 because the
+slow path's *generalization* step is still wholly absent. `program/anti_unification.py`
+on this branch holds only stale stubs of an older API (`anti_unify_pair_programs`,
+`anti_unify_terms`, …) that all `pass`, and `program/__init__.py` has a
+latent broken import (`from program.anti_unification import anti_unify` — that
+name doesn't exist, so the moment anything tries `import program` it
+`ImportError`s; verified locally). CLAUDE.md §8 names a completely different
+public API (`unify()` returning `UnifyResult | NoCommonSkeleton`) that no code
+currently provides. Iter 4's "Next gap" called this out as the next smallest
+defensible step. Iter 5 stands up the §8 API itself with documentation and
+tests; the actual wiring into `save_rule()` is the natural follow-up.
+
+**Change**:
+- `program/anti_unification.py` -- full rewrite. New public surface: `unify(rules,
+  *, episodic_memory_root="episodic_memory")` returning `UnifyResult`;
+  `NoCommonSkeleton(ValueError)`. Skeleton check on `(condition.type,
+  action.dsl)`; positional anti-unification over `condition.params` and
+  `action.args` with fresh `?vN` variables for disagreements; `min_evidence`
+  takes the strictest input; `covers` union preserves first-seen order;
+  abstract_rule's container fields are JSON-deep-copied so callers cannot
+  alias inputs through it. When `≥ 1` position is lifted, writes a trace
+  JSON to `<root>/<source_task>/anti_unification/au_NNN.json` (forward-slash
+  path normalisation so V5's regex matches on Windows too) and sets the
+  abstract rule's `anti_unification_trace` to that path. When identical,
+  no trace is written and `is_more_general()` returns False. Stub functions
+  removed (they implemented an incompatible older API and were unused — Grep
+  confirmed: only `program/__init__.py` itself referenced any of them).
+- `program/__init__.py` -- replaced the broken `from program.anti_unification
+  import anti_unify` with `from program.anti_unification import
+  NoCommonSkeleton, UnifyResult, unify`. `__all__` updated. `from program
+  import unify` now works.
+- `docs/ANTI_UNIFICATION.md` (new) -- specifies the §1 public API, §2
+  algorithm steps, §3 trace JSON shape with field semantics table, §4 the
+  forthcoming `save_rule()` integration contract, §5 cross-refs. Trace
+  immutability and sequence-number monotonicity called out explicitly.
+- `tests/test_unify.py` (new, dependency-free runner like the other
+  `tests/test_*.py`) -- 14 cases: `NoCommonSkeleton` on <2 inputs, non-list,
+  condition.type mismatch, action.dsl mismatch; identical rules produce no
+  trace and no substitutions but still merge covers; single-position lifting;
+  two-position lifting gets two distinct variables; three-rule partial
+  agreement; `min_evidence` strictest-wins; covers union dedup with
+  first-seen ordering; key present in some-not-all inputs is lifted; abstract
+  rule does not alias inputs (mutating the shared `selection` list via
+  abstract_rule must not leak back); V5-regex compliance when the canonical
+  `episodic_memory/` root is used; trace sequence number monotonically
+  increments within the same destination directory.
+- `docs/RULE_FORMAT.md` §7 -- implementation-status row for `unify()`
+  flipped from "stub only" to "implemented (iter 5)" with a one-line
+  contract pointer to `docs/ANTI_UNIFICATION.md`; `tests/test_unify.py`
+  row added.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0
+**Probe after** : (not re-run -- this iter does not affect the solve path; the
+unify primitive is in place but `save_rule()` does not call it yet, so the
+slow path's discovered rules still flow through the legacy writer. Wiring
+that is iter 6's territory.)
+
+**Invariants** (checker run end-to-end via fixed `scripts/check_invariants.sh`
+against base HEAD `0dc497b1` — iter 4):
+- forbidden = none. F1: 0-line diff in frozen-file paths (`data/`,
+  `agent/cycle.py`, `agent/wm.py`, `ARCKG/{task,pair,grid,object,pixel}.py`).
+  F2: no `+def _try_` / `+def _apply_` in `agent/active_operators.py`. F3:
+  `procedural_memory/DSL/*.py` untouched. F4: no `rule_*.json` files exist.
+  F5: no `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to
+  `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`. F7:
+  no `except RuleSchemaError` lines added or modified. F8: `agent/active_operators.py`
+  numstat 0/0 (untouched), so the "grew without companion" clause cannot fire.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 0 → 0, P5 1 → 1,
+  P6 600 → 600. **Neutral on auto-measured signals** — checker exits 2 as
+  expected. This is scaffolding: P3 is structurally pinned at 0/0 until at
+  least one rule exists, and rule existence requires the (next-iter) wiring
+  of `save_rule()` through `unify()`. The payoff lands in iter 6.
+- All three test suites pass on this host: `tests/test_unify.py` 14/14,
+  `tests/test_save_rule.py` 10/10, `tests/test_dsl.py` 17/17. The
+  `program` package now imports cleanly (`from program import unify,
+  UnifyResult, NoCommonSkeleton` — previously raised `ImportError` due to
+  the stale `anti_unify` reference).
+
+**Next gap (note for future iter)**: Wire `program.anti_unification.unify()`
+into `agent/memory.py:save_rule()` per CLAUDE.md §8. The required call-site
+logic is now small: extend `save_rule()` with an optional `related_rules`
+parameter; when non-empty, call `unify(related_rules + [rule])`; if it
+returns an `UnifyResult` with `is_more_general()`, replace `rule` with
+`result.abstract_rule` (and let V5 confirm the trace file the unify call
+just wrote). When `unify()` raises `NoCommonSkeleton`, persist `rule`
+unchanged. This is the iter that finally moves P3 above zero — but only
+when at least two same-skeleton rules already exist, so iter 6 should also
+add a smoke test that constructs two valid rules via `save_rule` and
+verifies the second call produces an abstract rule with a non-null trace.

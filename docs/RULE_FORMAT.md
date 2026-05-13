@@ -414,9 +414,10 @@ As of 2026-05-13, branch `test20`:
 | `agent/memory.py:save_rule()` | **implemented (iter 2)** — schema-aware writer producing §1 shape |
 | `agent/memory.py:save_rule_to_ltm()` (legacy) | still present; emits the pre-test20 shape; sole caller is `agent/active_agent.py`. Migration to `save_rule()` deferred to a later iter |
 | `agent/memory.py:migrate_legacy_rules()` | not implemented |
-| `program/anti_unification.unify()` | stub only; integration with `save_rule()` not yet wired |
+| `program/anti_unification.unify()` | **implemented (iter 5)** — positional anti-unification over `condition.params` and `action.args`; returns `UnifyResult` with deep-copied `abstract_rule`, on-disk trace file, and `substitutions` map; raises `NoCommonSkeleton` on `(condition.type, action.dsl)` mismatch. Integration with `save_rule()` still deferred. Full contract in `docs/ANTI_UNIFICATION.md`. |
 | `tests/test_save_rule.py` | **added (iter 2)** — 10 cases covering V1–V7 + happy path + side-effect-free check |
 | `tests/test_dsl.py` | **added (iter 3)** — 17 cases covering registry contents, `coloring`/`make_grid` happy paths, validation, purity, and `apply_DSL` dispatch |
+| `tests/test_unify.py` | **added (iter 5)** — 14 cases covering `NoCommonSkeleton` paths, identical-input no-trace contract, single/multi-position lifting, partial-key disagreement, `min_evidence` selection, `covers` union ordering, alias safety, V5-regex compliance, and trace-id monotonicity |
 
 The first session(s) under `PROMPT.md` will be tasked with bringing this
 inventory to a consistent state — see `PROMPT.md` for the current mission.
