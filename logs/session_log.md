@@ -2749,3 +2749,276 @@ vocabulary can fully replace `_try_color_mapping` -- removing net
 lines from `active_operators.py` for the first time.
 
 ---
+
+---
+## Learning Loop -- 2026-05-13 20:19
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_201913.log
+
+## Iter 20 -- 2026-05-13T20:30 -- branch test20
+
+**Diagnosis**: Iter 18 closed the iter-16 polymorphic-args obstacle on
+the OUTPUT-colour axis (`output_color_uniform` names the precondition
+under which `coloring`'s single `color` arg is constant). Iter 19
+closed the symmetric INPUT-colour axis (`input_color_uniform`). The
+analogous gap on the OUTPUT-dimension axis remained open: the
+`make_grid` primitive takes two integer args (`height`, `width`) but
+no matcher named the precondition under which both are determinable
+from training data. Iter 19's "Next gap" option 2 called this out
+explicitly: "Compose translate_to_schema with make_grid ... still
+blocked on output dimensions not being threaded through
+_analyze_pair." The smallest defensible step is to (a) thread per-pair
+input/output dimensions into the patterns dict via a four-key
+enrichment of `_analyze_pair`'s return dict and (b) name the matcher
+that fires when output dimensions are bit-identical across pairs --
+the cross-pair refinement of `grid_size_changed`, structurally
+analogous to iter-18 being the strict-refinement of
+`consistent_color_mapping`. F8 companion satisfied via the new file
+under `agent/conditions/`.
+
+**Change**:
+- `agent/active_operators.py` (modified, +10/-3 = net +7 LOC) --
+  `ExtractPatternOperator._analyze_pair` now computes `input_height`,
+  `input_width`, `output_height`, `output_width` as locals and emits
+  them as four new keys on the per-pair analysis dict alongside the
+  pre-existing `size_match` (which is now expressed in terms of the
+  same locals; the literal-expression `size_match` was rewritten but
+  remains semantically identical to the pre-iter-20 contract --
+  `size_match` is still strict-`is True/False` and the strict-typed
+  matchers across iters 13 / 17 continue to fire identically on the
+  pre-iter-20 fixtures). No new `_try_*` / `_apply_*` methods (F2
+  inert). The change is pure data threading -- enriching an existing
+  method's return dict with four already-locally-computed values; no
+  new strategy, no new emission, no new control flow.
+- `agent/conditions/output_dimensions_constant.py` (new, +136 LOC) --
+  iter-20 recognition matcher. Returns True iff `patterns` is a dict
+  AND `patterns["pair_analyses"]` is a non-empty list AND every
+  analysis is a dict AND every analysis carries
+  strict-positive-int (`>= 1`, bool-subclass rejected per
+  `validate_rule` V1 posture) `output_height` and `output_width`
+  fields AND all `(output_height, output_width)` tuples across
+  analyses are bit-identical. Pure / deterministic / side-effect free
+  per docs/RULE_FORMAT.md §4. The recognition precondition under
+  which the frozen `make_grid` primitive's two integer arguments are
+  both determinable from training data -- the dimensional analogue
+  of iter-18's `output_color_uniform` (which names the same
+  precondition for `coloring`'s single `color` arg). Together iter-17
+  (`grid_size_changed`) + iter-20 (`output_dimensions_constant`) +
+  iter-18 (`output_color_uniform`) are the three preconditions for
+  the simplest non-identity `make_grid` rule shape ("produce an
+  H×W canvas filled with K") -- H and W from iter-20, K from
+  iter-18, and iter-17 gates the `make_grid` action shape over
+  `coloring`. Companion file to the active_operators.py touch under
+  F8, mirroring iter 18's broadening-into-the-data-axis pattern.
+- `tests/test_output_dimensions_constant.py` (new, +459 LOC, 30
+  cases) -- dependency-free, runs against the live `CONDITION_REGISTRY`
+  + `ExtractPatternOperator._analyze_pair` (no stubs, same runner
+  style as iters 1 / 8 / 10 / 13 / 17 / 18 / 19). Covers
+  registration, adjacent-iter non-displacement (iters 1 / 8 / 10 /
+  13 / 17 / 18 / 19), `>= 8`-entry registry assertion (P5: 7 -> 8),
+  callable contract, single-pair / multi-pair / varying-input-but-
+  constant-output positive cases (the tile-style task signature),
+  rejection on varying output height / width / both, empty /
+  missing / non-list / non-dict `pair_analyses`, malformed analysis
+  entry, missing `output_height` / `output_width` (the pre-iter-20
+  patterns shape -- backwards-compatible fail-closed), non-int
+  dimension values (float / string / None / list / dict), strict
+  bool-subclass rejection on both dims, zero / negative dimension
+  rejection, mixed-shape rejection (one pair carries dims, another
+  doesn't), side-effect-free input contract, determinism across
+  repeats, co-firing with `grid_size_changed` on the tile-style task
+  (the iter-17 + iter-20 conjunction names the simplest `make_grid`-
+  rule shape's dimensional precondition), co-firing with
+  `grid_size_preserved` (same-size constant-dim tasks are not
+  mutually exclusive), orthogonality with `output_color_uniform` in
+  BOTH directions (constant dims + uniform colour co-fire; constant
+  dims + varying colours fire this matcher alone), co-firing with
+  `identity_transformation` on shared-dim identity tasks (the
+  degenerate constant-output-dims case), end-to-end agreement with
+  the live `_analyze_pair` output shape (verified by instantiating
+  `ExtractPatternOperator` and running its `_analyze_pair` against
+  two ad-hoc grids), and a strict-Boolean return assertion.
+- `tests/test_recognized_conditions.py` -- widened the iter-19 exact
+  7-name set in `test_registry_contents_after_helper_load` to the
+  8-name set including `output_dimensions_constant`, plus refreshed
+  the surrounding comment from "iter 19" to "iter 20". The existing
+  `_patterns_all_three_fire()` / `_patterns_identity_pairs()` /
+  `_patterns_color_mapping_only()` fixtures all lack the iter-20
+  `output_height` / `output_width` keys, so `output_dimensions_constant`
+  correctly fails closed on each and does NOT fire -- preserving
+  every existing exact-set / `in` / `not in` assertion in this test
+  module (the matcher fail-closes on the pre-iter-20 patterns shape
+  by design, which is the backwards-compatibility property).
+- `docs/RULE_FORMAT.md` -- added the `output_dimensions_constant`
+  row to §4 condition-type registry table; refreshed the §7 status
+  row for `agent/conditions/` directory to describe the iter-20
+  addition (P5: 7 -> 8, the cross-pair-refinement-of-iter-17
+  relation, the three-axis pin of the simplest `make_grid` rule
+  shape, mutual exclusion / orthogonality lattice updated). Added
+  a status row for `tests/test_output_dimensions_constant.py`.
+  Bumped the "As of" header line to mark iter 20.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 -- no
+new DSL primitive added, the two frozen primitives remain frozen),
+`agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` node classes /
+`data/` (F1 inert; numstat 0/0), `run_loop.sh` / `run_pipeline.sh`
+/ `run_learn.py` / `run_1ktasks.py` (F6 inert; numstat 0/0),
+`agent/memory.py` (numstat 0/0 -- no rule is saved this iter, the
+iter-14 `translate_to_schema` identity gate is unaffected, no
+`except RuleSchemaError` block touched), no rule JSON written or
+modified at iter-end (F4 inert; `procedural_memory/rule_*.json`
+glob remains empty), no `semantic_memory/` artifacts (F5 inert),
+no `except RuleSchemaError` added or modified anywhere (F7 inert),
+no new `_try_*` / `_apply_*` methods in `agent/active_operators.py`
+(F2 inert -- the edit is to the existing `_analyze_pair` method's
+return dict, not a new strategy method).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=36, P5=7, P6=600
+**Probe after** : score=0/3, rules=0, covers_mean=0.0, P4=36, P5=8, P6=607
+
+The probe was not re-run this iter -- the change does not affect
+the solve path's outputs (it only enriches the patterns dict's
+shape and adds a recognition matcher; the slow path's existing
+emission strategies still produce `{type: identity}` for the seed=42
+probe set since none of them yet emit a `make_grid` rule). Probe
+metrics are the snapshot values; P5 is the post-iter computed
+value (one new `@register(` decorator under `agent/conditions/`);
+P6 is the post-iter computed value (the +7 net LOC on
+`active_operators.py` from the four-key threading). P6 went up,
+which is a regression on the "active_operators.py shrinks"
+direction -- accepted this iter because (a) the gain is named
+recognition vocabulary that previously had no data to work with,
+(b) F8's companion-touch rule is satisfied (the change has an
+agent/conditions/ companion, not score-chasing), and (c) the +7
+LOC is pure data threading, not a new `_try_*` strategy method.
+The P6 regression is the cost of unblocking the next emission
+step; iter-19 explicitly identified this trade-off ("touches
+agent/active_operators.py, gated by F8 companion rule -- iter 18
+already established the companion path through agent/conditions/").
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`d28d04ee` -- iter 19):
+- forbidden = none (verdict CLEAN, rc=0). F1: 0-line diff against
+  frozen paths (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` /
+  `+def _apply_` in `agent/active_operators.py` (the only addition
+  is inside the existing `_analyze_pair` method's body, not a new
+  def). F3: no `procedural_memory/DSL/*.py` diff at all; no new
+  `@register(` decorators inside the DSL package (the new
+  `@register(` is under `agent/conditions/`, which is recognition
+  vocabulary, not transformation vocabulary). F4: no `rule_*.json`
+  files exist on disk at iter-end. F5: no `semantic_memory/.*[Tt][Ff]_`
+  paths added. F6: no edits to `run_loop.sh` / `run_pipeline.sh` /
+  `run_learn.py` / `run_1ktasks.py`. F7: no `except RuleSchemaError`
+  added or modified. F8: `agent/active_operators.py` numstat +10/-3
+  (net +7) but the companion file
+  `agent/conditions/output_dimensions_constant.py` is staged in the
+  same commit -- the F8 companion-touch clause is satisfied. (The
+  initial check before staging the new files reported F8 because
+  `git diff` does not see untracked files; once staged the
+  companion is detected and the check passes.)
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 36 -> 36, P5 7 -> 8 (delta=+1), P6 600 -> 607 (delta=-7).
+  **CLEAN** verdict (1 positive delta on P5).
+- All 17 test suites pass on this host:
+  `tests/test_output_dimensions_constant.py` 30/30 (new),
+  `tests/test_recognized_conditions.py` 18/18 (registry-set
+    assertion widened from 7 to 8),
+  `tests/test_input_color_uniform.py` 32/32,
+  `tests/test_output_color_uniform.py` 32/32,
+  `tests/test_grid_size_changed.py` 24/24,
+  `tests/test_fast_path_schema_rule.py` 28/28,
+  `tests/test_persist_pipeline_rule.py` 13/13,
+  `tests/test_next_rule_id.py` 13/13,
+  `tests/test_translate_to_schema.py` 24/24,
+  `tests/test_identity_transformation.py` 22/22,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Why this is real progress and not lipstick**: Iters 17 / 18 / 19
+named three of the four precondition axes for the simplest two
+non-identity rule shapes ("paint cells of colour C with colour K"
+needs iter-18 + iter-19; "produce an H×W canvas filled with K"
+needs iter-17 + iter-20 + iter-18). The OUTPUT-dimension axis was
+the last unnamed of those four. Crucially the data on which the new
+matcher operates -- per-pair output dimensions -- did NOT exist in
+the patterns dict before this iter: every matcher across iters
+1/8/10/13/17/18/19 was building on the four fields the original
+`_analyze_pair` had emitted (`size_match`, `groups`, `total_changes`,
+`num_groups`). Iter 20 is the first iter to enrich the patterns-dict
+shape with new data, which is why the active_operators.py touch was
+necessary (and why iters 17/18/19's "Next gap" notes have been
+calling it out for three iters running). The companion-touch path
+through `agent/conditions/` keeps the change honest under F8 -- the
+new matcher file is the precondition that justifies the data
+threading, not a score-chasing detector. With iter-20 in place, the
+seed=42 probe set's `grid_size_changed`-firing tasks now have a
+concrete next-step path for emission: a future iter that extends
+`translate_to_schema` with a `make_grid(H, W, K)` branch can gate
+on the conjunction `grid_size_changed AND output_dimensions_constant
+AND output_color_uniform` and read (H, W, K) from the patterns dict
+directly -- no further upstream data threading needed, the recognition
+vocabulary now carries everything the rule constructor needs to
+mint a non-identity `make_grid` rule for the first time.
+
+**Next gap (note for future iter)**: With both the OUTPUT-colour
+axis (iter-18) and the OUTPUT-dimension axis (iter-20) now named
+AND the data they recognise now actually present in the patterns
+dict, the most glaring unfilled gap is the EMISSION side of the
+make_grid path: `translate_to_schema` still only handles the
+identity legacy shape and drops everything else. Three candidate
+smallest steps:
+  1. **Extend `translate_to_schema` with a `make_grid(H, W, K)`
+     branch**: when the legacy rule is the fallback `{"type":
+     "identity"}` shape AND `grid_size_changed` fires AND
+     `output_dimensions_constant` fires AND `output_color_uniform`
+     fires, mint a §1 rule with `action.dsl = "make_grid"` and
+     `args = {"height": H, "width": W, "color": K}` -- the three
+     constants are all readable directly from the patterns dict
+     post-iter-20 (H, W from any pair's `output_height` /
+     `output_width`, K from any group's `output_colors[0]`). The
+     resulting rule is the first non-identity rule any iter has
+     been able to mint without anti-unification or polymorphic
+     args, and would be the first iter to grow P1 / P3 from zero.
+     Touches `agent/memory.py` only -- F8 inert (no
+     active_operators.py change needed).
+  2. **Extend `translate_to_schema` with a gated `coloring(uniform_C
+     -> uniform_K)` branch** (the iter-19 option 1, still open):
+     when `input_color_uniform` AND `output_color_uniform` both
+     fire AND `consistent_color_mapping` also fires, mint a §1
+     rule with `action.dsl = "coloring"` and `args = {"selection":
+     <to be decided>, "color": K}`. Selection representation
+     remains the obstacle. Two sub-options remain viable: (a)
+     literal coords from the first training pair's input grid
+     (zero-coverage rules until anti-unification kicks in), or (b)
+     a schema extension `args = {"selection_where_input": C,
+     "color": K}` which would require V3 widening on the
+     `coloring` primitive's args schema.
+  3. **Pair-specific program writer in `GeneralizeOperator`** (the
+     iter-14/15/16/18/19 option). Larger surface; unlocks
+     anti-unification across pair-specific programs which is the
+     CLAUDE.md §8 contract. All four iter-17/18/19/20 matchers
+     would be the preconditions that gate the anti-unified
+     abstract rules' `condition.type` in that flow.
+A complementary P6-down opportunity also remains latent: option 1
+above would land the first `make_grid`-emitting schema rule on
+disk, after which the matching identity-fallback branch in
+`GeneralizeOperator.effect` becomes strictly dominated for the
+constant-output-size + uniform-paint subset, and the iter-1/8/10/
+13/17/18/19/20 recognition vocabulary plus iter-15/16 wiring can
+fully replace the identity-fallback for those tasks -- removing
+net lines from `active_operators.py` (P6 down) for the first time
+and *more than offsetting* the +7 LOC iter 20 added.
+
+---

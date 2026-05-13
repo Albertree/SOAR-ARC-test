@@ -219,15 +219,22 @@ class ExtractPatternOperator(Operator):
                 "cell_count": len(group_cells),
             })
 
+        input_height = len(raw_in)
+        input_width = len(raw_in[0]) if raw_in else 0
+        output_height = len(raw_out)
+        output_width = len(raw_out[0]) if raw_out else 0
+
         return {
             "total_changes": len(changes),
             "num_groups": len(groups),
             "groups": group_analyses,
             "size_match": (
-                len(raw_in) == len(raw_out)
-                and (len(raw_in[0]) if raw_in else 0)
-                    == (len(raw_out[0]) if raw_out else 0)
+                input_height == output_height and input_width == output_width
             ),
+            "input_height": input_height,
+            "input_width": input_width,
+            "output_height": output_height,
+            "output_width": output_width,
         }
 
     @staticmethod
