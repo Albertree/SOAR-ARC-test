@@ -8578,3 +8578,109 @@ probe shapes correctly is the prerequisite. Pre-existing
 `test_recognized_conditions.py` bookkeeping mismatch (asserts 20,
 registry has 21) remains a separate single-commit fix orthogonal to
 this iter.
+
+---
+## Learning Loop -- 2026-05-14 06:28
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_062808.log
+
+---
+## Iter 172 -- 2026-05-14T06:30Z -- branch test20
+
+**Diagnosis**: Iter 171's next-gap log explicitly flagged
+`tests/test_recognized_conditions.py` as carrying a "pre-existing
+test-bookkeeping mismatch (asserts 20, registry has 21) ... a separate
+single-commit fix orthogonal to this iter". Confirmed by running the
+suite locally: 2 of 18 cases fail because iter 38 added
+`change_output_color_count_constant_across_pairs` (the symmetric
+output-cardinality projection completing iter 37's input-cardinality
+matcher) without updating the test's hard-coded 20-element expected
+set or the eight-fired-matchers expectation. A failing-test signal
+that does not catch a real defect is dead instrumentation -- the same
+shape of failure F4 protects against in `procedural_memory/`. Smallest
+defensible step: repair the assertions to mirror the registry's
+current 21-matcher / nine-fired ground truth, with no behavior change
+in `agent/` and no rule emissions affected.
+
+**Change**:
+- `tests/test_recognized_conditions.py` (EDIT, +5 / -3 lines, no
+  behavior change) -- in `test_registry_contents_after_helper_load`
+  added `"change_output_color_count_constant_across_pairs"` to the
+  expected 21-element set, and updated the docstring comment
+  ("iter 37 ... twenty modules" -> "iter 38 ... twenty-one modules").
+  In `test_all_three_matchers_fire_on_compatible_patterns` added the
+  same matcher name to the expected fired set (iter 36 strictly
+  implies iter 38 on the test fixture: per-pair output set
+  `{3, 4, 5}` is bit-identical, hence the cardinality `3` is also
+  bit-identical), updated the docstring comment to extend the iter
+  37 -> iter 38 implication chain, and changed the assertion message
+  from "the eight compatible matchers" to "the nine compatible
+  matchers". Pure test bookkeeping; no production code touched.
+
+No edits to: `agent/active_operators.py` (F2 / F8 inert);
+`procedural_memory/DSL/` (F3 inert); `agent/cycle.py` /
+`agent/wm.py` / `ARCKG/*.py` / `data/` (F1 inert); no new rule files
+under `procedural_memory/` (F4 vacuously satisfied); no
+`semantic_memory/` artifacts (F5 inert); `run_loop.sh` and friends
+(F6 inert); no `except RuleSchemaError` changes (F7 inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P5=21. The seed=42
+probe tasks (00576224 / 007bbfb7 / 009d5c81) all still fall through
+to the identity fallback because emission (`translate_to_schema`)
+remains unchanged this iter.
+
+**Probe after**: Same -- 0/3, 0 rules, P5=21. Tests:
+`tests/test_recognized_conditions.py` now passes 18/18 (was 16/18).
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD 53c5172d):
+- forbidden = none (F1-F8 all inert; only `tests/` was edited).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 513 -> 513, P5 21 -> 21, P6 583 -> 583.
+- verdict: **NEUTRAL** (no positive delta).
+
+**Why this is real work despite NEUTRAL verdict**: The iter does
+not move a numeric P-signal, but it restores test-suite hygiene
+that any future iter touching `agent/conditions/__init__.py` or
+adding a 22nd matcher would otherwise have to repair before
+trusting `pytest`. Two perpetually-failing tests would mask a
+real registry regression -- the same dead-instrumentation failure
+mode `INVARIANTS.md §1 F7` (swallowed `RuleSchemaError`) names on
+the rule-validation side. Iter 171's next-gap log named this
+exact fix and explicitly classified it as orthogonal to its own
+P6 deletion; iter 172 picks it up. NEUTRAL invariant verdicts are
+not failures per `INVARIANTS.md §3` ("informational, not
+auto-revert") -- they only feed the stagnation tracker. The
+alternative -- combining this fix with a new matcher to manufacture
+a P5 delta -- would violate PROMPT.md's "smallest defensible step"
+principle by bundling unrelated work.
+
+**Next gap (note for future iter)**: With test bookkeeping aligned,
+the most glaring unfilled gap remains the one iter 170 / 171 both
+named: `translate_to_schema` has no non-identity emission branch
+that fires on the seed=42 probe tasks (00576224 / 007bbfb7 are
+tile-style; 009d5c81 is multi-blob with positions varying across
+pairs). Until at least one such branch exists, the dependency
+chain for P1 / P2 / P3 motion (`extract_pattern` non-identity
+patterns -> `generalize` per-task rule -> `save_rule` invokes
+`anti_unification.unify` when ≥1 related rule exists -- the
+CLAUDE.md §8 contract) cannot start at link 1. A single-iter
+candidate: a tile-emit branch in `translate_to_schema` gated on
+`output_dimensions_multiple_of_input` (already in the registry
+since iter 33). The matcher recognizes the precondition; the
+branch would consume it. A symmetric P5-side candidate: add
+`change_group_count_constant_across_pairs` -- the cardinality
+projection of `multi_group_per_pair` mirroring how
+`change_count_constant_across_pairs` projects
+`change_positions_constant_across_pairs` and how iters 37 / 38
+project iters 35 / 36. Either is a defensible single-iter step;
+the emission one moves more of the P-signal stack at once but is
+larger; the matcher one is smaller and lifts P5 to 22. As of this
+iter no other test in the suite is failing (16 -> 18 in
+test_recognized_conditions; spot-checked test_save_rule.py and
+test_translate_to_schema.py both green).

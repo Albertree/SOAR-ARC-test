@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 37
-    # there are twenty such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 38
+    # there are twenty-one such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -156,6 +156,7 @@ def test_registry_contents_after_helper_load() -> None:
         "change_input_colors_constant_across_pairs",
         "change_output_colors_constant_across_pairs",
         "change_input_color_count_constant_across_pairs",
+        "change_output_color_count_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -177,7 +178,11 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # expands it again on the input-cardinality sub-axis: iter 35
     # strictly implies iter 37 (set bit-identical implies same
     # cardinality; per-pair input cardinality is 3 on both pairs), so
-    # change_input_color_count_constant_across_pairs also fires. The
+    # change_input_color_count_constant_across_pairs also fires. Iter 38
+    # completes the symmetric output-cardinality projection: iter 36
+    # strictly implies iter 38 (set bit-identical implies same
+    # cardinality; per-pair output cardinality is 3 on both pairs), so
+    # change_output_color_count_constant_across_pairs also fires. The
     # three matchers in this test's name remain the iter-10
     # colour/dimension subset; the assertion grows with the registry
     # rather than fighting it.
@@ -191,7 +196,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "change_input_colors_constant_across_pairs",
         "change_output_colors_constant_across_pairs",
         "change_input_color_count_constant_across_pairs",
-    }, f"expected the eight compatible matchers to fire, got {fired}"
+        "change_output_color_count_constant_across_pairs",
+    }, f"expected the nine compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
