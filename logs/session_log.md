@@ -6817,3 +6817,15 @@ unambiguous.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_000653.log
+
+> STAGNATION at iter 41 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 00:07
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_000713.log
