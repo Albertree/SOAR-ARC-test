@@ -3656,3 +3656,232 @@ five-matcher conjunction (the wiring is latent-positive until that
 happens, same posture as iter-21's make_grid branch).
 
 ---
+
+---
+## Learning Loop -- 2026-05-13 21:02
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_210237.log
+
+---
+
+## Iter 24 -- 2026-05-13T21:07 -- branch test20
+
+**Diagnosis**: Iter 23 added `single_change_group_per_pair`, the entry
+point on the selection-shape / group-count recognition axis, and named
+three follow-up candidates. Option 1 (single-blob coloring emission)
+looked strongest but actually requires extending
+`ExtractPatternOperator._analyze_pair` to expose the blob's cell
+positions -- the analysis dict today carries only `top_row` /
+`top_col` / `cell_count` summaries, not the full positions list -- so
+it is NOT the "smallest defensible step" the iter-23 log claimed. The
+smallest defensible step that genuinely needs nothing beyond existing
+patterns-dict fields is the cell-count sub-axis refinement: a matcher
+that fires iff every pair has exactly one change group AND that group
+is a single cell. For a single-cell group, `top_row` / `top_col` IS
+the cell's coord (the bounding box collapses to 1x1), so a future
+emission iter can mint `coloring(grid, [(top_row, top_col)], K)` rules
+without any `_analyze_pair` change at all. This sets up the genuinely-
+smaller emission step that iter 23's option 1 mis-scoped, and
+continues the iter-17/18/19/20/22/23 cadence of "recognition
+vocabulary ahead of emission" with a P5 +1.
+
+**Change**:
+- `agent/conditions/single_cell_change_per_pair.py` (NEW, 165 lines)
+  -- registered matcher mirroring iter-23's strict-positive-int /
+  bool-rejected / fail-closed-on-missing structure. Requires
+  `num_groups == 1` AND `cell_count == 1` per pair. Strict refinement
+  of iter 23: every patterns dict that fires this also fires iter 23,
+  but not the converse (a single 4-cell blob fires iter 23 but not
+  this). Reads existing fields only (`num_groups`, `cell_count`); no
+  `_analyze_pair` change required, so F8's net-positive-additions
+  guard is vacuously satisfied (numstat 0/0 on
+  `agent/active_operators.py`). The full docstring lays out the iter
+  18 / 19 / 22 / 23 co-firing relations that, together with this
+  matcher, fully pin the components of `coloring(grid, [(r, c)], K)`
+  to named vocabulary -- the simplest non-identity coloring rule
+  shape becomes mintable without polymorphic args.
+- `tests/test_single_cell_change_per_pair.py` (NEW, 43 cases) --
+  mirror of iter-23's test surface on the cell-count sub-axis.
+  Covers registration + adjacent-iter matcher non-displacement (iters
+  1 / 8 / 10 / 13 / 17 / 18 / 19 / 20 / 22 / 23); `>= 11`-entry
+  registry assertion (P5 monotone counter); callable contract;
+  single-cell positive cases (single-pair and multi-pair); rejection
+  on single-group-multi-cell (the strict refinement boundary against
+  iter 23 -- verifies the new vocabulary entry covers strictly less
+  than iter 23, not duplicating it); rejection on zero-group-per-pair
+  (identity territory); rejection on two/three groups per pair;
+  rejection on mixed single-cell + multi-cell across pairs; rejection
+  on mixed group cardinalities (1+2); empty / missing / non-list /
+  non-dict `pair_analyses`; malformed analysis entry; missing /
+  non-int / strict-bool-rejected / negative `num_groups`; missing
+  `groups` list; non-list `groups`; empty-groups-list-with-
+  num_groups-1 inconsistency (must fail closed rather than
+  IndexError -- the canonical "two scalar invariants disagree, refuse
+  to choose" posture); non-dict group; missing / non-int /
+  strict-bool-rejected / zero `cell_count`; mixed-shape rejection
+  (one pair carries `num_groups`, another doesn't); side-effect-free
+  + deterministic contracts; STRICT mutual exclusion with
+  `identity_transformation` in both directions; the strict-
+  refinement-of-iter-23 invariant directly asserted on two patterns
+  dicts (a positive case where both fire, and a counter-example
+  where iter 23 fires but this matcher does NOT); co-firing with
+  `output_color_uniform`, `input_color_uniform`,
+  `input_dimensions_constant`, `grid_size_preserved`; non-refinement
+  against `grid_size_preserved`; end-to-end agreement with the live
+  `_analyze_pair` output on a single-cell 3x3 task (additionally
+  asserts `top_row` / `top_col` ARE the cell's coord -- the property
+  the future emission iter relies on); end-to-end disagreement on a
+  2x2 connected change region (iter 23 fires, this matcher does NOT
+  -- cell_count 4 not 1); end-to-end disagreement on a two-blob grid
+  (neither iter 23 nor this matcher fires); strict-Boolean return
+  assertion.
+- `tests/test_recognized_conditions.py` (EDIT, 4 lines) -- strict
+  `set(CONDITION_REGISTRY.keys()) == {...}` assertion bumped to 11
+  entries to admit `single_cell_change_per_pair` and keep the strict-
+  equality contract that catches stray @register imports. Comment
+  reference updated from "As of iter 23 there are ten such modules"
+  to "As of iter 24 there are eleven such modules."
+- `docs/RULE_FORMAT.md` (EDIT) -- new section 4 condition-registry
+  table entry placed immediately after `single_change_group_per_pair`
+  so the selection-shape axis entries cluster (group-count above,
+  cell-count sub-axis below, mirroring iter-22's input/output ×
+  dimension placement convention). New section 7 implementation-
+  status row for `tests/test_single_cell_change_per_pair.py`. The
+  iter version on the section 7 header line bumped from iter 23 to
+  iter 24, and an iter-24 paragraph appended to the matchers-status
+  row describing the new matcher's strict-refinement posture, three-
+  component-pinning relationship to iters 18 / 22, F8-inert stance,
+  and "vocabulary ahead of emission" rationale.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 -- no
+new DSL primitive added, the two frozen primitives `coloring` and
+`make_grid` remain frozen); `agent/cycle.py` / `agent/wm.py` /
+`ARCKG/*.py` node classes / `data/` (F1 inert; numstat 0/0);
+`agent/active_operators.py` (F2 inert -- no new `_try_*` or
+`_apply_*` method; F8 vacuously satisfied -- numstat 0/0);
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`
+(F6 inert; numstat 0/0); no rule JSON written or modified (F4 inert);
+no `semantic_memory/` artifacts (F5 inert); no `except
+RuleSchemaError` added or modified (F7 inert); no `agent/memory.py`
+change (iter-21's make_grid branch and iter-14's identity branch in
+`translate_to_schema` remain unchanged); no new matcher consumer
+wiring yet (the matcher is pure recognition vocabulary -- emission-
+side wiring deferred to a later iter per the established cadence
+from iters 17/18/19/20/22/23).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P5=10, P4=51;
+fired_conditions per task (from iter 23): 00576224 fires
+`[grid_size_changed, input_dimensions_constant,
+output_dimensions_constant]`; 007bbfb7 fires
+`[consistent_color_mapping, grid_size_changed,
+input_dimensions_constant, output_dimensions_constant]`; 009d5c81
+fires `[grid_size_preserved, input_dimensions_constant,
+output_dimensions_constant]`. None fires
+`single_change_group_per_pair` (multi-blob change regions) and so
+also none fires this iter's `single_cell_change_per_pair` (a strict
+refinement of iter 23, so it cannot fire where iter 23 does not).
+
+**Probe after**: same probe-set behaviour expected -- this iter does
+not change the slow path; it adds a matcher that the three probe
+tasks happen NOT to fire. Recognition vocabulary is iter-22/23-cadence
+"ahead of emission": the matcher's value lands when a future probe
+rotation surfaces a single-cell task OR when a future emission iter
+gates on the single-cell precondition to mint a literal-coord
+`coloring` rule. The post-iter `_invariant_snapshot.json` diff
+records the matcher addition as P5 10 -> 11; `_record_attempt()` will
+additionally write `single_cell_change_per_pair` into
+`fired_conditions` lists on any future probe attempt where the
+matcher does fire, with no further code change required.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`e29aff56`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+  - F1 (frozen files): no diff against `data/`, `agent/cycle.py`,
+    `agent/wm.py`, or any `ARCKG/*.py` node class.
+  - F2 (new `_try_*` / `_apply_*`): no diff against
+    `agent/active_operators.py` at all this iter.
+  - F3 (hand-coded DSL primitive): no diff against
+    `procedural_memory/DSL/*.py`.
+  - F4 (rule without `condition`): no new files under
+    `procedural_memory/`.
+  - F5 (TF_GRID in semantic_memory): no diff in `semantic_memory/`.
+  - F6 (auto-grown limit): no diff in `run_loop.sh` /
+    `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`.
+  - F7 (swallowed `RuleSchemaError`): the matcher's failure mode is
+    `return False`, not exception swallow, mirroring the iter
+    1/8/10/13/17/18/19/20/22/23 contract.
+  - F8 (score-chasing edit to `active_operators.py`): no
+    `active_operators.py` edit at all this iter -- F8's net-positive
+    addition guard cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 51 -> 51, P5 10 -> 11, P6 607 -> 607.
+- verdict: **CLEAN** (1 positive delta -- P5).
+
+**Why this is real progress (not lipstick)**: iter 23 named the
+group-count axis and gated the simplest single-blob preconditions
+on `num_groups == 1`. The natural strict-refinement on that axis is
+the cell-count sub-axis -- "the single blob is itself a single cell"
+-- and that refinement is what makes the literal-coord coloring
+emission iter genuinely small (touching `agent/memory.py` only, no
+`_analyze_pair` extension), rather than the iter-23 "Next gap"
+option 1's mis-scoped claim that single-blob coloring emission would
+touch only `agent/memory.py`. The matcher is the gating precondition
+that lets the next emission iter extract its rule's selection from
+already-emitted fields (`top_row` / `top_col`); without it, the
+emission iter would either need to add a positions list to
+`_analyze_pair` (active_operators.py edit, more surface) or emit
+rules without a single-cell precondition (the 168-rule failure mode
+F4 / F2 guard against). P5 +1 each step, monotone across iter 17 ->
+18 -> 19 -> 20 -> 22 -> 23 -> 24; six matcher additions, six P5
+deltas, zero `_try_*` accretion, zero hand-coded DSL primitive
+growth. That cadence is what distinguishes "recognition vocabulary
+growth" (the way ARBOR is intended to grow) from the test13-eval
+failure mode.
+
+All 20 test suites pass on this host
+(`test_single_cell_change_per_pair.py` 43/43 new;
+`test_recognized_conditions.py` 18/18 with the bumped strict-set
+assertion; all other suites unchanged with their previously-listed
+totals).
+
+**Next gap (note for future iter)**: With the single-cell
+precondition in place, the genuinely-smallest emission step is now
+writable without extending `_analyze_pair`. Three candidate smallest
+steps remain:
+  1. **Compose `translate_to_schema` with the single-cell uniform-
+     paint shape** -- emit a section 1 `coloring` rule gated on
+     `single_cell_change_per_pair` AND `output_color_uniform` AND
+     `input_dimensions_constant` AND `grid_size_preserved` AND NOT
+     `identity_transformation`. The selection is `[(top_row,
+     top_col)]` extracted from the first training pair's analysis;
+     the rule covers the training-side dims pinned by iter 22's
+     matcher and the colour pinned by iter 18's matcher. Touches
+     `agent/memory.py` only -- F8 inert. This is the cell-count
+     sub-axis analogue of iter 21's `make_grid` emission, and the
+     same posture: latent-positive on P1 / P3 until a probe task
+     fires the five-matcher conjunction.
+  2. **Compose `translate_to_schema` with the single-BLOB uniform-
+     paint shape** -- broader than (1) but requires extending
+     `_analyze_pair` to expose the blob's positions list (so
+     `args.selection` can carry the multi-cell blob's coords).
+     Touches both `agent/memory.py` AND `agent/active_operators.py`
+     -- F8 OK (the companion-touch is `agent/conditions/` or
+     `agent/memory.py`, both present). Larger surface than (1).
+  3. **Pair-specific program writer in `GeneralizeOperator`** -- the
+     standing option since iter 14, unlocks anti-unification across
+     pair-specific programs which is the `CLAUDE.md §8` contract.
+     Largest surface; the ultimate route to P2 / P3 growth.
+
+Option (1) is the strongest single iter -- it lands the first
+non-identity, non-make_grid schema rule emission, P1 / P3 grow from
+zero the moment a probe task happens to fire the five-matcher
+conjunction (latent-positive same posture as iter-21's make_grid
+branch), and it does so with the smallest possible code surface
+(memory.py only). Iter 24's cell-count refinement is what made this
+option 1 genuinely viable as a follow-up.
