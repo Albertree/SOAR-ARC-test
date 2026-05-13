@@ -5561,3 +5561,224 @@ axes (cardinality from iter 32, dimensions from iter 22,
 colour from iters 18 + 19) and the emission branch
 would be a `translate_to_schema` extension only --
 exactly the iter-21 / 25 / 27 / 29 size of change.
+
+---
+## Learning Loop -- 2026-05-13 23:06
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_230644.log
+
+---
+## Iter 33 -- 2026-05-13T23:15Z -- branch test20
+
+**Diagnosis**: Iter 32's "Next gap" log named option (A') as the
+next-smallest step on the P1 path: an emission branch gated on
+`change_count_constant_across_pairs` + `output_color_uniform` +
+`input_color_uniform` + `input_dimensions_constant` + `grid_size_
+preserved` emitting a `coloring` rule whose `action.args.
+selection` is the literal coord list from the FIRST pair. On
+inspection, option (A') has a load-bearing semantic gap: when
+`change_count_constant_across_pairs` fires WITHOUT `change_
+positions_constant_across_pairs`, per-pair coord sets are NOT
+identical -- so storing the FIRST pair's literal coord list
+mints a rule whose action does not predict correctly on the
+other training pairs. The "derived selection via
+input_color_uniform" reading would require apply-time semantics
+the frozen `coloring` primitive does not support (it takes
+literal coords), forcing a deeper change to the apply layer --
+a larger surface than a single defensible step. Looking at the
+probe tasks (00576224 of 2x2 -> 6x6, 007bbfb7 of 3x3 -> 9x9,
+both tile-style with scale factor 3), the recognition vocabulary
+has NO matcher that names the *relational* dimensional property
+"output is a fixed-integer scale of input". Iter-1 / 17 / 20 /
+22's four dimensional matchers are all ABSOLUTE-dimensional;
+none names the relational property even though 00576224 and
+007bbfb7 both satisfy it with (k_h, k_w) = (3, 3). Smallest
+defensible step: add `output_dimensions_multiple_of_input` on
+the new relational-dimensional axis, with the (1, 1) ratio
+excluded so the territory stays disjoint from `grid_size_
+preserved`.
+
+**Change**:
+- `agent/conditions/output_dimensions_multiple_of_input.py`
+  (NEW) -- single self-contained matcher predicate. Reads the
+  per-pair `input_height` / `input_width` / `output_height` /
+  `output_width` fields (emitted since iter 19) and computes the
+  (k_h, k_w) scale ratio per pair, checking integer-multiple
+  per axis, cross-pair constancy of the ratio, and the strict
+  (1, 1) exclusion. Strict-bool-subclass rejection mirroring
+  iters 13 / 17 / 18 / 19 / 20 / 22 / 23 / 24 / 26 / 28 / 30 /
+  32 and `validate_rule` V1. Fail-closed on the (1, 1) identity
+  case (the iter-30 / 32 strict-rejection posture on
+  identity-territory boundaries), on non-integer multiples,
+  on the smaller-output direction, on cross-pair ratio
+  disagreement, on missing dimension fields (backwards-
+  compatible with pre-iter-19 patterns dicts), on non-positive
+  dimensions, on bool subclass on any dimension field, and on
+  non-int dimensions. No `_analyze_pair` change -- iter 33 is
+  matcher-only addition using existing patterns-dict fields on
+  a new axis.
+- `tests/test_output_dimensions_multiple_of_input.py` (NEW) --
+  38 dependency-free cases against the live `CONDITION_REGISTRY`
+  + `ExtractPatternOperator._analyze_pair` (no stubs). Mirror
+  of iter 32's test surface adapted to the relational-
+  dimensional axis. Covers registration, adjacent-iter matcher
+  non-displacement (iters 1 / 8 / 10 / 13 / 17 / 18 / 19 / 20 /
+  22 / 23 / 24 / 26 / 28 / 30 / 32), `>= 16`-entry registry
+  assertion (P5: 15 -> 16), callable contract, the (3, 3)
+  scale-factor positive case mirroring the probe tasks'
+  dimensions, the iter-33-exclusive territory test (tile-style
+  varying inputs AND outputs but constant scale ratio --
+  `input_dimensions_constant` and `output_dimensions_constant`
+  both REJECT, this matcher fires), asymmetric scale (2 x 3),
+  single-pair scale-2, one-axis-only scaling, empty / missing /
+  non-list / non-dict `pair_analyses`, malformed analysis
+  entry, explicit (1, 1) rejection, non-integer multiples on
+  both axes, smaller-output direction rejection, cross-pair
+  ratio variation, inconsistent per-axis variation, mixed
+  identity-and-scale per pair, all four dimension-field
+  strict-type rejections (missing / bool / zero / negative /
+  non-int), side-effect-free input contract, determinism
+  across repeats, STRICT mutual exclusion with
+  `grid_size_preserved` (both directions) and
+  `identity_transformation`, co-firing with `grid_size_changed`
+  (implication direction), the strict-counterexample case
+  (`grid_size_changed` without this matcher firing on a
+  non-integer-multiple dim change), co-firing with
+  `input_dimensions_constant` and `output_dimensions_constant`
+  separately, the canonical iter-33-exclusive case (fires
+  without either absolute-dim matcher firing), end-to-end
+  agreement with the live `_analyze_pair` output on a 2x2 ->
+  6x6 pair, end-to-end rejection on a 3x3 -> 4x4 pair, and a
+  strict-Boolean return assertion.
+- `tests/test_recognized_conditions.py` (EDIT) -- the
+  registry-set membership assertion in
+  `test_registry_contents_after_helper_load` widened from 15 to
+  16 expected matchers (iter 33's name added; comment updated
+  to "As of iter 33 there are sixteen such modules").
+- `docs/RULE_FORMAT.md` (EDIT) -- section 4 condition registry
+  table extended with the iter-33 entry placed immediately
+  above the iter-20 `output_dimensions_constant` entry. Section
+  7 "As of" header bumped from iter 32 to iter 33.
+
+No edits to: `procedural_memory/DSL/` (F3 inert);
+`agent/cycle.py` / `agent/wm.py` / `ARCKG/*.py` / `data/` (F1
+inert); `agent/active_operators.py` (F2 / F8 inert -- zero diff
+this iter); no new rules persisted (F4 vacuously satisfied);
+no `semantic_memory/` artifacts (F5 inert); `run_loop.sh` and
+friends (F6 inert); no `except RuleSchemaError` changes (F7
+inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P4=96, P5=15.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) fire
+`grid_size_changed` (the first two are 2x2 -> 6x6 and 3x3 ->
+9x9; the third is 14x14 -> 14x14 size-preserved),
+`consistent_color_mapping`, and (after iter 33) the new
+`output_dimensions_multiple_of_input` matcher on the two
+tile-style tasks (00576224 and 007bbfb7) -- the FIRST iter
+where the probe set gets a named recognition handle on the
+dimension-changing axis beyond the existential
+`grid_size_changed`. Iter 33 adds matcher vocabulary only; the
+slow path is untouched.
+
+**Probe after**: P5 15 -> 16 via the iter-33 matcher addition.
+The seed=42 probe tasks now additionally fire
+`output_dimensions_multiple_of_input` on 00576224 and 007bbfb7
+(with (k_h, k_w) = (3, 3) on both) -- a content-dependent
+signal the per-attempt `fired_conditions` metadata.json will
+surface from this iter forward. No change to rule emission
+(no new emission branch); the matcher is recognition
+vocabulary ahead of emission, matching iters 17 / 18 / 19 /
+20 / 22 / 23 / 24 / 26 / 28 / 30 / 32's posture.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD 724b3534):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4
+  96 -> 96, P5 15 -> 16, P6 611 -> 611 (lines removed delta 0).
+- verdict: **CLEAN** (1 positive delta -- P5 +1).
+
+**Why this is real progress (not lipstick)**: P5 +1 is the
+only positive signal moved this iter, but it is a genuine
+vocabulary extension on a NEW axis -- not a restatement of an
+existing matcher. The four pre-iter-33 dimensional matchers
+(`grid_size_preserved`, `grid_size_changed`,
+`output_dimensions_constant`, `input_dimensions_constant`) all
+inspect ABSOLUTE-dimensional properties (per-pair equality,
+per-pair inequality, cross-pair output-dim constancy,
+cross-pair input-dim constancy); none names the *relational*
+property "output is a fixed-integer scale of input". The
+iter-33-exclusive territory (tile-style tasks where inputs AND
+outputs both vary across pairs but the ratio is constant) was
+previously unrecognised at the named-vocabulary level.
+Concretely on the probe set: 00576224 (2x2 -> 6x6) and
+007bbfb7 (3x3 -> 9x9) BOTH fire this matcher with (k_h, k_w) =
+(3, 3); pre-iter-33 they fired only the existential
+`grid_size_changed` and absolute matchers that did not pin the
+scale. The scale ratio (3, 3) is precisely the constant a
+future tile / scale emission branch (composing `make_grid` and
+`coloring` over a derived selection) needs as the recognition
+precondition. Naming the precondition before the corresponding
+emission branch lands is the same recognition-vocabulary-
+ahead-of-emission posture iters 17 / 18 / 19 / 20 / 22 / 23 /
+24 / 26 / 28 / 30 / 32 all carry. All 38 new test cases in
+test_output_dimensions_multiple_of_input.py pass; all other
+test suites (every test_*.py file in tests/) pass unchanged.
+No new failure surface.
+
+**Why iter 32's option (A') was deferred**: The iter-32 "Next
+gap" log named option (A') as the next step, but on inspection
+the suggested rule mint (literal pair-0 coords gated on
+count-constant + input-color-uniform) has a load-bearing
+semantic gap as documented in the diagnosis above. The
+"derived selection via input_color_uniform" interpretation
+requires apply-time semantics the frozen `coloring` primitive
+does not support, which would force a deeper change to the
+apply layer (modifying `agent/active_agent.py:_predict_with_
+entry` to route a special "derived-selection" rule shape
+through a custom evaluator that resolves the selection at
+apply time from the test-input grid). That is a larger
+surface than a single defensible step. Option (A') is deferred
+to the iter that takes on the apply-layer extension; iter 33
+extends recognition vocabulary on the parallel relational-
+dimensional axis where the probe set actually has cases
+(00576224 / 007bbfb7) and a clean integer-multiple
+precondition can be named without semantic ambiguity.
+
+**Next gap (note for future iter)**: With iter 33's matcher
+landed, the recognition vocabulary now has the relational-
+dimensional axis alongside the absolute-dimensional axis the
+iter-1 / 17 / 20 / 22 matchers cover. The next-smallest
+defensible steps, in order of P1 / P3 payoff proximity: (A'')
+a `translate_to_schema` emission branch gated on
+`output_dimensions_multiple_of_input` + a colour precondition,
+emitting a rule whose action is a *composition* of `make_grid`
++ `coloring` that tiles the input at the named scale factor.
+This requires extending the `coloring` selection semantics to
+accept a "derived from input" predicate (the iter-32 option
+(A') obstacle) OR a new rule shape that carries the (k_h, k_w)
+scale factor in `condition.params` so the apply layer can
+construct the output from the test input at runtime. (B') a
+`change_colors_constant_across_pairs` matcher on the
+colour-content cross-pair axis (the colour-axis analogue of
+iter 30's position-content matcher and iter 32's cardinality
+matcher) -- names the recognition precondition under which the
+SET of (input_color, output_color) pairs is bit-identical
+across every pair, strictly stronger than iter 8's
+`consistent_color_mapping`. (C') the pair-specific program
+writer inside `GeneralizeOperator` -- the load-bearing P3 work
+but a larger surface. (D') a `change_count_grows_with_input_
+size` matcher: true iff the per-pair change-cell total divided
+by the per-pair input cell-count is constant across pairs --
+recognition precondition for scale tasks where the output
+cell-count scales with the input. Options (A'') and (B') are
+the next-iter steps most directly on the P5 path; option (D')
+extends the cardinality axis with a relational refinement
+analogous to the iter-33 dimensional move. Iter 33 favoured
+the dimensional axis because the probe set has live cases
+(00576224 / 007bbfb7) that fire it, demonstrating real
+coverage extension.
