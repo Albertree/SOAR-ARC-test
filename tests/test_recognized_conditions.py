@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 20
-    # there are eight such modules; tightening the assertion to ``==``
+    # the matcher modules under ``agent/conditions/``. As of iter 22
+    # there are nine such modules; tightening the assertion to ``==``
     # keeps a stray @register import from sneaking into the package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
@@ -143,6 +143,7 @@ def test_registry_contents_after_helper_load() -> None:
         "output_color_uniform",
         "input_color_uniform",
         "output_dimensions_constant",
+        "input_dimensions_constant",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 

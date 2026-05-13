@@ -3245,3 +3245,182 @@ change.
 
 ---
 
+
+---
+## Learning Loop -- 2026-05-13 20:42
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_204210.log
+
+---
+
+## Iter 22 -- 2026-05-13T11:49:05Z -- branch test20
+
+**Diagnosis**: P5 (recognition matcher count) is the single positive
+signal that has driven progress across iters 17/18/19/20, and the
+recognition vocabulary's two-axis grid (input/output x colour/dimension)
+has three corners filled (`output_color_uniform` iter-18,
+`input_color_uniform` iter-19, `output_dimensions_constant` iter-20)
+but its fourth corner -- `input_dimensions_constant` -- is missing.
+The data threading is already in place (iter-19 added per-pair
+`input_height` / `input_width` to `_analyze_pair`), so the gap is a
+matcher-only addition that reuses the existing patterns-dict shape
+on the input-dimension axis. This is the smallest defensible step
+that bumps P5 without touching `agent/active_operators.py` (F8 inert),
+without growing the `_try_*` family (F2 inert), and without adding a
+third hand-coded DSL primitive (F3 inert). It also completes the
+recognition-vocabulary symmetric quadrant: a future literal-coord
+`coloring` rule emission iter will need `input_dimensions_constant`
+as a recognition precondition to assert that the test input's
+expected shape is pinned by training. The iter-21 "Next gap" notes
+called out the coloring uniform-paint emission path, but that path
+runs into the literal-coord non-generalisation issue the iter-19
+docs flagged ("does not generalise across grids of different sizes");
+the right precondition to gate it on requires recognising that input
+dims are constant across training pairs, which is exactly this matcher.
+
+**Change**:
+- `agent/conditions/input_dimensions_constant.py` (NEW) -- registered
+  matcher mirroring iter-20's strict-positive-int / bool-rejected /
+  fail-closed-on-missing structure on the input axis.
+- `tests/test_input_dimensions_constant.py` (NEW, 33 cases) -- mirror
+  of iter-20's test surface on the input side: registration +
+  adjacent non-displacement (iters 1 / 8 / 10 / 13 / 17 / 18 / 19 /
+  20); >=9-entry registry assertion; positive cases (single-pair,
+  multi-pair, varying-output-but-constant-input); rejection on
+  varying input H / W / both; empty / missing / non-list / non-dict
+  `pair_analyses`; malformed analysis; missing / non-int / bool /
+  zero / negative input dims; mixed-shape rejection; side-effect-
+  free; deterministic; the iter-22-distinct
+  `can_fire_without_grid_size_preserved` case (constant input dims +
+  size-changed pairs -- verifies the non-refinement claim against
+  iter 1); orthogonality with `output_dimensions_constant` in both
+  directions (canonical four configurations of input/output dim
+  constancy reachable); co-firing with `identity_transformation` /
+  `grid_size_changed` / `grid_size_preserved` / `input_color_uniform`;
+  end-to-end agreement with live `_analyze_pair`; strict-Boolean
+  return assertion.
+- `tests/test_recognized_conditions.py` (EDIT, 2 lines) -- strict
+  `set(CONDITION_REGISTRY.keys()) == {...}` assertion bumped to 9
+  entries to admit `input_dimensions_constant` and keep the strict-
+  equality contract that catches stray @register imports.
+- `docs/RULE_FORMAT.md` (EDIT) -- new section 4 condition-registry
+  table entry (above `output_dimensions_constant` to keep input/output
+  rows adjacent in the dimensional pair) and a new section 7
+  implementation-status row for `tests/test_input_dimensions_constant.py`,
+  with the iter-22 entry prefixed onto the leading
+  `output_dimensions_constant` status row. The iter version on the
+  section 7 header line is bumped from iter 21 to iter 22.
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, fired_conditions per
+task -- 00576224 fires `[grid_size_changed,
+output_dimensions_constant]`; 007bbfb7 fires
+`[consistent_color_mapping, grid_size_changed,
+output_dimensions_constant]`; 009d5c81 fires `[grid_size_preserved,
+output_dimensions_constant]`. None fires the iter-21 three-matcher
+make_grid conjunction; identity continues to be the slow-path
+fallback.
+
+**Probe after**: same probe-set behaviour expected -- this iter does
+not change the slow path; it adds a new matcher that the live probe
+tasks WILL fire (all three have constant input dimensions across
+training pairs, the typical ARC shape). Post-iter the probe metadata
+files will additionally list `input_dimensions_constant` in their
+`fired_conditions` list once `run_learn.py` is next invoked; no
+re-run was done this iter since `run_loop.sh` runs the probe before
+invocation, and the matcher addition does not change the on-disk
+state of pre-existing `episodic_memory/<task_hex>/attempt_NNN/
+metadata.json` files. The post-iter `_invariant_snapshot.json` diff
+records the matcher addition.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`53b8735b`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+  - F1 (frozen files): no diff against `data/`, `agent/cycle.py`,
+    `agent/wm.py`, or any `ARCKG/*.py` node class.
+  - F2 (new `_try_*` / `_apply_*`): no diff against
+    `agent/active_operators.py` at all this iter.
+  - F3 (hand-coded DSL primitive): no diff against
+    `procedural_memory/DSL/*.py`.
+  - F4 (rule without `condition`): no new files under
+    `procedural_memory/`.
+  - F5 (TF_GRID in semantic_memory): no diff in `semantic_memory/`.
+  - F6 (auto-grown limit): no diff in `run_loop.sh` /
+    `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`.
+  - F7 (swallowed `RuleSchemaError`): the matcher's failure mode is
+    `return False`, not exception swallow, mirroring the iter
+    1/8/10/13/17/18/19/20 contract.
+  - F8 (score-chasing edit to `active_operators.py`): no
+    `active_operators.py` edit at all this iter -- F8's net-positive
+    addition guard cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4 45 -> 45,
+  P5 8 -> 9, P6 607 -> 607.
+- verdict: **CLEAN** (1 positive delta -- P5).
+
+**Why this is real progress (not lipstick)**: the recognition
+vocabulary's two-axis grid (input/output x colour/dimension) has
+been built in the cadence iter-18 -> iter-19 -> iter-20 -> iter-22;
+this iter closes the fourth corner. P5 +1 each step, monotone. The
+iter-22 matcher is not arbitrarily placed: any future literal-coord
+`coloring` rule emission iter needs `input_dimensions_constant` to
+assert that the rule's stored coord list is consistent with the
+test-input shape the recognition vocabulary asserts is constant
+across training. The established cadence is "recognition vocabulary
+ahead of rule emission" (per iters 17/18/19/20 docs); iter-22
+continues it on the symmetric input-dimensional axis. Iter-21's
+emission wiring remains latent-positive, and iter-22 sets up the
+recognition precondition for the next emission wiring iter on the
+coloring axis (which will need to gate literal-coord selection on
+`input_dimensions_constant`).
+
+All 18 test suites pass on this host
+(`test_input_dimensions_constant.py` 33/33 new;
+`test_recognized_conditions.py` 18/18 with the bumped strict-set
+assertion; all other suites unchanged with their previously-listed
+totals).
+
+**Next gap (note for future iter)**: Three candidate smallest steps
+remain:
+  1. **Add a `coloring` selection-derivation schema extension** --
+     extend the section 1 `action.args` schema with an alternative
+     `{"selection_where_input": C, "color": K}` shape and dispatch
+     it through `procedural_memory/DSL/coloring.py` (the iter-21
+     "Next gap" option 2). This is the iter-19 lemma in concrete
+     form -- it unlocks a literal-input-derivation coloring rule
+     whose selection scales to any test input dimension, removing
+     the iter-16 polymorphic-args obstacle on the coloring axis.
+     Larger surface than iter-22 (touches `docs/RULE_FORMAT.md`,
+     `procedural_memory/DSL/coloring.py`,
+     `agent/memory.py:translate_to_schema`, and tests) but lands
+     the first P1-positive on a coloring rule shape.
+  2. **Compose `translate_to_schema` with the literal-coord
+     coloring uniform-paint shape** (gated on iter-22's new matcher
+     AND `input_color_uniform` AND `output_color_uniform` AND
+     `grid_size_preserved` AND NOT `identity_transformation`) --
+     emit a section 1 rule with `action.dsl = "coloring"` and
+     selection drawn from the first training pair's input grid as
+     a literal coord list. The literal-coord form does NOT
+     generalise to grids of different sizes, but iter-22's matcher
+     pins the training-side dimensional precondition, so the rule
+     covers its source task's dimensions deterministically. F8
+     inert (touches `agent/memory.py` only). Smaller surface than
+     option 1 but accumulates one-task-only rules.
+  3. **Pair-specific program writer in `GeneralizeOperator`** (the
+     standing option since iter 14). Larger surface; unlocks
+     anti-unification across pair-specific programs which is the
+     CLAUDE.md section 8 contract -- the ultimate route to P2 / P3
+     growth.
+
+The recognition vocabulary's two-axis grid is now complete on the
+simplest possible axes; further matcher additions would move to
+secondary axes (selection-shape recognition, group-count recognition,
+position recognition matchers). The next ARBOR step's most defensible
+candidate is option 1 (emission wiring on the coloring axis with
+schema extension) -- the input-side polymorphic-args obstacle on the
+coloring axis is the last remaining recognition->emission gap blocked
+on schema design rather than recognition vocabulary.
