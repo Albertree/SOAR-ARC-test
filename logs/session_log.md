@@ -1441,3 +1441,185 @@ a discovered rule whose `condition.type ∈ {grid_size_preserved,
 consistent_color_mapping, sequential_recoloring, identity_transformation}` and
 whose `action.dsl ∈ {coloring, make_grid}`, the matching `_try_*` method in
 `active_operators.py` becomes deletable.
+
+---
+## Learning Loop -- 2026-05-13 19:14
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260513_191416.log
+
+
+---
+## Iter 14 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0, unchanged across iters 1-13. The snapshot
+records P4=18 (15 from iter-13 + 3 from this iter's probe), P5=4 (the four
+matchers grid_size_preserved / consistent_color_mapping / sequential_recoloring /
+identity_transformation), P1/P2/P3=0.0, P6=600. Iter-13's "Next gap" listed three
+candidates; option 1 (pair-specific program writer in `active_operators.py:
+GeneralizeOperator`) is by far the largest surface area and option 2 (legacy
+`save_rule_to_ltm` -> `save_rule` migration) needs option 3 already in place
+because the schema writer requires `condition`/`action` keys that the legacy
+pipeline output does not carry. Option 3 -- the `translate_to_schema(legacy_rule,
+task_hex, patterns, *, rule_id)` helper -- is genuinely the smallest defensible
+step: identity is iter-13's named "one rule shape whose `action.dsl` reduces to
+`coloring`/`make_grid` without needing pair-specific program synthesis"
+(`coloring(grid, [], 0)` returns an identity copy by the iter-3 contract,
+verified by `tests/test_dsl.py`), and the iter-13 `identity_transformation`
+matcher now lets the translator gate honestly against
+`recognized_conditions(patterns)`. The helper is a pure converter, no side
+effects, no `active_operators.py` edit (F2/F8 inert), no rule file written (F4
+inert), no DSL primitive added (F3 inert), no frozen file touched (F1 inert).
+
+**Change**:
+- `agent/memory.py` (+92 LOC) -- new top-level `translate_to_schema(legacy_rule,
+  task_hex, patterns, *, rule_id, now=None) -> dict | None`. For legacy
+  `{"type": "identity", ...}`, the translator:
+    1. Validates the inputs (rejects non-dict legacy_rule, empty/non-string
+       legacy_type, non-8-hex task_hex, non-positive-int rule_id including the
+       bool subclass).
+    2. Coerces non-dict patterns to `{}` (defensive; the matcher gate then
+       rejects empty patterns).
+    3. Gates on `recognized_conditions(patterns)` actually containing
+       `"identity_transformation"` -- the translator refuses to mint a
+       precondition that the live recognizer would reject, keeping the schema
+       record empirically supported by the source task.
+    4. Returns a schema-compliant dict: `condition.type = "identity_transformation"`,
+       `condition.params = {}`, `condition.min_evidence = max(1,
+       len(pair_analyses))`, `action.dsl = "coloring"`, `action.args = {
+       "selection": [], "color": 0}` (no-op composition: `coloring(grid, [], 0)`
+       returns identity), `covers = [task_hex]`, `source_task = task_hex`,
+       `anti_unification_trace = None` (source rule), `created_at = now or
+       datetime.utcnow().isoformat()`, `times_reused = 0`, `id = rule_id`,
+       and `concept`/`category` from the existing `_infer_concept` /
+       `_infer_category` helpers (so the schema record stays coherent with the
+       legacy writer's labelling -- saves a second naming scheme).
+  All other legacy shapes (color_mapping, recolor_sequential, anything else)
+  return `None` deliberately -- they require an anti-unification-discovered
+  abstraction for `action.dsl`, which is iter-13's option-1 work. Pure: no file
+  I/O, no registry mutation, no caller-input mutation. The function is exposed
+  under its public name (no leading underscore) so a future
+  `agent/active_agent.py` migration can call it directly; the lazy import of
+  `agent.conditions.recognized_conditions` is local to the function body so
+  `agent.memory` stays loadable in narrow test environments that do not
+  bootstrap the condition registry.
+- `tests/test_translate_to_schema.py` (new, +428 LOC, 24 cases) -- dependency-free,
+  same runner pattern as iters 1/8/10/13's tests. Runs against the LIVE
+  `CONDITION_REGISTRY` and `DSL_REGISTRY` (no stubs) so the test is coherent
+  with the four-matcher registry iter-13 stood up and the two-primitive DSL
+  frozen by F3. Covers: (1) identity happy path emits all ten required keys
+  with no legacy `rule`/`type` leakage; (2) `condition.type` resolves to
+  `identity_transformation`; (3) `action.dsl = "coloring"` with `args = {
+  "selection": [], "color": 0}`; (4) translated rule passes `validate_rule`
+  end-to-end against a fresh tempdir; (5) covers/source_task wired to
+  task_hex; (6) `anti_unification_trace = None` for source rule; (7)
+  `times_reused = 0` initial; (8) `min_evidence = len(pair_analyses)` for 2-pair
+  and 5-pair patterns; (9) the floor-of-1 path resolves correctly via matcher
+  rejection of empty pair_analyses (so the floor is defensive accounting only);
+  (10) matcher-doesn't-fire refusal on color-mapping-shape patterns;
+  (11) size-mismatch refusal (zero-change-in-overlap + size_match=False);
+  (12) color_mapping legacy refusal; (13) recolor_sequential legacy refusal;
+  (14) non-dict legacy_rule (None/str/list); (15) missing/empty/non-string
+  legacy_type; (16) invalid task_hex (wrong length, uppercase, non-hex char,
+  None, int); (17) invalid rule_id (0, negative, bool subclass, str);
+  (18) non-dict patterns coerced (None, [], "foo", 42, set()) all return None
+  via matcher gate; (19) purity -- no file I/O in a tempdir across 5 calls;
+  (20) caller-input non-mutation (legacy_rule and patterns dicts unchanged);
+  (21) determinism across repeats; (22) `created_at` honours supplied `now`;
+  (23) default `created_at` non-empty when `now` omitted; (24) concept="identity"
+  and category="other" inherited from `_infer_concept`/`_infer_category`.
+- `docs/RULE_FORMAT.md` section 7 -- status table row added for
+  `agent/memory.py:translate_to_schema()` placed between `save_rule_to_ltm()`
+  (legacy) and `migrate_legacy_rules()` (not implemented); test inventory row
+  added for `tests/test_translate_to_schema.py` summarising the 24 cases.
+
+No edits to: `agent/active_operators.py` (F2/F8 inert; numstat 0/0),
+`procedural_memory/DSL/` (F3 inert; numstat 0/0), `agent/cycle.py` / `agent/wm.py`
+/ `ARCKG/*.py` node classes / `data/` (F1 inert; numstat 0/0), `run_loop.sh` /
+`run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py` (F6 inert; numstat 0/0),
+no rule JSON written or modified (F4 inert; `procedural_memory/*.json` glob is
+still empty), no `semantic_memory/` artifacts (F5 inert), no `except
+RuleSchemaError` added or modified (F7 inert).
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=15, P5=4, P6=600
+**Probe after** : (not re-run -- this iter does not change the solve algorithm or
+the rule-storage path; it adds a pure converter that no caller yet invokes.
+P4 reads 18 in the post-check snapshot because the loop's own probe ran
+3 attempts before claude was invoked, which write 3 `attempt_NNN/` folders via
+the iter-9 episodic writer -- that delta is the loop's bookkeeping, not this
+iter's work. The translator becomes load-bearing the moment a future iter
+migrates `active_agent.py`'s `save_rule_to_ltm` call site to `save_rule`.)
+
+**Invariants** (checker run end-to-end against base HEAD `0e2d1df3` -- iter 13):
+- forbidden = none (verdict NEUTRAL). F1: 0-line diff against frozen paths
+  (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` / `+def _apply_`
+  in `agent/active_operators.py` (file untouched; numstat 0/0). F3: no
+  `procedural_memory/DSL/*.py` diff at all; no new `@register(` decorators
+  inside the DSL package. F4: no `rule_*.json` files exist on disk. F5: no
+  `semantic_memory/.*[Tt][Ff]_` paths added. F6: no edits to `run_loop.sh` /
+  `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`. F7: no `except
+  RuleSchemaError` added or modified. F8: `agent/active_operators.py` numstat
+  0/0 -- the "active_operators grew without companion" clause cannot fire.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0, P4 15 -> 18 (loop
+  bookkeeping, not this iter), P5 4 -> 4, P6 600 -> 600. **NEUTRAL** verdict.
+  Iter-13 was CLEAN (P5 +1), so this is the first NEUTRAL after one CLEAN; the
+  STAGNATION trigger at INVARIANTS.md section 3 only fires at N>=3 consecutive
+  NEUTRAL. This iter is scaffolding -- the payoff lands when a future iter
+  migrates `active_agent.py`'s `save_rule_to_ltm` call site to `save_rule`, at
+  which point `translate_to_schema` becomes the converter that turns
+  `{"type": "identity"}` slow-path output into a schema-compliant rule the
+  schema-aware writer can persist (lifting P1/P2 above zero for any task whose
+  pipeline bottoms out at identity AND fires `identity_transformation` on its
+  patterns).
+- All ten test suites pass on this host:
+  `tests/test_translate_to_schema.py` 24/24 (new),
+  `tests/test_identity_transformation.py` 22/22,
+  `tests/test_recognized_conditions.py` 18/18,
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Next gap (note for future iter)**: With `translate_to_schema` in place, the
+two remaining iter-13 options reduce to a single now-mechanical migration:
+  1. **Legacy writer migration** -- `agent/active_agent.py:solve()`'s
+     `save_rule_to_ltm(active_rules[0], task.task_hex,
+     self.procedural_memory_root)` call (line ~116) is the ONLY remaining
+     consumer of the pre-test20 schema. The migration now has all three
+     prerequisites: (a) `save_rule()` is wired through anti-unification (iter
+     6), (b) `load_related(category)` retrieves prior rules in the same
+     category (iter 7), and (c) `translate_to_schema()` lifts the slow path's
+     legacy dict into the schema shape (iter 14). The minimal swap calls
+     `translate_to_schema(legacy, task.task_hex, wm.s1.get("patterns", {}),
+     rule_id=<next-id>)` and, when it returns non-None, forwards the schema
+     rule to `save_rule(schema, related_rules=load_related(schema["category"]),
+     procedural_memory_root=...)`. Because the identity guard at line 115
+     currently filters out identity rules from the save path, the migration's
+     first visible effect will be *removing that guard* -- identity now has a
+     valid schema representation (translator returns a real rule, not None)
+     and can be persisted like any other discovered rule. That makes the
+     iter's positive-signal trajectory concrete: the seed=42 probe set today
+     produces identity rules on every task; after migration, one identity
+     rule per task lands in `procedural_memory/` until the equivalence check
+     in `save_rule` / anti-unification merges them, at which point P1
+     (`solved_tasks / total_rules`) moves off zero AND P2 (mean covers) moves
+     above 1. F8 trivially satisfied because the iter also touches
+     `agent/memory.py` (the call-site uses `translate_to_schema` / `save_rule`
+     / `load_related`).
+  2. **Pair-specific program writer** in
+     `agent/active_operators.py:GeneralizeOperator` (the iter-12/iter-13
+     option 1) remains the only avenue for moving P1/P2/P3 OFF identity-only
+     rules. It is now blocker-free from a translator standpoint -- but it is
+     much larger surface area than (1), so (1) should land first.
+A complementary P6-down opportunity also remains latent: once anti-unification
+produces a discovered rule whose `condition.type` is one of the four matcher
+names and whose `action.dsl` reduces to `coloring` or `make_grid`, the matching
+`_try_*` method in `active_operators.py` becomes deletable.

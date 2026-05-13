@@ -253,6 +253,98 @@ def load_related(category: str, *,
     return out
 
 
+def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
+                        rule_id: int,
+                        now: str | None = None) -> dict | None:
+    """Lift a legacy pipeline rule into the §1 ``{condition, action}`` shape.
+
+    This is the bridge function between the slow-path output of
+    ``GeneralizeOperator`` (legacy shapes like ``{"type": "identity", ...}``
+    or ``{"type": "color_mapping", "mapping": {...}, ...}``) and the
+    schema-aware ``save_rule()`` writer. The legacy writer
+    ``save_rule_to_ltm()`` still embeds the legacy dict under a top-level
+    ``rule`` key — files it produces would trip F4 (rule lacking
+    ``condition``). ``translate_to_schema`` is the lossless converter that a
+    future ``active_agent.py`` migration will call before invoking
+    ``save_rule``.
+
+    Pure function: no file I/O, no registry mutation. ``recognized_conditions``
+    is read-only by contract.
+
+    Returns
+    -------
+    dict | None
+        A candidate §1-compliant rule (caller must still pass it through
+        ``validate_rule`` / ``save_rule``), or ``None`` if no translation
+        is currently defined for ``legacy_rule["type"]`` AND the
+        recognition-vocabulary precondition.
+
+    Currently translated shapes
+    ---------------------------
+    * ``{"type": "identity", ...}`` → ``condition.type =
+      "identity_transformation"`` (requires the matcher to fire on
+      ``patterns`` — gate ensures the rule's stored precondition is
+      empirically supported by the source task), ``action.dsl = "coloring"``
+      with ``args = {"selection": [], "color": 0}`` (no-op
+      composition — ``coloring(grid, [], 0)`` returns an identity copy of
+      ``grid``). This is the only legacy shape whose ``action.dsl`` reduces
+      to a registered DSL primitive without pair-specific program
+      synthesis; ``color_mapping`` and ``recolor_sequential`` require an
+      anti-unification-discovered abstraction, deferred to a later iter.
+
+    Non-translatable shapes return ``None`` deliberately — a caller that
+    wants to attempt a save must check the return value and fall back to
+    the legacy writer (or skip the save).
+    """
+    if not isinstance(legacy_rule, dict):
+        return None
+    legacy_type = legacy_rule.get("type")
+    if not isinstance(legacy_type, str) or not legacy_type:
+        return None
+    if not isinstance(task_hex, str) or not _HEX8_RE.match(task_hex):
+        return None
+    if not isinstance(rule_id, int) or isinstance(rule_id, bool) or rule_id < 1:
+        return None
+    if not isinstance(patterns, dict):
+        patterns = {}
+
+    if legacy_type != "identity":
+        return None
+
+    # V2 gate: the recognition matcher must actually fire on the patterns
+    # the source task produced. This keeps the translator honest — it cannot
+    # mint a condition.type that the live recognizer would reject.
+    from agent.conditions import recognized_conditions  # local import
+    fired = recognized_conditions(patterns)
+    if "identity_transformation" not in fired:
+        return None
+
+    pair_analyses = patterns.get("pair_analyses") or []
+    min_evidence = max(1, len(pair_analyses) if isinstance(pair_analyses, list) else 1)
+
+    created_at = now if isinstance(now, str) and now else datetime.utcnow().isoformat()
+
+    return {
+        "id": rule_id,
+        "concept": _infer_concept(legacy_rule),
+        "category": _infer_category(legacy_rule),
+        "condition": {
+            "type": "identity_transformation",
+            "params": {},
+            "min_evidence": min_evidence,
+        },
+        "action": {
+            "dsl": "coloring",
+            "args": {"selection": [], "color": 0},
+        },
+        "covers": [task_hex],
+        "source_task": task_hex,
+        "anti_unification_trace": None,
+        "created_at": created_at,
+        "times_reused": 0,
+    }
+
+
 def save_rule(rule: dict, *,
               related_rules: Iterable[dict] | None = None,
               procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> str:
