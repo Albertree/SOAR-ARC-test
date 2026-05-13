@@ -1009,3 +1009,140 @@ in `agent/active_operators.py`. Once a future iter produces an AU-derived
 corresponding `_try_*` method becomes deletable (P6 finally moves down) —
 deletion is the architectural payoff for matcher addition, not the
 addition itself.
+
+---
+## Learning Loop -- 2026-05-13 18:52
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_185230.log
+
+---
+## Iter 11 -- 2026-05-13 -- branch test20
+
+**Diagnosis**: Probe is 0/3, rules=0 — same surface as iters 1-10. The auto-snapshot
+captures P4=9 and P5=3 already, P1/P2/P3 still 0.0 (no rule on disk), P6=600
+unchanged. Iter 10 closed CLEAN by adding the third matcher and explicitly said
+"stop reaching for +1 matcher as the default" — so iter 11 cannot honestly play
+that move. But grep against `CONDITION_REGISTRY` across the tree shows the
+registry is referenced only by (a) the matcher modules themselves (the `@register`
+side), (b) their tests, and (c) `agent/memory.py`'s V2 validation (a *static*
+check on persisted rules). There is no entry point that *runs* matchers against
+a live `patterns` dict. The three matchers iters 1/8/10 added are therefore
+inert vocabulary at runtime — until something can ask "which named conditions
+fire on this patterns dict?" they cannot ride along on a discovered rule's
+`condition.type`, cannot light up in episodic info, cannot drive translation.
+Smallest defensible step: add the missing applier — a single read-only function
+`recognized_conditions(patterns, params_per_type=None)` in `agent/conditions/__init__.py`
+that runs every registered matcher and returns the names whose `match(...) is True`.
+No call-site change. Pure scaffolding for the next iter that wants matchers on the
+solve path.
+
+**Change**:
+- `agent/conditions/__init__.py` — added `recognized_conditions(patterns,
+  params_per_type=None) -> list[str]`. Runs every matcher in `CONDITION_REGISTRY`
+  in insertion order, threading optional matcher-specific params through
+  `params_per_type`, and returns the names whose `match(...) is True`. Non-dict
+  `patterns` / `params_per_type` defang to `[]` / `{}`. Strict `is True` check
+  (not truthiness — matchers' return contract is `bool`). Does **not** swallow
+  matcher exceptions: per `docs/RULE_FORMAT.md §4` matchers must return False on
+  malformed input rather than raise, so a raising matcher is a contract
+  violation that should surface, not silently corrupt the recognition output
+  (mirrors F7's spirit). The first runtime entry point that uses
+  `CONDITION_REGISTRY` outside V2 validation. No new `@register` calls added —
+  this is an applier, not a matcher (P5 unchanged).
+- `tests/test_recognized_conditions.py` (new, dependency-free runner) — 18
+  cases: helper importable from package root; registry contents unchanged after
+  helper load (still exactly {grid_size_preserved, consistent_color_mapping,
+  sequential_recoloring}); all-three-fire on a patterns dict carrying three
+  distinct input colours per pair so `consistent_color_mapping`'s 1:1 contract
+  and `sequential_recoloring`'s contiguous-range-via-`top_row` contract can
+  hold simultaneously (the iter's one real correctness payload — found and
+  fixed during test authoring after the first cut used three groups sharing
+  `input_color=0`, which `consistent_color_mapping` rightly rejected); only
+  `grid_size_preserved` fires on no-change pairs; `consistent_color_mapping`
+  fires when `grid_size_preserved=False` (the iter-8 dimension-agnostic
+  contract is preserved at the applier level); registry insertion order
+  preserved in output; empty / non-dict patterns return `[]`; list-type
+  return; `params_per_type` forwarding through a transient sentinel matcher
+  (positive case + missing-entry default to `{}` + non-dict-entry fallback +
+  non-dict-top-level fallback covering None / list / int); side-effect-free
+  on both `patterns` and `params_per_type` (deep-copy compare); no swallowing
+  of matcher exceptions; deterministic across 5 repeats; registry not
+  mutated during application; strict-`is True` rejection of a truthy
+  non-bool return.
+- `docs/RULE_FORMAT.md` §7 — `agent/conditions/` row notes the iter-11 applier
+  addition with the "P5 unchanged" call-out; new row for
+  `agent/conditions/recognized_conditions()` describing the runtime applier
+  contract and the future-iter wiring targets; new row for
+  `tests/test_recognized_conditions.py` describing the 18 cases.
+
+**Probe before**: score=0/3, rules=0, covers_mean=0.0, P4=9, P5=3
+**Probe after** : (not re-run — this iter does not affect the solve path; the
+new applier is a runtime hook that lights up only when a future caller in
+`active_agent.py` or `GeneralizeOperator` invokes it. The unblock pattern
+mirrors iter-7: `load_related` was pure read-side plumbing whose payoff
+landed once `save_rule` had a caller; `recognized_conditions` is pure
+matcher-side plumbing whose payoff lands once any pipeline stage feeds
+patterns through it.)
+
+**Invariants** (checker run end-to-end against base HEAD `252e8b46` — iter 10):
+- forbidden = none (verdict NEUTRAL). F1: 0-line diff against frozen-file paths
+  (`data/`, `agent/cycle.py`, `agent/wm.py`,
+  `ARCKG/{task,pair,grid,object,pixel}.py`). F2: no `+def _try_` / `+def _apply_`
+  in `agent/active_operators.py` (file untouched — `git diff --stat` shows it
+  is not in the diff). F3: no `procedural_memory/DSL/*.py` diff at all; the new
+  applier lives in `agent/conditions/__init__.py`, not the DSL package; no new
+  `@register("name")` decorators added inside the DSL allow-list. F4: no
+  `rule_*.json` files exist. F5: no `semantic_memory/.*[Tt][Ff]_` paths added.
+  F6: no edits to `run_loop.sh` / `run_pipeline.sh` / `run_learn.py` /
+  `run_1ktasks.py`. F7: no `except RuleSchemaError` added or modified; the
+  applier deliberately does **not** catch matcher exceptions so it cannot
+  silently swallow anything. F8: `agent/active_operators.py` numstat 0/0
+  (untouched), so the "grew without companion" clause is N/A.
+- positives: P1 0.0 → 0.0, P2 0.0 → 0.0, P3 0.0 → 0.0, P4 9 → 9, P5 3 → 3,
+  P6 600 → 600. **NEUTRAL** on auto-measured signals — checker exits 2.
+  P5 is a unit counter over `@register(` calls; no `@register(` was added,
+  so the count holds at 3. The applier is the *piece that lets P5 matter at
+  runtime* without itself moving any single metric — same structural role
+  iter-7's `load_related` played for `save_rule`'s `related_rules` kwarg.
+- All eight test suites pass on this host:
+  `tests/test_recognized_conditions.py` 18/18 (new),
+  `tests/test_consistent_color_mapping.py` 14/14,
+  `tests/test_sequential_recoloring.py` 20/20,
+  `tests/test_load_related.py` 11/11,
+  `tests/test_save_rule.py` 14/14,
+  `tests/test_unify.py` 14/14,
+  `tests/test_dsl.py` 17/17,
+  `tests/test_episodic.py` 15/15.
+
+**Next gap (note for future iter)**: With a runtime applier in place, the
+smallest defensible step that *uses* it is now genuinely small and
+defensible:
+  1. **Wire** `recognized_conditions(wm.s1.get("patterns", {}))` into
+     `agent/active_agent.py:solve()`'s slow path, persisting the fired
+     names into `last_solve_info["fired_conditions"]`. This makes
+     subsequent `episodic_memory/<task>/attempt_NNN/metadata.json`
+     entries surface which recognition matchers actually fired on each
+     probe task — turning P4's growing pile of attempt folders into a
+     readable history of "what the system thinks it's looking at",
+     without writing any rule file. Touches `agent/active_agent.py` +
+     `agent/conditions/` (the import companion), so F8 is N/A. ~5 LOC.
+  2. **Use** `recognized_conditions(...)` inside a tiny
+     `_translate_to_schema(legacy_rule, task_hex, patterns)` helper in
+     `agent/memory.py` so that when `GeneralizeOperator` emits a
+     `color_mapping` legacy rule, the helper picks `condition.type =
+     "consistent_color_mapping"` automatically (it would be the only
+     name fired by the applier for that patterns shape). Still blocked
+     on `action.dsl` — `color_mapping` is not a `coloring` /
+     `make_grid` composition the V3 registry admits, so this translator
+     would only produce admissible rules for patterns reducible to a
+     single `coloring`/`make_grid` call. That's exactly the surface
+     where the *pair-specific program writer* needs to land — and that
+     remains the larger unblock for P1/P2/P3.
+(1) is the smaller of the two and the natural follow-up to iter 11 in
+the same way iter 9's episodic writer wired iter 6's `save_rule`
+plumbing to a per-attempt artifact.
