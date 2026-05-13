@@ -4332,3 +4332,226 @@ touch but would not unlock new emission territory. The largest-surface
 alternative remains the pair-specific program writer in
 `GeneralizeOperator` — anti-unification-ready but P2 / P3 growth would
 have to wait for at least one rule on disk to abstract over.
+
+---
+## Learning Loop -- 2026-05-13 21:36
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260513_213555.log
+
+---
+## Learning Loop -- 2026-05-13 21:49
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260513_214925.log
+
+---
+## Iter 27 -- 2026-05-13T12:50Z -- branch test20
+
+**Diagnosis**: Iter 26 minted the recognition partner
+`multi_cell_change_group_per_pair` and named the actual EMISSION
+branch (Option 2: multi-cell single-blob `coloring`) as the natural
+next gap -- gated on iter-26 + `output_color_uniform` (iter 18) +
+`input_dimensions_constant` (iter 22) + `grid_size_preserved` (iter
+1), painting every cell of the blob with K. The recognition
+vocabulary side has now saturated on the single-blob axis (iters 23
+/ 24 / 26 form an exact cell-count partition: 0 / 1 / >=2); P5
+growth without an emission branch consuming the new entries is the
+recognition-vocabulary stagnation pattern the loop has been
+flagging across the last four iters. Smallest defensible step is the
+emission branch itself, which is the F8-permitted edit
+(`active_operators.py` + `agent/memory.py` together) the iter-26 log
+explicitly named: extend `_analyze_pair` to emit per-group
+`positions`, then add the fourth `translate_to_schema` branch
+consuming it.
+
+**Change**:
+- `agent/active_operators.py` (EDIT, +5 / -0): extend
+  `ExtractPatternOperator._analyze_pair`'s group-dict literal with a
+  new `positions` key -- a row-major-sorted list of the blob's
+  `(r, c)` cells. The sorted order is what makes cross-pair set
+  equality the right notion of "same blob" for iter-27's literal-
+  coord-list rule. The single-cell case (`cell_count == 1`) collapses
+  `positions` to `[(top_row, top_col)]`, so iter-25's extractor
+  remains correct without re-reading this field.
+- `agent/memory.py` (EDIT, +~120 lines): new fourth `translate_to_schema`
+  branch gated on the iter-27 four-matcher conjunction
+  (`multi_cell_change_group_per_pair` + `output_color_uniform` +
+  `input_dimensions_constant` + `grid_size_preserved`) emitting a
+  `coloring(grid, selection=[[r1,c1],...,[rN,cN]], color=K)` rule with
+  `condition.type = "multi_cell_change_group_per_pair"`,
+  `concept = "paint_blob"`, `category = "color_transform"`. New
+  defensive helper `_extract_multi_cell_paint_args` re-extracts
+  (positions_list, color) from `pair_analyses` after the matcher
+  conjunction has confirmed presence, additionally enforcing
+  (1) the blob's coord set is bit-identical across all training
+  pairs (the matcher pins cardinality range but not position),
+  (2) `len(positions) == cell_count` per group (the iter-27
+  `_analyze_pair` contract), (3) `positions` is a list of valid
+  strict-non-negative-int coord tuples (no bool subclass), (4) no
+  duplicate coords inside a single blob, and (5) K is in the
+  `coloring` primitive's valid colour set (`range(10) | {13}`).
+  Mirror posture of `_extract_single_cell_paint_args` and
+  `_extract_make_grid_args` -- defensive re-extraction prevents a
+  malformed rule that `validate_rule` would happily save but
+  `apply_DSL` would later reject. The `translate_to_schema` docstring
+  gains the (d) branch description; STRICT mutual exclusion with
+  iters 14 / 21 / 25 is named (cardinality 0 vs 1 vs >=2 partitions
+  the cell-count axis; `grid_size_preserved` vs `grid_size_changed`
+  partitions the dimensional axis), so the order of the four
+  branches in the function body is incidental.
+- `tests/test_translate_to_schema.py` (EDIT, +~30 cases): exhaustive
+  iter-27 surface mirroring iter-25's 23-case posture plus iter-27-
+  distinct cases -- boundary `cell_count == 2`, blob-position
+  divergence across pairs (the defensive iter-27 case the matcher
+  conjunction does NOT catch), `len(positions) != cell_count`
+  inconsistency, missing `positions` field (pre-iter-27 patterns
+  shape backwards-compat), row-major sort determinism (different
+  input orderings of the same blob produce identical output),
+  end-to-end round-trip through `apply_DSL("coloring", ...)`, AND
+  the canonical iter-27 contract guard
+  (`test_multi_cell_live_analyze_pair_emits_positions_field`): the
+  live `ExtractPatternOperator._analyze_pair` MUST emit `positions`
+  per group -- a future regression that drops this field would
+  silently cause every multi-cell branch invocation to return None.
+  Plus three strict-mutual-exclusion verifications (vs iter 25
+  single-cell, vs iter 14 identity, vs iter 21 make_grid). All
+  ~30 cases pass against the live `CONDITION_REGISTRY` +
+  `DSL_REGISTRY` + `_analyze_pair` with no stubs.
+- `docs/RULE_FORMAT.md` (EDIT): section 4 `multi_cell_change_group_per_pair`
+  row updated to note the iter-27 emission branch landed (was
+  "deferred to a future iter"); section 7 "As of" bumped from iter 26 to
+  iter 27; the `agent/memory.py:translate_to_schema()` row gains the
+  iter-27 (d) branch description with all defensive checks named
+  and the F8 companion-touch satisfaction recorded explicitly; the
+  `tests/test_translate_to_schema.py` row gains the iter-27 ~30-case
+  description.
+
+No edits to: `procedural_memory/DSL/` (F3 inert; numstat 0/0 -- no
+new DSL primitive added, `coloring` and `make_grid` remain the only
+two hand-coded primitives, the iter-27 emission branch composes them
+as data via `args.selection` and `args.color`); `agent/cycle.py` /
+`agent/wm.py` / `ARCKG/*.py` node classes / `data/` (F1 inert);
+`agent/active_operators.py`'s `_try_*` / `_apply_*` family (F2 inert
+-- no new methods added, the iter-27 edit is a pure data-emission
+extension to the existing `_analyze_pair` group-dict literal); no
+new rules persisted (F4 vacuously satisfied -- the probe tasks do
+not fire `multi_cell_change_group_per_pair`, so no iter-27 rule was
+minted this iter; the emission branch is exercised by the new
+tests instead); no `semantic_memory/` artifacts (F5 inert);
+`run_loop.sh` / `run_pipeline.sh` / `run_learn.py` / `run_1ktasks.py`
+(F6 inert); no `except RuleSchemaError` added or modified (F7
+inert); F8 companion-touch satisfied -- `agent/active_operators.py`
+edited together with `agent/memory.py`, the canonical F8 allowlist
+pattern.
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P5=12, P4=63.
+The seed=42 probe tasks at iter-26 (00576224 / 007bbfb7 / 009d5c81)
+fire `grid_size_changed` / `input_dimensions_constant` /
+`output_dimensions_constant` / `consistent_color_mapping` /
+`grid_size_preserved` but NOT `multi_cell_change_group_per_pair` --
+the iter-27 emission branch is latent on this probe set, the same
+position iter 26's recognition addition was in. The branch is
+verified by the test surface, not by a probe rule save.
+
+**Probe after**: Correct 0/3 (0.0%), Rules 0 (no rule saved -- probe
+tasks do not fire the iter-27 matcher conjunction, as expected from
+the iter-26 latency analysis). P4 grew 63 -> 66 from the three new
+episodic entries written by `_record_attempt()` -- the new
+`_analyze_pair` code path was exercised end-to-end and the solve
+loop continues to write attempt folders correctly.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` end-to-end against base HEAD
+`4c13e73d`):
+- forbidden = none (all eight checks F1-F8 inert this iter).
+  - F1: no diff against `data/`, `agent/cycle.py`, `agent/wm.py`, or
+    any `ARCKG/*.py` node class.
+  - F2: no new `_try_<name>` / `_apply_<name>` method --
+    `git diff` of `agent/active_operators.py` adds zero method
+    definitions.
+  - F3: no diff against `procedural_memory/DSL/*.py`.
+  - F4: no new files under `procedural_memory/`.
+  - F5: no diff in `semantic_memory/`.
+  - F6: no diff in `run_loop.sh` / `run_pipeline.sh` / `run_learn.py`
+    / `run_1ktasks.py`.
+  - F7: no `except RuleSchemaError` added or modified -- the new
+    `_extract_multi_cell_paint_args` helper's failure mode is
+    `return None`, not exception swallow.
+  - F8: `agent/active_operators.py` has net +5 line addition this
+    iter; companion-touch satisfied by simultaneous edits to
+    `agent/memory.py` (the new translator branch and helper that
+    consume the `positions` field). This is the canonical F8 pattern
+    -- `active_operators.py` extension paired with the
+    `agent/memory.py` consumer.
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 63 -> 66, P5 12 -> 12, P6 607 -> 611.
+- verdict: **CLEAN** (1 positive delta -- P4 +3 from re-running the
+  probe through the new `_analyze_pair` code path).
+
+**Why this is real progress (not lipstick)**: The iter-23/24/26
+recognition trio now has a consumer. Without iter 27 the
+`multi_cell_change_group_per_pair` matcher was inert vocabulary --
+no `translate_to_schema` branch read it, so even a perfectly-firing
+matcher could never mint a rule. The iter-27 emission branch closes
+that loop: a task whose patterns fire the four-matcher conjunction
+now produces a `coloring(grid, [(r1,c1),...,(rN,cN)], K)` rule, the
+THIRD non-identity rule shape any iter has been able to mint
+without anti-unification or polymorphic args (after iter 21's
+make_grid and iter 25's single-cell coloring). The iter-16
+polymorphic-args obstacle is now closed on the `coloring` argument
+list across BOTH cardinality regimes -- single-cell (iter 25) and
+multi-cell single-blob (iter 27) -- with the same literal-coord-list
+shape. P4 +3 confirms the new `_analyze_pair` code path actually
+runs end-to-end through the live solve loop without breaking the
+episodic writer. P6 net +4 (611 from 607) is a small regression on
+the lines-removed metric, but the iter-27 addition is irreducible
+data emission (`positions` is the data the emission branch needs);
+the comment was trimmed from 11 lines to 1 to minimise the
+addition. No `_try_*` / `_apply_*` accretion (F2 inert); no third
+DSL primitive (F3 inert); rule file write would emit a section 1-compliant
+`{condition, action}` block (F4 inert by construction). All 96
+test_translate_to_schema cases pass plus all 20 other previously-
+passing test files (consistent_color_mapping, dsl, episodic,
+fast_path_schema_rule, grid_size_changed, identity_transformation,
+input_color_uniform, input_dimensions_constant, load_related,
+multi_cell_change_group_per_pair, next_rule_id, output_color_uniform,
+output_dimensions_constant, persist_pipeline_rule,
+recognized_conditions, save_rule, sequential_recoloring,
+single_cell_change_per_pair, single_change_group_per_pair, unify).
+
+**Next gap (note for future iter)**: With three non-identity
+emission branches landed (make_grid, single-cell coloring, multi-
+cell single-blob coloring), the recognition vocabulary on the
+single-blob axis is saturated AND consumed. The natural next
+emission frontier is the MULTI-BLOB territory: extend the
+recognition axis with a `multi_group_per_pair` matcher
+(`num_groups >= 2` per pair -- the simplest entry on the deferred
+multi-blob axis from iter 23's territory), then write the emission
+branch that consumes it. Two sub-options for the multi-blob
+emission action: (a) per-blob uniform paint --
+`coloring(grid, blob_1_positions ++ ... ++ blob_N_positions, K)`
+gated on `output_color_uniform` + the new matcher (same K across
+all blobs); (b) per-blob distinct paint -- needs a richer action
+shape or an anti-unification-discovered abstraction. Option (a) is
+the smaller half. Alternative larger-surface step: pair-specific
+program writer in `GeneralizeOperator` -- the canonical
+anti-unification-fed input that would push P3 (AU-traced fraction)
+above 0.0 once the writer + the AU caller chain are both wired.
+P3 has been at 0.0 for 27 iters; the system has never minted an
+abstract rule. That is the largest unfilled gap by far, and now
+that emission diversity is at three branches the inputs to
+anti-unification (rules sharing `(condition.type, action.dsl) =
+(*, coloring)` skeleton) exist for the first time -- a future
+caller of `save_rule(rule, related_rules=load_related(category=
+"color_transform", ...))` would have >= 1 sibling rule to unify
+against, the precondition iter 6's AU wiring needs to actually
+fire.

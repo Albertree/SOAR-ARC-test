@@ -1239,6 +1239,567 @@ def test_single_cell_branch_strict_mutual_exclusion_with_make_grid() -> None:
 
 
 # ──────────────────────────────────────────────────────────────────────────
+# Iter 27 — multi-cell single-blob coloring branch
+#   legacy {"type": "identity"} + patterns firing
+#   multi_cell_change_group_per_pair (iter 26) + output_color_uniform
+#   (iter 18) + input_dimensions_constant (iter 22) + grid_size_preserved
+#   (iter 1) → `coloring(grid, [(r1,c1), ..., (rN,cN)], K)` rule. The
+#   coord list is each pair's single group's `positions` field (iter 27's
+#   `_analyze_pair` extension), serialized in row-major sorted order. The
+#   defensive helper requires the position SET to be bit-identical across
+#   pairs (the matcher conjunction pins cardinality range and colour
+#   uniformity but not blob position). K from any group's
+#   `output_colors[0]`.
+# ──────────────────────────────────────────────────────────────────────────
+
+def _multi_cell_patterns(n_pairs: int = 2,
+                         positions: list | None = None,
+                         k: int = 7, in_h: int = 4, in_w: int = 4) -> dict:
+    """Patterns mimicking a multi-cell single-blob uniform-paint task.
+    Every pair has one change group consisting of `len(positions)` ≥ 2
+    cells at the given coords → colour k. `size_match` is True per pair;
+    per-pair `input_height`/`input_width`/`output_height`/`output_width`
+    set to (in_h, in_w) so iter-22 input_dimensions_constant fires. The
+    iter-1 top-level `grid_size_preserved` flag is True.
+    """
+    if positions is None:
+        positions = [(1, 1), (1, 2)]
+    cells = [(int(r), int(c)) for r, c in positions]
+    top_row = min(r for r, _ in cells)
+    top_col = min(c for _, c in cells)
+    sorted_positions = sorted(cells)
+    pair_analyses = []
+    for i in range(n_pairs):
+        pair_analyses.append({
+            "total_changes": len(cells),
+            "num_groups": 1,
+            "groups": [
+                {
+                    "input_colors": [i],
+                    "output_colors": [k],
+                    "top_row": top_row,
+                    "top_col": top_col,
+                    "cell_count": len(cells),
+                    "positions": [tuple(p) for p in sorted_positions],
+                }
+            ],
+            "size_match": True,
+            "input_height": in_h,
+            "input_width": in_w,
+            "output_height": in_h,
+            "output_width": in_w,
+        })
+    return {
+        "grid_size_preserved": True,
+        "pair_analyses": pair_analyses,
+    }
+
+
+def test_multi_cell_branch_fires_when_all_four_matchers_fire() -> None:
+    """Smoke: legacy={"type": "identity"} + patterns firing iter
+    1 / 18 / 22 / 26 should produce a schema rule whose
+    `action.dsl == "coloring"` with a multi-coord selection."""
+    legacy = {"type": "identity", "confidence": 0.0}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_cell_patterns(n_pairs=2, positions=[(1, 1), (1, 2)], k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None, "expected multi-cell schema rule, got None"
+    assert out["action"]["dsl"] == "coloring"
+    assert out["action"]["args"] == {
+        "selection": [[1, 1], [1, 2]], "color": 7,
+    }
+
+
+def test_multi_cell_condition_type_is_multi_cell_change_group_per_pair() -> None:
+    """The multi-cell branch picks `multi_cell_change_group_per_pair` as
+    `condition.type` — the strictest of the four gating matchers."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(),
+        rule_id=2, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["condition"]["type"] == "multi_cell_change_group_per_pair"
+    assert out["condition"]["params"] == {}
+    assert isinstance(out["condition"]["min_evidence"], int)
+    assert out["condition"]["min_evidence"] >= 1
+
+
+def test_multi_cell_rule_passes_validate_rule() -> None:
+    """The translator's output must satisfy V1–V7. V2 checks
+    `condition.type` is registered (multi_cell_change_group_per_pair is,
+    iter 26); V3 checks `action.dsl` is registered (coloring is, iter
+    3)."""
+    tmp_root = tempfile.mkdtemp(prefix="arbor_translate_multicell_")
+    try:
+        legacy = {"type": "identity"}
+        out = translate_to_schema(
+            legacy, "abcdef12", _multi_cell_patterns(),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None
+        validate_rule(out, procedural_memory_root=tmp_root)
+    finally:
+        import shutil
+        shutil.rmtree(tmp_root, ignore_errors=True)
+
+
+def test_multi_cell_positions_match_pair_analysis() -> None:
+    """The selection list is extracted from each pair's group's
+    `positions`. The defensive helper additionally requires the set to be
+    bit-identical across pairs; iter through several positions to verify
+    the extraction is correct, not stuck on a constant."""
+    legacy = {"type": "identity"}
+    cases = [
+        [(0, 0), (0, 1)],
+        [(0, 0), (1, 0), (2, 0)],
+        [(1, 1), (1, 2), (2, 1), (2, 2)],
+    ]
+    for blob in cases:
+        out = translate_to_schema(
+            legacy, "abcdef12",
+            _multi_cell_patterns(n_pairs=3, positions=blob, k=5,
+                                 in_h=5, in_w=5),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None, f"multi-cell branch should fire for {blob}"
+        expected = [[r, c] for (r, c) in sorted(blob)]
+        assert out["action"]["args"]["selection"] == expected
+
+
+def test_multi_cell_positions_are_row_major_sorted() -> None:
+    """The translator must produce a deterministic row-major sorted
+    selection list regardless of the order positions appear in the
+    fixture, because anti-unification (and stored-rule lookup) requires
+    deterministic serialization."""
+    legacy = {"type": "identity"}
+    # Same blob, different input orderings — translator must produce
+    # identical output.
+    patterns_a = _multi_cell_patterns(positions=[(0, 0), (0, 1), (1, 0)])
+    patterns_b = _multi_cell_patterns(positions=[(1, 0), (0, 1), (0, 0)])
+    out_a = translate_to_schema(
+        legacy, "abcdef12", patterns_a, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    out_b = translate_to_schema(
+        legacy, "abcdef12", patterns_b, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert out_a is not None and out_b is not None
+    assert out_a["action"]["args"]["selection"] == \
+        out_b["action"]["args"]["selection"] == [[0, 0], [0, 1], [1, 0]]
+
+
+def test_multi_cell_color_matches_uniform_output_color() -> None:
+    """K is extracted from any group's `output_colors[0]`. iter-18 pins
+    uniformity; the helper additionally checks the value is in the
+    coloring primitive's valid colour set (0..9 or 13)."""
+    legacy = {"type": "identity"}
+    for k in (0, 1, 5, 9, 13):
+        out = translate_to_schema(
+            legacy, "abcdef12",
+            _multi_cell_patterns(k=k),
+            rule_id=1, now="2026-05-13T19:30:00.000000",
+        )
+        assert out is not None, f"multi-cell branch should fire for K={k}"
+        assert out["action"]["args"]["color"] == k
+
+
+def test_multi_cell_covers_and_source_task_use_task_hex() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "deadbeef", _multi_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["source_task"] == "deadbeef"
+    assert out["covers"] == ["deadbeef"]
+
+
+def test_multi_cell_anti_unification_trace_is_null_for_source_rule() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["anti_unification_trace"] is None
+
+
+def test_multi_cell_times_reused_starts_at_zero() -> None:
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["times_reused"] == 0
+
+
+def test_multi_cell_min_evidence_reflects_pair_count() -> None:
+    legacy = {"type": "identity"}
+    out2 = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out2 is not None
+    assert out2["condition"]["min_evidence"] == 2
+
+    out4 = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(n_pairs=4),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out4 is not None
+    assert out4["condition"]["min_evidence"] == 4
+
+
+def test_multi_cell_concept_and_category_are_paint_blob_labels() -> None:
+    """The multi-cell branch coins its own concept/category labels rather
+    than going through `_infer_concept`. The labels are `paint_blob` /
+    `color_transform`."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    assert out["concept"] == "paint_blob"
+    assert out["category"] == "color_transform"
+
+
+def test_multi_cell_branch_returns_none_when_color_uniform_fails() -> None:
+    """Two distinct output colours across pairs — output_color_uniform
+    does NOT fire."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2, k=3)
+    patterns["pair_analyses"][1]["groups"][0]["output_colors"] = [4]
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_input_dims_vary() -> None:
+    """Input dimensions vary across pairs — input_dimensions_constant
+    does NOT fire, so the multi-cell branch is not entered (the stored
+    literal coord list would not generalise to a heterogeneous-input
+    test task)."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2, in_h=4, in_w=4)
+    patterns["pair_analyses"][1]["input_height"] = 5
+    patterns["pair_analyses"][1]["input_width"] = 5
+    patterns["pair_analyses"][1]["output_height"] = 5
+    patterns["pair_analyses"][1]["output_width"] = 5
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_size_changed() -> None:
+    """At least one pair has size_match=False — grid_size_preserved does
+    NOT fire (top-level flag also False). Also break the second pair's
+    output dimensions so the iter-21 make_grid branch does not silently
+    fire instead (it gates on `grid_size_changed` + `output_dimensions_
+    constant` which would otherwise both hold). This isolates the
+    iter-27 branch refusal."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2)
+    patterns["pair_analyses"][1]["size_match"] = False
+    patterns["pair_analyses"][1]["output_height"] = 5  # break output_dim constancy
+    patterns["grid_size_preserved"] = False
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_single_cell_group() -> None:
+    """A single-cell group fires iter 24, not iter 26 —
+    multi_cell_change_group_per_pair requires cell_count >= 2 (strict
+    mutual exclusion with iter 24's matcher)."""
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    # This fires iter 25's branch (single-cell), not iter 27's.
+    assert out is not None
+    assert out["condition"]["type"] == "single_cell_change_per_pair"
+
+
+def test_multi_cell_branch_returns_none_when_multiple_groups() -> None:
+    """A pair has more than one group — multi_cell_change_group_per_pair
+    requires num_groups == 1 per pair."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2)
+    # Add a second group with two cells to the first pair.
+    patterns["pair_analyses"][0]["num_groups"] = 2
+    patterns["pair_analyses"][0]["groups"].append({
+        "input_colors": [9],
+        "output_colors": [7],
+        "top_row": 3,
+        "top_col": 3,
+        "cell_count": 2,
+        "positions": [(3, 3), (3, 4)],
+    })
+    patterns["pair_analyses"][0]["total_changes"] = 4
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_blob_differs_across_pairs() -> None:
+    """The defensive `_extract_multi_cell_paint_args` helper enforces that
+    the blob's coord set is bit-identical across all training pairs. The
+    iter-26 matcher does NOT enforce this — it pins cardinality range
+    only."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2, positions=[(0, 0), (0, 1)])
+    # Pair 1 has the same cell_count but in a different location.
+    patterns["pair_analyses"][1]["groups"][0]["positions"] = [(2, 1), (2, 2)]
+    patterns["pair_analyses"][1]["groups"][0]["top_row"] = 2
+    patterns["pair_analyses"][1]["groups"][0]["top_col"] = 1
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_legacy_type_is_not_identity() -> None:
+    """The translator dispatches on legacy_type == 'identity' (the slow
+    path's fallback). A color_mapping legacy rule shape, even with
+    multi-cell patterns, must NOT trigger the multi-cell branch."""
+    legacy = {"type": "color_mapping", "mapping": {1: 2}, "confidence": 0.8}
+    out = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_color_out_of_palette() -> None:
+    """K outside the coloring primitive's valid set (0..9 or 13) — the
+    helper rejects rather than minting a malformed rule that
+    `validate_rule` would happily save but `coloring` would later reject."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2, k=11)
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_positions_missing() -> None:
+    """Defensive: a pre-iter-27 `_analyze_pair` output (no `positions`
+    field) must produce None — the extractor refuses rather than
+    fabricating a coord list."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2)
+    # Strip the positions field — simulates a stale or partially-built
+    # patterns dict.
+    del patterns["pair_analyses"][0]["groups"][0]["positions"]
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_returns_none_when_positions_length_mismatches_cell_count() -> None:
+    """Defensive: if `positions` has a different length than `cell_count`,
+    the extractor refuses — the patterns dict is internally inconsistent."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns(n_pairs=2)
+    # Inflate cell_count without growing positions: contradicts the
+    # iter-27 _analyze_pair contract (len(positions) == cell_count).
+    patterns["pair_analyses"][0]["groups"][0]["cell_count"] = 5
+    out = translate_to_schema(
+        legacy, "abcdef12", patterns,
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is None
+
+
+def test_multi_cell_branch_pure_no_file_io() -> None:
+    """`translate_to_schema` is pure — never writes to disk. Verify the
+    cwd contains no new files after a multi-cell translation."""
+    legacy = {"type": "identity"}
+    with tempfile.TemporaryDirectory() as td:
+        cwd = os.getcwd()
+        try:
+            os.chdir(td)
+            before = set(os.listdir("."))
+            translate_to_schema(
+                legacy, "abcdef12", _multi_cell_patterns(),
+                rule_id=1, now="2026-05-13T19:30:00.000000",
+            )
+            after = set(os.listdir("."))
+        finally:
+            os.chdir(cwd)
+        assert before == after, "translate_to_schema must not touch disk"
+
+
+def test_multi_cell_branch_does_not_mutate_inputs() -> None:
+    """Purity: input legacy + patterns must be unchanged after call."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns()
+    legacy_copy = dict(legacy)
+    import copy as _copy
+    patterns_copy = _copy.deepcopy(patterns)
+    translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert legacy == legacy_copy
+    assert patterns == patterns_copy
+
+
+def test_multi_cell_branch_deterministic_across_repeats() -> None:
+    """Same inputs → same output, always."""
+    legacy = {"type": "identity"}
+    patterns = _multi_cell_patterns()
+    a = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    b = translate_to_schema(
+        legacy, "abcdef12", patterns, rule_id=1,
+        now="2026-05-13T19:30:00.000000",
+    )
+    assert a == b
+
+
+def test_multi_cell_rule_round_trip_through_apply_DSL() -> None:
+    """End-to-end: a translated multi-cell coloring rule, when applied
+    via the iter-3 DSL primitive, paints exactly the blob's cells with
+    colour K on a test input."""
+    from procedural_memory.DSL.apply import apply_DSL  # local import
+    legacy = {"type": "identity"}
+    out = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_cell_patterns(n_pairs=2,
+                             positions=[(0, 1), (1, 1), (1, 2)],
+                             k=4, in_h=3, in_w=3),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out is not None
+    args = out["action"]["args"]
+    test_input = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    painted = apply_DSL("coloring", test_input, **args)
+    assert painted == [[0, 4, 0], [0, 4, 4], [0, 0, 0]]
+    # Source grid not mutated (purity).
+    assert test_input == [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+
+
+def test_multi_cell_branch_strict_mutual_exclusion_with_single_cell() -> None:
+    """The iter-27 branch and the iter-25 branch are reachable only on
+    disjoint patterns dicts: multi_cell_change_group_per_pair requires
+    cell_count >= 2 per pair; single_cell_change_per_pair requires
+    cell_count == 1. Verify both endpoints — neither patterns dict can
+    accidentally produce the other's output."""
+    legacy = {"type": "identity"}
+    out_sc = translate_to_schema(
+        legacy, "abcdef12", _single_cell_patterns(n_pairs=2, r=1, c=2, k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_sc is not None
+    assert out_sc["condition"]["type"] == "single_cell_change_per_pair"
+    assert out_sc["action"]["args"]["selection"] == [[1, 2]]
+
+    out_mc = translate_to_schema(
+        legacy, "abcdef12",
+        _multi_cell_patterns(n_pairs=2, positions=[(0, 0), (0, 1)], k=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mc is not None
+    assert out_mc["condition"]["type"] == "multi_cell_change_group_per_pair"
+    assert out_mc["action"]["args"]["selection"] == [[0, 0], [0, 1]]
+
+
+def test_multi_cell_branch_strict_mutual_exclusion_with_identity() -> None:
+    """The iter-27 branch and the iter-14 identity branch are reachable
+    only on disjoint patterns dicts: multi_cell requires num_groups == 1
+    per pair, identity requires num_groups == 0."""
+    legacy = {"type": "identity"}
+    out_id = translate_to_schema(
+        legacy, "abcdef12", _identity_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_id is not None
+    assert out_id["condition"]["type"] == "identity_transformation"
+
+    out_mc = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(n_pairs=2),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mc is not None
+    assert out_mc["condition"]["type"] == "multi_cell_change_group_per_pair"
+
+
+def test_multi_cell_branch_strict_mutual_exclusion_with_make_grid() -> None:
+    """The iter-27 branch and the iter-21 make_grid branch are reachable
+    only on disjoint patterns dicts: grid_size_preserved (this iter's
+    gate) requires every per-pair size_match True AND top-level
+    `grid_size_preserved` True; grid_size_changed (iter 21's gate)
+    requires at least one per-pair size_match False."""
+    legacy = {"type": "identity"}
+    out_mg = translate_to_schema(
+        legacy, "abcdef12", _make_grid_patterns(out_color=7),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mg is not None
+    assert out_mg["action"]["dsl"] == "make_grid"
+
+    out_mc = translate_to_schema(
+        legacy, "abcdef12", _multi_cell_patterns(),
+        rule_id=1, now="2026-05-13T19:30:00.000000",
+    )
+    assert out_mc is not None
+    assert out_mc["action"]["dsl"] == "coloring"
+
+
+def test_multi_cell_live_analyze_pair_emits_positions_field() -> None:
+    """Round-trip: the live `ExtractPatternOperator._analyze_pair` MUST
+    emit a `positions` field per group as of iter 27 — that is the
+    iter-27 `active_operators.py` extension this translator branch
+    consumes. A future regression that drops the field would silently
+    cause every multi-cell branch invocation to return None; this test
+    is the canonical guard against that."""
+    # Local import to avoid pulling active_operators at module load time.
+    from agent.active_operators import ExtractPatternOperator
+
+    class _Grid:
+        def __init__(self, raw):
+            self.raw = raw
+            self.height = len(raw)
+            self.width = len(raw[0]) if raw else 0
+
+    # 1x2 horizontal blob: cells (0, 0) and (0, 1) flip from 0 → 5.
+    raw_in = [[0, 0, 0], [0, 0, 0], [0, 0, 0]]
+    raw_out = [[5, 5, 0], [0, 0, 0], [0, 0, 0]]
+    op = ExtractPatternOperator()
+    analysis = op._analyze_pair(_Grid(raw_in), _Grid(raw_out))
+    assert analysis["num_groups"] == 1, \
+        f"live _analyze_pair produced num_groups={analysis['num_groups']}"
+    group = analysis["groups"][0]
+    assert "positions" in group, \
+        "iter 27 contract: live _analyze_pair must emit 'positions' per group"
+    assert group["positions"] == [(0, 0), (0, 1)], \
+        f"positions should be row-major-sorted blob coords; got {group['positions']!r}"
+
+
+# ──────────────────────────────────────────────────────────────────────────
 # Driver.
 # ──────────────────────────────────────────────────────────────────────────
 
@@ -1313,6 +1874,36 @@ def _run_all() -> int:
         test_single_cell_rule_round_trip_through_apply_DSL,
         test_single_cell_branch_strict_mutual_exclusion_with_identity,
         test_single_cell_branch_strict_mutual_exclusion_with_make_grid,
+        # Iter 27 — multi-cell single-blob coloring branch.
+        test_multi_cell_branch_fires_when_all_four_matchers_fire,
+        test_multi_cell_condition_type_is_multi_cell_change_group_per_pair,
+        test_multi_cell_rule_passes_validate_rule,
+        test_multi_cell_positions_match_pair_analysis,
+        test_multi_cell_positions_are_row_major_sorted,
+        test_multi_cell_color_matches_uniform_output_color,
+        test_multi_cell_covers_and_source_task_use_task_hex,
+        test_multi_cell_anti_unification_trace_is_null_for_source_rule,
+        test_multi_cell_times_reused_starts_at_zero,
+        test_multi_cell_min_evidence_reflects_pair_count,
+        test_multi_cell_concept_and_category_are_paint_blob_labels,
+        test_multi_cell_branch_returns_none_when_color_uniform_fails,
+        test_multi_cell_branch_returns_none_when_input_dims_vary,
+        test_multi_cell_branch_returns_none_when_size_changed,
+        test_multi_cell_branch_returns_none_when_single_cell_group,
+        test_multi_cell_branch_returns_none_when_multiple_groups,
+        test_multi_cell_branch_returns_none_when_blob_differs_across_pairs,
+        test_multi_cell_branch_returns_none_when_legacy_type_is_not_identity,
+        test_multi_cell_branch_returns_none_when_color_out_of_palette,
+        test_multi_cell_branch_returns_none_when_positions_missing,
+        test_multi_cell_branch_returns_none_when_positions_length_mismatches_cell_count,
+        test_multi_cell_branch_pure_no_file_io,
+        test_multi_cell_branch_does_not_mutate_inputs,
+        test_multi_cell_branch_deterministic_across_repeats,
+        test_multi_cell_rule_round_trip_through_apply_DSL,
+        test_multi_cell_branch_strict_mutual_exclusion_with_single_cell,
+        test_multi_cell_branch_strict_mutual_exclusion_with_identity,
+        test_multi_cell_branch_strict_mutual_exclusion_with_make_grid,
+        test_multi_cell_live_analyze_pair_emits_positions_field,
     ]
     fails = 0
     for t in tests:

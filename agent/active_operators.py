@@ -211,12 +211,16 @@ class ExtractPatternOperator(Operator):
             top_row = min(r for r, c in positions)
             top_col = min(c for r, c in positions)
 
+            # ``positions`` sorted row-major so iter-27's extractor in
+            # agent/memory.py can compare blob coord sets across pairs by
+            # equality.
             group_analyses.append({
                 "input_colors": sorted(input_colors),
                 "output_colors": sorted(output_colors),
                 "top_row": top_row,
                 "top_col": top_col,
                 "cell_count": len(group_cells),
+                "positions": sorted(positions),
             })
 
         input_height = len(raw_in)

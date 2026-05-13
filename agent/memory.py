@@ -391,6 +391,43 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
       ``coloring`` argument list because the selection list, the
       colour, and the canvas shape are all fixed by training data.
 
+    * ``{"type": "identity", ...}`` + ``multi_cell_change_group_per_pair``
+      + ``output_color_uniform`` + ``input_dimensions_constant`` +
+      ``grid_size_preserved`` all fire (iter 27) →
+      ``condition.type = "multi_cell_change_group_per_pair"``,
+      ``action.dsl = "coloring"`` with
+      ``args = {"selection": [[r1, c1], ..., [rN, cN]], "color": K}``.
+      The coord list is the first pair's single group's ``positions``
+      field (iter 27's ``_analyze_pair`` extension), serialized in
+      row-major sorted order. K comes from any change group's
+      ``output_colors[0]``. The defensive helper
+      ``_extract_multi_cell_paint_args`` ALSO verifies the position
+      SET is identical across all training pairs — the four matchers
+      pin cardinality range (one blob, 2+ cells per pair), colour
+      (uniform K), input dimension stability, and per-pair input==output
+      shape, but they do NOT pin the blob's coord set across pairs;
+      a stored literal-coord-list rule only generalises when training
+      pairs share the same blob. The chosen ``condition.type``
+      (``multi_cell_change_group_per_pair``) is the strictest of the
+      four gating matchers and the one that pins the selection's
+      cardinality range; the other three matchers contribute to
+      determining the action's args without naming a new label. STRICT
+      mutual exclusion with the iter-25 single-cell branch is
+      guaranteed by iter-26's matcher requiring ``cell_count >= 2``
+      while iter-24's matcher requires ``cell_count == 1`` — the two
+      matchers are exact partitioners of iter 23's single-group
+      territory on the cell-count axis. STRICT mutual exclusion with
+      the iter-14 identity branch (cardinality 0 vs 1+) and the
+      iter-21 make_grid branch (grid_size_preserved vs
+      grid_size_changed) holds by the same logic as iter 25. The new
+      ``concept`` / ``category`` labels are ``paint_blob`` /
+      ``color_transform``. Third non-identity rule shape any iter has
+      been able to mint without anti-unification or polymorphic args
+      — closes the iter-16 polymorphic-args obstacle on the
+      ``coloring`` argument list at the multi-cell cardinality, with
+      the same literal-coord-list shape iter 25 proved at the
+      cardinality-1 case.
+
     Non-translatable shapes return ``None`` deliberately — a caller that
     wants to attempt a save must check the return value and fall back to
     the legacy writer (or skip the save). ``color_mapping`` and
@@ -512,6 +549,63 @@ def translate_to_schema(legacy_rule: dict, task_hex: str, patterns: dict, *,
             "times_reused": 0,
         }
 
+    # Iter 27: multi-cell single-blob uniform-paint branch. Gated on the
+    # conjunction of four named recognition preconditions across iters
+    # 1 / 18 / 22 / 26. STRICTLY mutually exclusive with the iter-25
+    # single-cell branch above (multi_cell_change_group_per_pair requires
+    # cell_count >= 2 while single_cell_change_per_pair requires
+    # cell_count == 1, an exact partition of iter 23's single-group
+    # territory on the cell-count axis — see iter 26's matcher
+    # docstring). STRICTLY mutually exclusive with the iter-14 identity
+    # branch (multi_cell requires num_groups == 1, identity requires
+    # num_groups == 0) and with the iter-21 make_grid branch
+    # (grid_size_preserved partitions against grid_size_changed), so the
+    # order of branches above is incidental.
+    #
+    # The selection list comes from the (iter 27) ``positions`` field
+    # ExtractPatternOperator._analyze_pair now emits per group — a
+    # row-major-sorted list of the blob's coords. The defensive helper
+    # ``_extract_multi_cell_paint_args`` ALSO verifies the position SET
+    # is bit-identical across all training pairs — the four matchers
+    # pin cardinality range (one blob with 2+ cells per pair), colour
+    # (uniform K), input dimension stability, and per-pair input==output
+    # shape, but they do NOT pin the blob's coord set across pairs; a
+    # stored literal-coord-list rule only generalises when training
+    # pairs share the same blob position. K comes from any group's
+    # ``output_colors[0]`` (iter-18 pins it constant). Third
+    # non-identity rule shape any iter has been able to mint without
+    # anti-unification or polymorphic args.
+    if ("multi_cell_change_group_per_pair" in fired
+            and "output_color_uniform" in fired
+            and "input_dimensions_constant" in fired
+            and "grid_size_preserved" in fired):
+        positions_color = _extract_multi_cell_paint_args(pair_analyses)
+        if positions_color is None:
+            return None
+        positions, k = positions_color
+        return {
+            "id": rule_id,
+            "concept": "paint_blob",
+            "category": "color_transform",
+            "condition": {
+                "type": "multi_cell_change_group_per_pair",
+                "params": {},
+                "min_evidence": min_evidence,
+            },
+            "action": {
+                "dsl": "coloring",
+                "args": {
+                    "selection": [[r, c] for (r, c) in positions],
+                    "color": k,
+                },
+            },
+            "covers": [task_hex],
+            "source_task": task_hex,
+            "anti_unification_trace": None,
+            "created_at": created_at,
+            "times_reused": 0,
+        }
+
     return None
 
 
@@ -625,6 +719,103 @@ def _extract_single_cell_paint_args(pair_analyses: list) -> tuple | None:
     if coord is None or color is None:
         return None
     return (coord, color)
+
+
+def _extract_multi_cell_paint_args(pair_analyses: list) -> tuple | None:
+    """Pull a ``(positions_list, color)`` tuple out of a multi-cell-paint
+    patterns dict. Returns ``None`` if any value cannot be extracted
+    cleanly or if the blob's position set differs across training pairs.
+
+    Callers must already have confirmed the iter 1 / 18 / 22 / 26 matcher
+    conjunction (``multi_cell_change_group_per_pair`` AND
+    ``output_color_uniform`` AND ``input_dimensions_constant`` AND
+    ``grid_size_preserved``) fired; this helper is defensive
+    re-extraction. Three checks the matcher conjunction does NOT enforce:
+
+      * The blob's full coord set is bit-identical across pairs. The
+        ``multi_cell_change_group_per_pair`` matcher pins cardinality
+        range (one blob, 2+ cells) but not position. A stored
+        literal-coord-list rule only generalises when training pairs
+        share the same blob; a task where pair 0's blob is
+        {(0,0),(0,1)} and pair 1's is {(2,1),(2,2)} fires every
+        matcher in the conjunction yet does not have a single literal
+        coord list that abstracts all training pairs. Such tasks are
+        deferred to a future iter that extracts the selection via an
+        input-side predicate (e.g. anti-unification lifting position
+        to "wherever input has colour C").
+      * The ``positions`` list emitted by ``_analyze_pair`` has the
+        expected shape and contains ``cell_count`` valid coord tuples,
+        each with strict-non-negative-int (not bool) row / col.
+      * ``output_colors[0]`` is in the ``coloring`` primitive's valid
+        colour set (``range(10) | {13}``). ``output_color_uniform``
+        pins the value as constant across all groups in all pairs
+        but does not check the colour palette domain; foreclosing
+        here prevents a malformed rule that ``validate_rule`` would
+        happily save but ``coloring`` would later reject.
+
+    Returns the canonical positions as a sorted list of
+    ``(row, col)`` tuples so the caller can serialize it deterministically
+    into the rule's ``action.args.selection`` field.
+
+    Mirror posture: ``_extract_single_cell_paint_args`` performs the same
+    defensive re-extraction for the iter-25 branch's ((r, c), K), and
+    ``_extract_make_grid_args`` for the iter-21 branch's (H, W, K).
+    """
+    if not pair_analyses:
+        return None
+    canonical_positions: tuple | None = None
+    color: int | None = None
+    for analysis in pair_analyses:
+        if not isinstance(analysis, dict):
+            return None
+        groups = analysis.get("groups")
+        if not isinstance(groups, list) or len(groups) != 1:
+            return None
+        group = groups[0]
+        if not isinstance(group, dict):
+            return None
+        cell_count = group.get("cell_count")
+        if not isinstance(cell_count, int) or isinstance(cell_count, bool):
+            return None
+        if cell_count < 2:
+            return None
+        raw_positions = group.get("positions")
+        if not isinstance(raw_positions, list) or len(raw_positions) != cell_count:
+            return None
+        canon_coords = []
+        for p in raw_positions:
+            if not isinstance(p, (list, tuple)) or len(p) != 2:
+                return None
+            r, c = p[0], p[1]
+            if not isinstance(r, int) or isinstance(r, bool) or r < 0:
+                return None
+            if not isinstance(c, int) or isinstance(c, bool) or c < 0:
+                return None
+            canon_coords.append((r, c))
+        # Sort to make cross-pair comparison order-independent, and to
+        # produce a stable serialization for the rule's selection arg.
+        canon_tuple = tuple(sorted(canon_coords))
+        if len(set(canon_tuple)) != cell_count:
+            return None  # duplicate coords inside a single blob — corrupt input
+        out_colors = group.get("output_colors")
+        if not isinstance(out_colors, list) or len(out_colors) != 1:
+            return None
+        candidate = out_colors[0]
+        if not isinstance(candidate, int) or isinstance(candidate, bool):
+            return None
+        if candidate not in _VALID_DSL_COLORS:
+            return None
+        if canonical_positions is None:
+            canonical_positions = canon_tuple
+        elif canonical_positions != canon_tuple:
+            return None
+        if color is None:
+            color = candidate
+        elif color != candidate:
+            return None
+    if canonical_positions is None or color is None:
+        return None
+    return (list(canonical_positions), color)
 
 
 def save_rule(rule: dict, *,
