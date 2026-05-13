@@ -23,7 +23,6 @@ from agent.active_operators import (
     GeneralizeOperator,
     PredictOperator,
     SubmitOperator,
-    VerifyOperator,
 )
 
 

@@ -601,11 +601,3 @@ class SubmitOperator(Operator):
             f"test_{i}": {"status": "solved"}
             for i in range(len(predicted_grids))
         }}
-
-
-class VerifyOperator(SubmitOperator):
-    """Alias for the verify operation (same mechanism as submit)."""
-
-    def __init__(self):
-        super().__init__()
-        self.name = "verify"

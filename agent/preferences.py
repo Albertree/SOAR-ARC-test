@@ -12,7 +12,7 @@ preferences -- Operator selection priority.
 #                 generalize ->
 #                 descend (for impasse resolution) ->
 #                 predict ->
-#                 verify/submit
+#                 submit
 PREFERENCE_ORDER: list = [
     "solve-task",
     "select_target",
@@ -21,7 +21,6 @@ PREFERENCE_ORDER: list = [
     "generalize",
     "descend",
     "predict",
-    "verify",
     "submit",
 ]
 

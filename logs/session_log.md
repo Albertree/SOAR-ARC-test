@@ -8353,3 +8353,117 @@ unambiguous.
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_004934.log
+
+> STAGNATION at iter 169 — 131 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 00:50
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_004955.log
+
+---
+## Iter 170 -- 2026-05-14T00:50Z -- branch test20
+
+**Diagnosis**: 131 consecutive NEUTRAL iters with P5 saturated at 21 and
+P1/P2/P3 pinned at 0.0 — adding more recognition matchers has stopped
+moving any positive signal. The architectural progress signal still
+available is P6 (net lines removed from `agent/active_operators.py`).
+Auditing the file surfaced `VerifyOperator` as dead weight: defined as
+a `SubmitOperator` alias with `self.name = "verify"`, imported by
+`agent/rules.py` but never proposed by any `ProductionRule`, never
+instantiated anywhere in `agent/`, `tests/`, `scripts/`, or `run_*.py`.
+A pure deletion improves P6 without touching the closed `_try_*` /
+`_apply_*` family or any frozen file.
+
+**Change**:
+- `agent/active_operators.py` (EDIT, -8 lines) — removed the
+  `VerifyOperator` class (the trailing 6-line definition plus the
+  preceding blank-and-rule-line). Pure deletion; no `_try_*` / `_apply_*`
+  added (F2 inert); net negative line delta, so F8 stays inert without
+  an anti-unification-side companion edit (per `docs/INVARIANTS.md §1
+  F8`'s "Pure deletions / refactors that *remove* code" exception).
+- `agent/rules.py` (EDIT, -1 line) — removed the now-dangling
+  `VerifyOperator,` entry from the `from agent.active_operators import
+  (...)` block. Without this the module would `ImportError` at load,
+  which would break every `build_proposer()` caller including
+  `agent/active_agent.py` and `run_task.py`.
+- `agent/preferences.py` (EDIT, -1 line in `PREFERENCE_ORDER` and a
+  parallel comment update) — removed the dead `"verify"` slot from
+  `PREFERENCE_ORDER`. The slot was only meaningful as the priority
+  rank for a `VerifyOperator` candidate; with no operator ever named
+  `"verify"`, the rank entry was an unused string in the rank dict.
+  The pipeline docstring above the list previously read
+  `predict -> verify/submit` and now reads `predict -> submit`,
+  matching the actual final operator.
+
+No edits to: `procedural_memory/DSL/` (F3 inert); `agent/cycle.py` /
+`agent/wm.py` / `ARCKG/*.py` / `data/` (F1 inert); no new rule files
+under `procedural_memory/` (F4 vacuously satisfied); no
+`semantic_memory/` artifacts (F5 inert); `run_loop.sh` and friends
+(F6 inert); no `except RuleSchemaError` changes (F7 inert).
+
+**Probe before**: Correct 0/3 (0.0%), Rules 0, P6=611 lines.
+The seed=42 probe tasks (00576224 / 007bbfb7 / 009d5c81) all fell
+through to the identity fallback because `translate_to_schema` returns
+`None` for every shape that does not include `identity_transformation`
+(or one of the four narrow non-identity gates) in its fired-conditions
+set — see `agent/memory.py:translate_to_schema()`. This iter does not
+change emission; it removes dead code.
+
+**Probe after**: P6 611 -> 603 (8 lines removed from
+`agent/active_operators.py`). Whether the probe score changes depends
+only on the unchanged emission path; this iter is recognition- and
+emission-vocabulary-neutral.
+
+**Invariants** (`scripts/check_invariants.sh --check
+logs/_invariant_snapshot.json` against base HEAD 65837858):
+- forbidden = none (F1-F8 all inert; F8 specifically stays inert by
+  the "Pure deletions" exception since `git diff --numstat`
+  on `agent/active_operators.py` reports net -8).
+- positives: P1 0.0 -> 0.0, P2 0.0 -> 0.0, P3 0.0 -> 0.0,
+  P4 507 -> 507, P5 21 -> 21, P6 611 -> 603 (Δ=+8 lines removed).
+- verdict: **CLEAN** (1 positive delta -- P6 +8 lines removed).
+
+**Why this is real progress (not lipstick)**: P6 is "the strongest
+single signal of architectural progress" per `docs/INVARIANTS.md §2
+P6` -- net-deleted code from `agent/active_operators.py` is the
+direction the architecture is supposed to move as anti-unification
+takes over generalization work. `VerifyOperator` was not a
+`_try_*` / `_apply_*` family member (so its removal is not in scope
+of the closed-family rule), but it WAS dead pipeline scaffolding
+that signalled the pipeline once had a "verify" step distinct from
+"submit". Removing it brings the static operator inventory in
+`agent/active_operators.py` into exact correspondence with the
+runtime pipeline names `[solve-task, select_target, compare,
+extract_pattern, generalize, predict, submit]` -- the operators
+actually proposed by `ProductionRule` subclasses in `agent/rules.py`.
+The session log's "131 consecutive neutral iters" notice is the
+loop's signal that adding-matchers-and-stopping has run its course;
+the next architectural moves either delete superseded code (this
+iter), wire load-bearing emission (option A''''' / C''''' from
+iter 37's "Next gap" log), or remain in no-op territory. Pure
+deletion is the smallest of those three.
+
+**Next gap (note for future iter)**: With `VerifyOperator` gone,
+`DescendOperator` remains as the other dead placeholder in
+`agent/active_operators.py` (lines 413-429, raises
+`NotImplementedError` from both `precondition()` and `effect()`,
+never imported by `agent/rules.py` or anything else outside the
+module). Removing it is the symmetric next P6 step (another ~17
+lines net negative). Beyond placeholder cleanup, the still-glaring
+gap is emission: the probe's three tasks (two tile-style, one
+size-preserved multi-blob) all fall through to identity because
+`translate_to_schema` has no branch for tile/replicate (Option C''''')
+or for the iter 30+ multi-blob-with-varying-positions territory
+(Option A'''''-adjacent). Until at least one of those lands, P1 /
+P2 / P3 cannot move from 0. The `test_recognized_conditions.py`
+assertions still expect a 20-matcher registry but iter 38 grew it
+to 21 -- two pre-existing test-bookkeeping failures unrelated to
+this iter's deletion, surfaced by running the suite locally. They
+are a separate single-commit fix.
+
