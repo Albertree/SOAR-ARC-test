@@ -131,10 +131,9 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 196
-    # there are thirty-nine such modules; tightening the assertion to
-    # ``==`` keeps a stray @register import from sneaking into the
-    # package.
+    # the matcher modules under ``agent/conditions/``. As of iter 197
+    # there are forty such modules; tightening the assertion to ``==``
+    # keeps a stray @register import from sneaking into the package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -175,6 +174,7 @@ def test_registry_contents_after_helper_load() -> None:
         "palette_shift_constant_across_pairs",
         "change_input_color_count_per_group_constant_across_pairs",
         "change_output_color_count_per_group_constant_across_pairs",
+        "change_color_mapping_count_per_group_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -216,6 +216,11 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # cardinality axis onto the per-group projection: every group has
     # len(output_colors) == 1 on both pairs, so
     # change_output_color_count_per_group_constant_across_pairs also
+    # fires. Iter 197 projects iter 40's per-pair (ic, oc) cardinality
+    # axis onto the per-group projection via the Cartesian product
+    # ``len(input_colors) * len(output_colors)``: every group has
+    # product == 1 on both pairs, so
+    # change_color_mapping_count_per_group_constant_across_pairs also
     # fires. The three matchers in this test's name remain the iter-10
     # colour/dimension subset; the assertion grows with the registry
     # rather than fighting it.
@@ -234,7 +239,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "change_color_mapping_count_constant_across_pairs",
         "change_input_color_count_per_group_constant_across_pairs",
         "change_output_color_count_per_group_constant_across_pairs",
-    }, f"expected the thirteen compatible matchers to fire, got {fired}"
+        "change_color_mapping_count_per_group_constant_across_pairs",
+    }, f"expected the fourteen compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
