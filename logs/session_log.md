@@ -14612,3 +14612,50 @@ All 75 new test cases pass; the recognized_conditions registry-contents assertio
 - Stored rule hits: 0
 - Time: 7s
 - Log: logs/learn_20260514_211940.log
+
+> STAGNATION at iter 328 — 99 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-14 21:20
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_212001.log
+
+---
+## Iter 329 -- 2026-05-14T21:25Z -- branch test20
+
+**Diagnosis**: Iter 228's "Next gap" named candidate (iii) -- the per-group BACKGROUND-COLOUR-PRESERVED matcher, "per-group input intersect output non-empty, the precondition for anchor-preserving rules" -- as one of the cleanest smallest-step axes freshly opened. Iter 229 closed candidate (xix); iters 230-328 (99 consecutive STAGNATION) failed to find a defensible step but never landed candidate (iii). This iter lands it. Additionally, iter 229's mixed-matcher commit forgot to update ``tests/test_recognized_conditions.py::test_registry_contents_after_helper_load`` to include the new name -- that test has been failing silently since iter 229 (the loop's check_invariants.sh does not run pytest, so the regression went unnoticed). This iter fixes that stale assertion too. The 0/3 probe outcome is by construction unchanged: pure recognition-vocabulary addition (no ``active_operators.py`` diff, no ``translate_to_schema`` branch yet consumes this matcher). P5 is the targeted positive signal (72 -> 73).
+
+**Change**:
+- ``agent/conditions/change_palette_intersection_nonempty_per_group.py`` (new) -- seventy-third recognition-vocabulary matcher. Returns True iff every change group of every example pair has ``set(input_colors) & set(output_colors)`` non-empty. The strict complement of iter 203 (``output_colors_disjoint_from_input_colors_per_group``) on the non-empty-per-group-palette domain. Names the per-group ANCHOR-PRESERVATION cell: equality (iter 201) union strict-erasure (iter 204) union strict-expansion (iter 205) union partial-overlap (residual cell). Fail-closed on empty / no-group / malformed input; strict-type gates on bool / non-int / out-of-range entries (mirrors iter 200-205 / 203 strict-type posture). Same shape as iter 203's matcher but with the final predicate flipped. Names the precondition for the anchor-preserving rule family (rules that recolour SOME cells of a change group while leaving at least one input colour intact within the blob) -- the positive recognition handle that anti-unification (CLAUDE.md section 8) would attach a per-group anchor-preservation generalisation variable to. Distinct semantic handle vs the bare negation of iter 203 because a rule's stored ``condition.type`` is a name, not a negation expression (docs/RULE_FORMAT.md section 4); the same rationale iters 185 / 186 / 187 followed when naming whole-grid palette equality, disjointness, and dual-subset as three separate matchers.
+- ``tests/test_change_palette_intersection_nonempty_per_group.py`` (new, 37 cases) -- pins the contract: smoke / membership (1), positive cases (7) on per-group equality / strict-erasure / strict-expansion / partial-overlap / multi-pair-all-anchored / multi-group-all-anchored / zero-and-nine palette witness, negative cases (5) on per-group-disjoint / one-disjoint-group-kills / disjoint-in-later-pair / zero-groups / one-pair-zero-groups, structural rejections (8) on non-dict / missing-pair_analyses / empty-pair_analyses / non-list-pair_analyses / non-dict-analysis / missing-groups / non-list-groups / non-dict-group, strict-type gates (10) on missing-input_colors / missing-output_colors / non-list-input_colors / non-list-output_colors / empty-input_colors / empty-output_colors / bool-in-input_colors / bool-in-output_colors / out-of-range / non-int, behavioural-contract (4) including deterministic / literal-bool / params-ignored / no-mutation, and orthogonality wiring (2) via ``recognized_conditions`` -- the disjoint fixture fires iter 203 and EXCLUDES this matcher (mutual exclusion witness); the equality fixture fires THIS matcher AND iter 201 AND excludes iter 203 (strict refinement witness). All 37 cases pass.
+- ``tests/test_recognized_conditions.py`` (edit) -- the iter-229 mixed matcher landed but its name was never added to the seventy-one-element registry-contents assertion (the loop's check_invariants.sh does not run pytest, so the regression was invisible to the loop). This iter adds the missing iter-229 name AND the new iter-329 name to the expected set, bumping it from 71 to 73 elements; update the inline count comment from "iter 228" to "iter 329".
+
+**Probe before**: 0/3 correct, 0 rules, P5==72, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5==73, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter adds recognition vocabulary that no ``translate_to_schema`` branch currently consumes, so the probe outcome is by construction unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 72 -> 73 (+1)
+
+F1 inert -- no frozen file touched.
+F2 inert -- no ``_try_*`` / ``_apply_*`` method added (no ``active_operators.py`` diff at all).
+F3 inert -- no DSL primitive added; the change is in ``agent/conditions/`` and ``tests/``.
+F4 inert -- no rule file touched.
+F5 inert -- ``semantic_memory/`` untouched.
+F6 inert -- no ``run_loop.sh`` / budget-script change.
+F7 inert -- no ``try/except RuleSchemaError`` added.
+F8 inert -- ``agent/active_operators.py`` not touched this iter.
+
+All 37 new test cases pass; the recognized_conditions registry-contents assertion now matches the 73-element set; the entire tests/ sweep passes (3678 / 3678 cases passing).
+
+``scripts/check_invariants.sh --check logs/_invariant_snapshot.json`` verdict: **CLEAN** (1 positive delta: P5 72 -> 73).
+
+**Why this is the smallest defensible step after 99 consecutive STAGNATION iters**: Iter 228's "Next gap" named three sub-axis candidates -- (xix) mixed-shape sub-cell of iter 227, (ii) whole-grid output-palette-is-a-permutation-of-input-palette, (iii) per-group background-colour-preserved -- as freshly-opened smallest-step candidates. Iter 229 closed (xix); iters 230-328 failed to find any defensible step (likely because the surface-similar singleton_recolor sub-axis had been fully partitioned). Candidate (iii) is the per-group ANCHOR-PRESERVATION precondition -- a genuinely fresh semantic handle on the per-group palette-relation axis (the complement of iter 203 on the non-empty-domain), naming the positive recognition handle for "rules that preserve some input colour within each changed blob" rather than the negation of "every output colour is fresh per blob". The named handle is the precondition that anti-unification (CLAUDE.md section 8) would attach a per-group anchor-preservation generalisation variable to. The bundled test-file fix (iter-229's missing name in the registry-contents assertion) is the smallest defensible maintenance pairing -- it removes a silently-failing test that has been broken for 100 iters.
+
+**Next gap (note for future iter)**: With candidate (iii) closed, the cleanest remaining iter-228-named candidate is (ii) the whole-grid OUTPUT-PALETTE-IS-A-PERMUTATION-OF-INPUT-PALETTE matcher (refining iter 185 + iter 8 by adding INJECTIVITY of the consistent_color_mapping). Injectivity is a genuinely fresh axis (no existing matcher checks it) and is the precondition for "palette permutation" rule shapes (e.g. colour-swap, colour-cycle). A second smallest-step candidate is the whole-grid ANCHOR-PRESERVATION matcher -- the whole-grid version of this iter's per-group matcher, naming "the whole-grid input palette intersects the whole-grid output palette per pair" as a distinct recognition handle from iter 184 / 185 / 187 (whole-grid subset / equality / dual-subset). Two long-standing larger-than-smallest-step candidates remain unchanged from iters 180-228: (a) polymorphic-args extension to ``validate_rule`` V4 / V7 + ``apply_DSL`` to let ``action.args`` carry derived selection; (b) multi-rule mint per solve via a list-returning ``translate_to_schema``. Tertiary option remains unchanged: a 2-DSL-call action shape (``make_grid`` then ``coloring``) for the 00576224 tile-shape conjunction. Independent observation: the 99-iter STAGNATION between iter 229 and this iter suggests the matcher-addition treadmill is genuinely running thin; future iters should weigh the recognition-side small-step against the emission-side larger-step (a) / (b) candidates which would actually let saved-rule signals (P1 / P2 / P3) move.
+
