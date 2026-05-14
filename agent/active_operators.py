@@ -91,13 +91,12 @@ class SelectTargetOperator(Operator):
         pending = list(agenda)
 
         # Build node lookup so CompareOperator can find ARCKG nodes by ID
-        node_lookup = {}
-        for pair in task.example_pairs + task.test_pairs:
-            if pair.input_grid:
-                node_lookup[pair.input_grid.node_id] = pair.input_grid
-            if pair.output_grid:
-                node_lookup[pair.output_grid.node_id] = pair.output_grid
-        wm.node_lookup = node_lookup
+        wm.node_lookup = {
+            g.node_id: g
+            for pair in task.example_pairs + task.test_pairs
+            for g in (pair.input_grid, pair.output_grid)
+            if g is not None
+        }
 
         wm.s1["comparison-agenda"] = agenda
         wm.s1["pending-comparisons"] = pending
