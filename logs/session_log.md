@@ -12578,3 +12578,46 @@ All 69 new test cases pass; the recognized_conditions registry-contents assertio
 (a) Polymorphic-args extension to ``validate_rule`` V4 / V7 + ``apply_DSL`` to let ``action.args`` carry derived selection. Recognition-side prerequisites for the iter-184-209 rule shapes are all in place; (a) is the bottleneck on the emission side for those rule shapes.
 (b) Multi-rule mint per solve: extend ``_persist_pipeline_rule`` to accept a list of rules from ``translate_to_schema``, add a cell-table-emit branch gated on (``change_cells_constant_across_pairs`` AND ``input_dimensions_constant`` AND ``grid_size_preserved``) that mints one ``coloring`` sibling rule per distinct output colour. Iters 184-209's twenty-six palette/per-group gates together make sibling-rule emission branches' preconditions representable in the data layer for at least twenty-six distinct rule shapes.
 Tertiary option remains unchanged from iters 180-208: an emission branch that consumes the 00576224 tile-shape fired-conditions conjunction would need a 2-DSL-call action shape (``make_grid`` then ``coloring``), beyond the current single-DSL ``action.dsl`` schema.
+
+---
+## Learning Loop -- 2026-05-14 18:11
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_181110.log
+
+## Iter 210 -- 2026-05-14T18:30Z -- branch test20
+
+**Diagnosis**: Iter 209's "Next gap" inventory lists three smallest-step candidates on freshly-opened sub-axes, but a strictly smaller gap is sitting on the whole-grid palette-relation sub-axis: iters 184 / 185 / 186 / 187 named the whole-grid output-subset / equality / disjoint / input-subset cells, and iter 206 named the per-group partial-overlap residual cell, but the whole-grid sibling of iter 206 -- the partial-overlap residual cell at whole-grid scope -- was never landed. That cell is the precondition for the "whole-grid anchor-preserving rewrite" rule family (rules that preserve at least one colour across the whole grid while replacing others), distinct from the whole-grid permutation / erasure / expansion / canvas-rewrite cells iters 185 / 184 / 187 / 186 already name. Adding it closes the whole-grid palette-relation sub-axis dual of the per-group partition iter 206 closed. P5 is the targeted positive signal (52 -> 53); the 0/3 probe outcome is by construction unchanged (no ``active_operators.py`` or ``translate_to_schema`` diff).
+
+**Change**:
+- ``agent/conditions/output_palette_partial_overlap_with_input_palette.py`` (new) -- fifty-third recognition-vocabulary matcher. Returns True iff every pair_analysis has well-typed ``input_palette`` / ``output_palette`` lists of non-bool ints AND ``set(ip) & set(op) != empty`` AND ``NOT set(ip) <= set(op)`` AND ``NOT set(op) <= set(ip)``. Whole-grid posture (no [0, 9] range gate -- tolerates the iter-180 erase sentinel 13) mirroring iters 184 / 185 / 186 / 187 / 190 / 191. The semantic gate's non-empty-intersection clause naturally rejects empty-palette degenerate cases, so no inner empty-list rejection is needed (the whole-grid scope does not carry the per-group iter 206 empty-group rejection clause, which exists to keep iter 206 disjoint from iter 13's no-group territory).
+- ``tests/test_output_palette_partial_overlap_with_input_palette.py`` (new, 37 cases) -- pins the contract: smoke / membership (2), positive cases (4) on basic partial-overlap / two-colour overlap / multi-pair varying overlap / duplicate colours, negative cases (9) -- one per mutually-exclusive cell (equality, B strict-subset-of-A, A strict-subset-of-B, disjoint) plus any-pair-fails / empty / missing / non-list / non-dict checks, strict-type gates (9) on missing / non-list / bool / non-int / empty palettes, behavioural-contract (5) including side-effect-free / determinism / literal-True-False / erase-sentinel-13 / ignores-per-group-fields / ignores-dim-fields, and orthogonality / mutual-exclusion matrix (8) against the four other whole-grid palette-relation cells (iters 184 / 185 / 186 / 187), iter 11 ``grid_size_preserved`` orthogonality, and ``recognized_conditions`` wiring. All 37 cases pass.
+- ``tests/test_recognized_conditions.py`` (edit) -- bump the iter-209 fifty-two-element registry-contents assertion to include the new matcher (now fifty-three elements); update the inline count comment from "iter 209" to "iter 210".
+
+**Probe before**: 0/3 correct, 0 rules, P5==52, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5==53, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter adds recognition vocabulary that no ``translate_to_schema`` branch currently consumes, so the probe outcome is by construction unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 52 -> 53 (+1)
+
+F1 inert -- no frozen file touched.
+F2 inert -- no ``_try_*`` / ``_apply_*`` method added (no ``active_operators.py`` diff at all).
+F3 inert -- no DSL primitive added; the change is in ``agent/conditions/`` and ``tests/``.
+F4 inert -- no rule file touched.
+F5 inert -- ``semantic_memory/`` untouched.
+F6 inert -- no ``run_loop.sh`` / budget-script change.
+F7 inert -- no ``try/except RuleSchemaError`` added.
+F8 inert -- ``agent/active_operators.py`` not touched this iter.
+
+All 37 new test cases pass; the recognized_conditions registry-contents assertion now matches the 53-element set; sibling tests for iters 184 / 185 / 186 / 187 / 206 still pass.
+
+``scripts/check_invariants.sh --check logs/_invariant_snapshot.json`` verdict: **CLEAN** (1 positive delta: P5 52 -> 53).
+
+**Why this is the smallest defensible step, not one of the iter-209-named (i)/(ii)/(iii) candidates**: iter 209's named candidates open *new* sub-axes (permutation-as-function-shape, whole-grid permutation-as-equality-refinement, anchor-colour-preservation). The whole-grid partial-overlap residual cell is strictly smaller -- it is the literal missing-cell on the already-opened whole-grid palette-relation sub-axis (iters 184 / 185 / 186 / 187), pin-named in iter 206's docstring as "the partial-overlap residual cell of the per-group palette-relation sub-axis closed by iters 200 / 201 / 202 / 203 / 204 / 205," with its whole-grid sibling left unspecified at the time. Closing the whole-grid sub-axis dual of iter 206 brings the whole-grid palette-relation sub-axis to closure (five cells: equality, output-strict-subset, input-strict-subset, disjoint, partial-overlap -- mirroring the per-group five-cell partition closed by iter 206) at no cost beyond a single matcher addition.
+
+**Next gap (note for future iter)**: With the whole-grid partial-overlap residual cell landed, the whole-grid palette-relation sub-axis under non-empty palettes is now five-cell-partitioned at the equality / containment / disjointness level -- but the whole-grid scope is still missing the *strict-subset* refinements that iter 204 (output ⊊ input per group) and iter 205 (input ⊊ output per group) name at the per-group scope: there is no ``output_palette_proper_subset_of_input_palette`` nor ``input_palette_proper_subset_of_output_palette`` at the whole-grid scope. Adding either of those is the cleanest remaining smallest-step candidate on the same already-opened sub-axis -- still strictly smaller than the iter-209-named (i)/(ii)/(iii) candidates. The three iter-209-named candidates ((i) per-group consistent-color-mapping projection, (ii) whole-grid bijective-rename refinement of iter 185, (iii) background-colour-preserved precondition) remain valid one-iter-each smallest-step candidates on freshly-opened sub-axes. Two long-standing larger-than-smallest-step candidates remain unchanged from iters 180-209: (a) polymorphic-args extension to ``validate_rule`` V4 / V7 + ``apply_DSL``; (b) multi-rule mint per solve via a list-returning ``translate_to_schema``. Tertiary option remains unchanged: a 2-DSL-call action shape (``make_grid`` then ``coloring``) for the 00576224 tile-shape conjunction.
