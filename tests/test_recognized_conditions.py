@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 216
-    # there are fifty-nine such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 217
+    # there are sixty such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -195,6 +195,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_color_uniform_per_group",
         "singleton_recolor_per_group",
         "singleton_recolor",
+        "singleton_recolor_identity_per_group",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
