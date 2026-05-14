@@ -444,18 +444,13 @@ class PredictOperator(Operator):
 
     def _apply_recolor_sequential(self, rule, input_grid):
         raw = input_grid.raw
-        height = len(raw)
-        width = len(raw[0]) if raw else 0
         sort_key = rule["sort_key"]
         start_color = rule["start_color"]
         source_colors = set(rule.get("source_colors", []))
 
         # Find target cells
-        target_cells = []
-        for r in range(height):
-            for c in range(width):
-                if raw[r][c] in source_colors:
-                    target_cells.append((r, c))
+        target_cells = [(r, c) for r, row in enumerate(raw)
+                        for c, val in enumerate(row) if val in source_colors]
 
         # Group into connected components
         groups = _connected_components_4(target_cells)
