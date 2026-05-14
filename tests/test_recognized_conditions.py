@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 224
-    # there are sixty-seven such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 225
+    # there are sixty-eight such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -203,6 +203,7 @@ def test_registry_contents_after_helper_load() -> None:
         "singleton_recolor_nonidentity_output_anchored",
         "singleton_recolor_nonidentity_unanchored",
         "singleton_recolor_nonidentity_unanchored_function_shaped",
+        "singleton_recolor_nonidentity_unanchored_non_function_shaped",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -327,9 +328,19 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # refinement of iter 223 AND iter 8 at the cofire cell). With
     # this iter's matcher landed, the iter-10 canonical fixture now
     # witnesses the function-shape sub-cell at a distinguishing
-    # recognition handle. The three matchers in this test's name
-    # remain the iter-10 colour/dimension subset; the assertion grows
-    # with the registry rather than fighting it.
+    # recognition handle. Iter 225 names the strict-complement non-
+    # function-shape sub-cell of iter 223 (singleton_recolor_non
+    # identity_unanchored_non_function_shaped): the iter-10 canonical
+    # fixture is function-shaped (every C_g sees exactly one K_g), so
+    # iter 225's matcher REJECTS this fixture by design (its positive
+    # co-fire witness requires some C_g -> multiple K_g's, which the
+    # iter-10 fixture does not exhibit). The expected co-fire count
+    # therefore stays at twenty-six on this fixture; the iter-225
+    # matcher's positive co-fire witness lives in tests/test_singleton
+    # _recolor_nonidentity_unanchored_non_function_shaped.py instead.
+    # The three matchers in this test's name remain the iter-10
+    # colour/dimension subset; the assertion grows with the registry
+    # rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
