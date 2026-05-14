@@ -14,6 +14,31 @@ from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
 
 
+def _connected_components_4(positions):
+    """Group (row, col) positions into 4-connected components."""
+    pos_set = set(positions)
+    visited = set()
+    groups = []
+    for pos in positions:
+        if pos in visited:
+            continue
+        group = []
+        queue = [pos]
+        while queue:
+            p = queue.pop(0)
+            if p in visited or p not in pos_set:
+                continue
+            visited.add(p)
+            group.append(p)
+            r, c = p
+            for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
+                nb = (r + dr, c + dc)
+                if nb in pos_set and nb not in visited:
+                    queue.append(nb)
+        groups.append(group)
+    return groups
+
+
 # ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
 # ======================================================================
@@ -242,36 +267,9 @@ class ExtractPatternOperator(Operator):
     @staticmethod
     def _group_changes(changes):
         """Group changed cells into 4-connected components."""
-        if not changes:
-            return []
-
-        pos_to_change = {}
-        for c in changes:
-            pos_to_change[(c["row"], c["col"])] = c
-
-        visited = set()
-        groups = []
-
-        for change in changes:
-            pos = (change["row"], change["col"])
-            if pos in visited:
-                continue
-
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_to_change:
-                    continue
-                visited.add(p)
-                group.append(pos_to_change[p])
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (p[0] + dr, p[1] + dc)
-                    if nb in pos_to_change and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
+        pos_to_change = {(c["row"], c["col"]): c for c in changes}
+        groups = _connected_components_4(list(pos_to_change.keys()))
+        return [[pos_to_change[p] for p in g] for g in groups]
 
 
 # ======================================================================
@@ -505,29 +503,7 @@ class PredictOperator(Operator):
     @staticmethod
     def _group_positions(positions):
         """Group (row, col) positions into 4-connected components."""
-        pos_set = set(positions)
-        visited = set()
-        groups = []
-
-        for pos in positions:
-            if pos in visited:
-                continue
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_set:
-                    continue
-                visited.add(p)
-                group.append(p)
-                r, c = p
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (r + dr, c + dc)
-                    if nb in pos_set and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
+        return _connected_components_4(positions)
 
 
 # ======================================================================
