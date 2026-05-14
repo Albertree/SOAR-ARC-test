@@ -77,20 +77,18 @@ class SelectTargetOperator(Operator):
         if task is None:
             return
 
-        agenda = []
-        pending = []
-
-        for idx, pair in enumerate(task.example_pairs):
-            if pair.input_grid is not None and pair.output_grid is not None:
-                spec = {
-                    "type": "grid",
-                    "pair_idx": idx,
-                    "pair_type": "example",
-                    "id1": pair.input_grid.node_id,
-                    "id2": pair.output_grid.node_id,
-                }
-                agenda.append(spec)
-                pending.append(spec)
+        agenda = [
+            {
+                "type": "grid",
+                "pair_idx": idx,
+                "pair_type": "example",
+                "id1": pair.input_grid.node_id,
+                "id2": pair.output_grid.node_id,
+            }
+            for idx, pair in enumerate(task.example_pairs)
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        pending = list(agenda)
 
         # Build node lookup so CompareOperator can find ARCKG nodes by ID
         node_lookup = {}
