@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 214
-    # there are fifty-seven such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 215
+    # there are fifty-eight such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -193,6 +193,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_palette_proper_subset_of_output_palette",
         "consistent_color_mapping_per_group",
         "input_color_uniform_per_group",
+        "singleton_recolor_per_group",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -288,9 +289,14 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # per-group oc→ic inverse cross-product is function-shaped in
     # every group and input_color_uniform_per_group also fires
     # (strict refinement of iter 195 at K==1; symmetric DUAL of iter
-    # 213 on the input side). The three matchers in this test's name
-    # remain the iter-10 colour/dimension subset; the assertion grows
-    # with the registry rather than fighting it.
+    # 213 on the input side). Iter 215 names the CO-FIRE conjunction
+    # of iter 213 AND iter 214 at the per-group |ic| == |oc| == 1 cell:
+    # the iter-10 canonical fixture has every group with |ic| ==
+    # |oc| == 1 (ic=[0], oc=[3]; ic=[1], oc=[4]; ic=[2], oc=[5]), so
+    # singleton_recolor_per_group also fires (strict refinement of
+    # both iter 213 and iter 214 on this fixture). The three matchers
+    # in this test's name remain the iter-10 colour/dimension subset;
+    # the assertion grows with the registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -315,7 +321,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "change_palette_union_count_per_group_constant_across_pairs",
         "consistent_color_mapping_per_group",
         "input_color_uniform_per_group",
-    }, f"expected the twenty-two compatible matchers to fire, got {fired}"
+        "singleton_recolor_per_group",
+    }, f"expected the twenty-three compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
