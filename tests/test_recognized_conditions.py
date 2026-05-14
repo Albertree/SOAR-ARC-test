@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 225
-    # there are sixty-eight such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 226
+    # there are sixty-nine such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -204,6 +204,7 @@ def test_registry_contents_after_helper_load() -> None:
         "singleton_recolor_nonidentity_unanchored",
         "singleton_recolor_nonidentity_unanchored_function_shaped",
         "singleton_recolor_nonidentity_unanchored_non_function_shaped",
+        "singleton_recolor_nonidentity_unanchored_non_function_shaped_within_pair_function_shaped",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -338,6 +339,16 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # therefore stays at twenty-six on this fixture; the iter-225
     # matcher's positive co-fire witness lives in tests/test_singleton
     # _recolor_nonidentity_unanchored_non_function_shaped.py instead.
+    # Iter 226 names the strict-refinement within-pair-function-shape
+    # sub-cell of iter 225 (singleton_recolor_nonidentity_unanchored_
+    # non_function_shaped_within_pair_function_shaped): it requires
+    # GLOBAL non-function-shape (iter 225 precondition), which the
+    # iter-10 fixture does not exhibit, so iter 226 also REJECTS
+    # this fixture by design. The expected co-fire count therefore
+    # stays at twenty-six on this fixture; iter 226's positive co-
+    # fire witness lives in tests/test_singleton_recolor_nonidentity_
+    # unanchored_non_function_shaped_within_pair_function_shaped.py
+    # instead.
     # The three matchers in this test's name remain the iter-10
     # colour/dimension subset; the assertion grows with the registry
     # rather than fighting it.
