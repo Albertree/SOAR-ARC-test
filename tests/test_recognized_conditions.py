@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 213
-    # there are fifty-six such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 214
+    # there are fifty-seven such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -192,6 +192,7 @@ def test_registry_contents_after_helper_load() -> None:
         "output_palette_proper_subset_of_input_palette",
         "input_palette_proper_subset_of_output_palette",
         "consistent_color_mapping_per_group",
+        "input_color_uniform_per_group",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -281,10 +282,15 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # per-group ic→oc cross-product is function-shaped in every group
     # and consistent_color_mapping_per_group also fires (strict
     # implication of iter 8 holds here -- iter 8 fires on this fixture,
-    # so the per-group projection necessarily does too). The three
-    # matchers in this test's name remain the iter-10 colour/dimension
-    # subset; the assertion grows with the registry rather than fighting
-    # it.
+    # so the per-group projection necessarily does too). Iter 214
+    # mirrors iter 213 on the input side: every group in the fixture
+    # has |input_colors| == 1 ({0}, {1}, {2} on each pair), so the
+    # per-group oc→ic inverse cross-product is function-shaped in
+    # every group and input_color_uniform_per_group also fires
+    # (strict refinement of iter 195 at K==1; symmetric DUAL of iter
+    # 213 on the input side). The three matchers in this test's name
+    # remain the iter-10 colour/dimension subset; the assertion grows
+    # with the registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -308,7 +314,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "change_palette_symmetric_difference_count_per_group_constant_across_pairs",
         "change_palette_union_count_per_group_constant_across_pairs",
         "consistent_color_mapping_per_group",
-    }, f"expected the twenty-one compatible matchers to fire, got {fired}"
+        "input_color_uniform_per_group",
+    }, f"expected the twenty-two compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
