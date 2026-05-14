@@ -459,9 +459,6 @@ class PredictOperator(Operator):
                 if raw[r][c] in source_colors:
                     target_cells.append((r, c))
 
-        if not target_cells:
-            return [row[:] for row in raw]
-
         # Group into connected components
         groups = _connected_components_4(target_cells)
 
