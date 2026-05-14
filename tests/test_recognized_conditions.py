@@ -159,7 +159,13 @@ def test_registry_contents_after_helper_load() -> None:
     # missing primitive between iter 184's per-pair palette emission
     # and the existing aggregate ``constant_across_pairs`` matchers
     # (which all target derived counts / unions / intersections /
-    # shifts rather than set identity).
+    # shifts rather than set identity). Iter 990 adds the
+    # ``output_palette_constant_across_pairs`` matcher -- the output-
+    # side dual of iter 989, completing the across-pair set-equality
+    # quadrant on the (input, output) palette axis. Combined with
+    # iter 20's ``output_dimensions_constant``, recognition rules
+    # now have a tightest output-side stability gate (constant output
+    # dims AND constant output palette across pairs).
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -241,6 +247,7 @@ def test_registry_contents_after_helper_load() -> None:
         "bijective_color_mapping_per_group",
         "bijective_color_mapping_per_pair",
         "input_palette_constant_across_pairs",
+        "output_palette_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
