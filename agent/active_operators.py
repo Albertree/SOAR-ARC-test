@@ -283,10 +283,8 @@ class GeneralizeOperator(Operator):
     falls back to an identity rule so the pipeline can still complete.
     """
 
-    def __init__(self, generalize_fn=None, save_fn=None):
+    def __init__(self):
         super().__init__("generalize")
-        self._generalize_fn = generalize_fn
-        self._save_fn = save_fn
 
     def effect(self, wm):
         patterns = wm.s1.get("patterns")

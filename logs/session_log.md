@@ -22817,3 +22817,39 @@ All 46 new test cases pass; the recognized_conditions registry-contents assertio
 **Differential observation from the iter's own probe-side diagnostic** (incidental data, not the change itself): I pulled `fired_conditions` from the three latest `episodic_memory/<task>/attempt_NNN/metadata.json` entries. Matcher firings per probe task: 00576224 -> 13, 007bbfb7 -> 16, 009d5c81 -> 35. Combined, ~64 distinct matcher-firings across 3 probe tasks vs. 5 emission branches that produce 0 rules. Empirical confirmation of the recognition/emission asymmetry iter 977 named in essay form: 009d5c81 alone fires 35 named matchers including `consistent_color_mapping_per_pair`, `bijective_color_mapping_per_pair`, `inverse_consistent_color_mapping_per_pair`, `change_input_colors_constant_across_pairs`, `change_output_color_count_per_group_constant_across_pairs`, and many more -- none consumed. The recognition layer has the data; emission cannot lift it without polymorphic args.
 
 **Next gap (note for future iter)**: P6 has near-exhausted single-iter candidates inside `active_operators.py`: iter 973 removed precondition overrides (-21), iter 974 consolidated the two BFS duplicates (-24), this iter removed the `_group_positions` delegate (-7). Remaining: the `_sort_val` 6-line trichotomy inside `_apply_recolor_sequential` (lines 474-479) which compresses to a 1-line dict lookup or inline ternary, saving ~3 lines (iter 974/977 named this "cosmetic"; arguably smaller than this iter's removal); the `_apply_color_mapping` build loop -> list comprehension saves ~1 line. After those, the substantive P6 path is the multi-iter polymorphic-args sequence iter 970 named: `?varname` sentinel in `validate_rule` + `apply_DSL._resolve_args` + a `translate_to_schema` consumer branch for `consistent_color_mapping`/`recolor_sequential`, after which `_try_color_mapping`/`_apply_color_mapping`/`_try_recolor_sequential`/`_apply_recolor_sequential` (~100+ lines) can be deleted. The matcher-treadmill and emission-branch-blocker constraints iter 970/971/977 catalogued remain the structural deadlock; this iter's P6++ is bookkeeping progress on a path that does not address them.
+
+---
+## Learning Loop -- 2026-05-15 03:57
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_035725.log
+
+---
+## Learning Loop -- 2026-05-15 04:01
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_040123.log
+
+---
+## Iter 979 -- 2026-05-15T04:02Z -- branch test20
+
+**Diagnosis**: Iter 978's diagnosis named `_group_positions` as residual scaffolding (a 3-line static delegate with no real shape-adaptation duty) and removed it to break the 975/976/977 analysis-only chain with a defensible P6 step. Re-scanning `active_operators.py` for similar truly-dead scaffolding turns up `GeneralizeOperator.__init__(generalize_fn=None, save_fn=None)` (lines 286-289): two constructor parameters stored on `self._generalize_fn` / `self._save_fn` that are never read anywhere in the class body, never passed by the sole call site (`agent/rules.py:133` -- `GeneralizeOperator()` with no args), and have zero coverage in `tests/` or `scripts/`. The pattern matches iter 978's: scaffolding for a dependency-injection design that never landed, indistinguishable in static analysis from a deliberate API choice, but identifiable as orphaned once the all-call-sites scan returns exactly one no-arg invocation. Removing the four lines (DI signature + two body assignments collapses to a no-arg signature + super call) is a defensible P6 reduction on the same axis as iter 978's `_group_positions` inline.
+
+**Change**:
+- `agent/active_operators.py` -- collapse `GeneralizeOperator.__init__(self, generalize_fn=None, save_fn=None)` (4-line constructor: signature + super + two self-assigns) to `def __init__(self): super().__init__("generalize")` (2-line constructor). Net -2 lines (541 -> 539). The DI parameters were stored but never read; the single call site in `agent/rules.py:133` passes no arguments; `grep -rn '_generalize_fn|_save_fn|generalize_fn=|save_fn='` across `agent/ tests/ scripts/ program/` returns only the three lines being removed, confirming the parameters are orphaned scaffolding. Smoke checks: `GeneralizeOperator()` instantiates cleanly; `inspect.signature(GeneralizeOperator.__init__)` is now `(self)`; `GeneralizeRule().propose(...)` still returns an operator named `"generalize"`; the full `run_learn.py --limit 3 --seed 42` probe runs identically (0/3 correct, rule=identity, 7s, identical fired-conditions on all three tasks).
+
+**Probe before**: 0/3 correct, 0 rules on disk, P5=82, P6=541, P4=2937, covers-mean N/A.
+**Probe after** : 0/3 correct, 0 rules on disk, P5=82, P6=539, P4=2937, covers-mean N/A. Behaviorally identical (the DI parameters were never read so removing them cannot change `effect()` output).
+
+**Invariants**: forbidden=none. F1 inert (`active_operators.py` is not frozen per CLAUDE.md §4 -- only `data/`, `agent/cycle.py`, `agent/wm.py`, `ARCKG/*.py` are). F2 inert (no new `_try_*`/`_apply_*` method; the edit is in `GeneralizeOperator.__init__`). F3 inert (no DSL primitive change). F4 inert (no rule write). F5 inert (no semantic_memory write). F6 inert (no script change). F7 inert (no `RuleSchemaError` handling change). F8 EXPLICITLY exempt: "Pure deletions / refactors that *remove* code (net negative line count)" -- this iter is net -2 in `active_operators.py` with no companion edits to `memory.py` / `anti_unification.py` / `conditions/`, mirroring iter 978's exemption claim. `scripts/check_invariants.sh --check` verdict: CLEAN (1 positive delta, P6 541 -> 539).
+
+**Next gap (note for future iter)**: P6 is approaching exhaustion via the orphan-scaffolding route. Remaining single-iter P6 candidates inside `active_operators.py` (after iter 973's -21, iter 974's -24, iter 978's -7, this iter's -2): the `_sort_val` 6-line trichotomy at lines 472-477 (compresses to ~3 lines via inline ternary or dict-lookup, iters 974/977/978 named "cosmetic"); the `_apply_color_mapping` 4-line build loop at lines 494-497 (~1 line via list comprehension); the `_check_sort_key` 10-line static method at lines 357-366 (live, but could inline at its single call site for ~6 lines net if extracted-and-reinlined is judged a wash). Any of these can serve as the next iter's defensible single-iter P6 step. The deeper architectural blockage iters 970/975/976/977 named -- 82 matchers vs. 5 emission branches, AU never firing, P1/P2/P3 pinned to 0 -- remains structurally unchanged; the smallest defensible single-iter step to address it is still the multi-file polymorphic-args sequence (G/H/J family) iter 975 catalogued, which exceeds "smallest defensible step" in spirit. The recurring stagnation-on-P1/P2/P3 signal continues to point at the §3.3 + "smallest" joint-unsatisfiability fence iter 977 articulated.
+
