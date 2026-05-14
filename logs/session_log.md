@@ -11872,3 +11872,50 @@ branch that consumes the 00576224 tile-shape fired-conditions
 conjunction would need a 2-DSL-call action shape (``make_grid``
 then ``coloring``), beyond the current single-DSL ``action.dsl``
 schema.
+
+---
+## Learning Loop -- 2026-05-14 15:48
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 8s
+- Log: logs/learn_20260514_154844.log
+
+---
+## Iter 195 — 2026-05-14T06:58Z — branch test20
+
+**Diagnosis**: Iter 194 next-gap named ``change_input_color_count_per_group_constant_across_pairs`` as the cleanest extension on the per-group-cardinality sub-axis iter 193 opened: the per-group projection of iter 37 (per-pair input-colour union cardinality) and the per-group input-colour-cardinality dual of iter 193 (per-group cell-count). Iter 14 (``input_color_uniform``) pins K==1 AND identical colour across all groups; the proposed matcher relaxes to K==constant (cardinality only, colour free), opening recognition of "every blob spans the same number K of distinct input colours" without yet pinning the colours themselves. The named handle is the recognition-side precondition that anti-unification (CLAUDE.md §8) would attach a per-group input-cardinality generalisation variable to; without it that cross-blob regularity has no ``condition.type`` to attach to.
+
+**Change**:
+- ``agent/conditions/change_input_color_count_per_group_constant_across_pairs.py`` (new) -- registers the matcher under ``"change_input_color_count_per_group_constant_across_pairs"``. Cross-pair / cross-group constancy check on the derived integer ``len(group["input_colors"])`` over a non-empty ``pair_analyses`` list, with each pair carrying a non-empty ``groups`` list of dicts each carrying a non-empty list-typed ``input_colors`` of strict ints in [0, 9] (bool subclass rejected). Fail-closed on empty / malformed / zero-group / empty input_colors (the identity-territory rejection clause, mirroring iter 32 / 39 / 193 empty-group rejection, iter 30 empty-union rejection, iter 18 / 19 / 34 / 35 / 36 empty-set rejection, and iters 184-192 empty-palette rejection); deterministic and side-effect-free per the matcher contract (docs/RULE_FORMAT.md §4). The capture-first-K-then-compare pattern mirrors iters 30 / 32 / 33 / 34 / 35 / 36 / 37 / 38 / 39 / 40 / 42 / 184-193.
+- ``tests/test_change_input_color_count_per_group_constant_across_pairs.py`` (new, 50 cases) -- pins the contract: smoke / membership (2), positive cases on single-pair K==1 / two-pairs K==1 same colour / two-pairs K==1 different colours / two-pairs K==2 / K==2 multi-group / K==3 across three pairs / varying num_groups same K (7), negative cases on K-varies-across-pairs / K-varies-within-a-pair / K-varies-in-later-pair / all-zero-groups (iter-13 territory) / one-pair-zero-groups / empty / missing / non-dict / non-list / malformed-analysis (10), strict-type gates on missing-input_colors / non-list-input_colors / empty-input_colors / bool-in-input_colors / out-of-range / non-int / non-dict-group / non-list-groups / missing-groups / second-pair-malformed (10), behavioural-contract cases (side-effect-free, deterministic, literal-bool, params-ignored -- 4), and the orthogonality / co-fire matrix against iter 13 (mutually exclusive with identity), iter 14 (strict refinement: pins K==1 AND identical colour; co-fires when K==1 and colour identical; this-matcher-alone fires on K==2 or on K==1-with-different-colours), iter 35 (strict refinement: iter 35 requires per-group K==1 so iter 35 ⟹ this matcher; this-matcher-alone fires on K>=2 or on K==1-with-differing-per-pair-sets), iter 37 (independence: iter 37 requires per-group K==1 so they co-fire in the K==1 regime; this-matcher-alone fires on K>=2 groups iter 37 rejects), iter 193 (independence on the per-group sub-axis: cell_count vs len(input_colors); both directions of fire-alone witnessed; co-fires when both per-group regularities pin), iter 1 (grid_size_preserved co-fire, orthogonal dimensional axis -- 14), plus three ``recognized_conditions`` wiring checks (3) that assert this matcher fires on K==1 patterns, is excluded on varying-K patterns, and co-fires alongside iter 14 on uniform-input patterns. All 50 cases pass.
+- ``tests/test_recognized_conditions.py`` (edit) -- bump the iter-194 thirty-seven-element registry-contents assertion to include the new matcher (now thirty-eight elements); update the inline count comment from "iter 194" to "iter 195"; bump ``test_all_three_matchers_fire_on_compatible_patterns``'s eleven-element compatible-matcher set to twelve elements (the fixture groups all have ``len(input_colors) == 1``, so the new matcher fires alongside the existing eleven).
+
+**Probe before**: 0/3 correct, 0 rules, P5==37, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5==38, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter adds recognition vocabulary that no ``translate_to_schema`` branch currently consumes, so the probe outcome is by construction unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 37 → 38 (+1)
+
+F1 inert -- no frozen file touched.
+F2 inert -- no ``_try_*`` / ``_apply_*`` method added (no ``active_operators.py`` diff at all).
+F3 inert -- no DSL primitive added; the change is in ``agent/conditions/`` and ``tests/``.
+F4 inert -- no rule file touched.
+F5 inert -- ``semantic_memory/`` untouched.
+F6 inert -- no ``run_loop.sh`` / budget-script change.
+F7 inert -- no ``try/except RuleSchemaError`` added.
+F8 inert -- ``agent/active_operators.py`` not touched this iter; the companion-touch gate is only triggered on net-positive additions there.
+
+All 50 new test cases pass; the recognized_conditions registry-contents assertion now matches the 38-element set; all sibling test files still pass.
+
+``scripts/check_invariants.sh --check logs/_invariant_snapshot.json`` verdict: **CLEAN** (1 positive delta: P5 37 → 38).
+
+**Why this iter is the iter-194 named next-gap on the per-group sub-axis iter 193 opened, not yet another palette-axis matcher**: iter 193 opened the per-group constancy sub-axis (per-group cell_count) to break the 9-iter palette-axis streak; iter 194 carved out a palette-shift sub-axis. This iter returns to the per-group sub-axis to populate its input-colour-cardinality leg, the natural sibling of iter 193's cell-count leg on the same finer-grained sub-axis. The per-group constancy sub-axis now has two named handles (``cell_count``, ``len(input_colors)``); a third symmetric handle on ``len(output_colors)`` is the natural next extension. The named handle is the precondition for anti-unification (CLAUDE.md §8) to lift a per-group input-cardinality variable -- without it that cross-blob regularity has no ``condition.type`` to attach to.
+
+**Next gap (note for future iter)**: The cleanest symmetric extension on the per-group constancy sub-axis is the output-side mirror of this iter: ``change_output_color_count_per_group_constant_across_pairs`` -- every change group across every pair has the SAME ``len(output_colors)`` K. Iter 18 (``output_color_uniform``) pins K==1 AND identical colour across all groups/pairs; the proposed matcher relaxes to K==constant (cardinality only, colour free), the output-side dual of this iter exactly as iter 14 / 18 are duals on the per-group uniformity axis. A natural sibling extension on a DISTINCT axis is ``change_count_total_constant_across_pairs`` (the SUM of total_changes across pairs, the cross-task total-cell-count projection -- distinct from iter 32's per-pair total-cell-count constancy). Two long-standing larger-than-smallest-step candidates remain unchanged from iters 180-194:
+(a) Polymorphic-args extension to ``validate_rule`` V4 / V7 + ``apply_DSL`` to let ``action.args`` carry derived selection (e.g. "wherever input has colour C"). Recognition-side prerequisites for colour-permutation rules (iter 185), erasure rules (iter 184), canvas-rewrite rules (iter 186), palette-expansion rules (iter 187), strict-expansion rules (iter 188), strict-erasure rules (iter 189), magnitude-constant-recolour rules (iter 190), magnitude-constant-preservation rules (iter 191), total-palette-footprint-constant rules (iter 192), per-group-cardinality-constant rules (iter 193), colour-translation rules (iter 194), and now per-group input-colour-cardinality rules (this iter) are all in place; (a) is the bottleneck on the emission side for those rule shapes.
+(b) Multi-rule mint per solve: extend ``_persist_pipeline_rule`` to accept a list of rules from ``translate_to_schema``, add a cell-table-emit branch gated on (``change_cells_constant_across_pairs`` AND ``input_dimensions_constant`` AND ``grid_size_preserved``) that mints one ``coloring`` sibling rule per distinct output colour. Iters 184-194 plus this iter's eleven palette/per-group gates together make sibling-rule emission branches' preconditions representable in the data layer for at least eleven distinct rule shapes.
+Tertiary option remains unchanged from iters 180-194: an emission branch that consumes the 00576224 tile-shape fired-conditions conjunction would need a 2-DSL-call action shape (``make_grid`` then ``coloring``), beyond the current single-DSL ``action.dsl`` schema.
