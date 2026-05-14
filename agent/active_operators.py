@@ -116,9 +116,8 @@ class CompareOperator(Operator):
     and stores the result in the comparisons dict on S1.
     """
 
-    def __init__(self, compare_fn=None):
+    def __init__(self):
         super().__init__("compare")
-        self._compare_fn = compare_fn
 
     def effect(self, wm):
         pending = list(wm.s1.get("pending-comparisons") or [])
@@ -136,9 +135,7 @@ class CompareOperator(Operator):
             wm.s1["pending-comparisons"] = pending
             return
 
-        # Execute comparison
-        fn = self._compare_fn or arckg_compare
-        result = fn(node_a, node_b)
+        result = arckg_compare(node_a, node_b)
 
         # Store result keyed by type and pair index
         key = f"{item['type']}_{item.get('pair_idx', 0)}"
