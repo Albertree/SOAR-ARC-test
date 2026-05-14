@@ -22621,3 +22621,38 @@ All 46 new test cases pass; the recognized_conditions registry-contents assertio
 **Invariants**: forbidden=none (F1..F8 inert -- no frozen-file edit, no `_try_*`/`_apply_*` addition, no DSL primitive addition, no rule persisted without `condition`, no `TF_GRID` write, no auto-grown budget, no swallowed `RuleSchemaError`, no `agent/active_operators.py` diff so F8 is inert). Positives: P5 81 -> 82 (Δ=+1); P1..P4, P6 unchanged. `scripts/check_invariants.sh --check` verdict: CLEAN.
 
 **Next gap (note for future iter)**: The cardinality-direction trichotomy is now closed at 3/3 (iter 188 `<`, iter 189 `>`, this iter `==`). The named-cell catalogue across recognition axes is increasingly dense: the {forward, inverse, bijection} x {whole-task, per-pair, per-group} cross-product is closed at 8/9 distinct (one alias); the palette set-containment quartet (iter 184 / 185 / 186 / 187) is closed; the palette cardinality-direction trichotomy is now closed. Remaining recognition-side cells that are NOT in any closed family include: (a) per-pair and per-group projections of the cardinality-direction trichotomy (3 cells x 2 scopes = 6 candidates) -- semantically reasonable but starts to feel treadmill-shaped; (b) structural / shape axes that no matcher currently inspects (rectangular-bounding-box-of-groups, 4-vs-8-connectivity, diagonal vs cardinal change-cell layout); (c) symmetry axes (input has bilateral symmetry; output has bilateral symmetry; symmetry preserved); (d) background-vs-foreground axes (majority-colour preservation, foreground colour shift). The emission-side blocker iter 971 named remains: 5 `translate_to_schema` branches versus 82 matchers means the bottleneck is *consumption*, not *recognition*. Each fresh recognition matcher widens the gap between named patterns and addressable patterns. A future iter that opens an emission branch consuming ANY of the 77 unused matchers (without tripping the polymorphic-args / multi-rule-mint constraints iters 970 / 971 catalogued) is worth several treadmill-shaped matcher iters.
+
+---
+## Learning Loop -- 2026-05-15 02:58
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_025841.log
+
+---
+## Learning Loop -- 2026-05-15 03:04
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_030422.log
+
+---
+## Iter 973 -- 2026-05-15T03:05Z -- branch test20
+
+**Diagnosis**: Iter 970 explicitly named the matcher treadmill (633 consecutive neutrals across iters 337..969, each adding a P5++ matcher no `translate_to_schema` branch consumes) as the architectural deadlock; iters 971 and 972 then added matchers anyway (P5 80 -> 81 -> 82) under cover of "fresh sub-axis cell". Continuing that pattern in iter 973 perpetuates the treadmill. The smallest defensible step in the OPPOSITE direction is the F8-exempt pure-deletion path: remove dead code from `agent/active_operators.py` to advance P6 without adding any recognition vocabulary. The 7 `precondition` overrides on the pipeline operators (SolveTask, SelectTarget, Compare, ExtractPattern, Generalize, Predict, Submit) just re-raise `NotImplementedError` with a message functionally identical to the base class `Operator.precondition` (`agent/operators.py:29`); no caller in the codebase invokes `.precondition()` (only definitions present, verified via grep across the whole tree); the SOAR cycle never reads them. Pure dead overrides — removable with no semantic change.
+
+**Change**:
+- `agent/active_operators.py` -- delete 7 dead `precondition` overrides (one per pipeline operator). Net -21 lines (593 -> 572). Each override was exactly 3 lines (the `def ...:` line, the `raise NotImplementedError(...)` line, and the blank separator). Base-class `Operator.precondition` (`agent/operators.py:29`) already raises `NotImplementedError` with `self.__class__.__name__` -- the exact same surface contract a future caller would observe. No call sites exist anywhere in `agent/`, `tests/`, `program/`, `run_*.py`, or `scripts/` (grep `\.precondition\s*\(` returns only the definitions themselves). Tests reference "precondition" only as a conceptual term (e.g. "this matcher's precondition" -- referring to its gate logic), never via `.precondition()` call on operator instances.
+
+**Probe before**: 0/3 correct, 0 rules on disk, P5=82, P6=593, covers-mean N/A.
+**Probe after** : 0/3 correct, 0 rules on disk, P5=82, P6=572, covers-mean N/A. Probe behavior structurally identical (pipeline operators construct and execute as before; the deleted overrides were never on any execution path).
+
+**Invariants**: forbidden=none. F1 inert (active_operators.py is not a frozen file per CLAUDE.md §4 — only data/, agent/cycle.py, agent/wm.py, ARCKG/*.py are). F2 inert (no new `_try_*`/`_apply_*` -- the deletions remove `precondition`, not those families). F3 inert (no DSL change). F4 inert (no rule write). F5 inert (no semantic_memory write). F6 inert (no script change). F7 inert (no RuleSchemaError handling change). F8 EXPLICITLY exempt: "Pure deletions / refactors that *remove* code (net negative line count)" is the named exception in INVARIANTS.md §1 F8 -- this iter is the canonical case (net -21, no additions in active_operators.py). Positives: P4 2916 -> 2919 (Δ=+3, from the probe run); P6 593 -> 572 (Δ=+21 lines removed). `scripts/check_invariants.sh --check` verdict: CLEAN (2 positive deltas).
+
+**Next gap (note for future iter)**: P6 has more dead-code candidates. Both `GeneralizeOperator._try_recolor_sequential` (active_operators.py:316 call) and `GeneralizeOperator._try_color_mapping` (active_operators.py:320 call) emit legacy-shape rules that `translate_to_schema` cannot consume on the current probe set (per iter 970 (B)/(C) analysis: 007bbfb7 fails `grid_size_preserved`; 009d5c81 has per-pair-only bijection; the legacy shape requires polymorphic args -- item (G) -- to land as a §1 rule). HOWEVER iter 970 explicitly rejected removing those methods on the ground that they ARE called and would zero out non-identity slow-path discovery; that argument is correct as long as `translate_to_schema` exposes no consumer branch for legacy `color_mapping`/`recolor_sequential` shapes. The defensible P6 progression sequence is therefore: this iter (precondition overrides -- pure dead) -> a later iter that lands the polymorphic-args mechanism (G) and a consuming branch in `translate_to_schema` -> a later iter that deletes `_try_color_mapping`/`_apply_color_mapping` (and the recolor pair) once their legacy outputs are mintable as §1 rules. The pure-dead-code axis (this iter) has more entries: `ExtractPatternOperator._group_changes` and `PredictOperator._group_positions` are near-identical static helpers (active_operators.py:254 and active_operators.py:506) -- consolidating into one shared helper would shave another ~20 lines, with no functional change.

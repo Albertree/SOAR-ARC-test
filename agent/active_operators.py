@@ -28,9 +28,6 @@ class SolveTaskOperator(Operator):
         super().__init__("solve-task")
         self.proposal_preference = "+"
 
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("SolveTaskOperator.precondition() not implemented.")
-
     def effect(self, wm):
         # Intentionally empty -- triggers no-change impasse -> S2
         return
@@ -49,9 +46,6 @@ class SelectTargetOperator(Operator):
 
     def __init__(self):
         super().__init__("select_target")
-
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("SelectTargetOperator.precondition() not implemented.")
 
     def effect(self, wm):
         task = wm.task
@@ -101,9 +95,6 @@ class CompareOperator(Operator):
         super().__init__("compare")
         self._compare_fn = compare_fn
 
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("CompareOperator.precondition() not implemented.")
-
     def effect(self, wm):
         pending = list(wm.s1.get("pending-comparisons") or [])
         if not pending:
@@ -146,9 +137,6 @@ class ExtractPatternOperator(Operator):
 
     def __init__(self):
         super().__init__("extract_pattern")
-
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("ExtractPatternOperator.precondition() not implemented.")
 
     def effect(self, wm):
         task = wm.task
@@ -302,9 +290,6 @@ class GeneralizeOperator(Operator):
         self._generalize_fn = generalize_fn
         self._save_fn = save_fn
 
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("GeneralizeOperator.precondition() not implemented.")
-
     def effect(self, wm):
         patterns = wm.s1.get("patterns")
         if not patterns:
@@ -432,9 +417,6 @@ class PredictOperator(Operator):
     def __init__(self):
         super().__init__("predict")
 
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("PredictOperator.precondition() not implemented.")
-
     def effect(self, wm):
         task = wm.task
         active_rules = wm.s1.get("active-rules")
@@ -560,9 +542,6 @@ class SubmitOperator(Operator):
 
     def __init__(self):
         super().__init__("submit")
-
-    def precondition(self, wm) -> bool:
-        raise NotImplementedError("SubmitOperator.precondition() not implemented.")
 
     def effect(self, wm):
         predictions = wm.s1.get("predictions")
