@@ -10548,3 +10548,159 @@ Tertiary option remains unchanged from iters 180 / 181 / 182 / 183
 shape fired-conditions conjunction would need a 2-DSL-call action
 shape (`make_grid` then `coloring`), beyond the current single-DSL
 `action.dsl` schema.
+
+---
+## Learning Loop -- 2026-05-14 09:14
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_091404.log
+
+---
+
+## Iter 187 — 2026-05-14T09:18Z — branch test20
+
+**Diagnosis**: Iter 184 opened the whole-grid colour palette axis
+with the `output_palette_subset_of_input` matcher and the
+`_analyze_pair` emission of `input_palette` / `output_palette`. Iter
+185 added the strict-equality slot (`output_palette_equals_input`)
+and iter 186 added the disjoint slot
+(`output_palette_disjoint_from_input`), completing the three-cell
+partition of the *output-side* containment direction. Iter 186's
+next-gap note explicitly named the *input-side* mirror slot
+`input_palette_subset_of_output` — the symmetric containment
+direction — as the canonical next step on the same axis. This iter
+fills it: fires iff every pair has
+`set(input_palette) ⊆ set(output_palette)`. Smallest defensible
+step because it is purely additive recognition vocabulary — the
+palette fields already exist on `_analyze_pair`'s output since iter
+184, so no `agent/active_operators.py` touch is needed (F8 inert),
+and no rule / DSL / frozen-file surface is touched.
+
+**Change**:
+- `agent/conditions/input_palette_subset_of_output.py` (new) —
+  registers the matcher under `"input_palette_subset_of_output"`.
+  Universal-over-pairs set-containment check `set(input_palette) <=
+  set(output_palette)`, with the same strict-list-of-non-bool-ints
+  type gate as iters 184 / 185 / 186. Fail-closed on empty /
+  malformed input, deterministic and side-effect-free per the
+  matcher contract (docs/RULE_FORMAT.md §4).
+- `tests/test_input_palette_subset_of_output.py` (new, 43 cases) —
+  pins the contract: smoke / membership (2), positive cases on
+  expansion / equality / permutation / duplicates / single-colour /
+  multi-pair / empty-input / both-empty (8), negative cases on
+  erasure / disjoint / partial-overlap / non-empty-input-empty-output
+  / any-pair-fails / empty / missing / non-list / non-dict-patterns
+  / non-dict-analysis (10), strict-type gates on bool / non-int /
+  non-list / missing (7), behavioural-contract cases (side-effect-
+  free, deterministic, literal-bool return, ignore-per-group-
+  fields, ignore-dimensional-fields — 5), and the orthogonality /
+  co-fire matrix against iter 13 (strict implication: identity ⇒
+  this matcher), iter 184 (the four-cell partition — co-fire iff
+  equality fires), iter 185 (strict implication: equality ⇒ this
+  matcher; asymmetry on palette-expansion), iter 186 (mutual
+  exclusion on non-empty input; co-fire only on empty input), iter
+  1 (grid_size_preserved 2x2 co-fire table), iter 14
+  (input_color_uniform orthogonality — 9), plus a wiring check via
+  `recognized_conditions` (1) that asserts this matcher fires AND
+  iters 184 / 185 / 186 do NOT fire on a clearly-expansion patterns
+  dict.
+- `tests/test_recognized_conditions.py` (edit) — bump the iter-186
+  twenty-nine-element registry-contents assertion to include the new
+  matcher (now thirty elements); update the inline count comment
+  from "iter 186" to "iter 187".
+
+**Probe before**: 0/3 correct, 0 rules, P5=29, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5=30, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter
+adds recognition vocabulary that no `translate_to_schema` branch
+currently consumes, so the probe outcome is by construction
+unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 29 → 30 (+1)
+
+F1 inert — no frozen file touched.
+F2 inert — no `_try_*` / `_apply_*` method added (no
+`active_operators.py` diff at all).
+F3 inert — no DSL primitive added; the change is in
+`agent/conditions/` and `tests/`.
+F4 inert — no rule file touched.
+F5 inert — `semantic_memory/` untouched.
+F6 inert — no `run_loop.sh` / budget-script change.
+F7 inert — no `try/except RuleSchemaError` added.
+F8 inert — `agent/active_operators.py` not touched this iter; the
+companion-touch gate is only triggered on net-positive additions
+there.
+
+All 40 test scripts pass (the iter-186 set of 39 plus the new
+`tests/test_input_palette_subset_of_output.py`).
+
+`scripts/check_invariants.sh --check logs/_invariant_snapshot.json`
+verdict: **CLEAN** (1 positive delta: P5 29 → 30).
+
+**Why this iter is the iter-186 next-gap, not the matcher treadmill
+flagged at iters 178/179/180/181 STAGNATION**: the whole-grid colour
+palette axis is genuinely a new vocabulary axis opened by iter 184
+and developed by iters 185 / 186. The four registry slots now span
+the full (input ⊆ output, output ⊆ input) 2x2 partition of the
+palette-containment relation: iter 184 (output ⊆ input only), iter
+185 (both directions ⇔ equality), iter 186 (output ∩ input = empty
+— the off-diagonal disjoint cell), iter 187 (input ⊆ output only).
+The four cells together are the named recognition handles a future
+canvas-rewrite-with-overlay / palette-expansion rule's stored
+`condition.type` would need. Without the input-side slot, palette-
+expansion rules would have to declare iter-184 subset (which they
+do NOT satisfy when the output palette strictly contains the input
+palette) or rely on a non-vocabulary disambiguator at emission time
+— the same anti-pattern the iter-34..42 family explicitly avoided
+with separate matchers per axis projection. The four-cell partition
+is canonically complete; further matchers on this exact axis would
+be redundant.
+
+**Next gap (note for future iter)**: With the four-cell partition
+of the whole-grid palette-containment axis now complete, the next
+natural smallest-step axis is either (γ) a *symmetric difference*
+size projection on the same fields (`input_palette` /
+`output_palette`), e.g. `palette_symmetric_difference_constant_
+across_pairs` — fires iff `|set(input_palette) Δ
+set(output_palette)|` is the same integer across every pair
+(precondition for palette-rewrite rules whose *magnitude* of
+recolour is constant across the training set), or (δ) a
+cardinality-direction matcher
+`output_palette_count_exceeds_input_palette_count` — fires iff
+every pair has `len(set(output_palette)) > len(set(input_palette))`
+(strict refinement of palette-expansion: not just "input survives"
+but "the output has more distinct colours"). Both are pure-additive
+recognition vocabulary; no `_analyze_pair` touch needed.
+Alternatively, an entirely fresh axis: (ε)
+`palette_shift_constant_across_pairs` — fires iff, when both
+palettes are non-empty, the same integer shift `k` maps
+`input_palette` to `output_palette` element-wise per pair (the
+precondition for a colour-rotate / colour-shift rule). The two
+long-standing larger-than-smallest-step candidates remain unchanged
+from iters 180 / 181 / 182 / 183 / 184 / 185 / 186:
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 +
+`apply_DSL` to let `action.args` carry derived selection (e.g.
+"wherever input has colour C"). The recognition-side prerequisites
+for colour-permutation rules (iter 185), erasure rules (iter 184),
+canvas-rewrite rules (iter 186), and now palette-expansion rules
+(iter 187) are all in place; (a) is the bottleneck on the emission
+side for those rule shapes.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-
+table-emit branch gated on (`change_cells_constant_across_pairs`
+AND `input_dimensions_constant` AND `grid_size_preserved`) that
+mints one `coloring` sibling rule per distinct output colour. Iter
+184/185/186/187's four palette-axis gates together make sibling-
+rule emission branches' preconditions representable in the data
+layer for at least four distinct rule shapes (permutation,
+erasure, canvas-rewrite, palette-expansion).
+Tertiary option remains unchanged from iters 180 / 181 / 182 / 183
+/ 184 / 185 / 186: an emission branch that consumes the 00576224
+tile-shape fired-conditions conjunction would need a 2-DSL-call
+action shape (`make_grid` then `coloring`), beyond the current
+single-DSL `action.dsl` schema.
