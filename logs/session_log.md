@@ -23011,3 +23011,39 @@ All 46 new test cases pass; the recognized_conditions registry-contents assertio
 
 **Next gap (note for future iter)**: The iter-981 list-comp-collapse pattern is now applied to both `_apply_color_mapping` (iter 981) and `_apply_recolor_sequential` (this iter) -- the two `PredictOperator._apply_*` methods that had manual `for/append` loops. Surveying the remaining `for X: append(...)` constructs in `active_operators.py`: (a) `SelectTargetOperator.effect`'s pair-iteration loop builds `agenda`/`pending` via two appends with non-trivial conditional logic; collapsing to a comprehension would lose readability since the two-list parallel build pattern is fundamentally a for-with-side-effects shape, not a comprehension shape. (b) `SubmitOperator.effect`'s `predicted_grids = [] / for i / grid = predictions.get / if grid is not None / append(grid)` block (lines 509-513) IS a textbook list-comp shape and could compress similarly to this iter; it's a fresh candidate on the same axis (~3-4 line saving). (c) `_connected_components_4`'s BFS body has a `for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:` that could in principle filter-then-extend, but the visited-check coupling makes it less idiomatic. The two body-internal candidates iter 981/982/983 named (`_sort_val` trichotomy -> dict lookup, `_check_sort_key` inlining) remain on the readability-trade-off list. The substantive structural deadlock iters 970/971/975/976/977 catalogued (82 matchers vs. 5 emission branches in `translate_to_schema`, AU never fires because no rule has ever landed on disk, P1/P2/P3 pinned to 0; needs the multi-iter G/H/J polymorphic-args sequence that exceeds "smallest defensible step" in spirit) remains unchanged. Candidate (b) above is the most defensible next single-iter step.
 
+
+---
+## Learning Loop -- 2026-05-15 04:37
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_043715.log
+
+---
+## Iter 985 -- 2026-05-15T04:40Z -- branch test20
+
+**Diagnosis**: Iter 984's "Next gap" explicitly named `SubmitOperator.effect`'s `predicted_grids = [] / for i in range(len(task.test_pairs)) / grid = predictions.get(f"test_{i}") / if grid is not None / predicted_grids.append(grid)` block (lines 504-508) as a textbook list-comp candidate with iter 981's exact defensibility criterion: "no semantic ambiguity, no readability trade-off, no live logic moved into a loop body." Iter 984's own forecast estimated "~3-4 line saving" on this candidate. Re-verifying iter 984's catalogue of remaining `for/append` sites in `active_operators.py`: (a) `SelectTargetOperator.effect`'s pair-iteration two-list parallel build (agenda + pending) is structurally for-with-side-effects, not comprehension-shape — confirmed by reading the block; (b) this iter's `SubmitOperator` block — the named candidate; (c) `_connected_components_4`'s BFS body where visited-check coupling makes it less idiomatic. Candidate (b) is the only fresh single-iter P6 step that matches the iter 981 pattern (single-purpose accumulator with simple None-filter), distinct from the readability-trade-off candidates iter 981/982/983/984 chain flagged (`_sort_val`, `_check_sort_key`). Smallest defensible single-iter step on the remaining list-comp-collapse sub-axis.
+
+**Change**:
+- `agent/active_operators.py` -- compress `SubmitOperator.effect`'s 5-line target-collection block (lines 504-508) to a 2-line two-step comprehension: `candidates = [predictions.get(f"test_{i}") for i in range(len(task.test_pairs))]` then `predicted_grids = [g for g in candidates if g is not None]`. Net -3 lines (521 → 518). Each `f"test_{i}"` key is accessed exactly once (preserving the original per-call .get() count, no double-access). Smoke checks on four cases match the pre-refactor behaviour byte-for-byte: (a) mixed Some/None case (`{test_0: [[1,2]], test_1: None, test_2: [[3]]}`, 3 test pairs) → O_out=`{'predicted-grid': [[[1, 2]], [[3]]]}`, goal subgoals=`{test_0, test_1}` (indexed by position in predicted_grids, not by source `i` — matches the pre-refactor enumeration semantics); (b) all-None case → no O_out written, no goal mutation (early-return at `if not predicted_grids`); (c) empty-predictions-dict case → identical early-return behaviour; (d) fully-filled case → both grids in predicted-grid, both subgoals marked solved. The `if not predicted_grids:` guard at line 507 (post-edit) still fires when the filtered comprehension yields `[]`. Full `run_learn.py --limit 3 --seed 42` probe re-runs identically (3 INCORRECT via pipeline(steps=14/20/20), identity fallback on all three, 7s).
+
+**Probe before**: 0/3 correct, 0 rules on disk, P5=82, P6=521, P4=2967, covers-mean N/A.
+**Probe after** : 0/3 correct, 0 rules on disk, P5=82, P6=518, P4=2970, covers-mean N/A. Behaviorally identical (semantically equivalent two-comp; SubmitOperator is exercised on every probe task via the standard pipeline tail but produces the same goal state byte-for-byte before and after).
+
+**Invariants**: forbidden=none. F1 inert (`active_operators.py` is not frozen per CLAUDE.md §4 -- only `data/`, `agent/cycle.py`, `agent/wm.py`, `ARCKG/*.py` are). F2 inert (no new `_try_*`/`_apply_*` method; the edit is body-internal to the existing `SubmitOperator.effect` -- F2 explicitly permits "bug-fixes inside an existing method" and the body-internal-refactor pattern was set by iters 974/978/979/980/981/982/983/984). F3 inert (no DSL primitive change). F4 inert (no rule write). F5 inert (no semantic_memory write). F6 inert (no script change). F7 inert (no `RuleSchemaError` handling change). F8 EXPLICITLY exempt: "Pure deletions / refactors that *remove* code (net negative line count)" -- this iter is net -3 in `active_operators.py` with no companion edits to `memory.py` / `anti_unification.py` / `conditions/`, mirroring iters 978/979/980/981/982/983/984's exemption claim. `scripts/check_invariants.sh --check` verdict: CLEAN (2 positive deltas: P6 521 → 518, P4 2967 → 2970).
+
+**Next gap (note for future iter)**: The list-comp-collapse sub-axis iter 981/984/this-iter mined is now applied to all three textbook `output=[]/for/append` sites in `active_operators.py` that had iter 981's "no readability trade-off" property: `_apply_color_mapping` (iter 981), `_apply_recolor_sequential`'s target-cell collection (iter 984), and `SubmitOperator.effect`'s predicted-grid collection (this iter). Surveying remaining `for/append` constructs: (a) `SelectTargetOperator.effect`'s pair-iteration two-list parallel build (agenda + pending) is structurally for-with-side-effects, not comprehension-shape; collapsing to a comprehension would lose readability or require a temp tuple-list intermediate (not the iter-981 pattern). (b) `_connected_components_4`'s BFS body uses `for dr, dc in [(-1,0),(1,0),(0,-1),(0,1)]:` with visited-check coupling — not idiomatically a comprehension. (c) `GeneralizeOperator.effect`'s rule-aggregation across pair-analyses (if any) — needs verification next iter. The two body-internal candidates iter 981/982/983/984 named (`_sort_val` trichotomy compression, `_check_sort_key` inlining) remain on the readability-trade-off list. The substantive structural deadlock iters 970/971/975/976/977 catalogued (82 matchers vs. 5 emission branches in `translate_to_schema`, AU never fires because no rule has ever landed on disk, P1/P2/P3 pinned to 0; needs the multi-iter G/H/J polymorphic-args sequence that exceeds "smallest defensible step" in spirit) remains unchanged. The line-count P6 axis is now closer to genuine exhaustion: only the readability-trade-off candidates remain on `active_operators.py`-internal moves, with one possibly-fresh candidate (c) above to verify next iter.
+
+
+---
+## Learning Loop -- 2026-05-15 04:39
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_043949.log

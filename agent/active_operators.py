@@ -501,11 +501,8 @@ class SubmitOperator(Operator):
         if not task:
             return
 
-        predicted_grids = []
-        for i in range(len(task.test_pairs)):
-            grid = predictions.get(f"test_{i}")
-            if grid is not None:
-                predicted_grids.append(grid)
+        candidates = [predictions.get(f"test_{i}") for i in range(len(task.test_pairs))]
+        predicted_grids = [g for g in candidates if g is not None]
 
         if not predicted_grids:
             return
