@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 202
-    # there are forty-five such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 203
+    # there are forty-six such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -181,6 +181,7 @@ def test_registry_contents_after_helper_load() -> None:
         "output_colors_subset_of_input_colors_per_group",
         "output_colors_equals_input_colors_per_group",
         "input_colors_subset_of_output_colors_per_group",
+        "output_colors_disjoint_from_input_colors_per_group",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -237,9 +238,16 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # requiring the per-pair k_P to be bit-identical across pairs;
     # the fixture's per-pair k_P is k=3 on both pairs, so the global
     # k=3 is well-defined and palette_shift_constant_across_groups_
-    # and_pairs also fires. The three matchers in this test's name
-    # remain the iter-10 colour/dimension subset; the assertion grows
-    # with the registry rather than fighting it.
+    # and_pairs also fires. Iter 203 names the per-group palette-
+    # disjoint cell of the per-group palette-relation sub-axis: every
+    # group in the fixture has set(input_colors) ∩ set(output_colors)
+    # == ∅ ({0}∩{3}=∅, {1}∩{4}=∅, {2}∩{5}=∅), so
+    # output_colors_disjoint_from_input_colors_per_group also fires
+    # (the iter-200 / 201 / 202 sub-axis matchers REJECT the disjoint
+    # cell -- they pin the three non-disjoint cells of the four-cell
+    # partition). The three matchers in this test's name remain the
+    # iter-10 colour/dimension subset; the assertion grows with the
+    # registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -258,7 +266,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "change_color_mapping_count_per_group_constant_across_pairs",
         "palette_shift_constant_across_groups_per_pair",
         "palette_shift_constant_across_groups_and_pairs",
-    }, f"expected the sixteen compatible matchers to fire, got {fired}"
+        "output_colors_disjoint_from_input_colors_per_group",
+    }, f"expected the seventeen compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
