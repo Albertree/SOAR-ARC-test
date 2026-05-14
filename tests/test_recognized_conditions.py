@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 333
-    # there are seventy-seven such modules (iter 229 added the
+    # the matcher modules under ``agent/conditions/``. As of iter 334
+    # there are seventy-eight such modules (iter 229 added the
     # ``mixed`` sub-cell of iter 227's territory; iter 329 added the
     # per-group anchor-preservation matcher iter 228 named as
     # candidate (iii); iter 330 added the palette-permutation matcher
@@ -140,12 +140,14 @@ def test_registry_contents_after_helper_load() -> None:
     # anchor-preservation matcher iter 330 named as the next-gap
     # candidate; iter 332 added the ``inverse_consistent_color_mapping``
     # matcher iter 331 named as the surjectivity / inverse-function-
-    # shape candidate; iter 333 adds the ``bijective_color_mapping``
+    # shape candidate; iter 333 added the ``bijective_color_mapping``
     # matcher iter 332 named as candidate (c) -- the strict relaxation
-    # of iter 330 by dropping the palette-equality clause, the named
-    # co-fire handle of (iter 8 AND iter 332) without iter 185);
-    # tightening the assertion to ``==`` keeps a stray @register
-    # import from sneaking into the package.
+    # of iter 330 by dropping the palette-equality clause; iter 334
+    # adds the ``bijective_color_mapping_per_group`` matcher iter 333
+    # named as candidate (a) -- the per-group projection of iter 333,
+    # the named co-fire handle of (iter 213 AND iter 214) on the per-
+    # group scope); tightening the assertion to ``==`` keeps a stray
+    # @register import from sneaking into the package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -224,6 +226,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_palette_intersects_output_palette",
         "inverse_consistent_color_mapping",
         "bijective_color_mapping",
+        "bijective_color_mapping_per_group",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -410,9 +413,21 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # NOT satisfy palette equality so iter 330 does NOT fire on it,
     # but iter 333 does -- the strict-relaxation witness). The co-fire
     # count therefore grows from twenty-seven to twenty-eight on this
-    # fixture. The three matchers in this test's name remain the
-    # iter-10 colour/dimension subset; the assertion grows with the
-    # registry rather than fighting it.
+    # fixture. Iter 334 names the per-group projection of iter 333
+    # (``bijective_color_mapping_per_group``): every group has both
+    # forward-function-shape and inverse-function-shape WITHIN that
+    # group, independent of any cross-group / cross-pair accumulation.
+    # The iter-10 canonical fixture has every group with |ic| == |oc|
+    # == 1 (ic=[0]/oc=[3], ic=[1]/oc=[4], ic=[2]/oc=[5] per pair), so
+    # each group's per-group forward and inverse cross-products are
+    # trivially singleton-keyed and function-shape; iter 334 fires
+    # on this fixture (co-fire witness on the per-group bijection
+    # cell; strict implication of iter 333 holds since whole-task
+    # bijection implies per-group bijection, the natural per-group
+    # restriction). The co-fire count therefore grows from twenty-
+    # eight to twenty-nine on this fixture. The three matchers in
+    # this test's name remain the iter-10 colour/dimension subset;
+    # the assertion grows with the registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -443,7 +458,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "singleton_recolor_nonidentity_unanchored_function_shaped",
         "inverse_consistent_color_mapping",
         "bijective_color_mapping",
-    }, f"expected the twenty-eight compatible matchers to fire, got {fired}"
+        "bijective_color_mapping_per_group",
+    }, f"expected the twenty-nine compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
