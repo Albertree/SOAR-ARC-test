@@ -11008,3 +11008,175 @@ Tertiary option remains unchanged from iters 180 / 181 / 182 / 183
 00576224 tile-shape fired-conditions conjunction would need a 2-DSL-
 call action shape (`make_grid` then `coloring`), beyond the current
 single-DSL `action.dsl` schema.
+
+---
+## Learning Loop -- 2026-05-14 09:31
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_093114.log
+
+---
+## Iter 190 — 2026-05-14T00:37Z — branch test20
+
+**Diagnosis**: Iter 189 completed the 1x3 ``<`` / ``==`` / ``>``
+cardinality-direction trichotomy on the palette axis (iter 188 ``>``,
+iter 185 ``==``, iter 189 ``<``). Iter 189's next-gap note listed two
+smallest-step candidates: (γ) palette-symmetric-difference constancy
+and (ε) palette-shift constancy. Of those, (γ) is the smallest
+defensible step -- a pure cross-pair constancy check on a derived
+integer (``len(set(input_palette) ^ set(output_palette))``) on the
+already-emitted palette fields, with no per-pair set-relation logic
+and no shift-detection logic. It is the first palette-axis entry on
+the cross-pair-constancy sub-axis (orthogonal to the per-pair
+set-containment sub-axis of iters 184 / 185 / 186 / 187 and the
+per-pair cardinality-direction sub-axis of iters 188 / 189 / 185),
+mirroring the iter-30 / 33 / 34 / 35 / 36 / 37 / 38 / 39 / 40 / 42
+family which sit on the cross-pair-constancy sub-axis of the
+change-cell fields. The named recognition handle "the magnitude of
+palette change is the same in every training pair" is the
+precondition for anti-unification (CLAUDE.md §8) to lift a per-pair
+Δ size into a constant generalisation variable.
+
+**Change**:
+- `agent/conditions/palette_symmetric_difference_constant_across_pairs.py`
+  (new) -- registers the matcher under
+  `"palette_symmetric_difference_constant_across_pairs"`. Cross-pair
+  constancy check on the integer
+  `len(set(input_palette) ^ set(output_palette))` over a non-empty
+  `pair_analyses` list, with the same strict-list-of-non-bool-ints
+  type gate as iters 184 / 185 / 186 / 187 / 188 / 189. Fail-closed
+  on empty / malformed (consistent posture); deterministic and
+  side-effect-free per the matcher contract (docs/RULE_FORMAT.md §4).
+  The capture-first-pair-then-compare pattern mirrors the iter-30 /
+  33 / 34 / 35 / 36 / 37 / 38 / 39 / 40 / 42 cross-pair-constancy
+  family.
+- `tests/test_palette_symmetric_difference_constant_across_pairs.py`
+  (new, 43 cases) -- pins the contract: smoke / membership (2),
+  positive cases on single-pair trivial constancy / |Δ|==0 across
+  pairs / |Δ|==1 across pairs / |Δ|==2 across pairs / duplicates in
+  palettes / both-empty-on-every-pair / disjoint-palettes-with-
+  constant-total (7), negative cases on varying |Δ| / one-pair-extra-
+  drop / mixed-empty-and-non-empty / empty / missing / non-list /
+  non-dict-patterns / non-dict-analysis (8), strict-type gates on
+  missing / non-list / bool / non-int / second-pair-malformed (8),
+  behavioural-contract cases (side-effect-free, deterministic,
+  literal-bool, ignore-per-group, ignore-dimensional -- 5), and the
+  orthogonality / co-fire matrix against iter 13 (strict implication:
+  identity ⇒ this matcher, with canonical 0), iter 185 (strict
+  implication: equality ⇒ this matcher, with canonical 0; reverse
+  does not hold -- this matcher fires on any constant), iter 184
+  (independence: co-fire on every-pair-drops-one; iter-184-alone on
+  varying-drop-counts), iter 186 (independence: co-fire on constant
+  |input| + |output|; iter-186-alone on varying total), iter 187
+  (independence: co-fire on every-pair-adds-one; iter-187-alone on
+  varying-addition-counts), iter 188 (independence: co-fire on
+  constant strict expansion; iter-188-alone on varying |Δ|), iter
+  189 (independence: co-fire on constant strict erasure; iter-189-
+  alone on varying |Δ|), iter 1 (grid_size_preserved 2x2 co-fire
+  table), iter 14 (input_color_uniform orthogonality -- 9), plus
+  three `recognized_conditions` wiring checks (3) that assert this
+  matcher fires alongside iter 187 + iter 188 on constant-Δ
+  expansion patterns AND is excluded on varying-Δ expansion patterns
+  AND fires alongside iter 185 on palette equality (the strict
+  implication |Δ|==0 → this matcher).
+- `tests/test_recognized_conditions.py` (edit) -- bump the iter-189
+  thirty-two-element registry-contents assertion to include the new
+  matcher (now thirty-three elements); update the inline count
+  comment from "iter 189" to "iter 190".
+
+**Probe before**: 0/3 correct, 0 rules, P5=32, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5=33, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter
+adds recognition vocabulary that no `translate_to_schema` branch
+currently consumes, so the probe outcome is by construction
+unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 32 → 33 (+1)
+
+F1 inert -- no frozen file touched.
+F2 inert -- no `_try_*` / `_apply_*` method added (no
+`active_operators.py` diff at all).
+F3 inert -- no DSL primitive added; the change is in
+`agent/conditions/` and `tests/`.
+F4 inert -- no rule file touched.
+F5 inert -- `semantic_memory/` untouched.
+F6 inert -- no `run_loop.sh` / budget-script change.
+F7 inert -- no `try/except RuleSchemaError` added.
+F8 inert -- `agent/active_operators.py` not touched this iter; the
+companion-touch gate is only triggered on net-positive additions
+there.
+
+All 43 test scripts pass (the iter-189 set of 42 plus the new
+`tests/test_palette_symmetric_difference_constant_across_pairs.py`).
+
+`scripts/check_invariants.sh --check logs/_invariant_snapshot.json`
+verdict: **CLEAN** (1 positive delta: P5 32 → 33).
+
+**Why this iter is the iter-189 next-gap (γ), not the matcher
+treadmill flagged at iters 178/179/180/181 STAGNATION**: this matcher
+opens a *new sub-axis* on the palette axis, orthogonal to BOTH the
+set-containment sub-axis (iters 184 / 185 / 186 / 187) and the
+cardinality-direction sub-axis (iters 185 / 188 / 189). Until this
+iter every palette-axis matcher was per-pair and universal-over-pairs;
+none made a cross-pair constancy claim. This matcher is the first
+palette-axis entry on the cross-pair-constancy sub-axis -- the SAME
+sub-axis the iter-30 / 33 / 34 / 35 / 36 / 37 / 38 / 39 / 40 / 42
+family populates on the change-cell fields, applied now to the
+whole-grid palette fields. The named handle "the recolour MAGNITUDE
+is the same in every training pair" is the precondition for anti-
+unification to lift a per-pair Δ size into a constant generalisation
+variable; without this matcher that cross-pair palette regularity
+has no `condition.type` to attach to.
+
+**Next gap (note for future iter)**: With the cross-pair palette-Δ-
+constancy sub-axis now opened by this matcher, two natural smallest-
+step extensions remain on the same sub-axis: (γ.1)
+`palette_intersection_count_constant_across_pairs` -- fires iff
+`|set(input_palette) ∩ set(output_palette)|` is the same integer
+across every pair (cross-pair constancy on the COMMON palette size,
+the magnitude-of-preservation precondition for rules whose preserved-
+colour count is constant across the training set, the dual sub-axis
+of Δ-size constancy), or (γ.2)
+`palette_union_count_constant_across_pairs` -- fires iff
+`|set(input_palette) ∪ set(output_palette)|` is the same integer
+across every pair (cross-pair constancy on the total palette
+footprint, a magnitude precondition for rules whose colour-vocabulary
+size is constant). Both are pure-additive recognition vocabulary; no
+`_analyze_pair` touch needed. An entirely fresh palette-axis
+extension also remains available: (ε) `palette_shift_constant_across_
+pairs` -- fires iff, when both palettes are non-empty, the same
+integer shift `k` maps `input_palette` to `output_palette` element-
+wise per pair (the precondition for a colour-rotate / colour-shift
+rule, opens the colour-permutation sub-axis distinct from
+cardinality / set-containment / Δ-magnitude). The two long-standing
+larger-than-smallest-step candidates remain unchanged from iters 180
+/ 181 / 182 / 183 / 184 / 185 / 186 / 187 / 188 / 189:
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 +
+`apply_DSL` to let `action.args` carry derived selection (e.g.
+"wherever input has colour C"). The recognition-side prerequisites
+for colour-permutation rules (iter 185), erasure rules (iter 184),
+canvas-rewrite rules (iter 186), palette-expansion rules (iter 187),
+strict-expansion rules (iter 188), strict-erasure rules (iter 189),
+and now magnitude-constant-recolour rules (this iter) are all in
+place; (a) is the bottleneck on the emission side for those rule
+shapes.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-table-
+emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints one
+`coloring` sibling rule per distinct output colour. Iter 184 / 185 /
+186 / 187 / 188 / 189 / 190's seven palette-axis gates together make
+sibling-rule emission branches' preconditions representable in the
+data layer for at least six distinct rule shapes plus the named
+strict-expansion / strict-erasure / strict-equality trichotomy and
+the magnitude-constancy cross-pair invariant.
+Tertiary option remains unchanged from iters 180 / 181 / 182 / 183 /
+184 / 185 / 186 / 187 / 188 / 189: an emission branch that consumes
+the 00576224 tile-shape fired-conditions conjunction would need a 2-
+DSL-call action shape (`make_grid` then `coloring`), beyond the
+current single-DSL `action.dsl` schema.
