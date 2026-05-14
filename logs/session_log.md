@@ -10115,3 +10115,153 @@ conditions conjunction would need a 2-DSL-call action shape
 `action.dsl` schema. Iter 183's bipartite-complete shape-regularity
 axis makes (c) marginally easier: the make_grid-output-square
 precondition is now declarable as a literal `condition.type`.
+
+---
+## Learning Loop -- 2026-05-14 08:56
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260514_085633.log
+
+---
+## Iter 184 — 2026-05-14T08:58:00 — branch test20
+
+**Diagnosis**: Iter 183 closed the bipartite shape-regularity axis
+(`input_dimensions_square` ∪ `output_dimensions_square`) and explicitly
+named the next-direction axes as colour-palette membership
+(`output_palette ⊆ input_palette`, equality, disjointness), with the
+caveat that all three require new `_analyze_pair` fields. Every
+existing colour matcher reads per-group `input_colors` / `output_
+colors` (the *changed* cells only); none names the whole-grid palette.
+Smallest defensible step: emit the two new full-grid palette fields
+from `_analyze_pair` and add the single most foundational matcher on
+this new axis -- `output_palette_subset_of_input` -- which names the
+precondition "the transformation introduces no colour not already
+present in the input" (the precondition under which a recolour /
+colour-permutation rule is well-typed).
+
+**Change**:
+- `agent/active_operators.py` (edit, +10 net) -- `_analyze_pair` now
+  emits two additional fields per pair: `input_palette` (sorted list
+  of distinct cell values seen anywhere in the input grid) and
+  `output_palette` (same for output). Strictly additive; every other
+  field is unchanged. The per-group `input_colors` / `output_colors`
+  lists (change-cells only) remain orthogonal and untouched.
+- `agent/conditions/output_palette_subset_of_input.py` (new) --
+  matcher returns True iff every pair has
+  `set(output_palette) ⊆ set(input_palette)`. Fail-closed posture on
+  empty / non-list / malformed `pair_analyses`, missing or non-list
+  palette fields, bool-typed or non-int palette entries. Auto-
+  registers via `@register("output_palette_subset_of_input")` and is
+  picked up by `_autoload_matchers()`. Reuses the iter-184 fields just
+  added.
+- `tests/test_output_palette_subset_of_input.py` (new, 32 tests) --
+  dependency-free runner, mirroring the iter-182 / 183 structure:
+  registry membership + callability smoke (2); positive cases
+  including equality / strict subset / monochrome / multi-pair varying
+  palettes / empty output palette (5); negative cases including single
+  new colour / disjoint palettes / any-pair-fails / empty / missing /
+  non-list / non-dict-patterns / non-dict-analysis (8); strict-type-
+  gate cases (palette missing / non-list / bool entries / non-int
+  entries -- 7); behavioural-contract cases (side-effect-free,
+  deterministic, literal-Boolean return, ignores per-group colour
+  lists, ignores dimensional fields -- 5); orthogonality cases
+  including strict-implication-from-iter-13 and the asymmetry that
+  proves implication does NOT reverse, plus the 3-cell co-fire matrix
+  against `grid_size_preserved`, plus the iter-14 `input_color_uniform`
+  axis-independence test (4); plus a wiring check via
+  `recognized_conditions` (1).
+- `tests/test_recognized_conditions.py` (edit) -- bump the iter-183
+  twenty-six-element registry-contents assertion to include the new
+  matcher (now twenty-seven elements); update the inline count
+  comment from "iter 183" to "iter 184".
+
+**Probe before**: 0/3 correct, 0 rules, P5=26, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5=27, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter
+adds recognition vocabulary that no `translate_to_schema` branch
+currently consumes, so the probe outcome is by construction
+unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 26 → 27 (+1)
+
+F1 inert — no frozen file touched.
+F2 inert — no `_try_*` / `_apply_*` method added (the
+`active_operators.py` diff adds a four-line palette-computation
+block + two output-dict entries inside the existing `_analyze_pair`
+helper; zero `def _try_` / `def _apply_` introductions).
+F3 inert — no DSL primitive added; the change is in
+`agent/active_operators.py`, `agent/conditions/`, and `tests/`.
+F4 inert — no rule file touched.
+F5 inert — `semantic_memory/` untouched.
+F6 inert — no `run_loop.sh` / budget-script change.
+F7 inert — no `try/except RuleSchemaError` added.
+F8 inert — `agent/active_operators.py` grew by 10 lines AND
+`agent/conditions/output_palette_subset_of_input.py` is in the
+staged diff (the companion-touch gate is satisfied by any file
+under `agent/conditions/`). The check verdict CLEAN with P5 +1
+confirms F8 was inert in the loop's own re-run.
+
+All 38 test scripts pass (the iter-183 set of 37 plus the new
+`tests/test_output_palette_subset_of_input.py`).
+
+`scripts/check_invariants.sh --check logs/_invariant_snapshot.json`
+verdict: **CLEAN** (1 positive delta: P5 26 → 27).
+
+**Why this iter breaks the matcher-treadmill pattern flagged at iters
+178/179/180/181 STAGNATION**: The recognition vocabulary on the
+*change-cells* axis (per-group `input_colors` / `output_colors`) has
+been saturated since the iter-34..42 family. Iters 182 / 183 added
+two matchers on the new shape-regularity axis (per-pair square). This
+iter opens a genuinely new axis — *whole-grid* colour palette — that
+the iter-183 next-gap note explicitly named as the next direction.
+The `_analyze_pair` extension this iter ships unblocks two further
+smallest-step matcher iters (`output_palette_equals_input` for
+strict-recolour gating, `output_palette_disjoint_from_input` for
+canvas-rewrite gating), each strictly orthogonal to this one. So the
+P5 increment here is not the treadmill pattern's "add another
+matcher on a saturated axis" — it is "open a new axis whose
+foundational field had not been emitted by `_analyze_pair`".
+
+**Next gap (note for future iter)**: With `input_palette` /
+`output_palette` now emitted, two further smallest-step matcher iters
+on the same axis are now pure-additive (no further `_analyze_pair`
+touch):
+(α) `output_palette_equals_input` -- the strict-equality companion
+of this iter. Names the precondition "the transformation preserves
+the active palette" (every colour-permutation rule with no colour
+addition / removal). Strict refinement of `output_palette_subset_of_
+input`; co-fires on identity.
+(β) `output_palette_disjoint_from_input` -- the dual. Names the
+precondition "every output colour is fresh" (canvas-rewrite,
+foreground-erase). Mutually exclusive with iter-13 `identity_
+transformation` and with this iter's subset matcher (subset + non-
+empty disjoint together imply empty output palette).
+Either (α) or (β) is the natural symmetric next iter. The two long-
+standing larger-than-smallest-step candidates remain unchanged from
+iters 180 / 181 / 182 / 183:
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 +
+`apply_DSL` to let `action.args` carry derived selection (e.g.
+"wherever input has colour C"). The new
+`output_palette_subset_of_input` matcher is the recognition-side
+prerequisite for any emission branch that emits a colour-permutation
+rule; (a) is now the bottleneck on the emission side.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-table-
+emit branch gated on (`change_cells_constant_across_pairs` AND
+`input_dimensions_constant` AND `grid_size_preserved`) that mints
+one `coloring` sibling rule per distinct output colour. Iter 184's
+new whole-grid palette fields make this branch's `args` selection
+representable in the data layer (the per-output-colour rules can
+declare their precondition as `output_palette_subset_of_input` -- the
+target colour is in the input palette, gated on `consistent_color_
+mapping`).
+Tertiary option remains unchanged from iter 180 / 181 / 182 / 183: an
+emission branch that consumes the 00576224 tile-shape fired-
+conditions conjunction would need a 2-DSL-call action shape
+(`make_grid` then `coloring`), beyond the current single-DSL
+`action.dsl` schema.

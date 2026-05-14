@@ -228,6 +228,14 @@ class ExtractPatternOperator(Operator):
         output_height = len(raw_out)
         output_width = len(raw_out[0]) if raw_out else 0
 
+        # Whole-grid colour palettes (iter 184). Distinct from the per-group
+        # ``input_colors`` / ``output_colors`` lists above, which only span
+        # the *changed* cells. The full-grid palette is the foundational
+        # field the colour-palette-axis matchers consume (output ⊆ input,
+        # equality, disjointness …).
+        input_palette = sorted({v for row in raw_in for v in row})
+        output_palette = sorted({v for row in raw_out for v in row})
+
         return {
             "total_changes": len(changes),
             "num_groups": len(groups),
@@ -239,6 +247,8 @@ class ExtractPatternOperator(Operator):
             "input_width": input_width,
             "output_height": output_height,
             "output_width": output_width,
+            "input_palette": input_palette,
+            "output_palette": output_palette,
         }
 
     @staticmethod
