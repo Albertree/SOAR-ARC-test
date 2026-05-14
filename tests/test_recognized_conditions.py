@@ -131,15 +131,17 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 330
-    # there are seventy-four such modules (iter 229 added the
+    # the matcher modules under ``agent/conditions/``. As of iter 331
+    # there are seventy-five such modules (iter 229 added the
     # ``mixed`` sub-cell of iter 227's territory; iter 329 added the
-    # anchor-preservation matcher iter 228 named as candidate (iii);
-    # iter 330 added the palette-permutation matcher iter 329 named
-    # as candidate (ii) -- whole-grid palette equality plus
-    # changed-cell mapping BIJECTION); tightening the assertion to
-    # ``==`` keeps a stray @register import from sneaking into the
-    # package.
+    # per-group anchor-preservation matcher iter 228 named as
+    # candidate (iii); iter 330 added the palette-permutation matcher
+    # iter 329 named as candidate (ii); iter 331 adds the whole-grid
+    # anchor-preservation matcher iter 330 named as the next-gap
+    # candidate -- ``set(input_palette) & set(output_palette)`` non-
+    # empty per pair, the whole-grid analogue of iter 329); tightening
+    # the assertion to ``==`` keeps a stray @register import from
+    # sneaking into the package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -215,6 +217,7 @@ def test_registry_contents_after_helper_load() -> None:
         "singleton_recolor_nonidentity_unanchored_non_function_shaped_within_pair_non_function_shaped_mixed",
         "change_palette_intersection_nonempty_per_group",
         "output_palette_is_permutation_of_input_palette",
+        "input_palette_intersects_output_palette",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
