@@ -22464,3 +22464,15 @@ All 46 new test cases pass; the recognized_conditions registry-contents assertio
 - Stored rule hits: 0
 - Time: 6s
 - Log: logs/learn_20260515_021801.log
+
+> STAGNATION at iter 964 — 628 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-15 02:18
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260515_021822.log
