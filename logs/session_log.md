@@ -12621,3 +12621,47 @@ All 37 new test cases pass; the recognized_conditions registry-contents assertio
 **Why this is the smallest defensible step, not one of the iter-209-named (i)/(ii)/(iii) candidates**: iter 209's named candidates open *new* sub-axes (permutation-as-function-shape, whole-grid permutation-as-equality-refinement, anchor-colour-preservation). The whole-grid partial-overlap residual cell is strictly smaller -- it is the literal missing-cell on the already-opened whole-grid palette-relation sub-axis (iters 184 / 185 / 186 / 187), pin-named in iter 206's docstring as "the partial-overlap residual cell of the per-group palette-relation sub-axis closed by iters 200 / 201 / 202 / 203 / 204 / 205," with its whole-grid sibling left unspecified at the time. Closing the whole-grid sub-axis dual of iter 206 brings the whole-grid palette-relation sub-axis to closure (five cells: equality, output-strict-subset, input-strict-subset, disjoint, partial-overlap -- mirroring the per-group five-cell partition closed by iter 206) at no cost beyond a single matcher addition.
 
 **Next gap (note for future iter)**: With the whole-grid partial-overlap residual cell landed, the whole-grid palette-relation sub-axis under non-empty palettes is now five-cell-partitioned at the equality / containment / disjointness level -- but the whole-grid scope is still missing the *strict-subset* refinements that iter 204 (output ⊊ input per group) and iter 205 (input ⊊ output per group) name at the per-group scope: there is no ``output_palette_proper_subset_of_input_palette`` nor ``input_palette_proper_subset_of_output_palette`` at the whole-grid scope. Adding either of those is the cleanest remaining smallest-step candidate on the same already-opened sub-axis -- still strictly smaller than the iter-209-named (i)/(ii)/(iii) candidates. The three iter-209-named candidates ((i) per-group consistent-color-mapping projection, (ii) whole-grid bijective-rename refinement of iter 185, (iii) background-colour-preserved precondition) remain valid one-iter-each smallest-step candidates on freshly-opened sub-axes. Two long-standing larger-than-smallest-step candidates remain unchanged from iters 180-209: (a) polymorphic-args extension to ``validate_rule`` V4 / V7 + ``apply_DSL``; (b) multi-rule mint per solve via a list-returning ``translate_to_schema``. Tertiary option remains unchanged: a 2-DSL-call action shape (``make_grid`` then ``coloring``) for the 00576224 tile-shape conjunction.
+
+---
+## Learning Loop -- 2026-05-14 18:17
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_181728.log
+
+---
+## Iter 211 -- 2026-05-14T18:45Z -- branch test20
+
+**Diagnosis**: Iter 210 closed the whole-grid palette-relation sub-axis equality/subset/disjoint/partial-overlap five-cell partition under the non-empty-palette domain. Iter 210's "Next gap" explicitly named the strict-refinement sub-axis under iter 184 as the cleanest remaining smallest-step candidate: there is no ``output_palette_proper_subset_of_input_palette`` (whole-grid version of iter 204) nor ``input_palette_proper_subset_of_output_palette`` (whole-grid version of iter 205) yet. This iter lands the first of the two -- the whole-grid strict-erasure cell -- splitting iter 184's territory into the equality cell (iter 185) and the strict-erasure cell (this matcher). The 0/3 probe outcome is by construction unchanged: pure recognition-vocabulary addition (no ``active_operators.py`` diff, no ``translate_to_schema`` branch yet consumes this matcher). P5 is the targeted positive signal (53 -> 54).
+
+**Change**:
+- ``agent/conditions/output_palette_proper_subset_of_input_palette.py`` (new) -- fifty-fourth recognition-vocabulary matcher. Returns True iff every pair_analysis has well-typed ``input_palette`` / ``output_palette`` lists of non-bool ints AND ``set(output_palette) < set(input_palette)`` (strict proper subset). Whole-grid posture (no [0, 9] range gate -- tolerates the iter-180 erase sentinel 13) mirroring iters 184 / 185 / 186 / 187 / 190 / 191 / 210. Fail-closed on empty / no-pair / malformed input per the strict-type posture. The strict-proper-subset gate inherently rejects empty input palettes (no proper subset of the empty set exists), so no inner empty-input rejection clause is needed. Implementation parallels iter 204 (per-group strict erasure) at the whole-grid projection.
+- ``tests/test_output_palette_proper_subset_of_input_palette.py`` (new, 38 cases) -- pins the contract: smoke / membership (2), positive cases (5) on basic strict erasure / one-colour-erased / singleton-input-with-empty-output / multipair strict erasure / duplicate colours in palette lists, negative cases (10) -- one per mutually-exclusive cell (equality, A ⊊ B strict-expansion, partial overlap, disjoint with non-empty op, empty input palette) plus any-pair-fails / empty / missing / non-list / non-dict checks, strict-type gates (9) on missing / non-list / bool / non-int, behavioural-contract (5) including side-effect-free / determinism / literal-True-False / erase-sentinel-13 / ignores-per-group-fields / ignores-dim-fields, and orthogonality / refinement / mutual-exclusion matrix (7) against iter 184 (strict implication: this matcher fires => iter 184 fires; reverse fails on equality), iter 185 (strict mutual exclusion), iter 187 (strict mutual exclusion on non-empty input), iter 210 (strict mutual exclusion), iter 189 (strict implication on non-empty input: this matcher fires => iter 189 fires; reverse fails on disjoint with |ip| > |op|), iter 1 (grid_size_preserved 2x2 orthogonality), and ``recognized_conditions`` wiring. All 38 cases pass.
+- ``tests/test_recognized_conditions.py`` (edit) -- bump the iter-210 fifty-three-element registry-contents assertion to include the new matcher (now fifty-four elements); update the inline count comment from "iter 210" to "iter 211".
+
+**Probe before**: 0/3 correct, 0 rules, P5==53, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5==54, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter adds recognition vocabulary that no ``translate_to_schema`` branch currently consumes, so the probe outcome is by construction unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 53 -> 54 (+1)
+
+F1 inert -- no frozen file touched.
+F2 inert -- no ``_try_*`` / ``_apply_*`` method added (no ``active_operators.py`` diff at all).
+F3 inert -- no DSL primitive added; the change is in ``agent/conditions/`` and ``tests/``.
+F4 inert -- no rule file touched.
+F5 inert -- ``semantic_memory/`` untouched.
+F6 inert -- no ``run_loop.sh`` / budget-script change.
+F7 inert -- no ``try/except RuleSchemaError`` added.
+F8 inert -- ``agent/active_operators.py`` not touched this iter.
+
+All 38 new test cases pass; the recognized_conditions registry-contents assertion now matches the 54-element set; sibling tests for iters 184 / 185 / 186 / 187 / 204 / 210 still pass.
+
+``scripts/check_invariants.sh --check logs/_invariant_snapshot.json`` verdict: **CLEAN** (1 positive delta: P5 53 -> 54).
+
+**Why this is the smallest defensible step, not the iter-209-named (i)/(ii)/(iii) candidates**: iter 210 explicitly named the missing whole-grid strict-subset refinements (``output_palette_proper_subset_of_input_palette`` and ``input_palette_proper_subset_of_output_palette``) as the cleanest remaining smallest-step candidates on the already-opened whole-grid palette-relation sub-axis. This matcher is the literal first leg of that pair -- the whole-grid projection of iter 204 -- splitting iter 184's territory into iter 185's equality cell and this matcher's strict-erasure cell. Strictly smaller than the iter-209-named candidates which open *new* sub-axes (consistent-color-mapping per-group projection, whole-grid bijective-rename refinement, anchor-colour-preservation). The strict-refinement axis under iter 184 is a half-step inside an already-opened sub-axis, not a new sub-axis.
+
+**Next gap (note for future iter)**: With the whole-grid strict-erasure cell now landed, the natural sibling on the same strict-refinement axis is ``input_palette_proper_subset_of_output_palette`` -- the whole-grid version of iter 205, splitting iter 187's territory into iter 185's equality cell and the whole-grid strict-expansion cell. After that the whole-grid strict-refinement axis is FULLY CLOSED (the four cells iter 184 / iter 187 each split into equality + their respective strict refinements). The three iter-209-named candidates ((i) per-group consistent-color-mapping projection, (ii) whole-grid bijective-rename refinement of iter 185, (iii) background-colour-preserved precondition) remain valid one-iter-each smallest-step candidates on freshly-opened sub-axes. Two long-standing larger-than-smallest-step candidates remain unchanged from iters 180-210: (a) polymorphic-args extension to ``validate_rule`` V4 / V7 + ``apply_DSL``; (b) multi-rule mint per solve via a list-returning ``translate_to_schema``. Tertiary option remains unchanged: a 2-DSL-call action shape (``make_grid`` then ``coloring``) for the 00576224 tile-shape conjunction.
