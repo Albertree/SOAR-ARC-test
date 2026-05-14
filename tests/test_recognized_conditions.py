@@ -131,19 +131,21 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 332
-    # there are seventy-six such modules (iter 229 added the
+    # the matcher modules under ``agent/conditions/``. As of iter 333
+    # there are seventy-seven such modules (iter 229 added the
     # ``mixed`` sub-cell of iter 227's territory; iter 329 added the
     # per-group anchor-preservation matcher iter 228 named as
     # candidate (iii); iter 330 added the palette-permutation matcher
     # iter 329 named as candidate (ii); iter 331 added the whole-grid
     # anchor-preservation matcher iter 330 named as the next-gap
-    # candidate; iter 332 adds the ``inverse_consistent_color_mapping``
+    # candidate; iter 332 added the ``inverse_consistent_color_mapping``
     # matcher iter 331 named as the surjectivity / inverse-function-
-    # shape candidate -- the strict symmetric dual of iter 8 on the
-    # inverse-direction function-shape axis); tightening the assertion
-    # to ``==`` keeps a stray @register import from sneaking into the
-    # package.
+    # shape candidate; iter 333 adds the ``bijective_color_mapping``
+    # matcher iter 332 named as candidate (c) -- the strict relaxation
+    # of iter 330 by dropping the palette-equality clause, the named
+    # co-fire handle of (iter 8 AND iter 332) without iter 185);
+    # tightening the assertion to ``==`` keeps a stray @register
+    # import from sneaking into the package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -221,6 +223,7 @@ def test_registry_contents_after_helper_load() -> None:
         "output_palette_is_permutation_of_input_palette",
         "input_palette_intersects_output_palette",
         "inverse_consistent_color_mapping",
+        "bijective_color_mapping",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -395,9 +398,21 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # both iter 8 AND iter 332 co-fire; the converse fails on the
     # collapse fixture where iter 8 fires alone). The co-fire count
     # therefore grows from twenty-six to twenty-seven on this fixture.
-    # The three matchers in this test's name remain the iter-10
-    # colour/dimension subset; the assertion grows with the registry
-    # rather than fighting it.
+    # Iter 333 names the strict relaxation of iter 330 by dropping
+    # the palette-equality clause (``bijective_color_mapping``): the
+    # accumulated changed-cell colour mapping is BOTH forward-function-
+    # shape AND inverse-function-shape, without any whole-grid palette
+    # constraint. The iter-10 canonical fixture has accumulated
+    # forward mapping {0: {3}, 1: {4}, 2: {5}} -- function-shape --
+    # AND accumulated inverse mapping {3: {0}, 4: {1}, 5: {2}} --
+    # function-shape -- so iter 333 also fires (co-fire witness on
+    # the bijection cell; this fixture's input/output palettes do
+    # NOT satisfy palette equality so iter 330 does NOT fire on it,
+    # but iter 333 does -- the strict-relaxation witness). The co-fire
+    # count therefore grows from twenty-seven to twenty-eight on this
+    # fixture. The three matchers in this test's name remain the
+    # iter-10 colour/dimension subset; the assertion grows with the
+    # registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -427,7 +442,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "singleton_recolor_nonidentity_unanchored",
         "singleton_recolor_nonidentity_unanchored_function_shaped",
         "inverse_consistent_color_mapping",
-    }, f"expected the twenty-seven compatible matchers to fire, got {fired}"
+        "bijective_color_mapping",
+    }, f"expected the twenty-eight compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
