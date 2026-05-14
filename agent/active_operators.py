@@ -196,15 +196,12 @@ class ExtractPatternOperator(Operator):
             len(raw_out[0]) if raw_out else 0,
         )
 
-        changes = []
-        for r in range(h):
-            for c in range(w):
-                if raw_in[r][c] != raw_out[r][c]:
-                    changes.append({
-                        "row": r, "col": c,
-                        "input_color": raw_in[r][c],
-                        "output_color": raw_out[r][c],
-                    })
+        changes = [
+            {"row": r, "col": c,
+             "input_color": raw_in[r][c], "output_color": raw_out[r][c]}
+            for r in range(h) for c in range(w)
+            if raw_in[r][c] != raw_out[r][c]
+        ]
 
         groups = self._group_changes(changes)
 
