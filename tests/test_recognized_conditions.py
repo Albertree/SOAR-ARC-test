@@ -151,7 +151,15 @@ def test_registry_contents_after_helper_load() -> None:
     # of iter 333, sitting between iter 333 (whole-task scope) and iter
     # 334 (per-group scope) on the bijection scope axis); tightening
     # the assertion to ``==`` keeps a stray @register import from
-    # sneaking into the package.
+    # sneaking into the package. Iter 989 adds the
+    # ``input_palette_constant_across_pairs`` matcher -- the palette-
+    # axis dual of iter 22's ``input_dimensions_constant`` on the
+    # input-side cross-pair-constancy quadrant; it asserts SET equality
+    # of the raw whole-grid input palette across every pair, the
+    # missing primitive between iter 184's per-pair palette emission
+    # and the existing aggregate ``constant_across_pairs`` matchers
+    # (which all target derived counts / unions / intersections /
+    # shifts rather than set identity).
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -232,6 +240,7 @@ def test_registry_contents_after_helper_load() -> None:
         "bijective_color_mapping",
         "bijective_color_mapping_per_group",
         "bijective_color_mapping_per_pair",
+        "input_palette_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
