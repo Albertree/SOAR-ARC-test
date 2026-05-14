@@ -485,13 +485,8 @@ class PredictOperator(Operator):
         return output
 
     def _apply_color_mapping(self, rule, input_grid):
-        raw = input_grid.raw
         mapping = rule.get("mapping", {})
-
-        output = []
-        for row in raw:
-            output.append([mapping.get(cell, cell) for cell in row])
-        return output
+        return [[mapping.get(cell, cell) for cell in row] for row in input_grid.raw]
 
 
 # ======================================================================

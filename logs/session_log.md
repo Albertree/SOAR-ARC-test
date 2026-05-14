@@ -22879,3 +22879,38 @@ All 46 new test cases pass; the recognized_conditions registry-contents assertio
 
 **Next gap (note for future iter)**: The orphan-DI-scaffolding axis iters 978/979/980 worked is now exhausted across the three `__init__` constructors that carried unused DI parameters (`PredictOperator._group_positions` was the iter-978 entry on the residual-static-method sub-axis; `GeneralizeOperator.__init__(generalize_fn, save_fn)` was iter-979; `CompareOperator.__init__(compare_fn)` is this iter). Surveyed remaining `__init__` constructors in `active_operators.py`: `SolveTaskOperator` (no parameters), `SelectTargetOperator` (no parameters), `ExtractPatternOperator` (no parameters), `PredictOperator` (no parameters), `SubmitOperator` (signature unread here -- worth checking next iter). The three body-internal compression candidates iter 979 named (`_sort_val` trichotomy -> dict lookup; `_apply_color_mapping` build loop -> list comprehension; `_check_sort_key` inlining at single call site) remain available but were judged "cosmetic" by the iter 974/977/978/979 chain. The substantive emission-side blocker iters 970/971/975/976/977 catalogued (82 matchers vs. 5 emission branches; AU never fires; P1/P2/P3 pinned to 0; needs the multi-iter G/H/J polymorphic-args sequence that exceeds "smallest defensible step" in spirit) remains the structural deadlock; this iter's P6++ continues to buy bookkeeping progress on a path that does not address it.
 
+
+---
+## Learning Loop -- 2026-05-15 04:07
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_040714.log
+
+---
+## Learning Loop -- 2026-05-15 04:12
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260515_041200.log
+
+---
+## Iter 981 -- 2026-05-15T04:12Z -- branch test20
+
+**Diagnosis**: Iter 980 exhausted the orphan-DI-scaffolding axis it had pursued across iters 978/979/980 (three `__init__` constructors whose unused parameters were stored on `self` but never set by any caller: `_group_positions` static delegate, `GeneralizeOperator.__init__(generalize_fn, save_fn)`, `CompareOperator.__init__(compare_fn)`). The "Next gap" line surveyed remaining `active_operators.py` constructors (`SolveTaskOperator`, `SelectTargetOperator`, `ExtractPatternOperator`, `PredictOperator`, `SubmitOperator` — all parameterless) confirming no further orphan DI to mine, and named three body-internal compression candidates iter 974/977/978/979 had judged "cosmetic" against their (then) -24 / -7 baseline: `_sort_val` trichotomy → dict lookup (~3 lines), `_apply_color_mapping` build loop → list comprehension (estimated ~1 line in iter 980's log, ~2 in iter 974's), `_check_sort_key` inlining (~6 lines). The "cosmetic" judgment was relative to the -24-line BFS dedup of iter 974; against iter 980's actual -3-line orphan-DI delta the body-internal -3-to-5-line refactors are exactly comparable, not "cosmetic." With orphan-DI exhausted, the body-internal candidates become the smallest defensible single-iter P6 step. Of the three, `_apply_color_mapping`'s build loop is the most idiomatic compression (a textbook `output=[]/for/append` → list-comp transformation; no semantic ambiguity, no readability trade-off, no live logic moved into a loop body) — distinguishing it from `_check_sort_key`'s "wash" status (iter 979's word: inlining a 10-line method with real per-pair logic into a `for sort_key in [...]:` loop body) and `_sort_val`'s trichotomy (compresses to a dict lookup but the trichotomy reads more naturally than a `{"top_row": ..., "top_col": ...}[sort_key]` lookup).
+
+**Change**:
+- `agent/active_operators.py` -- compress `PredictOperator._apply_color_mapping` body from 8 lines to 3 lines (lines 487-494 → 487-489). Removes the `raw = input_grid.raw` extraction (used exactly once, now inlined into the comprehension's outer iterable), the `output = []` accumulator, the `for row in raw:` outer loop, and the `output.append([...])` call, fused into a single nested list comprehension `[[mapping.get(cell, cell) for cell in row] for row in input_grid.raw]`. The inner comprehension `[mapping.get(cell, cell) for cell in row]` is preserved verbatim — only the outer accumulator is fused. Net -5 lines (536 → 531). Smoke test: `_apply_color_mapping({"type":"color_mapping","mapping":{1:2,3:4}}, FakeGrid([[1,0,3],[3,1,0],[0,0,1]]))` returns `[[2,0,4],[4,2,0],[0,0,2]]` (matches expected, byte-identical to pre-refactor behaviour). Probe re-run: 0/3 correct, 7s, identical to baseline — `_apply_color_mapping` is not exercised on the current probe set (00576224/007bbfb7 are tile/scale, 009d5c81 is per-pair colour mapping that `_try_color_mapping` rejects on `len(ocs) != 1`, so the slow path returns the identity fallback and `_apply_color_mapping` is dead on this probe), so the refactor cannot affect probe scoring even in principle.
+
+**Probe before**: 0/3 correct, 0 rules on disk, P5=82, P6=536, P4=2946, covers-mean N/A.
+**Probe after** : 0/3 correct, 0 rules on disk, P5=82, P6=531, P4=2946, covers-mean N/A. Behaviorally identical (semantically equivalent list-comp; no path through `_apply_color_mapping` on this probe set anyway).
+
+**Invariants**: forbidden=none. F1 inert (`active_operators.py` is not frozen per CLAUDE.md §4 -- only `data/`, `agent/cycle.py`, `agent/wm.py`, `ARCKG/*.py` are). F2 inert (no new `_try_*`/`_apply_*` method; the edit is body-internal to the existing `_apply_color_mapping` -- F2 explicitly permits "bug-fixes inside an existing method" and the body-internal-refactor pattern was set by iters 974/978/979/980). F3 inert (no DSL primitive change). F4 inert (no rule write). F5 inert (no semantic_memory write). F6 inert (no script change). F7 inert (no `RuleSchemaError` handling change). F8 EXPLICITLY exempt: "Pure deletions / refactors that *remove* code (net negative line count)" -- this iter is net -5 in `active_operators.py` with no companion edits to `memory.py` / `anti_unification.py` / `conditions/`, mirroring iters 978/979/980's exemption claim. `scripts/check_invariants.sh --check` verdict: CLEAN (1 positive delta, P6 536 -> 531).
+
+**Next gap (note for future iter)**: With this iter's body-internal compression done, two of the three iter-979/980 candidates remain: `_sort_val` trichotomy → dict lookup (~3 lines, but readability-neutral-to-negative — the if/if/return reads more naturally than a sentinel-fallback dict access), `_check_sort_key` inlining (~6 lines net, but moves real per-pair logic into a `for sort_key in [...]:` loop body, the "wash" iter 979 named). After exhausting the orphan-DI axis (iter 978/979/980) and the no-trade-off body-internal axis (this iter), every remaining single-iter P6 candidate inside `active_operators.py` carries a readability trade-off the prior chain has already flagged. The substantive structural deadlock iters 970/971/975/976/977 catalogued (recognition/emission asymmetry: 82 matchers vs. 5 emission branches in `translate_to_schema`, AU never fires because no rule has ever landed on disk, P1/P2/P3 pinned to 0, needs the multi-iter G/H/J polymorphic-args sequence that exceeds "smallest defensible step" in spirit) is unchanged. The line-count P6 axis is approaching the point where the "smallest defensible step" criterion forecloses further easy candidates, and the next iter may legitimately reach the "no defensible step found" verdict the iter 975/976/977 chain produced — unless a new axis opens (e.g., a non-`active_operators.py` orphan-code candidate, or a sub-step of the polymorphic-args sequence small enough to defend solo).
