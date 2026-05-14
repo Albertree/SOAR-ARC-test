@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 207
-    # there are fifty such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 208
+    # there are fifty-one such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -186,6 +186,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_colors_proper_subset_of_output_colors_per_group",
         "output_colors_partial_overlap_with_input_colors_per_group",
         "change_palette_intersection_count_per_group_constant_across_pairs",
+        "change_palette_symmetric_difference_count_per_group_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -254,10 +255,16 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # the fixture has |ic ∩ oc| == 0 ({0}∩{3}=∅, {1}∩{4}=∅, {2}∩{5}=∅)
     # on both pairs, so change_palette_intersection_count_per_group_
     # constant_across_pairs also fires (with canonical K==0; strict
-    # implication of iter 203, which fires on the same fixture). The
-    # three matchers in this test's name remain the iter-10 colour/
-    # dimension subset; the assertion grows with the registry rather
-    # than fighting it.
+    # implication of iter 203, which fires on the same fixture). Iter
+    # 208 projects iter 190's whole-grid symmetric-difference
+    # cardinality axis onto the per-group projection: every group in
+    # the fixture has |ic △ oc| == 2 ({0}△{3}={0,3}, {1}△{4}={1,4},
+    # {2}△{5}={2,5}) on both pairs, so change_palette_symmetric_
+    # difference_count_per_group_constant_across_pairs also fires
+    # (with canonical K==2; co-fires with iter 207 on the same fixture
+    # since |ic ∩ oc| == 0 is also constant). The three matchers in
+    # this test's name remain the iter-10 colour/dimension subset;
+    # the assertion grows with the registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -278,7 +285,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "palette_shift_constant_across_groups_and_pairs",
         "output_colors_disjoint_from_input_colors_per_group",
         "change_palette_intersection_count_per_group_constant_across_pairs",
-    }, f"expected the eighteen compatible matchers to fire, got {fired}"
+        "change_palette_symmetric_difference_count_per_group_constant_across_pairs",
+    }, f"expected the nineteen compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
