@@ -11695,3 +11695,180 @@ branch that consumes the 00576224 tile-shape fired-conditions
 conjunction would need a 2-DSL-call action shape (``make_grid``
 then ``coloring``), beyond the current single-DSL ``action.dsl``
 schema.
+
+---
+## Learning Loop -- 2026-05-14 10:02
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260514_100238.log
+
+
+---
+## Iter 194 -- 2026-05-14T10:10Z -- branch test20
+
+**Diagnosis**: Probe 0/3 again, 0 rules. The iter-192/193 next-gap notes
+explicitly held `palette_shift_constant_across_pairs` in reserve as the
+smallest deferred candidate -- the **colour-translation** sub-axis of
+the whole-grid palette pair (iters 184-187 named set-containment;
+iters 188/189/185 named cardinality direction; iters 190/191/192 named
+cross-pair magnitude constancy on |Delta|/|cap|/|cup|; the linear-
+arithmetic element-wise shift `k` was the unnamed leg). Iter 193 broke
+the 9-iter palette streak by adding a per-group-cardinality matcher;
+the alternative iter-193 next-gap candidate (`num_groups_total_
+constant_across_pairs`) is semantically ill-formed as a cross-pair
+predicate on a single-task pair-list (sum across pairs is a single
+integer per task, with nothing to compare). The palette-shift
+candidate is well-defined: the upstream extractor already emits
+`input_palette` / `output_palette` as `sorted(set(...))`, so the per-
+pair shift `k = op_sorted[i] - ip_sorted[i]` is unambiguous when the
+two have equal length; constancy of `k` across pairs is the smallest
+defensible step.
+
+**Change**:
+- `agent/conditions/palette_shift_constant_across_pairs.py` (new) --
+  registers the matcher under
+  ``"palette_shift_constant_across_pairs"``. Strict-typed list-of-non-
+  bool-ints palette gates (mirroring iters 184-192's posture); per-
+  pair cardinality mismatch fails the gate (shift undefined); empty-
+  empty pairs contribute no constraint to `k` (but cannot anchor it);
+  fail-closed when no pair anchors `k` (all-empty-empty task -> no
+  non-trivial shift recognition). The capture-first-anchor-then-
+  compare pattern with an explicit ``anchored`` flag distinguishes
+  "no observation yet" from "anchored at k == 0", matching the iter-
+  190 / 191 / 192 cross-pair-constancy posture; deterministic and
+  side-effect-free per the matcher contract (docs/RULE_FORMAT.md
+  section 4). The defensive ``sorted(set(...))`` re-derivation
+  mirrors iter-191's ``set(input_palette) & set(output_palette)``:
+  matchers are predicates on the field's *documented* contract, not
+  on its current implementation.
+- `tests/test_palette_shift_constant_across_pairs.py` (new, 46
+  cases) -- pins the contract: smoke / membership (2), positive
+  cases on single-pair zero / positive / negative shift, two-pair
+  same shift k==1 / three-pair same shift k==2 / two-pair k==0
+  (palette equality, iter-185 implies this matcher with canonical
+  0) / duplicates in palettes (defensive re-derivation via
+  ``sorted(set(...))``) / mixed non-empty + empty pair / disjoint
+  with constant shift (9), negative cases on within-pair non-shift /
+  varying-k-across-pairs / cardinality mismatch in pair 0 /
+  cardinality mismatch in pair 1 / all-empty (the no-anchor fail-
+  closed clause) / empty / missing / non-dict / non-list / non-dict
+  pair (10), strict-type gates on missing-input / missing-output /
+  non-list input / non-list output / bool input / bool output /
+  non-int palette / second-pair malformed (9), behavioural-contract
+  cases (side-effect-free, deterministic, literal-bool, ignore per-
+  group colour lists, ignore dimensional fields -- 5), and the
+  orthogonality / co-fire matrix against iter 13 (strict implication
+  iter 13 implies this matcher with k==0), iter 185 (strict
+  implication with k==0; reverse fails for non-zero k), iter 188
+  (mutually exclusive: strict expansion forces |out|>|in|, shift
+  undefined), iter 189 (mutually exclusive: strict erasure, mirror),
+  iter 186 (can co-fire with disjoint + same cardinality + constant
+  shift; iter 186 alone with varying shift), iter 1
+  grid_size_preserved (orthogonal 2x2 cells), iter 14
+  input_color_uniform (orthogonal -- whole-grid palette vs change-
+  cell input-colour uniformity -- 8), plus three
+  ``recognized_conditions`` wiring checks (3) that assert this
+  matcher fires on constant-k==2 patterns, is excluded on varying-k
+  patterns, and co-fires alongside iter 185 on palette-equality
+  (k==0). All 46 cases pass.
+- `tests/test_recognized_conditions.py` (edit) -- bump the iter-193
+  thirty-six-element registry-contents assertion to include the new
+  matcher (now thirty-seven elements); update the inline count
+  comment from "iter 193" to "iter 194".
+
+**Probe before**: 0/3 correct, 0 rules, P5==36, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5==37, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter
+adds recognition vocabulary that no ``translate_to_schema`` branch
+currently consumes, so the probe outcome is by construction
+unchanged.)
+
+**Invariants**: forbidden==none, positives==P5 36 -> 37 (+1)
+
+F1 inert -- no frozen file touched.
+F2 inert -- no `_try_*` / `_apply_*` method added (no
+`active_operators.py` diff at all).
+F3 inert -- no DSL primitive added; the change is in
+`agent/conditions/` and `tests/`.
+F4 inert -- no rule file touched.
+F5 inert -- `semantic_memory/` untouched.
+F6 inert -- no `run_loop.sh` / budget-script change.
+F7 inert -- no `try/except RuleSchemaError` added.
+F8 inert -- `agent/active_operators.py` not touched this iter; the
+companion-touch gate is only triggered on net-positive additions
+there.
+
+All 46 new test cases pass; the recognized_conditions registry-
+contents assertion now matches the 37-element set; all sibling test
+files still pass.
+
+`scripts/check_invariants.sh --check logs/_invariant_snapshot.json`
+verdict: **CLEAN** (1 positive delta: P5 36 -> 37).
+
+**Why this iter is the deferred iter-192/193 next-gap, not yet
+another palette-axis treadmill**: iter 193 broke the 9-iter palette-
+axis streak by carving out the per-group-cardinality axis. Iter
+193's alternative next-gap candidate (``num_groups_total_constant_
+across_pairs``) is structurally ill-formed (sum across pairs is a
+single number per task, not a cross-pair invariant). The remaining
+iter-192/193 candidate ``palette_shift_constant_across_pairs`` is
+well-defined and names a distinct sub-axis of the palette
+decomposition: not set-containment (iters 184/185/186/187), not
+cardinality direction (iters 188/189), not cross-pair magnitude
+constancy on |Delta|/|cap|/|cup| (iters 190/191/192), but the
+**linear-arithmetic element-wise shift** ``k``. The "canonical-
+order convention" worry flagged in iters 192/193's next-gap is
+resolved by relying on the upstream extractor's ``sorted(set(...))``
+palette contract (in place since iter 184). One palette-axis
+matcher after iter 193's per-group carve-out is not a streak
+resumption; the per-group axis and the palette-shift axis are now
+both seeded as named, non-treadmill recognition vocabulary.
+
+**Next gap (note for future iter)**: The cleanest extension on the
+per-group-cardinality sub-axis iter 193 opened is the per-group
+projection of iter 37: ``change_input_color_count_per_group_
+constant_across_pairs`` -- every change-group across every pair has
+the SAME |input_colors| K, K constant. Iter 14
+(``input_color_uniform``) pins K==1 AND identical colour across
+groups/pairs; the proposed matcher relaxes to K==constant
+(cardinality only, colour free), the per-group input-cardinality
+dual of iter 193's per-group cell-count matcher. Symmetric output-
+side candidate ``change_output_color_count_per_group_constant_
+across_pairs`` is the mirror. A second smallest-step palette-axis
+candidate (deferrable under the same anti-treadmill posture) is
+``palette_shift_constant_across_groups_per_pair`` -- a per-pair-per-
+group projection of this iter's shift axis applied to each group's
+(input_colors, output_colors) pair, distinct from the whole-grid
+shift this iter named. Two larger-than-smallest-step candidates
+remain unchanged from iters 180-193:
+(a) Polymorphic-args extension to ``validate_rule`` V4 / V7 +
+``apply_DSL`` to let ``action.args`` carry derived selection (e.g.
+"wherever input has colour C"). Recognition-side prerequisites for
+colour-permutation rules (iter 185), erasure rules (iter 184),
+canvas-rewrite rules (iter 186), palette-expansion rules (iter 187),
+strict-expansion rules (iter 188), strict-erasure rules (iter 189),
+magnitude-constant-recolour rules (iter 190), magnitude-constant-
+preservation rules (iter 191), total-palette-footprint-constant
+rules (iter 192), per-group-cardinality-constant rules (iter 193),
+and now colour-translation rules (this iter) are all in place;
+(a) is the bottleneck on the emission side for those rule shapes.
+(b) Multi-rule mint per solve: extend ``_persist_pipeline_rule`` to
+accept a list of rules from ``translate_to_schema``, add a cell-
+table-emit branch gated on (``change_cells_constant_across_pairs``
+AND ``input_dimensions_constant`` AND ``grid_size_preserved``) that
+mints one ``coloring`` sibling rule per distinct output colour.
+Iters 184-193 plus this iter's 10 palette/per-group gates together
+make sibling-rule emission branches' preconditions representable in
+the data layer for at least ten distinct rule shapes (the colour-
+translation gate adds the "every pair preserves a uniform integer
+shift on the sorted palette" precondition).
+Tertiary option remains unchanged from iters 180-193: an emission
+branch that consumes the 00576224 tile-shape fired-conditions
+conjunction would need a 2-DSL-call action shape (``make_grid``
+then ``coloring``), beyond the current single-DSL ``action.dsl``
+schema.
