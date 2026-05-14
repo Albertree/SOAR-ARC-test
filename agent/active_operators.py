@@ -288,8 +288,6 @@ class GeneralizeOperator(Operator):
         if not patterns:
             return
 
-        rule = None
-
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         rule = self._try_recolor_sequential(patterns)
 
