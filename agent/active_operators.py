@@ -468,7 +468,7 @@ class PredictOperator(Operator):
             return [row[:] for row in raw]
 
         # Group into connected components
-        groups = self._group_positions(target_cells)
+        groups = _connected_components_4(target_cells)
 
         # Sort groups by the rule's sort key
         def _sort_val(group):
@@ -497,13 +497,6 @@ class PredictOperator(Operator):
         for row in raw:
             output.append([mapping.get(cell, cell) for cell in row])
         return output
-
-    # ---- helpers ---------------------------------------------------------
-
-    @staticmethod
-    def _group_positions(positions):
-        """Group (row, col) positions into 4-connected components."""
-        return _connected_components_4(positions)
 
 
 # ======================================================================
