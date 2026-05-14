@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 227
-    # there are seventy such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 228
+    # there are seventy-one such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -206,6 +206,7 @@ def test_registry_contents_after_helper_load() -> None:
         "singleton_recolor_nonidentity_unanchored_non_function_shaped",
         "singleton_recolor_nonidentity_unanchored_non_function_shaped_within_pair_function_shaped",
         "singleton_recolor_nonidentity_unanchored_non_function_shaped_within_pair_non_function_shaped",
+        "singleton_recolor_nonidentity_unanchored_non_function_shaped_within_pair_non_function_shaped_universal",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -359,7 +360,17 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # co-fire count therefore stays at twenty-six on this fixture;
     # iter 227's positive co-fire witness lives in tests/test_
     # singleton_recolor_nonidentity_unanchored_non_function_shaped_
-    # within_pair_non_function_shaped.py instead.
+    # within_pair_non_function_shaped.py instead. Iter 228 names the
+    # universal-pair sub-cell of iter 227 (singleton_recolor_non
+    # identity_unanchored_non_function_shaped_within_pair_non_function_
+    # shaped_universal): it requires GLOBAL non-function-shape (iter
+    # 225 precondition) AND within-pair non-function-shape on EVERY
+    # pair, neither of which the iter-10 fixture exhibits, so iter
+    # 228 also REJECTS this fixture by design. The expected co-fire
+    # count therefore stays at twenty-six on this fixture; iter 228's
+    # positive co-fire witness lives in tests/test_singleton_recolor_
+    # nonidentity_unanchored_non_function_shaped_within_pair_non_
+    # function_shaped_universal.py instead.
     # The three matchers in this test's name remain the iter-10
     # colour/dimension subset; the assertion grows with the registry
     # rather than fighting it.
