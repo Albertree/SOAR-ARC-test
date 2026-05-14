@@ -131,17 +131,19 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 331
-    # there are seventy-five such modules (iter 229 added the
+    # the matcher modules under ``agent/conditions/``. As of iter 332
+    # there are seventy-six such modules (iter 229 added the
     # ``mixed`` sub-cell of iter 227's territory; iter 329 added the
     # per-group anchor-preservation matcher iter 228 named as
     # candidate (iii); iter 330 added the palette-permutation matcher
-    # iter 329 named as candidate (ii); iter 331 adds the whole-grid
+    # iter 329 named as candidate (ii); iter 331 added the whole-grid
     # anchor-preservation matcher iter 330 named as the next-gap
-    # candidate -- ``set(input_palette) & set(output_palette)`` non-
-    # empty per pair, the whole-grid analogue of iter 329); tightening
-    # the assertion to ``==`` keeps a stray @register import from
-    # sneaking into the package.
+    # candidate; iter 332 adds the ``inverse_consistent_color_mapping``
+    # matcher iter 331 named as the surjectivity / inverse-function-
+    # shape candidate -- the strict symmetric dual of iter 8 on the
+    # inverse-direction function-shape axis); tightening the assertion
+    # to ``==`` keeps a stray @register import from sneaking into the
+    # package.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -218,6 +220,7 @@ def test_registry_contents_after_helper_load() -> None:
         "change_palette_intersection_nonempty_per_group",
         "output_palette_is_permutation_of_input_palette",
         "input_palette_intersects_output_palette",
+        "inverse_consistent_color_mapping",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -382,6 +385,16 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # positive co-fire witness lives in tests/test_singleton_recolor_
     # nonidentity_unanchored_non_function_shaped_within_pair_non_
     # function_shaped_universal.py instead.
+    # Iter 332 names the strict symmetric dual of iter 8 on the
+    # inverse-function-shape axis (``inverse_consistent_color_mapping``):
+    # every observed output colour maps from exactly one input colour
+    # across the union of all pairs' groups. The iter-10 canonical
+    # fixture has accumulated inverse mapping {3: {0}, 4: {1}, 5: {2}}
+    # -- every output has a unique input preimage -- so iter 332 also
+    # fires (strict-implication witness on the bijection cell where
+    # both iter 8 AND iter 332 co-fire; the converse fails on the
+    # collapse fixture where iter 8 fires alone). The co-fire count
+    # therefore grows from twenty-six to twenty-seven on this fixture.
     # The three matchers in this test's name remain the iter-10
     # colour/dimension subset; the assertion grows with the registry
     # rather than fighting it.
@@ -413,7 +426,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "singleton_recolor_nonidentity_per_group",
         "singleton_recolor_nonidentity_unanchored",
         "singleton_recolor_nonidentity_unanchored_function_shaped",
-    }, f"expected the twenty-six compatible matchers to fire, got {fired}"
+        "inverse_consistent_color_mapping",
+    }, f"expected the twenty-seven compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
