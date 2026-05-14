@@ -10859,3 +10859,152 @@ Tertiary option remains unchanged from iters 180 / 181 / 182 / 183
 00576224 tile-shape fired-conditions conjunction would need a 2-DSL-
 call action shape (`make_grid` then `coloring`), beyond the current
 single-DSL `action.dsl` schema.
+
+---
+## Learning Loop -- 2026-05-14 09:26
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260514_092600.log
+
+---
+## Iter 189 — 2026-05-14T09:30Z — branch test20
+
+**Diagnosis**: Iter 188 named the strict-expansion (``>``) cell of the
+cardinality-direction sub-axis with
+`output_palette_count_exceeds_input_palette_count`. Iter 188's next-gap
+note listed three smallest-step candidates: (γ) palette-symmetric-
+difference constancy, (ζ) the mirror ``<`` cell
+`input_palette_count_exceeds_output_palette_count`, and (ε) palette-
+shift constancy. Of those, (ζ) is the smallest defensible step — a
+pure dual-of-iter-188 cardinality comparison on the already-emitted
+palette fields, with the inequality flipped. It completes the 1x3
+``<`` / ``==`` / ``>`` cardinality-direction trichotomy alongside iter
+185 (equality) and iter 188 (strict ``>``), and gives the named
+strict-erasure handle (the conjunction with iter 184 — ``input ⊋
+output``) that iter 184 alone over-fires on by including equality /
+permutation.
+
+**Change**:
+- `agent/conditions/input_palette_count_exceeds_output_palette_count.py`
+  (new) — registers the matcher under
+  `"input_palette_count_exceeds_output_palette_count"`. Universal-
+  over-pairs strict cardinality check
+  `len(set(input_palette)) > len(set(output_palette))`, with the same
+  strict-list-of-non-bool-ints type gate as iters 184 / 185 / 186 /
+  187 / 188. Fail-closed on empty / malformed input (consistent
+  posture); deterministic and side-effect-free per the matcher
+  contract (docs/RULE_FORMAT.md §4).
+- `tests/test_input_palette_count_exceeds_output_palette_count.py`
+  (new, 45 cases) — pins the contract: smoke / membership (2),
+  positive cases on strict erasure / disjoint+larger / duplicates /
+  empty-output / multi-pair (6), negative cases on equality /
+  permutation / expansion / both-empty / input-empty / equal-card-
+  disjoint / any-pair-fails / empty / missing / non-list / non-dict-
+  patterns / non-dict-analysis (12), strict-type gates on missing /
+  non-list / bool / non-int (7), behavioural-contract cases (side-
+  effect-free, deterministic, literal-bool, ignore-per-group, ignore-
+  dimensional — 5), and the orthogonality / co-fire matrix against
+  iter 13 (mutual exclusion: identity ⇒ NOT this matcher), iter 184
+  (co-fire-selective: subset+input-larger fires both; subset alone on
+  equality fires iter 184 only — the named strict-erasure
+  distinction), iter 185 (mutual exclusion: equality ⇒ NOT this
+  matcher), iter 186 (co-fire-selective: disjoint + input-larger
+  fires both; disjoint alone is not enough), iter 187 (mutual
+  exclusion: input ⊆ output ⇒ NOT this matcher), iter 188 (strict
+  mutual exclusion of the two cardinality-direction strict cells),
+  iter 1 (grid_size_preserved 2x2 co-fire table), iter 14
+  (input_color_uniform orthogonality — 9), plus three wiring checks
+  via `recognized_conditions` (3) that assert this matcher fires
+  alongside iter 184 on strict-erasure patterns AND is excluded on
+  palette equality AND is excluded on strict expansion.
+- `tests/test_recognized_conditions.py` (edit) — bump the iter-188
+  thirty-one-element registry-contents assertion to include the new
+  matcher (now thirty-two elements); update the inline count
+  comment from "iter 188" to "iter 189".
+
+**Probe before**: 0/3 correct, 0 rules, P5=31, covers-mean N/A
+**Probe after** : 0/3 correct, 0 rules, P5=32, covers-mean N/A
+
+(The probe was run pre-iter; no re-run is necessary since this iter
+adds recognition vocabulary that no `translate_to_schema` branch
+currently consumes, so the probe outcome is by construction
+unchanged.)
+
+**Invariants**: forbidden=none, positives=P5 31 → 32 (+1)
+
+F1 inert — no frozen file touched.
+F2 inert — no `_try_*` / `_apply_*` method added (no
+`active_operators.py` diff at all).
+F3 inert — no DSL primitive added; the change is in
+`agent/conditions/` and `tests/`.
+F4 inert — no rule file touched.
+F5 inert — `semantic_memory/` untouched.
+F6 inert — no `run_loop.sh` / budget-script change.
+F7 inert — no `try/except RuleSchemaError` added.
+F8 inert — `agent/active_operators.py` not touched this iter; the
+companion-touch gate is only triggered on net-positive additions
+there.
+
+All 42 test scripts pass (the iter-188 set of 41 plus the new
+`tests/test_input_palette_count_exceeds_output_palette_count.py`).
+
+`scripts/check_invariants.sh --check logs/_invariant_snapshot.json`
+verdict: **CLEAN** (1 positive delta: P5 31 → 32).
+
+**Why this iter is the iter-188 next-gap (ζ), not the matcher
+treadmill flagged at iters 178/179/180/181 STAGNATION**: the
+cardinality-direction sub-axis was opened at iter 188 with the
+strict ``>`` cell. Until this iter the registry had no way to
+distinguish palette equality (``|input| == |output|``) from strict
+palette erasure (``|input| > |output|``) — iter 184 fires on both.
+The strict-``>`` gate (with the operands swapped) is the named
+distinction. The 1x3 ``<`` / ``==`` / ``>`` trichotomy on the
+cardinality-direction sub-axis is now exhaustively named by iter 188
+(``>``), iter 185 (``==``), and this iter (``<``). The conjunction
+with iter 184 is the strict-erasure handle that a future palette-
+erasure rule's stored `condition.type` would declare, ahead of any
+current emission branch consuming it (the iter-1/8/10/13/.../187/188
+pattern).
+
+**Next gap (note for future iter)**: With the cardinality-direction
+sub-axis now exhaustively populated (iter 188 ``>``, iter 185 ``==``,
+this iter ``<``), the natural smallest-step extensions on the
+palette axis are either (γ) `palette_symmetric_difference_constant_
+across_pairs` — fires iff `|set(input_palette) Δ set(output_palette)|`
+is the same integer across every pair (cross-pair constancy on the
+symmetric-difference SIZE, the magnitude-of-recolour precondition for
+rules whose recolour magnitude is constant across the training set),
+or an entirely fresh palette-axis: (ε) `palette_shift_constant_
+across_pairs` — fires iff, when both palettes are non-empty, the same
+integer shift `k` maps `input_palette` to `output_palette` element-
+wise per pair (the precondition for a colour-rotate / colour-shift
+rule). Both are pure-additive recognition vocabulary; no
+`_analyze_pair` touch needed. The two long-standing larger-than-
+smallest-step candidates remain unchanged from iters 180 / 181 / 182
+/ 183 / 184 / 185 / 186 / 187 / 188:
+(a) Polymorphic-args extension to `validate_rule` V4 / V7 +
+`apply_DSL` to let `action.args` carry derived selection (e.g.
+"wherever input has colour C"). The recognition-side prerequisites
+for colour-permutation rules (iter 185), erasure rules (iter 184),
+canvas-rewrite rules (iter 186), palette-expansion rules (iter 187),
+strict-expansion rules (iter 188), and now strict-erasure rules
+(this iter) are all in place; (a) is the bottleneck on the emission
+side for those rule shapes.
+(b) Multi-rule mint per solve: extend `_persist_pipeline_rule` to
+accept a list of rules from `translate_to_schema`, add a cell-
+table-emit branch gated on (`change_cells_constant_across_pairs`
+AND `input_dimensions_constant` AND `grid_size_preserved`) that
+mints one `coloring` sibling rule per distinct output colour. Iter
+184/185/186/187/188/189's six palette-axis gates together make
+sibling-rule emission branches' preconditions representable in the
+data layer for at least five distinct rule shapes plus the named
+strict-expansion / strict-erasure / strict-equality trichotomy.
+Tertiary option remains unchanged from iters 180 / 181 / 182 / 183
+/ 184 / 185 / 186 / 187 / 188: an emission branch that consumes the
+00576224 tile-shape fired-conditions conjunction would need a 2-DSL-
+call action shape (`make_grid` then `coloring`), beyond the current
+single-DSL `action.dsl` schema.
