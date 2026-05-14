@@ -131,8 +131,8 @@ def test_helper_is_importable_from_package_root() -> None:
 
 def test_registry_contents_after_helper_load() -> None:
     # The applier must not register itself or pull in anything beyond
-    # the matcher modules under ``agent/conditions/``. As of iter 217
-    # there are sixty such modules; tightening the assertion to
+    # the matcher modules under ``agent/conditions/``. As of iter 218
+    # there are sixty-one such modules; tightening the assertion to
     # ``==`` keeps a stray @register import from sneaking into the
     # package.
     assert set(CONDITION_REGISTRY.keys()) == {
@@ -196,6 +196,7 @@ def test_registry_contents_after_helper_load() -> None:
         "singleton_recolor_per_group",
         "singleton_recolor",
         "singleton_recolor_identity_per_group",
+        "singleton_recolor_nonidentity_per_group",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
@@ -296,9 +297,17 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
     # the iter-10 canonical fixture has every group with |ic| ==
     # |oc| == 1 (ic=[0], oc=[3]; ic=[1], oc=[4]; ic=[2], oc=[5]), so
     # singleton_recolor_per_group also fires (strict refinement of
-    # both iter 213 and iter 214 on this fixture). The three matchers
-    # in this test's name remain the iter-10 colour/dimension subset;
-    # the assertion grows with the registry rather than fighting it.
+    # both iter 213 and iter 214 on this fixture). Iter 218 names
+    # the STRICT COMPLEMENT of iter 217 within iter 215's territory:
+    # per-group |ic| == |oc| == 1 AND ic != oc. The iter-10 canonical
+    # fixture has ic=[0]/oc=[3], ic=[1]/oc=[4], ic=[2]/oc=[5] on every
+    # group of every pair -- per-group |ic| == |oc| == 1 with ic !=
+    # oc -- so singleton_recolor_nonidentity_per_group also fires
+    # (strict refinement of iter 215 at the non-identity sub-cell;
+    # iter 217 does NOT fire on this fixture since the singletons
+    # strictly differ per group). The three matchers in this test's
+    # name remain the iter-10 colour/dimension subset; the assertion
+    # grows with the registry rather than fighting it.
     fired = recognized_conditions(_patterns_all_three_fire())
     assert set(fired) == {
         "grid_size_preserved",
@@ -324,7 +333,8 @@ def test_all_three_matchers_fire_on_compatible_patterns() -> None:
         "consistent_color_mapping_per_group",
         "input_color_uniform_per_group",
         "singleton_recolor_per_group",
-    }, f"expected the twenty-three compatible matchers to fire, got {fired}"
+        "singleton_recolor_nonidentity_per_group",
+    }, f"expected the twenty-four compatible matchers to fire, got {fired}"
 
 
 def test_identity_pairs_fire_both_grid_size_and_identity_matchers() -> None:
