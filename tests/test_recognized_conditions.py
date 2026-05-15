@@ -177,7 +177,19 @@ def test_registry_contents_after_helper_load() -> None:
     # ``condition.type`` that future translate_to_schema emission
     # branches can adopt for palette-permutation rules whose
     # ``action.args`` reference a literal colour from the shared
-    # vocabulary.
+    # vocabulary. Iter 992 adds the
+    # ``input_output_dimensions_equal_and_constant_across_pairs``
+    # matcher -- the dimensional dual of iter 991, the conjunction
+    # of iter 1 (per-pair ``grid_size_preserved``), iter 22
+    # (``input_dimensions_constant``), and iter 20
+    # (``output_dimensions_constant``). The conjunction names "a
+    # single shared (H, W) such that every pair's input AND output
+    # has exactly that shape" as a single-name recognition handle --
+    # the dimensional twin of iter 991's palette conjunction. Future
+    # ``translate_to_schema`` emission branches can adopt this
+    # single-string ``condition.type`` for same-grid rules whose
+    # ``action.args`` reference literal coords from the shared
+    # grid shape.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -261,6 +273,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_palette_constant_across_pairs",
         "output_palette_constant_across_pairs",
         "input_output_palette_equal_and_constant_across_pairs",
+        "input_output_dimensions_equal_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
