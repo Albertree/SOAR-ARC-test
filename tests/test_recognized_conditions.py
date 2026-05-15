@@ -245,6 +245,26 @@ def test_registry_contents_after_helper_load() -> None:
     # conjunct); the converse fails for each individually because
     # neither named conjunct asserts cross-side equality. INDEPENDENT
     # of iter 991 (whole-grid scope, both directions exhibitable).
+    # Iter 997 adds the
+    # ``input_output_group_palette_and_whole_grid_palette_equal_and_constant_across_pairs``
+    # matcher -- the conjunction-of-conjunctions handle iter 996's
+    # "Next gap" log named as candidate (a). It conjoins iter 991
+    # (whole-grid input/output palette conjunction-handle) AND iter
+    # 996 (per-group input/output palette conjunction-handle), naming
+    # the strongest known palette-stability gate ARBOR's recognition
+    # vocabulary currently offers on the palette axis: every grid's
+    # whole-grid palette AND every change blob's per-blob palette are
+    # both pinned to a (possibly distinct per scope) single canonical
+    # set across the entire task. The within-axis (palette only) per-
+    # group AND whole-grid conjunction analogue of iter 993's between-
+    # axis (dimension AND palette) whole-grid conjunction. STRICTLY
+    # IMPLIES iter 991 (whole-grid conjunct) AND iter 996 (per-group
+    # conjunct); the converse fails for each because neither alone
+    # asserts stability on the other scope. Future emission branches
+    # in ``translate_to_schema`` can adopt this single
+    # ``condition.type`` for vocabulary-preserved-on-both-scopes rules
+    # whose ``action.args`` reference colour literals required to lie
+    # in both the whole-grid AND the per-blob shared vocabulary.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -333,6 +353,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_group_palette_constant_across_pairs",
         "output_group_palette_constant_across_pairs",
         "input_output_group_palette_equal_and_constant_across_pairs",
+        "input_output_group_palette_and_whole_grid_palette_equal_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
