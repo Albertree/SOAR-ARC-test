@@ -211,6 +211,22 @@ def test_registry_contents_after_helper_load() -> None:
     # refinement relation with iter 989 (whole-grid scope), strictly
     # implies iter 195 (per-group cardinality), independent of iter
     # 35 (per-pair aggregation under single-colour-blob constraint).
+    # Iter 995 adds the
+    # ``output_group_palette_constant_across_pairs`` matcher -- the
+    # output-side dual of iter 994 AND the per-group projection of
+    # iter 990, the iter-994 "Next gap" candidate (a). Asserts
+    # cross-pair AND cross-group set equality of the per-group
+    # ``output_colors`` field (the output colours of the cells that
+    # actually change within each connected change blob). The per-
+    # group / output-side cross-pair-set-constancy cell had no named
+    # handle since iter 1 introduced ``group["output_colors"]``; this
+    # matcher names it. NOT in a refinement relation with iter 990
+    # (whole-grid scope), strictly implies iter 196 (per-group
+    # cardinality), independent of iter 36 (per-pair aggregation
+    # under single-colour-blob constraint), independent of iter 994
+    # (input-side sibling on the orthogonal (input, output) axis).
+    # Completes the (whole-grid, per-group) x (input, output) cross-
+    # pair-set-constancy quadrant: iter 989 / 990 / 994 / 995.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -297,6 +313,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_output_dimensions_equal_and_constant_across_pairs",
         "input_output_dimensions_and_palette_equal_and_constant_across_pairs",
         "input_group_palette_constant_across_pairs",
+        "output_group_palette_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
