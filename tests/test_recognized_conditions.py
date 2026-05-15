@@ -199,6 +199,18 @@ def test_registry_contents_after_helper_load() -> None:
     # branches can adopt this single handle for coord-and-colour-
     # literal rules whose ``action.args`` reference both a literal
     # coord list AND a literal colour from the shared vocabulary.
+    # Iter 994 adds the
+    # ``input_group_palette_constant_across_pairs`` matcher -- the
+    # per-group projection of iter 989, the iter-993 "Next gap"
+    # candidate (a). Asserts cross-pair AND cross-group set equality
+    # of the per-group ``input_colors`` field (the input colours of
+    # the cells that actually change within each connected change
+    # blob). The per-group / input-side cross-pair-set-constancy
+    # cell had no named handle since iter 1 introduced
+    # ``group["input_colors"]``; this matcher names it. NOT in a
+    # refinement relation with iter 989 (whole-grid scope), strictly
+    # implies iter 195 (per-group cardinality), independent of iter
+    # 35 (per-pair aggregation under single-colour-blob constraint).
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -284,6 +296,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_output_palette_equal_and_constant_across_pairs",
         "input_output_dimensions_equal_and_constant_across_pairs",
         "input_output_dimensions_and_palette_equal_and_constant_across_pairs",
+        "input_group_palette_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
