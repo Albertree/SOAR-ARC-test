@@ -2,10 +2,10 @@
   "P1_rule_coverage": 0.0,
   "P2_mean_covers": 0.0,
   "P3_au_traced_frac": 0.0,
-  "P4_episodic_entries": 2985,
-  "P5_condition_matchers": 83,
+  "P4_episodic_entries": 2988,
+  "P5_condition_matchers": 84,
   "P6_active_operators_lines": 512,
-  "_head": "a62dc9d0c6c5b6b085c4baa8b364a09524e4747f",
+  "_head": "6416718960d6d5fb1167e3856ec015e21bf7b49e",
   "_rule_count": 0,
   "_solved_count": 0
 }

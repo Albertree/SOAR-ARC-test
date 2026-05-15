@@ -165,7 +165,19 @@ def test_registry_contents_after_helper_load() -> None:
     # quadrant on the (input, output) palette axis. Combined with
     # iter 20's ``output_dimensions_constant``, recognition rules
     # now have a tightest output-side stability gate (constant output
-    # dims AND constant output palette across pairs).
+    # dims AND constant output palette across pairs). Iter 991 adds
+    # the ``input_output_palette_equal_and_constant_across_pairs``
+    # matcher -- the conjunction-handle iter 990's "Next gap" log
+    # named as candidate (a): the conjunction of iter 185 (per-pair
+    # output_palette == input_palette), iter 989 (input palettes
+    # constant across pairs), and iter 990 (output palettes constant
+    # across pairs). The conjunction names "a single shared palette
+    # S such that every pair's input AND output is exactly S" as a
+    # single-name recognition handle -- the tightest single-string
+    # ``condition.type`` that future translate_to_schema emission
+    # branches can adopt for palette-permutation rules whose
+    # ``action.args`` reference a literal colour from the shared
+    # vocabulary.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -248,6 +260,7 @@ def test_registry_contents_after_helper_load() -> None:
         "bijective_color_mapping_per_pair",
         "input_palette_constant_across_pairs",
         "output_palette_constant_across_pairs",
+        "input_output_palette_equal_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
