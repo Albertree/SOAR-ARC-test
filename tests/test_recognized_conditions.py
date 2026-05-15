@@ -189,7 +189,16 @@ def test_registry_contents_after_helper_load() -> None:
     # ``translate_to_schema`` emission branches can adopt this
     # single-string ``condition.type`` for same-grid rules whose
     # ``action.args`` reference literal coords from the shared
-    # grid shape.
+    # grid shape. Iter 993 adds the
+    # ``input_output_dimensions_and_palette_equal_and_constant_across_pairs``
+    # matcher -- the conjunction-of-conjunctions handle for iter 991
+    # AND iter 992, naming the strongest known single-string
+    # ``condition.type`` ARBOR's recognition vocabulary can offer:
+    # "every grid in the task has the same (H, W) AND the same
+    # colour vocabulary S". Future ``translate_to_schema`` emission
+    # branches can adopt this single handle for coord-and-colour-
+    # literal rules whose ``action.args`` reference both a literal
+    # coord list AND a literal colour from the shared vocabulary.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -274,6 +283,7 @@ def test_registry_contents_after_helper_load() -> None:
         "output_palette_constant_across_pairs",
         "input_output_palette_equal_and_constant_across_pairs",
         "input_output_dimensions_equal_and_constant_across_pairs",
+        "input_output_dimensions_and_palette_equal_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
