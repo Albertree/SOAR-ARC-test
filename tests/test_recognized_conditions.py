@@ -265,6 +265,26 @@ def test_registry_contents_after_helper_load() -> None:
     # ``condition.type`` for vocabulary-preserved-on-both-scopes rules
     # whose ``action.args`` reference colour literals required to lie
     # in both the whole-grid AND the per-blob shared vocabulary.
+    # Iter 998 adds the
+    # ``input_output_group_palette_and_whole_grid_palette_and_dimensions_equal_and_constant_across_pairs``
+    # matcher -- the conjunction-of-conjunctions-of-conjunctions handle
+    # iter 997's "Next gap" log named as candidate (a). It conjoins
+    # iter 993 (whole-grid (dim AND palette) conjunction-handle) AND
+    # iter 996 (per-group palette conjunction-handle), naming the
+    # strongest known stability gate ARBOR's recognition vocabulary
+    # currently offers across BOTH axes (dimension AND palette) AND
+    # BOTH palette scopes (whole-grid AND per-group): every grid's
+    # shape AND every grid's whole-grid palette AND every change blob's
+    # per-blob palette are all pinned to single canonical values across
+    # the entire task. STRICTLY IMPLIES iter 993 (shape + whole-grid
+    # palette conjunct) AND iter 996 (per-group palette conjunct) AND
+    # iter 997 (transitively via iter 991 + iter 996); the converse
+    # fails for each because no pairwise conjunction asserts stability
+    # on the missing scope/axis. Future emission branches in
+    # ``translate_to_schema`` can adopt this single ``condition.type``
+    # for all-axes-invariant rules whose ``action.args`` reference
+    # coord-and-colour literals required to remain in bounds AND in
+    # vocabulary across every training and test grid.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -354,6 +374,7 @@ def test_registry_contents_after_helper_load() -> None:
         "output_group_palette_constant_across_pairs",
         "input_output_group_palette_equal_and_constant_across_pairs",
         "input_output_group_palette_and_whole_grid_palette_equal_and_constant_across_pairs",
+        "input_output_group_palette_and_whole_grid_palette_and_dimensions_equal_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
