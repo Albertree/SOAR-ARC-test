@@ -285,6 +285,29 @@ def test_registry_contents_after_helper_load() -> None:
     # for all-axes-invariant rules whose ``action.args`` reference
     # coord-and-colour literals required to remain in bounds AND in
     # vocabulary across every training and test grid.
+    # Iter 999 adds the
+    # ``input_output_palette_equal_at_both_scopes_and_scope_aligned_and_constant_across_pairs``
+    # matcher -- the strict refinement of iter 997 that iter 998's
+    # "Next gap" log named as candidate (b). Iter 997 fires when iter
+    # 991 fires AND iter 996 fires but each names its OWN canonical
+    # set (S_whole and S_blob respectively); nothing in iter 997 forces
+    # those two canonical sets to be the SAME single set. The
+    # whole-grid {0, 1, 2} / per-blob {0, 1} fixture fires iter 997 yet
+    # S_whole != S_blob. This iter names the strictly-tighter gate that
+    # adds the cross-scope equality clause: a SINGLE canonical set S
+    # such that every cell of every grid (background or change blob)
+    # draws from S. This is the first within-palette-axis refinement
+    # since iter 996 that introduces NEW semantic content rather than
+    # AND-ing pre-existing handles. STRICTLY IMPLIES iter 997 (parent
+    # gate) AND every conjunct iter 997 strictly implies (iter 991,
+    # iter 996, and through them iter 185, 989, 990, 994, 995, 195,
+    # 196). INDEPENDENT of iter 998 (dimension axis -- both can co-fire
+    # to pin the strictest possible (H, W, S)-invariant gate). Future
+    # emission branches in ``translate_to_schema`` can adopt this single
+    # ``condition.type`` for background-free palette-permutation rules
+    # whose ``action.args`` reference a single literal colour set
+    # required to cover the entire grid at both whole-grid AND per-
+    # blob scope as the same set.
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -375,6 +398,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_output_group_palette_equal_and_constant_across_pairs",
         "input_output_group_palette_and_whole_grid_palette_equal_and_constant_across_pairs",
         "input_output_group_palette_and_whole_grid_palette_and_dimensions_equal_and_constant_across_pairs",
+        "input_output_palette_equal_at_both_scopes_and_scope_aligned_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
