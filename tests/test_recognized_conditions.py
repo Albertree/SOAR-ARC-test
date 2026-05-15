@@ -227,6 +227,24 @@ def test_registry_contents_after_helper_load() -> None:
     # (input-side sibling on the orthogonal (input, output) axis).
     # Completes the (whole-grid, per-group) x (input, output) cross-
     # pair-set-constancy quadrant: iter 989 / 990 / 994 / 995.
+    # Iter 996 adds the
+    # ``input_output_group_palette_equal_and_constant_across_pairs``
+    # matcher -- the per-group projection of iter 991's whole-grid
+    # palette conjunction-handle AND the natural conjunction-handle
+    # of iter 994 AND iter 995, the iter-995 "Next gap" candidate (a).
+    # Asserts per-pair-per-group
+    # ``frozenset(input_colors) == frozenset(output_colors)`` AND
+    # that single shared per-group set is bit-identical across every
+    # group across every pair. The strongest per-blob palette-
+    # stability gate ARBOR's current recognition vocabulary can
+    # express; it occupies the (per-group scope) x (input AND output
+    # equality) cell of the (whole-grid, per-group) x (input AND
+    # output equality) cross-pair-set-constancy recognition grid --
+    # the per-group dual of iter 991. STRICTLY IMPLIES iter 994
+    # (input-side conjunct), STRICTLY IMPLIES iter 995 (output-side
+    # conjunct); the converse fails for each individually because
+    # neither named conjunct asserts cross-side equality. INDEPENDENT
+    # of iter 991 (whole-grid scope, both directions exhibitable).
     assert set(CONDITION_REGISTRY.keys()) == {
         "grid_size_preserved",
         "consistent_color_mapping",
@@ -314,6 +332,7 @@ def test_registry_contents_after_helper_load() -> None:
         "input_output_dimensions_and_palette_equal_and_constant_across_pairs",
         "input_group_palette_constant_across_pairs",
         "output_group_palette_constant_across_pairs",
+        "input_output_group_palette_equal_and_constant_across_pairs",
     }, f"unexpected registry contents: {sorted(CONDITION_REGISTRY)}"
 
 
