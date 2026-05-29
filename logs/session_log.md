@@ -6808,3 +6808,63 @@ action: provide `docs/SLICE_2_LOOP.md`** (+ easy000b data); do NOT start Slice 2
 autonomously (§10). With the covers-merge fix landed, the moment Slice 2 adds a
 task solved via fast-path that is not already covered, P1/P2 will now move
 correctly on their own. No remaining in-scope P-mover on the frozen 2-task slice.
+
+> STAGNATION at iter 96 — 14 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:53
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_075332.log
+
+---
+## Iter 97 — 2026-05-30T07:55:10 — branch test21
+
+**Iter 97: no defensible step found — analysis only (PROMPT.md §5).** 15th
+consecutive neutral/no-op iter. Non-redundant contribution: I re-verified the
+state first-hand (not from the log) and pinned one doc-asserted-but-unchecked
+fact to its source line.
+
+**Diagnosis**: Slice 1 remains complete and human-gated. Verified directly this
+iter: `docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed); `data/ARC_easy/` =
+{easy000a, easy000a2} frozen (F6); exactly one rule (`rule_003.json`). Probe =
+2/2 CORRECT via stored(easy000a). No code/rule/memory drift since iter 96.
+
+**First-hand check (the contribution of this iter)**: RULE_FORMAT §4 *claims*
+discovery and reuse share one recogniser ("named once ... rather than re-inlining
+the conjunction in two modules", citing active_operators.py:235). I confirmed it
+at the source: `GeneralizeOperator._recognizes_copy_common_output`
+(active_operators.py:235) is a thin delegate to
+`conditions.match("copy_common_output_applies", patterns, {"min_evidence": 1})`
+— it does NOT re-inline the PAIR∧GRID conjunction. So SLICE_1_LOOP.md §8
+criterion 2 (uniformity — same-kind work via the same module) holds at the code
+level, not just in prose. Also confirmed there is no dead code in
+active_operators.py to remove (all 9 operator classes are live pipeline stages;
+no `_try_*`/`_apply_*` family remains), so P6 cannot move either.
+
+**Why no commit**: every positive signal is structurally pinned on the frozen
+2-task slice — P1=2.0/P2=2.0 (2 tasks/1 rule, both already covered), P3=0.0 (AU
+OUT of Slice 1 §9), P4 grows only by re-running solves (metric-gaming), P5=10
+(§3 flow fully covered; an 11th matcher = dead vocabulary per §5.1), P6 immovable
+(no dead code). The last genuine in-scope fix (covers-merge robustness) landed in
+iter 96. Any code change now would either trip a forbidden signal, game a metric,
+or risk a wrong commit — which §5 states is worse than no commit.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0
+(P1=2.0 P2=2.0 P3=0.0 P4≈3294 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged structural unblock = **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ `data/ARC_easy/easy000b.json`). Do
+NOT start Slice 2 autonomously (§10). On the frozen 2-task slice there is no
+in-scope positive-signal mover left; the covers-merge fix (iter 96) will move
+P1/P2 correctly the moment Slice 2 introduces a fast-path-solved task not yet in
+any rule's `covers`.
