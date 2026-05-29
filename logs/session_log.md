@@ -5001,3 +5001,72 @@ step is wiring `GoalStack` as a live S1 WM object that gates
 satisfaction logic is already live-consumed via `schema_goal_satisfied`); split it
 (consult-only first, then let satisfaction influence preferences) for live-trigger
 regression safety.
+
+> STAGNATION at iter 67 — 12 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:06
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_060657.log
+
+---
+## Iter 68 — 2026-05-30T06:08 — branch test21
+
+**Iter 68: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed from scratch. Slice 1 remains functionally complete and
+human-gated: `docs/SLICE_2_LOOP.md` is still absent and `PROMPT.md` /
+`docs/SLICE_1_LOOP.md` are unchanged (f4296f20, 2026-05-29). Every positive signal
+is frozen *within* Slice 1 scope; no agent-side gap remains whose closure moves one
+without gaming a metric (F4-class dead vocabulary) or starting the human-gated
+Slice 2.
+
+**Fresh verification this iter (not copied from prior logs)** — prior iters noted
+`pytest` is absent and stopped there, but every file in `tests/` is also
+`__main__`-runnable (each ends with a direct runner + `sys.exit`). I ran all 28
+directly:
+- **28/28 test files pass.** This is the first iter to actually execute the suite
+  rather than infer its state. It independently confirms observation criteria 1
+  (작동) and 2 (통일성) across the whole system, not just the probe's stored-rule
+  hit — including the slow-path proofs in `test_slow_path_value_agnostic.py`
+  (easy000a and easy000a2 each rediscover their *different* fixed output through the
+  pipeline from empty memory; structurally identical condition/action; no baked-in
+  `(5,5)`/color literal).
+- `CONDITION_REGISTRY` = 10 matchers, all live-consumed; `descent_path` deliberately
+  unregistered (avoids inflating P5 with consumer-less vocabulary).
+- `rule_003` covers `['easy000a','easy000a2']`, has `condition`, `au_trace=null`
+  (correct: single-source initial rule; anti-unification is OUT of Slice 1).
+- `active_operators.py` = 435 lines, 8 live pipeline operators + `VerifyOperator`;
+  `_try_*`/`_apply_*` family retired; copy-common-output dispatches via the
+  recognition registry, not a hand-coded detector.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists). Frozen.
+- P3: anti-unification explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4/§9`).
+- P4: episodic auto-increments per solve — moving it = running solves, not a code
+  contribution.
+- P5: §3 flow fully covered by 10 live matchers; a new one is dead vocabulary
+  (F4-class accretion the architecture forbids).
+- P6: `_try_*`/`_apply_*` retired; all remaining operators wired-live (verified by
+  the passing suite) — nothing safely removable.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`**. Do not start Slice 2 autonomously
+(`SLICE_1_LOOP.md §10`). When it opens, the highest-value in-architecture first step
+is wiring `GoalStack` as a live S1 WM object gating `preferences.select_operator`
+(module B's only remaining deferred half — its satisfaction logic is already
+live-consumed via `schema_goal_satisfied`); split it (consult-only first, then let
+satisfaction influence preferences) for live-trigger regression safety.
