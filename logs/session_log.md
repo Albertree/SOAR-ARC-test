@@ -745,3 +745,83 @@ step is to route the `copy_common_output` action through `apply_DSL` so the
 rule becomes genuinely self-contained/executable (touches active_operators.py +
 memory.py → F8 satisfied by the memory.py companion). Anti-unification / module
 H and object/pixel DSL remain Slice-1 OUT; Slice 2 stays human-gated.
+
+---
+## Learning Loop -- 2026-05-29 21:04
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_210420.log
+
+---
+## Learning Loop -- 2026-05-29 21:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_210827.log
+
+---
+## Iter 11 — 2026-05-29T21:08 — branch test21
+
+**Diagnosis**: Re-diagnosed from scratch. Slice 1 solves 2/2 via
+`copy_common_output`, and iter 10 laid the two frozen primitives
+(`make_grid`/`coloring`) as real source. But `rule_003.action.dsl = "make_grid"`
+was still *decorative*: `PredictOperator.effect` produced the answer by copying
+the common example output wholesale (`[row[:] for row in common_output]`) —
+`apply_DSL` was never invoked, so the action half of the {condition, action}
+pair did not actually execute. The smallest defensible step (iter 10's recorded
+next gap) is to route that copy through the two primitives so the answer is
+*constructed bottom-up*, realising ARBOR's "Bottom-up Organized Rules" intent
+(CLAUDE.md §6.1/§6.2) instead of a special-case wholesale copy.
+
+**Change**:
+- `agent/memory.py` (new `reconstruct_via_dsl(grid)`): materialises a concrete
+  grid as a `make_grid` + `coloring` composition via `apply_DSL`. Value-agnostic
+  and deterministic — modal colour (ties→smaller value) is the canvas fill,
+  every other colour painted in ascending order; result is bit-identical to the
+  input. Lazy-imports the DSL package (no load-time coupling). Malformed grids
+  fail closed with `ValueError`; out-of-palette values propagate the primitives'
+  own `ValueError` (not swallowed).
+- `agent/active_operators.py` (`PredictOperator.effect`): the
+  `copy_common_output` branch now calls `reconstruct_via_dsl(common_output)`
+  instead of copying the grid directly. Still value-agnostic (reconstructed from
+  the task's own common example output; no stored literal). NOT a new
+  `_try_*`/`_apply_*` (F2 clean); touched alongside `agent/memory.py` so F8 is
+  satisfied by a genuine companion, not a paper one.
+- `tests/test_reconstruct_via_dsl.py` (new): 11 tests — bit-identical rebuild of
+  easy000a's red and easy000a2's green outputs by the SAME code (value-agnostic),
+  multi-colour / uniform / non-zero-background grids, no-mutation, fresh-object,
+  and fail-closed on empty/ragged/non-list input. Self-runs (pytest absent).
+  11/11 pass; existing test_predict_copy_common_output 7/7 and test_dsl 30/30
+  still pass.
+- No frozen-file edit (F1); no DSL `def`/`register` added (F3 — uses the two
+  existing primitives); no new rule (F4 inert); no `TF_` write (F5); no budget
+  growth (F6); no swallowed `RuleSchemaError` (F7).
+
+**Probe before**: 2/2 correct; rule_003 only; via=copy_common_output;
+`action.dsl=make_grid` declared but never executed (answer copied wholesale).
+**Probe after** : 2/2 correct; via=copy_common_output; answer now *constructed*
+through `apply_DSL("make_grid")` + `apply_DSL("coloring")` — the action half is
+genuinely executed bottom-up.
+
+**Invariants**: forbidden=none (checker verdict CLEAN, exit 0). positives: P4
+Δ+2 (3030→3032) — the mechanical episode-write artifact of running the probe
+during verification, **not** claimed as the contribution (per iters 8/9/10's
+disclaimer). P1/P2/P3/P5 Δ0. P6 +7 lines on active_operators.py (offset by the
+F8-satisfying memory.py companion). The substantive contribution is structural
+and largely neutral on the six metrics: the `copy_common_output` action no
+longer special-cases a wholesale copy but composes the same two primitives every
+transformation must compose (observation criterion 2 — module uniformity).
+
+**Next gap (note for future iter)**: The reconstruction is computed at predict
+time and discarded; the {condition, action} pair's `action.args` is still `{}`.
+A future iter could have `GeneralizeOperator`/`save_rule` record the executed
+composition as an episodic trace (feeding P4 substantively and laying groundwork
+for anti-unification to lift the `make_grid`+`coloring` recipe) — but
+anti-unification / module H stays Slice-1 OUT, and Slice 2 remains human-gated.

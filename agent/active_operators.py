@@ -504,7 +504,14 @@ class PredictOperator(Operator):
             if g0 is None:
                 continue
             if common_output is not None:
-                predicted = [row[:] for row in common_output]
+                # Materialise the answer bottom-up through the two frozen DSL
+                # primitives (make_grid + coloring) rather than copying it
+                # wholesale, so the copy_common_output action's declared
+                # action.dsl is actually executed (CLAUDE.md §6.1/§6.2). Still
+                # value-agnostic: reconstructed from the task's own common
+                # example output, with no stored literal.
+                from agent.memory import reconstruct_via_dsl
+                predicted = reconstruct_via_dsl(common_output)
             else:
                 predicted = self._apply_rule(rule, g0)
             if predicted is not None:

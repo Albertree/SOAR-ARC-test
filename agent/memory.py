@@ -207,6 +207,56 @@ def _build_action(rule: dict) -> dict:
     return {"dsl": "coloring", "args": args}
 
 
+def reconstruct_via_dsl(grid):
+    """Materialise a concrete grid as a composition of the two frozen DSL
+    primitives — ``make_grid`` then ``coloring`` — returning the rebuilt grid.
+
+    This is how a ``copy_common_output`` action is *executed*: rather than
+    copying the target grid wholesale, ARBOR constructs it bottom-up from the
+    only two primitives it may ever ship with (CLAUDE.md §6.1) — a fresh canvas
+    (``make_grid``) repainted one colour-class at a time (``coloring``). The
+    decomposition is value-agnostic and deterministic: the modal colour (ties
+    broken by smaller colour value) becomes the canvas fill — minimising the
+    number of ``coloring`` calls — and every other colour's cells are painted in
+    ascending colour order. The result is bit-identical to ``grid``.
+
+    Raises ``ValueError`` if ``grid`` is not a non-empty rectangular
+    list-of-lists; out-of-palette cell values propagate the primitives' own
+    ``ValueError`` (not swallowed). The caller is expected to pass a well-formed
+    ARC grid.
+    """
+    # Lazy import: keeps memory.py free of a load-time dependency on the DSL
+    # package and avoids any import-order coupling.
+    from procedural_memory.DSL.apply import apply_DSL
+
+    if not isinstance(grid, list) or not grid or not all(isinstance(r, list) for r in grid):
+        raise ValueError("reconstruct_via_dsl: grid must be a non-empty list of lists")
+    height = len(grid)
+    width = len(grid[0])
+    if width == 0 or any(len(r) != width for r in grid):
+        raise ValueError("reconstruct_via_dsl: grid must be rectangular and non-empty")
+
+    # Colour histogram -> modal colour becomes the canvas fill (fewest paints).
+    counts = {}
+    for row in grid:
+        for v in row:
+            counts[v] = counts.get(v, 0) + 1
+    # Most frequent colour; ties broken deterministically by smaller value.
+    background = min(counts, key=lambda c: (-counts[c], c))
+
+    canvas = apply_DSL("make_grid", height=height, width=width, color=background)
+
+    for color in sorted(c for c in counts if c != background):
+        selection = [
+            (r, c)
+            for r in range(height)
+            for c in range(width)
+            if grid[r][c] == color
+        ]
+        canvas = apply_DSL("coloring", grid=canvas, selection=selection, color=color)
+    return canvas
+
+
 def _rules_equivalent(a: dict, b: dict) -> bool:
     """
     Return True if two rules produce identical transformations.
