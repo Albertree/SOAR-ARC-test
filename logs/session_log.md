@@ -276,3 +276,71 @@ not yet wired — `_apply_rule` returns None for it (no `wm.task`), so each new
 copy-task re-runs the slow path instead of a stored-rule hit; threading example
 outputs into the fast path would let `times_reused` climb, and (c)
 `test_output_missing` needs reframing against the loaded representation.
+
+---
+## Learning Loop -- 2026-05-29 20:04
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_200456.log
+
+---
+## Learning Loop -- 2026-05-29 20:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_200816.log
+
+---
+## Iter 5 — 2026-05-29T20:08 — branch test21
+
+**Diagnosis**: Both Slice-1 tasks already solve via the intended value-agnostic
+`copy_common_output` path (rule_003: condition `all_outputs_comm`, action
+`make_grid`, covers [easy000a, easy000a2]). But procedural memory still carried
+the two superseded per-task rules from before iter 4: `rule_001`/`rule_002`
+(condition `consistent_color_mapping`, hand-coded literal `color_mapping`
+e.g. `2→0,0→2,1→0` which paints the whole background — the *wrong* mechanism
+diagnosed in iter 2). Each covers exactly one task, and both covered tasks are
+already in rule_003's `covers`. They are the in-miniature 168-rule accretion
+pattern the architecture exists to prevent (one hand-coded detector per task),
+sitting dead in LTM. The smallest defensible step (iter-4 "Next gap" option a) is
+to prune them, consolidating knowledge onto the single general rule — exactly
+"two rules merge into one" (INVARIANTS §2 P1).
+
+**Change**:
+- Deleted `procedural_memory/rule_001.json`, `procedural_memory/rule_002.json`
+  (gitignored runtime LTM, like all `rule_*.json`). No coverage lost: rule_003
+  already covers both their tasks via the value-agnostic mechanism. No code
+  touched — `load_all_rules` globs the directory; nothing references these by
+  name.
+
+**Probe before**: 2/2 correct; rules 3 (rule_001 color_mapping, rule_002
+color_mapping, rule_003 copy_common_output); via=copy_common_output; P1=0.667,
+P2=1.333.
+**Probe after** : 2/2 correct; rules 1 (rule_003 only); via=copy_common_output
+(unchanged — proves the deleted rules were dead); re-run learn did NOT regenerate
+them (slow path emits copy_common_output, which merges into rule_003: 1→1 +0);
+P1=2.0, P2=2.0.
+
+**Invariants**: forbidden=none (F1–F8 all clear: no frozen-file edit, no
+`_try_*`/`_apply_*`, no DSL `def`/`register`, rule_003 still passes
+`validate_rule`, no TF_ under semantic_memory, no budget growth, no swallowed
+RuleSchemaError, no active_operators.py edit). positives=P1 Δ+1.333 (0.667→2.0),
+P2 Δ+0.667 (1.333→2.0); P3/P4/P5/P6 Δ0. Verdict CLEAN.
+
+**Next gap (note for future iter)**: rule_003's `action.args` is empty `{}` —
+the value-agnostic copy is done in `PredictOperator` by reading the common
+example output from `wm.task` at predict time, so the rule is not yet
+self-contained / fast-path reusable (`times_reused` stays 0, each task re-runs
+the slow pipeline). The most glaring remaining gap is fast-path *reuse* of
+copy_common_output (would lift P1 numerator via `times_reused`); separately,
+`test_output_missing` is still dead because `ARCManager.load_task` loads the
+test pair *with* its ground-truth output (grid_count==2), so the §3 PAIR-level
+count-asymmetry trigger never fires — a representation-fidelity gap vs principle
+P5 ("test has no G1").
