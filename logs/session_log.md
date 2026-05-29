@@ -344,3 +344,74 @@ copy_common_output (would lift P1 numerator via `times_reused`); separately,
 test pair *with* its ground-truth output (grid_count==2), so the §3 PAIR-level
 count-asymmetry trigger never fires — a representation-fidelity gap vs principle
 P5 ("test has no G1").
+
+---
+## Learning Loop -- 2026-05-29 20:11
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_201141.log
+
+---
+## Learning Loop -- 2026-05-29 20:16
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_201642.log
+
+---
+## Iter 6 — 2026-05-29T20:16 — branch test21
+
+**Diagnosis**: Both Slice-1 tasks already solve via the intended value-agnostic
+`copy_common_output` path (P1/P2 maxed at 2.0 for this 2-task slice; P3 is
+out-of-scope for Slice 1 — anti-unification is module H, OUT). But
+`ActiveSoarAgent.solve()` writes **no episodic memory at all**: `easy000a` /
+`easy000a2` had zero `attempt_NNN/` folders despite passing, and the 3012
+on-disk entries are stale local artifacts from a May-13 path the current solve
+loop lost. This is exactly INVARIANTS §2 P4 ("episodic_memory/ was empty across
+1k runs — every solve() should write one attempt_NNN/ folder") and CLAUDE.md
+§3.3. Restoring the writer is the smallest defensible step that moves a positive
+signal without touching the frozen cycle, and PROMPT.md §3 explicitly permits it.
+
+**Change**:
+- `agent/episodic.py` (new): `write_episode()` + `_next_attempt_index()`. Writes
+  one `attempt_NNN/` folder per solve with `metadata.json` (task_hex,
+  attempt_index, outcome, created_at, info — matching the existing on-disk
+  convention), `trace.json`, and `grids/step_NNN.json`. The frozen `run_cycle`
+  exposes only a summary, so `trace.json` records the cycle summary + applied
+  rule (no per-phase log, which would require editing the frozen engine) —
+  strictly richer than the old empty `[]` traces.
+- `agent/active_agent.py`: added `episodic_memory_root` ctor param (default
+  `episodic_memory`) and a `_record_episode()` helper; both the fast-path
+  (stored-rule hit) and slow-path (pipeline) returns now write exactly one
+  episode, capturing test inputs (step_000…) + the submitted prediction (final
+  step). Not frozen; no `active_operators.py` / `cycle.py` / `wm.py` edit.
+- `tests/test_episodic_writer.py` (new): 22 assertions — artifact presence,
+  attempt-index increment, `no_prediction` outcome, and an end-to-end check that
+  real `solve()` on both slice tasks leaves one populated episode each.
+  Self-runs (pytest absent). 22/22 pass; existing 8/8 + 14/14 + 7/7 still pass.
+
+**Probe before**: 2/2 correct; rules 1→1 (+0); via=copy_common_output; P4=3012;
+easy000a/a2 had **no** episodic entries.
+**Probe after** : 2/2 correct; rules 1→1 (+0, idempotent); via=copy_common_output;
+P4=3014; easy000a/a2 each now have `attempt_001/` with metadata+trace+grids.
+
+**Invariants**: forbidden=none (F1 no frozen edit; F2 no `_try_*`/`_apply_*`;
+F3 no DSL `def`/`register`; F4 rule_003 still valid; F5 no TF_ in
+semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError; F8 inert
+— `active_operators.py` unchanged at 684 lines). positives=P4 Δ+2 (3012→3014);
+P1/P2/P3/P5/P6 Δ0. Verdict CLEAN.
+
+**Next gap (note for future iter)**: With episodic writing restored, the most
+glaring remaining gaps are (a) `test_output_missing` is still dead — the loader
+hands the test pair its ground-truth output (grid_count==2), so the §3 PAIR-level
+count-asymmetry trigger and principle P5 ("test has no G1") are not honored by
+the representation; and (b) the `copy_common_output` rule is not fast-path
+reusable (`action.args` empty, prediction reads `wm.task` at predict time, so
+`times_reused` stays 0). Neither is anti-unification (Slice-1 OUT).

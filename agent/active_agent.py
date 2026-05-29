@@ -17,6 +17,7 @@ from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
+from agent.episodic import write_episode
 
 
 class ActiveSoarAgent:
@@ -28,9 +29,11 @@ class ActiveSoarAgent:
 
     def __init__(self, semantic_memory_root: str = "semantic_memory",
                  procedural_memory_root: str = "procedural_memory",
+                 episodic_memory_root: str = "episodic_memory",
                  max_steps: int = 50):
         self.semantic_memory_root = semantic_memory_root
         self.procedural_memory_root = procedural_memory_root
+        self.episodic_memory_root = episodic_memory_root
         self.max_steps = max_steps
         self._submission_count: int = 0
         self._current_task_hex: str = None
@@ -75,6 +78,15 @@ class ActiveSoarAgent:
                         "rule_source": entry.get("source_task"),
                     })
                     self._submission_count += 1
+                    self._record_episode(
+                        task, predicted,
+                        trace=[{
+                            "phase": "stored_rule_hit",
+                            "method": "stored_rule",
+                            "rule_type": rule.get("type", "unknown"),
+                            "rule_source": entry.get("source_task"),
+                        }],
+                    )
                     return predicted
 
         # --- Slow path: full SOAR pipeline ---
@@ -113,9 +125,41 @@ class ActiveSoarAgent:
             )
 
         self._submission_count += 1
+        self._record_episode(
+            task, predicted,
+            trace=[{
+                "phase": "cycle_summary",
+                "method": "pipeline",
+                "rule_type": rule_type,
+                "steps_taken": result["steps_taken"],
+                "goal_satisfied": result["goal_satisfied"],
+                "active_rule": active_rules[0] if active_rules else None,
+            }],
+        )
         return predicted
 
     # ---- helpers --------------------------------------------------------
+
+    def _record_episode(self, task, predicted, trace) -> None:
+        """Write one episodic attempt folder for this solve() (CLAUDE.md §3.3).
+
+        Captured from outside the frozen cycle: the test input grids
+        (step_000…) followed by the submitted prediction (final step).
+        """
+        grid_steps = []
+        for pair in task.test_pairs:
+            if pair.input_grid is not None:
+                grid_steps.append(pair.input_grid.raw)
+        if predicted:
+            grid_steps.append(predicted)
+        write_episode(
+            self.episodic_memory_root,
+            task.task_hex,
+            predicted=predicted,
+            info=self.last_solve_info,
+            trace=trace,
+            grid_steps=grid_steps,
+        )
 
     def _rule_matches_examples(self, rule, task) -> bool:
         """Check if a rule produces correct output for ALL example pairs."""
