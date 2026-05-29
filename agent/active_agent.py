@@ -202,20 +202,16 @@ class ActiveSoarAgent:
         an answer appeared. A failed solve (no prediction) leaves every leaf open.
         """
         census = pair_grid_counts(task)
-        value = goal_module.value_goal_from_grid_count_census(census)
-        if value is None:
+        stack = goal_module.build_goalstack_from_census(census)
+        if stack is None:
             return None
-        stack = goal_module.GoalStack(value)
-        stack.advance()   # Refinement:   value  -> action  (construct Gx)
-        stack.advance()   # Decomposition: action -> schema  ({size,color,contents})
+        # Ground each schema leaf in its comparison basis (P3/P4) — but only once
+        # an answer was emitted; a failed solve leaves every leaf open (honest
+        # failure trace). The goal walk + comparison grounding both live in module
+        # B (agent/goal.py) now; this method only decides *whether* to ground
+        # (an episode-recording concern) and formats the trace record.
         if predicted:
-            patterns = build_patterns(task)
-            for prop in goal_module.GRID_SCHEMA:
-                if conditions.match(
-                    "all_outputs_comm", patterns,
-                    {"min_evidence": 1, "required_properties": [prop]},
-                ):
-                    stack.mark_property_solved(prop)
+            goal_module.mark_schema_leaves_by_comparison(stack, build_patterns(task))
         return {
             "phase": "goal_evolution",
             "module": "B",

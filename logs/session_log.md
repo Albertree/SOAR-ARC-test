@@ -3407,3 +3407,96 @@ the live solve — but per iter-43/44 that is behaviour-sensitive and F8-adjacen
 it warrants its own careful library-first split. Slice 1 stays functionally
 complete; Slice 2 (easy000b: G0 analysis, activation rules, anti-unification) is
 human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 03:51
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_035104.log
+
+---
+## Learning Loop -- 2026-05-30 03:56
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_035609.log
+
+---
+## Iter 46 — 2026-05-30T03:56 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated; the one
+genuine in-scope step iters 42–45 each flagged is module B moving from *passive
+episode-trace artifact* toward *participant* in the live solve, "warrants its own
+careful library-first split like module A got (iter 40 effect → iter 41 wiring)."
+The criterion-2 (uniformity, SLICE_1_LOOP §8 — 같은 종류 작업이 같은 모듈로)
+defect that blocks that split is that module B's whole goal walk (census →
+GoalStack → advance×2 → per-property `all_outputs_comm` leaf-marking) was
+**inlined inside `ActiveSoarAgent._slice1_goal_record`**, not in module B's own
+file (`agent/goal.py`). So the walk could not be reused by a future
+recognition-via-goal path without duplicating it. Smallest defensible step: the
+**library half** — extract the walk into `agent/goal.py`, answer-preserving.
+
+**Change**:
+- `agent/goal.py` (module B, not frozen): added two value-agnostic library
+  functions — `build_goalstack_from_census(census)` (forms the value goal and
+  walks Refinement→Decomposition to the schema goal, or `None` when nothing is
+  deficient) and `mark_schema_leaves_by_comparison(stack, patterns)` (marks each
+  schema leaf solved iff `all_outputs_comm` is COMM on that property — the P3/P4
+  comparison basis). The goal walk + its comparison grounding now both live in
+  module B's file. `conditions` is imported locally inside the marking function
+  (module B needn't load the recognition registry merely to define goal vocab).
+- `agent/active_agent.py` (`_slice1_goal_record`): delegates to the two new
+  functions instead of hand-assembling the chain (census/GoalStack/advance×2 and
+  the per-property `all_outputs_comm` loop are gone from here). The method now
+  only decides *whether* to ground (an episode-recording concern: ground only
+  when a prediction was emitted) and formats the trace record. Byte-identical
+  output — verified by the unchanged `tests/test_active_agent_goal_trace.py`.
+- `tests/test_goal.py` (+6 tests, all pass): the two new functions on their own —
+  full chain walked, `None` on no deficiency, all-COMM satisfies, a DIFF property
+  leaf stays open (basis not blanket), no-receipt leaves all open, and
+  value-agnostic (identical satisfied stack for the two structurally-identical
+  censuses).
+- **Did NOT touch** `agent/active_operators.py` (F8 N/A — untouched, 439→439),
+  any frozen file, any DSL primitive, any rule, or the condition registry; no
+  `_try_*`/`_apply_*`; no new matcher (P5 not inflated — this is extraction, not
+  recognition-ahead-of-need accretion).
+
+**Why smallest**: it moves code (no new behaviour), is provably answer-preserving
+(both targets still 2/2 via stored copy_common_output; the agent goal-trace test
+is byte-identical before/after), and is exactly the *library* half of the
+endorsed module-B split — the reusable `build_goalstack_from_census` /
+`mark_schema_leaves_by_comparison` pair a later iter can call from the recognition
+path, mirroring how `compare_scheduler` / `descent_path` were built library-first.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Identical — goal trace is an episode artifact, not part of the answer. Full unit
+suite 23/23 files green, incl. the +6 in test_goal.py [21/21] and the unchanged
+test_active_agent_goal_trace.py [6/6].)
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — F1 no frozen
+edit; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule changed; F5
+no `TF_` under semantic_memory; F6 no budget growth; F7 no swallowed
+RuleSchemaError; F8 N/A — active_operators.py untouched, 439→439). positives=all
+Δ0 (P1 2.0, P2 2.0, P3 0.0, P4 3167, P5 9, P6 439). **Metric-neutral by
+construction**: the six signals measure rule/operator growth + active_operators.py
+line count; relocating module-B logic into its own file improves criterion-2
+uniformity, which no signal captures. Tolerated per INVARIANTS §3 — genuine
+scaffolding for the next step, not a metric bump in disguise.
+
+**Next gap (note for future iter)**: the module-B goal walk is now a reusable
+library; the *wiring* half remains — make recognition (the fast/slow paths'
+`copy_common_output_applies`) consume `build_goalstack_from_census(...).is_satisfied()`
+as the basis, so the schema goal's satisfaction (all three props comparison-grounded)
+is the *single* thing recognition checks rather than recomputing the GRID-half
+`all_outputs_comm` independently of the goal. That is behaviour-sensitive and
+F8-adjacent (touches active_operators.py with net lines), so it warrants the
+careful wiring step iter 41 modelled for module A. Slice 1 stays functionally
+complete; Slice 2 is human-gated — do not start it.

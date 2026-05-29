@@ -193,6 +193,77 @@ def test_goal_tree_identical_across_targets():
     assert tree(CENSUS_A) == tree(CENSUS_A2)
 
 
+# --- the Slice-1 goal walk built straight from a patterns bundle ----------
+# build_goalstack_from_census + mark_schema_leaves_by_comparison are the
+# module-B library functions ActiveSoarAgent now delegates to (extracted from
+# its inlined goal walk). They are exercised here on their own so module B's
+# walk is guarded independent of the agent.
+
+def _comm_receipt(props):
+    """A compare() receipt whose per-property category carries the COMM/DIFF
+    type for each name in `props` (a {prop: "COMM"|"DIFF"} map)."""
+    return {"result": {"type": "COMM", "score": "1/1",
+                       "category": {p: {"type": t} for p, t in props.items()}}}
+
+_ALL_COMM = {"size": "COMM", "color": "COMM", "contents": "COMM"}
+_CONTENTS_DIFF = {"size": "COMM", "color": "COMM", "contents": "DIFF"}
+
+
+def test_build_goalstack_from_census_walks_full_chain():
+    stack = G.build_goalstack_from_census(CENSUS_A)
+    assert stack is not None
+    assert stack.current["kind"] == G.KIND_SCHEMA
+    assert set(stack.current["subgoals"]) == {"size", "color", "contents"}
+    assert [g["kind"] for g in stack.history] == [G.KIND_VALUE, G.KIND_ACTION]
+    assert not stack.is_satisfied()           # leaves all open until grounded
+
+
+def test_build_goalstack_from_census_none_when_no_deficiency():
+    assert G.build_goalstack_from_census(
+        {"example_counts": [2, 2], "test_counts": [2]}) is None
+
+
+def test_mark_schema_leaves_all_comm_satisfies():
+    stack = G.build_goalstack_from_census(CENSUS_A)
+    patterns = {"output_grid_comparisons": [_comm_receipt(_ALL_COMM)]}
+    G.mark_schema_leaves_by_comparison(stack, patterns)
+    assert stack.is_satisfied()               # every property has a COMM basis
+    for child in stack.current["subgoals"].values():
+        assert child["status"] == G.STATUS_SOLVED
+
+
+def test_mark_schema_leaves_leaves_uncompared_property_open():
+    """A property the role-aligned comparison did not settle (contents DIFF)
+    stays open even though size/color are COMM (P3/P4 — basis, not blanket)."""
+    stack = G.build_goalstack_from_census(CENSUS_A)
+    patterns = {"output_grid_comparisons": [_comm_receipt(_CONTENTS_DIFF)]}
+    G.mark_schema_leaves_by_comparison(stack, patterns)
+    subs = stack.current["subgoals"]
+    assert subs["size"]["status"] == G.STATUS_SOLVED
+    assert subs["color"]["status"] == G.STATUS_SOLVED
+    assert subs["contents"]["status"] == G.STATUS_OPEN
+    assert not stack.is_satisfied()
+
+
+def test_mark_schema_leaves_no_basis_leaves_all_open():
+    # no comparison receipts -> all_outputs_comm cannot fire -> nothing settled
+    stack = G.build_goalstack_from_census(CENSUS_A)
+    G.mark_schema_leaves_by_comparison(stack, {"output_grid_comparisons": []})
+    for child in stack.current["subgoals"].values():
+        assert child["status"] == G.STATUS_OPEN
+
+
+def test_goal_walk_from_patterns_value_agnostic():
+    """Same structural census + same COMM verdicts -> identical satisfied stack,
+    regardless of which colour the (here-absent) literal output would carry."""
+    def walk(census):
+        s = G.build_goalstack_from_census(census)
+        G.mark_schema_leaves_by_comparison(
+            s, {"output_grid_comparisons": [_comm_receipt(_ALL_COMM)]})
+        return s.to_json()
+    assert walk(CENSUS_A) == walk(CENSUS_A2)
+
+
 if __name__ == "__main__":
     fns = [v for k, v in sorted(globals().items())
            if k.startswith("test_") and callable(v)]

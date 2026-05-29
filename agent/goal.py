@@ -244,3 +244,68 @@ def _goal_satisfied(goal: dict) -> bool:
             for sg in subs.values()
         )
     return goal.get("status") == STATUS_SOLVED
+
+
+# ----------------------------------------------------------------------
+# Slice-1 goal walk from comparison evidence (module B on live patterns)
+# ----------------------------------------------------------------------
+#
+# The two helpers below build the *whole* easy000a goal chain directly from a
+# `patterns` bundle (`agent/compare_scheduler.build_patterns`), so the module-B
+# walk lives in module B's file rather than being inlined at its one call site.
+# ``ActiveSoarAgent._slice1_goal_record`` used to hand-assemble this chain (census
+# → GoalStack → advance×2 → per-property all_outputs_comm marking); that put
+# module-B logic inside the agent (a criterion-2 uniformity smell,
+# SLICE_1_LOOP.md §8 — 같은 종류 작업이 같은 모듈로). Extracting it here makes the
+# goal walk reusable by *both* the episode trace and a future iter's
+# recognition-via-goal path (the long-deferred "module B participates in the
+# live solve" step) through one routine — mirroring how ``compare_scheduler`` /
+# ``descent_path`` were built library-first and wired later.
+
+
+def build_goalstack_from_census(census) -> "GoalStack | None":
+    """Build the fully-evolved Slice-1 GoalStack from the grid-count census.
+
+    Forms the PAIR-level *value* goal (``value_goal_from_grid_count_census``) and
+    walks both evolution rules — Refinement (value → action: construct Gx) then
+    Decomposition (action → schema: {size, color, contents}) — returning the
+    GoalStack whose ``current`` is the schema goal (leaves all open). Returns
+    ``None`` when there is nothing to construct (no deficient test pair), exactly
+    as the value-goal constructor reports.
+
+    Value-agnostic (SLICE_1_LOOP.md §9 / P7): driven only by the structural
+    census, so easy000a (red) and easy000a2 (green) yield identical stacks.
+    """
+    value = value_goal_from_grid_count_census(census)
+    if value is None:
+        return None
+    stack = GoalStack(value)
+    stack.advance()   # Refinement:    value  -> action  (construct Gx)
+    stack.advance()   # Decomposition: action -> schema  ({size, color, contents})
+    return stack
+
+
+def mark_schema_leaves_by_comparison(stack: "GoalStack", patterns: dict) -> "GoalStack":
+    """Mark each schema-goal leaf solved on its *comparison basis* (P3/P4).
+
+    A leaf "determine Gx.<prop>" is settled only when the decisive role-aligned
+    Inter-Grid comparison of the example outputs is COMM on <prop> — the
+    ``all_outputs_comm`` matcher restricted to that single property (the same
+    module-E recognition the slow path fires). A property the comparison did not
+    settle stays open, so the stack localises which properties actually have a
+    comparison basis rather than blanket-solving them. This is the link by which
+    module B is *grounded in comparison evidence* (정답에는 근거가 있어야 하고,
+    근거는 비교의 결과에서 나온다 — SLICE_1_LOOP.md §3 lines 121-126).
+
+    Value-agnostic: ``all_outputs_comm`` reads only COMM/DIFF verdicts, never a
+    colour/coordinate value. Returns the same ``stack`` for chaining.
+    """
+    from agent import conditions  # local import: module B need not load the
+    # recognition registry merely to define its goal vocabulary.
+    for prop in GRID_SCHEMA:
+        if conditions.match(
+            "all_outputs_comm", patterns,
+            {"min_evidence": 1, "required_properties": [prop]},
+        ):
+            stack.mark_property_solved(prop)
+    return stack
