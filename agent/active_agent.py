@@ -19,7 +19,8 @@ from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
 from agent.episodic import write_episode
 from agent import conditions
-from agent.compare_scheduler import build_patterns
+from agent import goal as goal_module
+from agent.compare_scheduler import build_patterns, pair_grid_counts
 
 
 class ActiveSoarAgent:
@@ -145,7 +146,10 @@ class ActiveSoarAgent:
         """Write one episodic attempt folder for this solve() (CLAUDE.md §3.3).
 
         Captured from outside the frozen cycle: the test input grids
-        (step_000…) followed by the submitted prediction (final step).
+        (step_000…) followed by the submitted prediction (final step). The
+        trace also carries the §3 module-B goal evolution (``_slice1_goal_record``)
+        so every episode records the *goal-basis* of its answer, not just the
+        answer.
         """
         grid_steps = []
         for pair in task.test_pairs:
@@ -153,6 +157,10 @@ class ActiveSoarAgent:
                 grid_steps.append(pair.input_grid.raw)
         if predicted:
             grid_steps.append(predicted)
+        trace = list(trace or [])
+        goal_record = self._slice1_goal_record(task, predicted)
+        if goal_record is not None:
+            trace.append(goal_record)
         write_episode(
             self.episodic_memory_root,
             task.task_hex,
@@ -161,6 +169,43 @@ class ActiveSoarAgent:
             trace=trace,
             grid_steps=grid_steps,
         )
+
+    def _slice1_goal_record(self, task, predicted):
+        """Build the §3 module-B goal trace for this solve (value-agnostic).
+
+        The raw prose easy000a flow (``docs/arbor_context/arbor-flow-three-task-
+        description.md``) forms a goal from the PAIR-level grid-count comparison
+        — the test pair is missing its output grid, so the goal is *construct
+        that grid* — and evolves it at GRID level into "determine {size, color,
+        contents}". This drives module B (``agent/goal.py`` GoalStack) on the
+        *live* task each solve(), so a previously-dormant intended module now
+        executes on real data and every episode shows the §3 goal-basis of its
+        answer (CLAUDE.md §7 / SLICE_1_LOOP.md §3 lines 104, 122).
+
+        Value-agnostic (SLICE_1_LOOP.md §9 / P7): driven only by the structural
+        grid-count census (counts, never a colour/coordinate), so easy000a (red)
+        and easy000a2 (green) yield byte-identical goal trees. Returns ``None``
+        when no output needs constructing (no deficient test pair) — module B has
+        nothing to form. The schema goal's per-property leaves are marked solved
+        only when a prediction was produced, so a failed solve leaves the
+        construct-output goal *open* (an honest, inspectable trace).
+        """
+        census = pair_grid_counts(task)
+        value = goal_module.value_goal_from_grid_count_census(census)
+        if value is None:
+            return None
+        stack = goal_module.GoalStack(value)
+        stack.advance()   # Refinement:   value  -> action  (construct Gx)
+        stack.advance()   # Decomposition: action -> schema  ({size,color,contents})
+        if predicted:
+            for prop in goal_module.GRID_SCHEMA:
+                stack.mark_property_solved(prop)
+        return {
+            "phase": "goal_evolution",
+            "module": "B",
+            "satisfied": stack.is_satisfied(),
+            "goal": stack.to_json(),
+        }
 
     def _reuse_rule(self, rule, entry, task):
         """Fast-path reuse of one stored rule on `task`. Returns predicted grids

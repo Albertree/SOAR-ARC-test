@@ -2738,3 +2738,93 @@ at the current focus-level; effect = advance `wm.s1["focus-level"]` and
 compensating deletion) — and must stay behaviour-preserving for the answer (the
 descent must always reach GRID for these tasks). Slice 1 stays functionally
 complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:29
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_022903.log
+
+---
+## Learning Loop -- 2026-05-30 02:35
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_023516.log
+
+---
+## Iter 38 — 2026-05-30T02:35 — branch test21
+
+**Diagnosis**: Module B (`agent/goal.py` GoalStack) was fully built + tested
+(tests/test_goal.py) but **never instantiated during any live solve** — the
+single most dormant intended module, the goal-evolution mechanism §3 makes
+central. The probe tasks solve via the fast path (stored-rule reuse), so the
+answer was produced with *no* §3 goal-basis recorded at all: the episode showed
+*what* was answered, never the "construct the test pair's missing output →
+determine its {size,color,contents}" goal that *justifies* it. The smallest
+defensible step: drive module B on the live task each solve() and attach its
+evolved goal tree to the episode — making a dead module execute on real data
+without yet letting it *drive* operator selection (that effect half is the next,
+larger step).
+
+**Change**:
+- `agent/active_agent.py` (not frozen, not F8-listed): added
+  `_slice1_goal_record(task, predicted)` — builds the §3 GoalStack from the
+  PAIR-level grid-count census (`compare_scheduler.pair_grid_counts` →
+  `goal.value_goal_from_grid_count_census`), evolves it value→action→schema
+  (Refinement + Decomposition), and marks the schema leaves solved iff a
+  prediction was produced (a failed solve leaves the construct-output goal
+  *open*). `_record_episode` now appends this record to the episode trace, so
+  **both** solve paths (fast reuse + slow pipeline) record the goal-basis.
+  Imported `goal` and `pair_grid_counts`. Value-agnostic: census counts only,
+  no colour/coordinate — easy000a (red) and easy000a2 (green) yield byte-
+  identical goal trees.
+- `tests/test_active_agent_goal_trace.py` (new): 5 tests — full value→action→
+  schema chain on the live task, goal left open when no prediction, None when no
+  deficient test pair, **identical tree across easy000a/a2**, and no
+  colour/coordinate vocabulary in the recorded trace.
+- Did **not** touch `agent/active_operators.py` (F8 N/A), any frozen file, any
+  DSL primitive, any rule, the condition registry; no `_try_*`/`_apply_*`.
+
+**Why smallest**: it is the "goal forms" half of module A+B wiring, split off
+from the larger "descent drives the cycle" half (DescendOperator effect, which
+would add net lines to active_operators.py and ride F8). It makes the dormant
+GoalStack participate in the exact path the probe runs, value-agnostically, with
+zero frozen/F8 exposure, and is provably answer-preserving (the goal trace is an
+episode annotation, never consumed to decide the prediction).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Answer unchanged: easy000a→red(2), easy000a2→green(3). Episode trace now also
+carries a satisfied §3 schema goal `{size,color,contents}` over `construct Gx`,
+verified in episodic_memory/easy000a/attempt_065/trace.json.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+P4 3139→3141 (+2, probe re-run; episodes now carry the module-B goal trace).
+P1 2.0, P2 2.0, P3 0.0, P5 8, P6 417 unchanged (no rule/AU/matcher/
+active_operators change — this iter only wires module B into the episode-
+recording path). F1 not tripped (no frozen file); F2 none; F3 no DSL
+def/register; F4 no rule saved; F5 no TF_ under semantic_memory; F6 no budget
+growth; F7 no swallowed RuleSchemaError; F8 N/A (active_operators.py untouched,
+417→417).
+
+**Next gap (note for future iter)**: module B now *forms and evolves* the §3
+goal on every live solve, but it still does not *drive* the solve — the goal is
+recorded, not consumed by GeneralizeOperator/PredictOperator to justify the
+copy-common-output recognition, and module A's `DescendOperator` is still a
+NotImplementedError stub outside the cycle. Five matchers remain dormant
+(`needs_descend`, `descent_warranted`, `inputs_vary`, `intra_pair_grids_differ`,
+`pair_grid_count_majority`) — recognition vocabulary built but never fired live.
+The next smallest step is either (a) consume the formed goal / a dormant matcher
+in the live recognition path, or (b) implement `DescendOperator` (precondition =
+`descent_warranted`; effect = advance focus-level + `GoalStack.advance()`),
+which adds net lines to active_operators.py and so must ride with a genuine
+companion under agent/conditions/ or agent/memory.py (F8). Slice 1 stays
+functionally complete; Slice 2 is human-gated — do not start it.
