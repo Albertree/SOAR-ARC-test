@@ -176,6 +176,48 @@ def test_grid_comparison_specs_skips_test_pair_intra():
     assert "T.Pa.G1" not in operand_ids
 
 
+def test_pair_comparison_specs_pairwise_over_all_pairs():
+    # PAIR-level Inter-Pair grid_count: every pair (examples + test) compared
+    # 2-at-a-time -> C(3,2) == 3 specs, all on pair node ids (not grid ids).
+    specs = cs.pair_comparison_specs(_easy000a_task())
+    assert len(specs) == 3
+    assert {s["type"] for s in specs} == {"inter_pair_grid_count"}
+    operand_ids = {s["id1"] for s in specs} | {s["id2"] for s in specs}
+    assert operand_ids == {"T.P0", "T.P1", "T.Pa"}  # pair ids, incl. the test pair
+    keys = [s["key"] for s in specs]
+    assert len(keys) == len(set(keys))
+
+
+def test_comparison_specs_unions_grid_and_pair_with_unique_keys():
+    task = _easy000a_task()
+    specs = cs.comparison_specs(task)
+    assert specs == cs.grid_comparison_specs(task) + cs.pair_comparison_specs(task)
+    keys = [s["key"] for s in specs]
+    assert len(keys) == len(set(keys))  # GRID and PAIR key prefixes never collide
+
+
+def test_build_node_lookup_indexes_pairs_and_grids():
+    # CompareOperator must resolve both pair ids (PAIR spec) and grid ids (GRID
+    # specs); every operand id in the agenda must be present in the lookup.
+    task = _easy000a_task()
+    lookup = cs.build_node_lookup(task)
+    assert {"T.P0", "T.P1", "T.Pa"} <= set(lookup)          # pairs (incl. test)
+    assert {"T.P0.G0", "T.P0.G1", "T.Pa.G0"} <= set(lookup)  # grids
+    operand_ids = set()
+    for s in cs.comparison_specs(task):
+        operand_ids.add(s["id1"])
+        operand_ids.add(s["id2"])
+    assert operand_ids <= set(lookup)
+
+
+def test_pair_grid_count_majority_lives_via_build_patterns():
+    # The PAIR-level recogniser fires on the real Inter-Pair grid_count receipts
+    # (consensus among the two complete pairs + a dissenting test pair).
+    patterns = cs.build_patterns(_easy000a_task())
+    assert match("pair_grid_count_majority", patterns,
+                 {"required_properties": ["grid_count"]}) is True
+
+
 # --- end-to-end: producer feeds the recognition matchers ------------------
 
 def test_all_outputs_comm_lives_via_build_patterns_easy000a():

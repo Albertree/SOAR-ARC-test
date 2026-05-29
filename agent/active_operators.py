@@ -13,7 +13,7 @@ Pipeline operators (all fire in S2, read/write S1):
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
 from agent import conditions
-from agent.compare_scheduler import grid_comparison_specs, patterns_from_cycle_receipts
+from agent.compare_scheduler import comparison_specs, build_node_lookup, patterns_from_cycle_receipts
 
 
 # ======================================================================
@@ -44,11 +44,12 @@ class SolveTaskOperator(Operator):
 
 class SelectTargetOperator(Operator):
     """
-    Schedules the Slice-1 GRID-level comparison agenda via module C
-    (``grid_comparison_specs``, SLICE_1_LOOP.md §5): the Intra-Pair G0↔G1
-    comparisons *and* the role-aligned Inter-Grid comparisons across both roles
-    (§3 ②) — the deciding role==G1 and its role==G0 contrast — so the cycle's
-    compare step executes them rather than extract recomputing them.
+    Schedules the full Slice-1 comparison agenda via module C
+    (``comparison_specs``, SLICE_1_LOOP.md §5): the Intra-Pair G0↔G1 comparisons,
+    the role-aligned Inter-Grid comparisons across both roles (§3 ② — the
+    deciding role==G1 and its role==G0 contrast), *and* the PAIR-level Inter-Pair
+    grid_count comparison (§3 PAIR-level evidence), so the cycle's compare step
+    executes every §3 comparison kind rather than extract recomputing them.
     This operator only wires the specs into S1 and builds the node lookup
     CompareOperator resolves ids against (comparison-agenda, pending, comparisons).
     """
@@ -64,16 +65,12 @@ class SelectTargetOperator(Operator):
         if task is None:
             return
 
-        specs = grid_comparison_specs(task)
+        specs = comparison_specs(task)
 
-        # Build node lookup so CompareOperator can find ARCKG nodes by ID
-        node_lookup = {}
-        for pair in task.example_pairs + task.test_pairs:
-            if pair.input_grid:
-                node_lookup[pair.input_grid.node_id] = pair.input_grid
-            if pair.output_grid:
-                node_lookup[pair.output_grid.node_id] = pair.output_grid
-        wm.node_lookup = node_lookup
+        # Node lookup so CompareOperator can resolve each spec's id1/id2 to its
+        # ARCKG node — both grids (GRID-level specs) and pairs (the PAIR-level
+        # Inter-Pair grid_count spec). Built by module C (build_node_lookup).
+        wm.node_lookup = build_node_lookup(task)
 
         wm.s1["comparison-agenda"] = list(specs)
         wm.s1["pending-comparisons"] = list(specs)
@@ -141,13 +138,15 @@ class ExtractPatternOperator(Operator):
     (The retired hand-written cell-diff — ``_analyze_pair`` / ``_group_changes``
     of the ``_try_*`` / ``color_mapping`` lineage — was removed in iter 27.)
 
-    The scheduled GRID-level comparison kinds are *read from*
-    ``wm.s1["comparisons"]`` (CLAUDE.md §5: "extract_pattern reads comparisons,
-    writes patterns") rather than recomputed, so the compare step's work is not
-    discarded. The partition-by-spec-kind that routes each receipt to its matching
-    pattern key lives in module C (``patterns_from_cycle_receipts``); the
-    unscheduled kinds (Inter-Pair / grid-count census) are still computed from the
-    task there. Value-agnostic: nothing here reads a colour/coordinate value (P7).
+    The scheduled comparison kinds — the GRID-level ones and the PAIR-level
+    Inter-Pair grid_count — are *read from* ``wm.s1["comparisons"]`` (CLAUDE.md
+    §5: "extract_pattern reads comparisons, writes patterns") rather than
+    recomputed, so the compare step's work is not discarded. The
+    partition-by-spec-kind that routes each receipt to its matching pattern key
+    lives in module C (``patterns_from_cycle_receipts``); the only kind still
+    computed from the task there is the grid-count *census* (``pair_grid_counts``,
+    a structural count, not a pairwise compare). Value-agnostic: nothing here
+    reads a colour/coordinate value (P7).
     """
 
     def __init__(self):

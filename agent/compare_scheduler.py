@@ -251,8 +251,66 @@ def grid_comparison_specs(task):
     return specs
 
 
+def pair_comparison_specs(task):
+    """PAIR-level comparison agenda: Inter-Pair grid_count, pairwise (P6).
+
+    The §3 PAIR-level evidence (SLICE_1_LOOP.md §3): every pair (examples *and*
+    the test) compared 2-at-a-time on its single PAIR property, grid_count
+    (``Pair.to_json`` exposes exactly ``grid_count``). The examples carry 2 grids
+    and the test 1, so the receipts split COMM (the complete pairs agree) / DIFF
+    (the test dissents) — the consensus-with-dissenter structure the
+    ``pair_grid_count_majority`` matcher recognises (and the same fact
+    ``test_output_missing`` reads from the raw census). Scheduling it here means
+    the cycle's compare step *executes* this PAIR-level comparison instead of
+    ``build_patterns`` recomputing it (CLAUDE.md §5). Pair node ids only —
+    value-agnostic (P7): it never reads a colour, coordinate, or grid_count value.
+    """
+    specs = []
+    for j, (a, b) in enumerate(combinations(pairs_of(task), 2)):
+        specs.append({
+            "type": "inter_pair_grid_count",
+            "key": f"inter_pair_grid_count_{j}",
+            "id1": a.node_id,
+            "id2": b.node_id,
+        })
+    return specs
+
+
+def comparison_specs(task):
+    """The full Slice-1 comparison agenda the SOAR cycle executes (module C).
+
+    Concatenates the GRID-level specs (``grid_comparison_specs``: Intra-Pair
+    G0↔G1 + role-aligned Inter-Grid over both roles) with the PAIR-level
+    Inter-Pair grid_count specs (``pair_comparison_specs``). Routing *every* §3
+    comparison kind through one agenda means select→compare→extract share one
+    receipt set rather than extract recomputing comparisons the cycle never ran
+    (CLAUDE.md §5). Each spec carries a unique ``key`` (the GRID and PAIR key
+    prefixes differ), so CompareOperator stores receipts without collision.
+    """
+    return grid_comparison_specs(task) + pair_comparison_specs(task)
+
+
+def build_node_lookup(task):
+    """Map node_id -> ARCKG node for every node ``comparison_specs`` references.
+
+    CompareOperator resolves each spec's ``id1``/``id2`` against this map. The
+    GRID-level specs reference grid nodes and the PAIR-level Inter-Pair
+    grid_count spec references pair nodes, so both the pairs (examples + test)
+    and their grids are indexed.
+    """
+    lookup = {}
+    for pair in pairs_of(task):
+        lookup[pair.node_id] = pair
+        if pair.input_grid is not None:
+            lookup[pair.input_grid.node_id] = pair.input_grid
+        if pair.output_grid is not None:
+            lookup[pair.output_grid.node_id] = pair.output_grid
+    return lookup
+
+
 def build_patterns(task, compare_fn=None, intra_pair_receipts=None,
-                   output_receipts=None, input_receipts=None):
+                   output_receipts=None, input_receipts=None,
+                   pair_grid_count_receipts=None):
     """Assemble the Slice-1 `patterns` dict consumed by the condition matchers.
 
     Keys:
@@ -262,11 +320,12 @@ def build_patterns(task, compare_fn=None, intra_pair_receipts=None,
       pair_grid_count_comparisons  -> pair_grid_count_majority (PAIR-level, Inter)
       pair_grid_counts             -> test_output_missing     (PAIR-level trigger)
 
-    ``intra_pair_receipts`` / ``output_receipts`` / ``input_receipts``: when
-    supplied (the receipts the SOAR cycle's ``compare`` step already produced for
-    the Intra-Pair G0↔G1, the deciding Inter-Grid role==G1, and the contrast
-    Inter-Grid role==G0 comparisons respectively), they populate the matching key
-    instead of being recomputed here — so select→compare→extract share one
+    ``intra_pair_receipts`` / ``output_receipts`` / ``input_receipts`` /
+    ``pair_grid_count_receipts``: when supplied (the receipts the SOAR cycle's
+    ``compare`` step already produced for the Intra-Pair G0↔G1, the deciding
+    Inter-Grid role==G1, the contrast Inter-Grid role==G0, and the PAIR-level
+    Inter-Pair grid_count comparisons respectively), they populate the matching
+    key instead of being recomputed here — so select→compare→extract share one
     receipt set rather than extract silently redoing the cycle's comparison work
     (CLAUDE.md §5: "extract_pattern reads comparisons"). ``None`` (library /
     standalone use) keeps the original behaviour: that key is computed from the
@@ -278,11 +337,13 @@ def build_patterns(task, compare_fn=None, intra_pair_receipts=None,
                else output_grid_comparisons(task, compare_fn))
     inputs = (input_receipts if input_receipts is not None
               else input_grid_comparisons(task, compare_fn))
+    pair_counts = (pair_grid_count_receipts if pair_grid_count_receipts is not None
+                   else pair_grid_count_comparisons(task, compare_fn))
     return {
         "output_grid_comparisons": outputs,
         "input_grid_comparisons": inputs,
         "intra_pair_grid_comparisons": intra,
-        "pair_grid_count_comparisons": pair_grid_count_comparisons(task, compare_fn),
+        "pair_grid_count_comparisons": pair_counts,
         "pair_grid_counts": pair_grid_counts(task),
     }
 
@@ -295,14 +356,17 @@ def patterns_from_cycle_receipts(task, comparisons, compare_fn=None):
     each spec records so every GRID-level kind the agenda scheduled is *read from*
     the cycle's receipts rather than recomputed:
 
-      · ``inter_grid_output`` -> output_grid_comparisons  (deciding, §3 ②)
-      · ``inter_grid_input``  -> input_grid_comparisons   (contrast, §3 ②)
-      · everything else       -> intra_pair_grid_comparisons (§3 ①)
+      · ``inter_grid_output``     -> output_grid_comparisons     (deciding, §3 ②)
+      · ``inter_grid_input``      -> input_grid_comparisons      (contrast, §3 ②)
+      · ``inter_pair_grid_count`` -> pair_grid_count_comparisons (PAIR-level, §3)
+      · everything else           -> intra_pair_grid_comparisons (§3 ①)
 
-    Kinds not yet on the agenda (Inter-Pair grid_count / grid-count census) are
-    still computed from the task by ``build_patterns``. With no receipts (operator
-    invoked standalone), every key falls back to a task recompute, so the result
-    equals ``build_patterns(task)``. Value-agnostic: only COMM/DIFF verdicts and
+    The only kind not on the agenda is the grid-count *census*
+    (``pair_grid_counts``, a structural count split by role, not a
+    ``compare(scope_A, scope_B)`` receipt), so it is still computed from the task
+    by ``build_patterns``. With no receipts (operator invoked standalone), every
+    key falls back to a task recompute, so the result equals
+    ``build_patterns(task)``. Value-agnostic: only COMM/DIFF verdicts and
     structural counts are read, never a colour/coordinate value (P7).
     """
     by_type = {}
@@ -310,11 +374,12 @@ def patterns_from_cycle_receipts(task, comparisons, compare_fn=None):
         if isinstance(c, dict) and "result" in c:
             spec_type = (c.get("spec") or {}).get("type")
             by_type.setdefault(spec_type, []).append(c["result"])
-    routed = {"inter_grid_output", "inter_grid_input"}
+    routed = {"inter_grid_output", "inter_grid_input", "inter_pair_grid_count"}
     intra = [r for t, rs in by_type.items() if t not in routed for r in rs]
     return build_patterns(
         task, compare_fn,
         intra_pair_receipts=intra or None,
         output_receipts=by_type.get("inter_grid_output") or None,
         input_receipts=by_type.get("inter_grid_input") or None,
+        pair_grid_count_receipts=by_type.get("inter_pair_grid_count") or None,
     )

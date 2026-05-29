@@ -2230,3 +2230,83 @@ the census likely stays a build_patterns recompute. Deeper still: modules A
 (`DescendOperator` impasse-driven descent) and B (GoalStack) remain stubs — the
 centre of the raw-prose flow, large and F8-risky. Slice 1 stays functionally
 complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 01:47
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_014751.log
+
+---
+## Iter 32 — 2026-05-30T01:52 — branch test21
+
+**Diagnosis**: Iters 29–31 routed the §3 ① (Intra-Pair G0↔G1) and both halves
+of §3 ② (Inter-Grid role==G1 decider + role==G0 contrast) onto the cycle agenda
+so select→compare executes them. The remaining §3 comparison still recomputed
+inside `build_patterns` — never put on the agenda — was the **PAIR-level evidence**
+(Inter-Pair grid_count, `pair_grid_count_comparisons`): the cycle never visibly
+ran the "grid-count 다수결 2 vs Pa 의 1" step. Smallest defensible step: schedule
+the Inter-Pair grid_count comparison through the agenda, mirroring the GRID-level
+paths already there, so extract reads it from the cycle's receipts.
+
+**Change**:
+- `agent/compare_scheduler.py`: new `pair_comparison_specs(task)` emits the
+  PAIR-level Inter-Pair grid_count specs (pairwise/P6 over *all* pairs incl. the
+  test, `type=="inter_pair_grid_count"`, unique keys, pair node ids only —
+  value-agnostic). New `comparison_specs(task)` = `grid_comparison_specs +
+  pair_comparison_specs` (the full agenda the cycle executes). New
+  `build_node_lookup(task)` indexes both pairs *and* grids so CompareOperator can
+  resolve the PAIR spec's pair ids (the GRID specs only needed grid ids).
+  `build_patterns` gains a `pair_grid_count_receipts` param; the
+  `patterns_from_cycle_receipts` partition routes `inter_pair_grid_count`
+  receipts → `pair_grid_count_comparisons` (only the grid-count *census*, a
+  structural count not a pairwise compare, still recomputes from the task).
+- `agent/active_operators.py` (**net −1**): SelectTargetOperator now calls
+  `comparison_specs(task)` and `build_node_lookup(task)` (the inline grid-only
+  node_lookup loop deleted); Select/Extract docstrings updated to name the
+  PAIR-level spec. Net deletion → F8 refactor exemption.
+- `tests/test_compare_scheduler.py` (+5 tests): `pair_comparison_specs` is
+  pairwise over all 3 pairs on pair ids; `comparison_specs` unions grid+pair with
+  unique keys; `build_node_lookup` covers every agenda operand id;
+  `pair_grid_count_majority` fires via `build_patterns`.
+  `tests/test_extract_pattern.py` (+1 test): `inter_pair_grid_count` receipts
+  route to `pair_grid_count_comparisons`, distinct from GRID receipts.
+
+**Why smallest**: behaviour-preserving — the scheduled PAIR receipts are the same
+pair-node pairs + same deterministic `arckg_compare` as the recompute, and the
+copy-common-output decision reads only `test_output_missing` (census) +
+`all_outputs_comm` (GRID decider), so the answer is unchanged. Only the cycle's
+step count moves (18→24: three PAIR compares + their elaborations). Both targets
+still solve value-agnostically via the pure slow path: easy000a → (5,5)=red(2),
+easy000a2 → (0,0)=green(3), 24 steps each; agenda keys now {grid_0, grid_1,
+inter_grid_output_0, inter_grid_input_0, inter_pair_grid_count_{0,1,2}}.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Fast path untouched → probe identical. Slow path re-verified end-to-end with
+stored rules bypassed per-task: both pipeline, 24 steps, value-agnostic outputs
+above.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P6 418 → 417 (Δ +1 line removed)** and **P4 3117 → 3121 (+4 episodes)**.
+P1 2.0, P2 2.0, P3 0.0, P5 5 unchanged (Slice-1 vocabulary saturated; AU is
+Slice-2/human-gated). F1 not tripped (active_operators.py/compare_scheduler.py
+not frozen); F2 none (no new `_try_`/`_apply_`); F3 no DSL `def`/`register`; F4
+no rule saved; F5 no `TF_` under semantic_memory; F6 no budget growth; F7 no
+swallowed RuleSchemaError; F8 satisfied (active_operators.py net −1 →
+deletion/refactor exemption).
+
+**Next gap (note for future iter)**: every §3 *pairwise comparison* (Intra-Pair,
+both Inter-Grid roles, Inter-Pair grid_count) is now on the cycle agenda; the
+only §3 datum still recomputed in `build_patterns` is the grid-count *census*
+(`pair_grid_counts`) — a structural count split by role, not a
+compare(scope_A,scope_B) receipt, so it does not fit the agenda's shape and
+likely stays a recompute. Module C's scheduling side of Slice 1 is essentially
+complete. The remaining centre-of-flow gaps are modules A (`DescendOperator`
+impasse-driven descent — currently raises NotImplementedError) and B (GoalStack
+"make Pa's output" → "Gx.{size,color,contents}") — both large and F8-risky.
+Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.

@@ -188,6 +188,28 @@ def test_consumes_cycle_input_grid_comparisons():
     assert wm.s1["patterns"]["intra_pair_grid_comparisons"] == [intra0]
 
 
+def test_consumes_cycle_pair_grid_count_comparisons():
+    # The PAIR-level Inter-Pair grid_count receipts the cycle produces are stored
+    # under inter_pair_grid_count specs; extract must route them to the
+    # pair_grid_count_comparisons key (not recompute), distinct from every
+    # GRID-level receipt.
+    task = _fixed_output_task("easy000a", fill_color=2)
+    wm = _WM(task)
+    pc0 = {"type": "COMM", "tag": "cycle-paircount-0"}
+    pc1 = {"type": "DIFF", "tag": "cycle-paircount-1"}
+    intra0 = {"type": "DIFF", "tag": "cycle-intra-0"}
+    wm.s1["comparisons"] = {
+        "grid_0": {"spec": {"type": "grid", "pair_idx": 0}, "result": intra0},
+        "inter_pair_grid_count_0": {
+            "spec": {"type": "inter_pair_grid_count"}, "result": pc0},
+        "inter_pair_grid_count_1": {
+            "spec": {"type": "inter_pair_grid_count"}, "result": pc1},
+    }
+    ExtractPatternOperator().effect(wm)
+    assert wm.s1["patterns"]["pair_grid_count_comparisons"] == [pc0, pc1]
+    assert wm.s1["patterns"]["intra_pair_grid_comparisons"] == [intra0]
+
+
 def test_falls_back_to_recompute_when_no_comparisons():
     # With no comparisons in the slot (e.g. operator invoked standalone), the
     # intra key is computed from the task — i.e. identical to build_patterns(task).
