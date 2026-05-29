@@ -6677,3 +6677,73 @@ that rule's `covers`) would DIRECTLY raise P2/P1 if fixed — but it sits in the
 fast-path reuse code (`_reuse_rule`/`increment_reuse_count`), is answer-neutral,
 and touching it risks the frozen reuse contract; flagging it as the most concrete
 in-scope P-mover for a future iter rather than acting on it blindly now.
+
+> STAGNATION at iter 94 — 12 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:41
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_074127.log
+
+---
+## Iter 95 — 2026-05-30 — branch test21
+
+**Iter 95: no defensible step found — analysis only (PROMPT.md §5).** 13th
+consecutive neutral iter — but this entry pins a claim prior iters only asserted
+behaviorally to its exact source location.
+
+**Diagnosis**: Re-diagnosed first-hand. Slice 1 complete and human-gated:
+`docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed); `data/ARC_easy/` =
+{easy000a, easy000a2} frozen (F6); one valid rule (`rule_003.json` —
+{condition:`copy_common_output_applies`, action:`make_grid`}, value-agnostic,
+covers=[easy000a,easy000a2], au_trace=null). Probe = 2/2 CORRECT via stored rule.
+
+**New finding (source-pinned, the contribution of this iter)**: Iters 94 flagged a
+"covers-merge gap" behaviorally (a 2nd task hitting the cache isn't added to the
+rule's `covers`). I confirmed it directly in `agent/memory.py`: the fast path
+`increment_reuse_count()` (lines 225–237) writes **only** `times_reused`; it never
+appends `task_hex` to `covers`. `covers` grows in exactly one place — the slow-path
+equivalence branch of `save_rule_to_ltm()` (lines 128–132). So per CLAUDE.md §3.2
+("covers = all tasks this rule has successfully handled") and §8 (rule_coverage =
+solved/rules), a task solved *purely* via fast-path reuse is silently absent from
+the coverage accounting that is the system's headline metric.
+
+**Why it is still NOT a defensible commit this iter**: (a) it is inert on the
+frozen 2-task slice — both tasks are already in rule_003.covers, so adding the
+merge changes no current number (P1/P2 stay 2.0, no positive-signal movement);
+(b) the fix changes `increment_reuse_count`'s contract and its caller in
+`active_agent.py`, and tooling this session was intermittently lagging/timing out
+(ripgrep/Glob timed out repeatedly), so I could not reliably run
+`pytest tests/` + `check_invariants.sh --check` — PROMPT.md §4 requires
+verification before declaring done, and an unverifiable change to the reuse path
+is exactly the "wrong commit worse than no commit" §5 warns against.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Positive-signal analysis** (consistent with iters 90–94; not re-run live this
+iter due to tool instability):
+- P1=2.0, P2=2.0 — capped (2 tasks / 1 rule, pool frozen F6; lone rule, no merge).
+- P3=0.0 — anti-unification explicitly OUT of Slice 1 (§4/§9). Blocked.
+- P4≈3290 — grows only by re-running solves = metric-gaming.
+- P5=10 — §3 recognition flow fully covered; 11th matcher = dead vocabulary (§5.1).
+- P6=435 — `active_operators.py` all-live; detector family already removed.
+
+**Invariants**: forbidden=none (no code diff).
+
+**Next gap (note for future iter)**: unchanged unblock = **human action: provide
+`docs/SLICE_2_LOOP.md`** (+ data easy000b.json). Do NOT start Slice 2
+autonomously (§10). The covers-merge fix at `agent/memory.py:increment_reuse_count`
+(lines 225–237) is now precisely located and becomes a genuine in-scope
+P1/P2-mover the moment Slice 2 adds a task solved via fast-path that is not
+already in some rule's `covers` — at which point it should be fixed *with* a
+verified, answer-preserving test run.
+
+> STAGNATION at iter 95 — 13 consecutive neutral iters.
