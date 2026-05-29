@@ -4933,3 +4933,71 @@ is wiring `GoalStack` as a live S1 WM object that gates `preferences.select_oper
 (module B's *only* remaining deferred half — its satisfaction logic is already
 live-consumed via `schema_goal_satisfied`); split it (consult-only first, then let
 satisfaction influence preferences) as it carries live-trigger regression risk.
+
+> STAGNATION at iter 66 — 11 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:04
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_060415.log
+
+---
+## Iter 67 — 2026-05-30T06:06 — branch test21
+
+**Iter 67: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed from scratch (not inherited). Slice 1 is functionally
+complete and human-gated: `docs/SLICE_2_LOOP.md` is still absent and
+`PROMPT.md` / `docs/SLICE_1_LOOP.md` are unchanged (f4296f20, 2026-05-29). Every
+positive signal is frozen *within* Slice 1 scope, and no agent-side gap remains
+whose closure moves one without gaming a metric or starting the human-gated Slice 2.
+
+**Evidence verified live this iter (independently, not copied from prior logs)**:
+- `VerifyOperator` is wired-live, so P6 has nothing net-negative-removable: grep
+  shows it imported in `agent/rules.py` (`build_proposer`) and `"verify"` listed in
+  `agent/preferences.py:PREFERENCE_ORDER`. Deleting it is a regression, not churn.
+- `CONDITION_REGISTRY` holds exactly 10 matchers (`all_outputs_comm`,
+  `copy_common_output_applies`, `descent_warranted`, `inputs_vary`,
+  `intra_pair_grids_differ`, `needs_descend`, `nothing_to_compare`,
+  `pair_grid_count_majority`, `schema_goal_satisfied`, `test_output_missing`), all
+  live-consumed. Notably `agent/conditions/descent_path.py` is *deliberately* NOT
+  registered (its own docstring states this) to avoid inflating P5 with vocabulary
+  that has no live consumer — confirming the architecture is disciplined against the
+  F4-class accretion. A new matcher would therefore be dead vocabulary.
+- `active_operators.py` read end-to-end (436 lines): 8 live pipeline operators +
+  `VerifyOperator` alias; `_try_*`/`_apply_*` family already retired (iter 27); the
+  copy-common-output path dispatches via the recognition registry, not a detector.
+- Probe (in context): easy000a + easy000a2 both CORRECT via stored rule, 1 rule,
+  covers mean 2.0 — value-agnostic (same recipe, different fixed outputs).
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4/§9`).
+- P4: auto-increments per solve regardless of code — moving it = running solves,
+  not a code contribution.
+- P5: §3 flow fully covered by 10 live matchers; a new one is dead vocabulary
+  (F4-class) — the very accretion the architecture forbids.
+- P6: `_try_*`/`_apply_*` retired; all remaining operators (incl. `VerifyOperator`)
+  wired-live — nothing safely removable.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`**. Do not start Slice 2 autonomously
+(`SLICE_1_LOOP.md §10`). When it opens, the highest-value in-architecture first
+step is wiring `GoalStack` as a live S1 WM object that gates
+`preferences.select_operator` (module B's only remaining deferred half — its
+satisfaction logic is already live-consumed via `schema_goal_satisfied`); split it
+(consult-only first, then let satisfaction influence preferences) for live-trigger
+regression safety.
