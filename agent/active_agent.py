@@ -39,10 +39,13 @@ class ActiveSoarAgent:
         # Stats for logging
         self.last_solve_info = {}
 
-    def solve(self, task) -> list:
+    def solve(self, task, log_wm: bool = False) -> list:
         """
         Solve one task. Returns list of predicted grids (one per test pair).
         Tries stored rules first, then full pipeline.
+
+        log_wm: when True, the slow-path SOAR cycle prints WM triplets per phase
+        (for diagnosis). The fast path (stored rules) has no cycle to log.
         """
         if self._current_task_hex != task.task_hex:
             self._current_task_hex = task.task_hex
@@ -86,7 +89,7 @@ class ActiveSoarAgent:
             wm, elaborator, proposer,
             max_steps=self.max_steps,
             stop_on_goal=True,
-            log_wm=False,
+            log_wm=log_wm,
         )
 
         predicted = self._extract_prediction(wm)

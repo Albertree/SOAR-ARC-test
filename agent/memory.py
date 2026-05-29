@@ -60,9 +60,25 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
                 stored = json.load(fh)
             if _rules_equivalent(stored.get("rule", {}), rule):
                 covers = stored.get("covers", [stored.get("source_task", "")])
+                changed = False
                 if task_hex not in covers:
                     covers.append(task_hex)
                     stored["covers"] = covers
+                    changed = True
+                # Backfill the {condition, action} pair for legacy rules that
+                # predate the schema (CLAUDE.md §3.2). A bare transformation
+                # payload without these keys is dead memory the fast path
+                # cannot look up.
+                if "condition" not in stored:
+                    stored["condition"] = _build_condition(stored.get("rule", {}))
+                    changed = True
+                if "action" not in stored:
+                    stored["action"] = _build_action(stored.get("rule", {}))
+                    changed = True
+                if "anti_unification_trace" not in stored:
+                    stored["anti_unification_trace"] = None
+                    changed = True
+                if changed:
                     with open(path, "w") as fh:
                         json.dump(stored, fh, indent=2)
                 return path
@@ -75,9 +91,12 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
         "id": next_id,
         "concept": _infer_concept(rule),
         "category": _infer_category(rule),
+        "condition": _build_condition(rule),
+        "action": _build_action(rule),
         "rule": rule,
         "covers": [task_hex],
         "source_task": task_hex,
+        "anti_unification_trace": None,
         "created_at": datetime.now().isoformat(),
         "times_reused": 0,
     }
@@ -144,6 +163,40 @@ def chunk_from_substate(substate: dict) -> dict:
 # ======================================================================
 # Internal helpers
 # ======================================================================
+
+# A stored rule is a {condition, action} pair — a manual describing *when*
+# and *how* to apply a transformation (CLAUDE.md §3.2, docs/RULE_FORMAT.md).
+# The pipeline's internal rule payload only carries the "how"; these helpers
+# derive the matching condition/action envelope so every saved rule is a
+# valid pair the fast path can look up (and so it passes invariant F4).
+
+# Internal rule "type" -> the documented condition.type that recognises it
+# (docs/RULE_FORMAT.md §4 condition-type registry).
+_CONDITION_TYPE_BY_RULE = {
+    "color_mapping": "consistent_color_mapping",
+    "recolor_sequential": "sequential_recoloring",
+    "identity": "identity_transformation",
+}
+
+
+def _build_condition(rule: dict) -> dict:
+    """Derive the {type, params, min_evidence} condition for a rule payload."""
+    rtype = (rule or {}).get("type", "unknown")
+    ctype = _CONDITION_TYPE_BY_RULE.get(rtype, f"{rtype}_pattern")
+    return {"type": ctype, "params": {}, "min_evidence": 1}
+
+
+def _build_action(rule: dict) -> dict:
+    """Derive the {dsl, args} action for a rule payload.
+
+    Every transformation is a composition of the two frozen primitives
+    (`coloring` / `make_grid`, CLAUDE.md §6.1), so a cell-recolouring rule's
+    action.dsl is `coloring`; the rule's own parameters become the args.
+    """
+    rule = rule or {}
+    args = {k: v for k, v in rule.items() if k not in ("type", "confidence")}
+    return {"dsl": "coloring", "args": args}
+
 
 def _rules_equivalent(a: dict, b: dict) -> bool:
     """

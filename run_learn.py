@@ -41,6 +41,9 @@ def parse_args():
     p.add_argument("--split", default=None,
                    help="Force ARC_AGI split: 'training' (1000 tasks) or 'evaluation' (120 tasks). "
                         "Omit to use data/ARC_easy/ when present.")
+    p.add_argument("--task", nargs="+", default=None, metavar="ID",
+                   help="run only these specific task id(s), e.g. --task easy000a easy000a2. "
+                        "Bypasses --split/--limit/--shuffle.")
     p.add_argument("--limit", type=int, default=None, help="max tasks to run")
     p.add_argument("--shuffle", action="store_true", help="randomize task order")
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
@@ -119,14 +122,19 @@ def main():
         max_steps=50,
     )
 
-    split = args.split or "training"
-    force_split = args.split is not None
-    task_hexes = get_task_list(split, force_split=force_split)
-    if args.shuffle:
-        random.seed(args.seed)
-        random.shuffle(task_hexes)
-    if args.limit is not None:
-        task_hexes = task_hexes[:args.limit]
+    if args.task:
+        task_hexes = list(args.task)
+        split = "explicit"
+        force_split = False
+    else:
+        split = args.split or "training"
+        force_split = args.split is not None
+        task_hexes = get_task_list(split, force_split=force_split)
+        if args.shuffle:
+            random.seed(args.seed)
+            random.shuffle(task_hexes)
+        if args.limit is not None:
+            task_hexes = task_hexes[:args.limit]
 
     total = len(task_hexes)
     correct_count = 0
@@ -177,7 +185,7 @@ def main():
 
         try:
             task = manager.load_task(task_hex)
-            predicted = agent.solve(task)
+            predicted = agent.solve(task, log_wm=args.log_wm)
             is_correct = check_correct(predicted, task)
             elapsed = time.time() - task_start
 

@@ -105,10 +105,15 @@ while true; do
     log "========== ITER $ITER =========="
 
     # ── 1. PROBE ────────────────────────────────────────────
-    log "Probe: run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED"
-    PROBE_OUTPUT=$(python run_learn.py --limit "$PROBE_SIZE" --seed "$PROBE_SEED" 2>&1 || true)
+    # Slice 1 targets (docs/SLICE_1_LOOP.md): both must solve via the same
+    # value-agnostic G1-COMM mechanism. The probe runs them explicitly rather
+    # than a random ARC_AGI sample so the microscope always points at the slice.
+    # (--probe-size/--probe-seed are vestigial for this probe.)
+    SLICE1_TASKS="easy000a easy000a2"
+    log "Probe: run_learn.py --task $SLICE1_TASKS"
+    PROBE_OUTPUT=$(python run_learn.py --task $SLICE1_TASKS 2>&1 || true)
     echo "$PROBE_OUTPUT" >> "$PIPELINE_LOG"
-    PROBE_SCORE=$(echo "$PROBE_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $PROBE_SIZE")
+    PROBE_SCORE=$(echo "$PROBE_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / 2")
     log "Probe score (microscope, NOT reward): $PROBE_SCORE"
 
     # ── 2. SNAPSHOT ─────────────────────────────────────────
@@ -125,8 +130,8 @@ Your authoritative input is PROMPT.md. Read it now and execute it.
 
 CONTEXT FROM THE LOOP (not part of PROMPT.md, just situational):
 
-  - The probe (run_learn.py --limit ${PROBE_SIZE} --seed ${PROBE_SEED}) has
-    already been run for you. Its output:
+  - The probe (run_learn.py --task ${SLICE1_TASKS}) has
+    already been run for you — these are the Slice 1 target tasks. Its output:
 
     ===== PROBE OUTPUT =====
 ${PROBE_OUTPUT}
