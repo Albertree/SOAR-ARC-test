@@ -6322,3 +6322,56 @@ the mechanism shift is property *value* COMM → property *relation* COMM
 anti-unification of two per-pair programs; the first defensible step is likely
 module-C object-level scope (`select(grid, object, pred)`) wired but
 answer-neutral, split from the anti-unification of programs.
+
+> STAGNATION at iter 88 — 6 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:18
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_071855.log
+
+---
+## Iter 89 — 2026-05-30T07:20 — branch test21
+
+**Iter 89: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand. Slice 1 is complete and human-gated.
+Verified this iter, not inherited: gate ABSENT (`docs/SLICE_2_LOOP.md` missing;
+`data/ARC_easy/` = {easy000a, easy000a2}; one valid rule `rule_003.json`,
+covers=[easy000a,easy000a2], au_trace=null). Ran the intended slow-path tests
+directly (pytest absent on this interpreter): 18/18 passed across
+`test_slow_path_value_agnostic` (3), `test_live_descent_wiring` (7),
+`test_predict_copy_common_output` (8) — confirming the from-empty-memory,
+value-agnostic, live TASK→PAIR→GRID descent + role-aligned Inter-Grid COMM
+prediction path is real and non-stub, so the four §8 observation criteria hold.
+The probe's `via=stored` is the fast-path reuse shortcut; the intended bottom-up
+discovery mechanism is what the tests exercise.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2 = 2.0, capped (1 rule, 2 tasks, pool frozen F6, 1 rule → no merge possible).
+- P3 = 0.0: anti-unification is explicitly OUT of Slice 1 (§4/§9) — wiring it trips a guardrail.
+- P4 = 3280: grows only by re-running solves = metric-gaming, not a contribution.
+- P5 = 10: §3 flow fully covered by live matchers; an 11th = dead F4-class vocabulary (§9 forbids reverting C to an enumerated rule list).
+- P6 = 435: `active_operators.py` is all-live (pipeline operators + helpers); nothing safely removable.
+
+**Invariants**: forbidden=none (no code diff). `--check` = NEUTRAL —
+P1=2.0 P2=2.0 P3=0.0 P4=3280 P5=10 P6=435 (all Δ0), confirmed this iter.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json). Do NOT
+start Slice 2 autonomously (§10). When it opens, the mechanism shift is property
+*value* COMM → property *relation* COMM (structure-mapping across pairs) +
+object-level descent + the first anti-unification of two per-pair programs; the
+first defensible step is likely module-C object-level scope
+(`select(grid, object, pred)`) wired but answer-neutral, split from the
+anti-unification of programs.
