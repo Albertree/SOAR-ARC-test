@@ -75,7 +75,7 @@ class ActiveSoarAgent:
                 continue  # skip identity fallback rules
             predicted = self._reuse_rule(rule, entry, task)
             if predicted:
-                increment_reuse_count(entry)
+                increment_reuse_count(entry, task.task_hex)
                 self.last_solve_info.update({
                     "method": "stored_rule",
                     "rule_type": rule.get("type", "unknown"),

@@ -222,8 +222,24 @@ def load_all_rules(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list
     return rules
 
 
-def increment_reuse_count(entry: dict) -> None:
-    """Increment times_reused for a stored rule and persist the change."""
+def increment_reuse_count(entry: dict, task_hex: str = None) -> None:
+    """Increment times_reused for a stored rule and persist the change.
+
+    When ``task_hex`` is given and not already listed, it is appended to the
+    rule's ``covers``. A fast-path reuse that produced an answer means the rule
+    has now *handled* that task, and CLAUDE.md §3.2 defines ``covers`` as the
+    set of tasks a rule has successfully handled. This mirrors the slow-path
+    equivalence branch in ``save_rule_to_ltm`` (which appends ``task_hex`` to
+    ``covers`` when the same rule is re-derived) so reuse and discovery keep one
+    coverage-accounting contract, not two. Without it, a task solved purely via
+    the fast path is silently absent from ``covers`` — and from P1
+    (``solved_tasks / total_rules``), the headline coverage metric — so P1 stays
+    accurate only by accident of *which* path happened to fire first.
+
+    ``task_hex`` is optional (default ``None``) so existing call sites that only
+    want the counter bumped keep working unchanged. Appending to ``covers`` cannot
+    invalidate the {condition, action} pair, so no re-validation is needed here.
+    """
     path = entry.get("_path")
     if not path or not os.path.exists(path):
         return
@@ -231,6 +247,14 @@ def increment_reuse_count(entry: dict) -> None:
         with open(path, "r") as fh:
             data = json.load(fh)
         data["times_reused"] = data.get("times_reused", 0) + 1
+        if task_hex:
+            covers = data.get("covers", [data.get("source_task", "")])
+            if task_hex not in covers:
+                covers.append(task_hex)
+                data["covers"] = covers
+                # Keep the in-memory entry consistent with what we persist so a
+                # caller holding `entry` sees the updated coverage too.
+                entry["covers"] = covers
         with open(path, "w") as fh:
             json.dump(data, fh, indent=2)
     except (json.JSONDecodeError, IOError):

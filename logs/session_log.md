@@ -6747,3 +6747,64 @@ already in some rule's `covers` — at which point it should be fixed *with* a
 verified, answer-preserving test run.
 
 > STAGNATION at iter 95 — 13 consecutive neutral iters.
+
+> STAGNATION at iter 95 — 13 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:48
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_074801.log
+
+---
+## Iter 96 — 2026-05-30 — branch test21
+
+**Diagnosis**: Iters 94–95 twice *pinned* a real bug at
+`agent/memory.py:increment_reuse_count` — the fast path bumps `times_reused` but
+never adds the reused task to the rule's `covers`, even though CLAUDE.md §3.2
+defines `covers` as the set of tasks a rule has *successfully handled* and the
+slow-path equivalence branch (lines 130–132) already does that merge. So a task
+solved *purely* by fast-path reuse is silently absent from `covers` and from P1
+(`solved_tasks/total_rules`); P1=2.0 currently holds only because easy000a2 went
+slow-path in some historical run, not robustly. Prior iters declined to fix it
+citing flaky tooling; my tooling works, so I fixed and verified it.
+
+**Change**:
+- `agent/memory.py`: `increment_reuse_count(entry, task_hex=None)` now appends
+  `task_hex` to `covers` when given and absent (idempotent), mirroring the
+  slow-path merge so reuse and discovery share one coverage-accounting contract.
+  `task_hex` is optional → existing callers unchanged; appending to `covers`
+  cannot invalidate the {condition, action} pair, so no re-validation needed.
+- `agent/active_agent.py`: fast-path call site passes `task.task_hex`.
+- `tests/test_fast_path_covers_merge.py` (new): regression test. Verified it
+  FAILS on pre-fix code (`covers` stuck at `['easy000a']`) and PASSES after —
+  plus a backward-compat test that `increment_reuse_count(entry)` with no
+  task_hex still only bumps the counter and leaves `covers` untouched.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; unchanged (covers already had both tasks on the
+frozen slice, so the merge is idempotent here — the fix is latent robustness,
+not a live bump).
+
+**Invariants**: forbidden=none. Live `check_invariants.sh --check` = exit 2
+NEUTRAL (P1=2.0 P2=2.0 P3=0.0 P4=3294 P5=10 P6=435, all Δ0). No frozen file
+touched; no new `_try_*`/`_apply_*`; no DSL primitive; no rule without condition;
+no TF_GRID; no budget growth; RuleSchemaError not swallowed; F8 N/A (memory.py is
+in the touched set). All 29 test files pass.
+
+**Why commit a NEUTRAL fix**: it pays down a precisely-pinned, twice-flagged real
+defect in P1's substrate with a demonstrated regression test, is answer-preserving
+and backward-compatible, and does not pollute the positive-signal baseline (every
+P unchanged). It makes coverage accounting honest regardless of solve path — which
+is exactly "knowledge grows in the way the user intends." Strictly better than a
+14th analysis-only no-op.
+
+**Next gap (note for future iter)**: unchanged structural unblock = **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ easy000b data); do NOT start Slice 2
+autonomously (§10). With the covers-merge fix landed, the moment Slice 2 adds a
+task solved via fast-path that is not already covered, P1/P2 will now move
+correctly on their own. No remaining in-scope P-mover on the frozen 2-task slice.
