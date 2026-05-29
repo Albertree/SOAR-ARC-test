@@ -7148,3 +7148,52 @@ is no in-scope positive-signal lever that is not either pinned by the frozen poo
 or out of slice scope: the only moving quantity (P4) moves solely as a side
 effect of re-running the probe. The next real work is gated on the human handoff
 to Slice 2, not on any code in this repo.
+
+> STAGNATION at iter 101 — 19 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 08:07
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_080713.log
+
+---
+## Iter 102 — 2026-05-30T08:16 — branch test21
+
+**Iter 102: no defensible step found — analysis only.**
+
+**Diagnosis**: Re-diagnosed from scratch. `SLICE 1 COMPLETE` is long declared
+(`session_log.md:558`, iter 8) and still holds. New first-hand evidence this iter,
+not previously in the log: I forced the **slow path from empty memory**
+(`agent.active_agent.load_all_rules` monkeypatched to `[]`) so the full pipeline
+must rediscover the rule unaided — both `easy000a` and `easy000a2` solve CORRECT
+via `method=pipeline rule=copy_common_output`, the *same* rule for both, with
+different literal answers (a=red@(5,5), a2=green@(0,0)). That directly re-confirms
+§8 criterion 2 (module uniformity) and §9 value-agnosticism — the "a2 wrong / a
+right → hard-coded" failure mode is absent on the discovery path, not just the
+fast path.
+
+**Why no commit**: every positive signal is structurally pinned on the frozen
+2-task slice — P1=2.0/P2=2.0 (2 tasks/1 rule, both in covers, F6 freezes the
+pool), P3=0.0 (AU is OUT of Slice 1 per §9; a single-source rule can't be AU'd),
+P4 moves only as the mechanical side effect of running solves (metric-gaming),
+P5=10 (an unconsumed 11th matcher is dead F4-class vocabulary), P6=435 (nothing
+dead remains to remove). Any code change now trips a forbidden signal or games a
+metric; PROMPT.md §5 says a wrong commit is worse than none.
+
+**Change**: none to code. This log entry only (per §5). Persistent memory note
+added (`slice1_converged.md`) so future iters stop re-deriving this from zero.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged. Slow-path re-verification: 2/2 correct via pipeline.
+
+**Invariants**: forbidden=none; positives all Δ0 (NEUTRAL, exit 2) — the
+*converged* kind (INVARIANTS §3), not an unfilled gap.
+
+**Next gap (note for future iter)**: unchanged — gated on the **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start
+Slice 2 autonomously (§10). Until that lands, the correct iter output is no-op.
