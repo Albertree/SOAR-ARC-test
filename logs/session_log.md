@@ -6939,3 +6939,67 @@ this iter (empty `action.args` over a runtime decomposition) becomes the natural
 first Slice-2 lever: anti-unifying two per-pair programs is exactly what turns a
 runtime-derived decomposition into a stored, parameterised action — but it is
 out of scope until the gate opens.
+
+> STAGNATION at iter 98 — 16 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:58
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_075820.log
+
+---
+## Iter 99 — 2026-05-30T07:59 — branch test21
+
+**Iter 99: no defensible step found — analysis only (PROMPT.md §5).** 17th
+consecutive neutral iter. Non-redundant contribution: I actually *ran the full
+test suite* (29/29 green) — iters 94–98 reasoned about positive signals but did
+not execute the tests (iter 95 explicitly could not, citing flaky tooling). This
+is a fresh, direct datapoint for SLICE_1 §8 criterion 1 ("works").
+
+**Diagnosis**: Slice 1 remains complete and human-gated. Verified first-hand this
+iter (not from the log): `docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed);
+`data/ARC_easy/` = {easy000a, easy000a2} frozen (F6); exactly one valid rule
+(`rule_003.json` — {condition:`copy_common_output_applies`, action:`make_grid`},
+value-agnostic, covers=[easy000a,easy000a2], au_trace=null). Probe = 2/2 CORRECT
+via stored(easy000a). Working tree clean apart from loop-managed logs.
+
+**First-hand checks (the contribution of this iter)**:
+- `python -m pytest tests/` → pytest absent; ran each of the 29 self-executing
+  `tests/test_*.py` directly: **PASS=29 FAIL=0**. The whole Slice-1 mechanism
+  (compare-scheduler, conditions registry, descent, predict/reconstruct via the
+  two frozen primitives, fast-path covers-merge, slow-path value-agnostic) is
+  green end-to-end.
+- P6 re-checked at the source, not trusted from the log: `active_operators.py`
+  (435 lines) holds 9 *live* operator classes (SolveTask → SelectTarget →
+  Compare → ExtractPattern → Generalize → Descend → Predict → Submit → Verify).
+  No `_try_*`/`_apply_*` detector family remains; `_apply_rule` (line 368) is
+  PredictOperator's live helper, not a forbidden detector. Nothing is dead, so
+  P6 is genuinely immovable — confirming the log's claim rather than echoing it.
+
+**Why no commit**: every positive signal is structurally pinned on the frozen
+2-task slice. P1=2.0/P2=2.0 (2 tasks / 1 rule, both already in covers, pool
+frozen F6 → no merge or absorb possible); P3=0.0 (anti-unification wiring is
+explicitly OUT of Slice 1, §4/§9); P4 grows only by re-running solves
+(metric-gaming); P5=10 (§3 GRID-level recognition flow fully covered — an 11th
+matcher with no consumer is dead F4-class vocabulary, §5.1); P6=435 (immovable,
+verified above). Any code change now would trip a forbidden signal, game a
+metric, or risk a wrong commit — which §5 calls worse than no commit.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0
+(P1=2.0 P2=2.0 P3=0.0 P4=3300 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged structural unblock = **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ `data/ARC_easy/easy000b.json`). Do
+NOT start Slice 2 autonomously (§10). On the frozen 2-task slice there is no
+in-scope positive-signal mover left; the test suite is fully green, so the next
+real work is gated on the human handoff to Slice 2, not on any code in this repo.
