@@ -3615,3 +3615,13 @@ half too (recognition checks *only* the goal). Behaviour-sensitive (different
 majority/strictness semantics on out-of-slice censuses) so it warrants its own
 careful step. Slice 1 stays functionally complete; Slice 2 (easy000b: G0
 analysis, activation rules, anti-unification) is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 04:24
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_042411.log
