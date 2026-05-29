@@ -486,3 +486,121 @@ empty; the common output is read from `wm.task` at predict time) still re-runs
 the full slow pipeline each task, so "Stored rule hits: 0" and `times_reused`
 stays 0 (no P1 numerator lift from reuse). Anti-unification / module H remain
 Slice-1 OUT.
+
+---
+## Learning Loop -- 2026-05-29 20:26
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_202657.log
+
+---
+## Iter 8 — 2026-05-29T20:34 — branch test21
+
+**Diagnosis**: No defensible in-scope signal-moving step remains — and the
+reason is that Slice 1's §8 pass criteria are now *met*. Iter 7 closed the last
+in-scope fidelity gap (P5: load the test pair with `output_grid=None` so
+`test_output_missing` fires on real data). The probe solves both targets
+correctly via the intended value-agnostic mechanism, and verification (below)
+confirms the four observation criteria. The one gap every iter since #4 kept
+naming — **fast-path reuse** of `copy_common_output` — is module-J
+(SkillLibrary) territory, explicitly Slice-1 **OUT** (SLICE_1_LOOP §4 OUT list,
+§9 guardrail), and is *not* a §8 pass requirement (criterion 4 asks only for
+*bounded* search, which the 14-step pipeline satisfies). Implementing it would
+also blind the loop's microscope (every future probe would become a stored-rule
+hit and never exercise the §3 comparison sequence). Per SLICE_1_LOOP §10, the
+correct iter output on passing is to record completion and stop, not to
+manufacture a change.
+
+**Change**: none to code. `logs/session_log.md` only (this entry + the
+completion block below). No frozen file, no `_try_*`/`_apply_*`, no DSL
+`def`/`register`, no rule write, no `active_operators.py` edit.
+
+**Why no signal-moving change is defensible** (each measured signal examined):
+- **P1** (`solved/rules` = 2.0) and **P2** (mean covers = 2.0) are *maxed* for a
+  2-task slice with one rule. Raising either needs a new task (F6 forbids
+  auto-grow; the probe owns the budget) or a denominator drop via
+  anti-unification (Slice-1 OUT).
+- **P3** needs anti-unification wiring — Slice-1 OUT (§9: "모듈 …/H/… /
+  anti-unification 와이어링 만들지 말 것").
+- **P5**: the slice's recognition vocabulary (`all_outputs_comm` +
+  `test_output_missing`) is complete; adding an unused matcher just to bump P5
+  is the recognition-ahead-of-need accretion this branch exists to resist.
+- **P6**: CLAUDE.md §5.1 permits `_try_*`/`_apply_*` removal only when
+  *superseded by anti-unification-based generalization*. The legacy
+  `color_mapping`/`recolor_sequential` detectors are bypassed by the
+  recognition-first path, not superseded by AU, so removing them would bypass
+  §5.1's allowed-modification list (CLAUDE.md meta-rule: the rule is right, the
+  task is wrong).
+- **P4** did tick +2 (3020→3022) — but only because *running the probe + unit
+  tests during verification* writes episode folders. That is a mechanical
+  artifact of exercising the system, not substantive progress; I am not
+  claiming it as the iter's contribution.
+
+**Verification** (current state, run this iter):
+- Tests: `test_conditions_all_outputs_comm` 8/8, `test_compare_scheduler` 14/14,
+  `test_predict_copy_common_output` 7/7, `test_episodic_writer` 22/22 — all green.
+- Probe: `easy000a` CORRECT, `easy000a2` CORRECT, both `rule=copy_common_output`.
+- Value-agnostic confirmed from the data files: easy000a output = `(5,5)` red(2),
+  easy000a2 output = `(0,0)` green(3) — *different* fixed outputs, *one* rule
+  (rule_003, `action.args == {}`), so no answer is hard-coded.
+
+**Probe before**: 2/2 correct; rule_003 only; via=copy_common_output; P1=2.0, P2=2.0.
+**Probe after** : identical (no code change) — 2/2 correct; via=copy_common_output.
+
+**Invariants**: forbidden=none (no code touched). positives=P4 Δ+2 (mechanical,
+episode writes from verification; disclaimed above); P1/P2/P3/P5/P6 Δ0.
+
+---
+### SLICE 1 COMPLETE (SLICE_1_LOOP.md §10)
+
+**Probe result (both targets):**
+- `easy000a`  → CORRECT, rule=`copy_common_output`, output `(5,5)` red(2)
+- `easy000a2` → CORRECT, rule=`copy_common_output`, output `(0,0)` green(3)
+- Same rule (rule_003), `covers=[easy000a, easy000a2]`, `action.args={}` — the
+  answer is *copied* from each task's common example output, never a literal.
+
+**Four observation criteria (§8) self-assessment:**
+1. **작동 (works)** — ✅ 2/2 correct, zero errors; 51/51 unit assertions pass; the
+   §3 two-step recognition (`test_output_missing` PAIR-level →
+   `all_outputs_comm` GRID-level on {size,color,contents}) fires on real loaded
+   data.
+2. **통일성 (module uniformity)** — ✅ both tasks solved by the *same*
+   value-agnostic module path (compare_scheduler.build_patterns → conditions
+   registry → copy_common_output). No task-specific branch inside any module;
+   the only task-specific artifact is the per-task copied grid, which §8
+   explicitly permits to be overfit ("산물은 overfit OK").
+3. **접근성 (approaches the answer)** — ✅ the solve reaches the answer by
+   comparison-derived reasoning (P4 원리: 근거는 비교의 결과에서): role-aligned
+   Inter-Grid (role==G1) pairwise (P6) COMM → test G1 = common output. P2
+   (same-level) and P6 (pairwise, no 3-way) honored in module C.
+4. **탐색 건전성 (search sanity)** — ✅ the slow path is a bounded 14-step SOAR
+   cycle (no unbounded/meaningless brute-force); §8 explicitly does not require
+   exact step-count match to the raw-prose flow.
+
+**Guardrails (§9) honored:** no object/pixel-level property DSL; no module
+E/F/G/H/I/J or anti-unification wiring; PredictByAllPairCommOp is value-agnostic
+(no literal `(5,5)`/`red`); module C is exactly Intra/Inter + scope predicate
+(not the old 7 rules); transformation DSL still exactly `make_grid`/`coloring`.
+
+**STOP (§10.2):** Slice 2 (easy000b: G0 analysis, intra-comparison contributing
+to the answer, activation rule, anti-unification) is a **human-gated** transition.
+This iter does NOT start it and recommends the human swap in `SLICE_2_LOOP.md`.
+
+**Next gap (note for future iter)**: Slice 1 is complete; there is no defensible
+in-scope step. Until `SLICE_2_LOOP.md` lands, future iters should re-confirm the
+§8 criteria and decline out-of-scope work (fast-path reuse / module J,
+anti-unification / module H, extra recognition matchers) rather than accrete it.
+
+---
+## Learning Loop -- 2026-05-29 20:34
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_203419.log
