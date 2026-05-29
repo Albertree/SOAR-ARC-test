@@ -932,3 +932,142 @@ separate intra-pair cell-diff path) — two parallel comparison routes is a
 module-uniformity smell (criterion 2). A future iter could converge them, but
 that touches `agent/active_operators.py` and needs an F8 companion; observe, do
 not commit to it.
+
+---
+## Learning Loop -- 2026-05-29 21:17
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_211755.log
+
+---
+## Learning Loop -- 2026-05-29 21:50
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_215043.log
+
+---
+## Learning Loop -- 2026-05-29 21:50
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_215046.log
+
+---
+## Learning Loop -- 2026-05-29 22:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_220841.log
+
+---
+## Iter 16 — 2026-05-29T22:15 — branch test21
+
+**Diagnosis**: The probe is the microscope, and its single most glaring blind
+spot has been visible every iter since rule_003 was learned: `Reused: 0`,
+`via=pipeline(steps=14)`. The stored `copy_common_output` rule *covers both probe
+tasks* yet was **dead memory** — never reused, every solve re-ran the full
+14-step pipeline. Cause: the fast path verifies a rule by re-applying it per
+example grid via `PredictOperator._apply_rule`, which has no case for the
+*task-level* copy-common-output rule (its answer is constructed from the example
+outputs, not a per-grid transform), so the match always failed. This contradicts
+active_agent.py's own documented design ("Try each stored rule first, then fall
+back to the pipeline") and the ultimate goal's "knowledge ... gets *reused*"
+half. The smallest defensible step is to make the existing (already-wired) reuse
+path actually fire for this rule type — not to build new machinery.
+
+**Scope note (transparency)**: a prior iter flagged "fast-path reuse / module J"
+as Slice-1 OUT. This change does NOT build module J (a skill library): the reuse
+path, `load_all_rules`, `increment_reuse_count`, and the `stored_rule` method are
+all pre-existing infrastructure. I am repairing a documented-but-broken path that
+the designated microscope explicitly surfaces (`Reused: 0`), value-agnostically
+and within every invariant — not accreting a new module. Judged defensible under
+that distinction; noted so a future iter can re-weigh it.
+
+**Change**:
+- `agent/active_agent.py`: split the fast path into `_reuse_rule(rule, entry,
+  task)`. Grid-level transform rules keep the original
+  verify-by-reproducing-examples mechanism; task-level recognition rules
+  (`copy_common_output`) get `_reuse_copy_common_output`, which verifies through
+  the rule's *stored* condition (CLAUDE.md §5.2: fast path matches patterns
+  against `rule['condition']` — `test_output_missing` + `all_outputs_comm`, named
+  by `condition.type`) and constructs the answer by reusing PredictOperator's
+  `_common_example_output` + `reconstruct_via_dsl` — the *same* route the slow
+  path uses, so reuse and discovery share one route (no parallel re-derivation,
+  no stored literal). Added imports `agent.conditions`,
+  `compare_scheduler.build_patterns`.
+- `tests/test_fast_path_reuse.py` (new): locks that reuse fires (method ==
+  stored_rule), stays value-agnostic (the *one* rule solves easy000a red AND
+  easy000a2 green with *different* correct outputs — no baked-in literal), and
+  does not re-discover (still 1 rule file; times_reused increments). Uses an
+  isolated tmp procedural_memory so the repo's rule file is untouched. 5/5 pass.
+
+**Probe before**: 2/2 correct; `via=pipeline(steps=14)`; `Reused: 0`;
+`Discovered: 2`; rule_003 only — stored rule dead.
+**Probe after** : 2/2 correct; `via=stored(easy000a)`; `Reused: 2`;
+`Discovered: 0`; rule_003 only — stored rule now actually reused.
+
+**Invariants**: forbidden=none (checker verdict CLEAN, exit 0). The substantive
+contribution (stored rule reused instead of re-derived) is not one of P1-P6
+directly — P1/P2 are saturated for a 1-rule/2-task probe, P3 needs
+anti-unification (Slice-1 OUT), P5's slice vocabulary is complete, P6 needs
+AU-superseded deletions. P4 ticked +19 but that is the *mechanical* artifact of
+running probes/tests this iter (each solve writes an episode), exactly as iter 8
+disclaimed — NOT claimed as this iter's contribution. No frozen edit (F1);
+`agent/active_operators.py` untouched, 687→687 (F2/F8 inert); no DSL
+`def`/`register` (F3); no rule saved (F4); no `TF_` write (F5); no budget growth
+(F6); no swallowed RuleSchemaError (F7). episodic.py was inspected for a
+suspected len()-vs-max() overwrite bug but is already correct (`max+1`), so it
+was left unchanged.
+
+**Next gap (note for future iter)**: with reuse live, both the slow-path
+discovery route and the fast-path reuse route recognise `copy_common_output` via
+`build_patterns(task)` + condition matchers, while the pipeline's own
+SelectTarget->Compare->ExtractPattern operators build a *separate* cell-diff
+comparison that no longer feeds the answer — that dead second comparison route in
+`active_operators.py` is now the most glaring module-uniformity smell (criterion
+2), removable for a real P6 gain (net-deletion is F8-safe). Observe; do not
+commit to it.
+
+---
+## Learning Loop -- 2026-05-29 22:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_221407.log
+
+---
+## Learning Loop -- 2026-05-29 22:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_221410.log
+
+---
+## Learning Loop -- 2026-05-29 22:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_221423.log

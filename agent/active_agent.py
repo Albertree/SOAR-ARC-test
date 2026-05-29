@@ -18,6 +18,8 @@ from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
 from agent.episodic import write_episode
+from agent import conditions
+from agent.compare_scheduler import build_patterns
 
 
 class ActiveSoarAgent:
@@ -68,26 +70,25 @@ class ActiveSoarAgent:
             rule = entry.get("rule", {})
             if rule.get("type") == "identity":
                 continue  # skip identity fallback rules
-            if self._rule_matches_examples(rule, task):
-                predicted = self._apply_rule_to_tests(rule, task)
-                if predicted:
-                    increment_reuse_count(entry)
-                    self.last_solve_info.update({
+            predicted = self._reuse_rule(rule, entry, task)
+            if predicted:
+                increment_reuse_count(entry)
+                self.last_solve_info.update({
+                    "method": "stored_rule",
+                    "rule_type": rule.get("type", "unknown"),
+                    "rule_source": entry.get("source_task"),
+                })
+                self._submission_count += 1
+                self._record_episode(
+                    task, predicted,
+                    trace=[{
+                        "phase": "stored_rule_hit",
                         "method": "stored_rule",
                         "rule_type": rule.get("type", "unknown"),
                         "rule_source": entry.get("source_task"),
-                    })
-                    self._submission_count += 1
-                    self._record_episode(
-                        task, predicted,
-                        trace=[{
-                            "phase": "stored_rule_hit",
-                            "method": "stored_rule",
-                            "rule_type": rule.get("type", "unknown"),
-                            "rule_source": entry.get("source_task"),
-                        }],
-                    )
-                    return predicted
+                    }],
+                )
+                return predicted
 
         # --- Slow path: full SOAR pipeline ---
         wm = WorkingMemory()
@@ -160,6 +161,68 @@ class ActiveSoarAgent:
             trace=trace,
             grid_steps=grid_steps,
         )
+
+    def _reuse_rule(self, rule, entry, task):
+        """Fast-path reuse of one stored rule on `task`. Returns predicted grids
+        or None when the rule does not apply.
+
+        Two rule families need different reuse mechanisms:
+
+        * **Task-level recognition rules** (e.g. ``copy_common_output``): the
+          answer is *constructed* from the whole task, not produced by a per-grid
+          transform, so it cannot be verified by re-applying it to a single
+          example input. It is verified through its stored recognition condition
+          (CLAUDE.md §5.2: the fast path matches patterns against
+          ``rule['condition']``) and constructed via the *same* code the slow
+          path uses — so reuse and discovery share one route, not two.
+        * **Grid-level transform rules** (``color_mapping`` / ``recolor_*``): a
+          per-grid transform verified by reproducing every example output and
+          then applied to the test inputs (the original fast-path mechanism).
+        """
+        if rule.get("type") == "copy_common_output":
+            return self._reuse_copy_common_output(entry, task)
+
+        if not self._rule_matches_examples(rule, task):
+            return None
+        return self._apply_rule_to_tests(rule, task)
+
+    def _reuse_copy_common_output(self, entry, task):
+        """Reuse a stored copy-common-output rule (value-agnostic).
+
+        Recognition reuses the *exact* matchers the slow path's
+        ``GeneralizeOperator`` fires (``test_output_missing`` +
+        ``all_outputs_comm``, the latter named by the rule's own
+        ``condition.type``); construction reuses ``PredictOperator``'s common
+        example output materialised bottom-up through the two frozen DSL
+        primitives. No comparison route or literal is re-derived here.
+        """
+        condition = entry.get("condition") or {}
+        ctype = condition.get("type")
+        if not ctype:
+            return None
+
+        patterns = build_patterns(task)
+        if not conditions.match("test_output_missing", patterns,
+                                {"min_evidence": 1}):
+            return None
+        if not conditions.match(
+            ctype, patterns,
+            {"min_evidence": condition.get("min_evidence", 1),
+             "required_properties": ["size", "color", "contents"]},
+        ):
+            return None
+
+        common = self._predictor._common_example_output(task)
+        if common is None:
+            return None
+
+        from agent.memory import reconstruct_via_dsl
+        grids = []
+        for test_pair in task.test_pairs:
+            if test_pair.input_grid is None:
+                return None
+            grids.append(reconstruct_via_dsl(common))
+        return grids
 
     def _rule_matches_examples(self, rule, task) -> bool:
         """Check if a rule produces correct output for ALL example pairs."""
