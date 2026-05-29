@@ -24,6 +24,7 @@ from agent.active_operators import (
     PredictOperator,
     SubmitOperator,
     VerifyOperator,
+    DescendOperator,
 )
 
 
@@ -72,6 +73,31 @@ class SolveTaskRule(ProductionRule):
 
     def propose(self, wm):
         return SolveTaskOperator()
+
+
+class DescendRule(ProductionRule):
+    """Proposes descend (module A) when needs_descent is derived in S2.
+
+    Puts module A's HierarchicalDescentController into the live cycle: the
+    descent runs (TASK→PAIR→GRID, terminating at the level that resolves the
+    goal) *before* the comparison agenda is scheduled, so the §3 level-walk is
+    performed by an operator on the real solve rather than baked silently into
+    the scheduler. ``DescendOperator.effect`` writes ``descent-complete`` to S1,
+    which flips the elaboration gate to ``needs_target_selection`` — so this
+    fires exactly once and is answer-preserving for Slice 1 (the descent always
+    reaches GRID, where target selection then proceeds unchanged).
+    """
+
+    def __init__(self):
+        super().__init__("rule_descend")
+
+    def condition(self, wm) -> bool:
+        if wm.depth == 0:
+            return False
+        return wm.active.get("needs_descent") is True
+
+    def propose(self, wm):
+        return DescendOperator()
 
 
 class SelectTargetRule(ProductionRule):
@@ -193,6 +219,7 @@ def build_proposer() -> Proposer:
     """[DESIGN FREE] Which ProductionRules to register. Created at ActiveSoarAgent.solve() time."""
     rules = [
         SolveTaskRule(),
+        DescendRule(),
         SelectTargetRule(),
         CompareRule(),
         ExtractPatternRule(),

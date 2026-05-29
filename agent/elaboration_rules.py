@@ -10,7 +10,8 @@ elaboration_rules — Elaboration rules for SOAR Production Memory.
               List of rules to register with Elaborator.
 
 Pipeline state machine (all state lives in wm.s1, flags derived into wm.active):
-  1. current-task ^ !comparison-agenda         -> needs_target_selection
+  0. current-task ^ !descent-complete ^ !agenda -> needs_descent          (module A)
+  1. current-task ^ descent-complete ^ !agenda  -> needs_target_selection
   2. pending-comparisons non-empty             -> has_pending_comparison
   3. agenda ^ !pending ^ comparisons ^ !patterns -> ready_for_pattern_extraction
   4. patterns ^ !active-rules                  -> ready_for_generalization
@@ -134,17 +135,51 @@ class InputTaskToStateRule(ElaborationRule):
         return {"current-task": task_val}
 
 
-class NeedsTargetSelectionRule(ElaborationRule):
-    """
-    Fires in S2 when S1 has a current-task but no comparison-agenda yet.
-    This means the pipeline hasn't started -- we need to select comparison targets.
+class NeedsDescentRule(ElaborationRule):
+    """Module A (HierarchicalDescentController) trigger, fires in S2.
+
+    Fires when S1 has a current-task but the hierarchical descent has not yet
+    run (no ``descent-complete`` flag) and no comparison agenda exists. This
+    sequences module A *before* target selection: the §3 flow descends
+    TASK→PAIR→GRID to the level that can resolve the goal (P1 — depth entered by
+    necessity), and only then schedules the level-appropriate comparisons.
+    Self-terminating — once ``DescendOperator`` writes ``descent-complete`` to
+    S1 this stops firing and ``NeedsTargetSelectionRule`` takes over, so the
+    level walk runs exactly once (no descend↔select loop on the Slice-1 tasks,
+    which always terminate at GRID).
     """
 
     def condition(self, wm) -> bool:
         if wm.depth == 0:
             return False
         s1 = wm.s1
-        return bool(s1.get("current-task")) and not s1.get("comparison-agenda")
+        return (
+            bool(s1.get("current-task"))
+            and not s1.get("comparison-agenda")
+            and not s1.get("descent-complete")
+        )
+
+    def derive(self, wm) -> dict:
+        return {"needs_descent": True}
+
+
+class NeedsTargetSelectionRule(ElaborationRule):
+    """
+    Fires in S2 when S1 has a current-task but no comparison-agenda yet, *and*
+    module A's hierarchical descent has already run (``descent-complete``). The
+    descent gate makes the §3 order explicit on the live solve: descend to the
+    resolving level first, then select comparison targets there.
+    """
+
+    def condition(self, wm) -> bool:
+        if wm.depth == 0:
+            return False
+        s1 = wm.s1
+        return (
+            bool(s1.get("current-task"))
+            and not s1.get("comparison-agenda")
+            and bool(s1.get("descent-complete"))
+        )
 
     def derive(self, wm) -> dict:
         return {"needs_target_selection": True}
@@ -259,6 +294,7 @@ def build_elaborator() -> Elaborator:
     """
     rules = [
         InputTaskToStateRule("elaborate_input_task"),
+        NeedsDescentRule("needs_descent"),
         NeedsTargetSelectionRule("needs_target_selection"),
         HasPendingComparisonRule("has_pending_comparison"),
         ReadyForPatternExtractionRule("ready_for_pattern_extraction"),

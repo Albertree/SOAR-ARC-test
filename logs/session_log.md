@@ -3016,3 +3016,82 @@ descend↔identity). That is behaviour-changing and must stay answer-preserving 
 easy000a/a2 (which never need to descend past GRID). Separately,
 `test_fast_path_reuse.py` needs pytest (absent here) and is untriaged. Slice 1
 stays functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:54
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_025408.log
+
+---
+## Iter 41 — 2026-05-30T03:00 — branch test21
+
+**Diagnosis**: Module A (HierarchicalDescent) is a Slice-1 IN module (SLICE_1_LOOP.md
+§4 names its deliverable as `NeedsDescendRule` + `DescendOperator.effect`). Iter 40
+implemented the *effect* half but left it dormant — `DescendOperator` was never in
+`build_proposer`, so no real solve ever descended; the §3 TASK→PAIR→GRID walk was
+only baked silently inside `compare_scheduler.comparison_specs` and replayed as an
+episode annotation. The smallest in-scope completion is the wiring half: make module
+A actually drive the live cycle, in §3 order, answer-preserving.
+
+**Change**:
+- `agent/elaboration_rules.py` (not frozen): new `NeedsDescentRule` (S2 trigger:
+  current-task ∧ ¬comparison-agenda ∧ ¬descent-complete → `needs_descent`), and
+  gated `NeedsTargetSelectionRule` to additionally require `descent-complete`. This
+  sequences module A *before* target selection: descend to the resolving level, then
+  schedule that level's comparisons. Registered `NeedsDescentRule` ahead of
+  `NeedsTargetSelectionRule` in `build_elaborator`. Self-terminating — once
+  `DescendOperator` writes `descent-complete`, the gate flips, so the walk runs once
+  (no descend↔select loop; Slice-1 tasks always terminate at GRID).
+- `agent/rules.py` (not frozen): new `DescendRule` (proposes the existing
+  `DescendOperator` when `needs_descent`), registered before `SelectTargetRule` in
+  `build_proposer`. Imports `DescendOperator` (already implemented iter 40).
+- `tests/test_live_descent_wiring.py` (new, 7 tests, all pass): proposer/elaborator
+  registration + ordering; live cycle descends to GRID (`descend_from=[task,pair]`,
+  `focus-level=grid`, goal satisfied); **value-agnostic** (easy000a red / easy000a2
+  green → byte-identical descent-path); the gate (target-selection only after
+  descent, neither re-fires once agenda exists); answer-preserving (both tasks still
+  solve via the slow path, `rule=copy_common_output`).
+- **Did NOT touch** `agent/active_operators.py` (F8 N/A — `DescendOperator.effect`
+  already existed), any frozen file, any DSL primitive, the condition registry; no
+  rule saved; no `_try_*`/`_apply_*`; no new matcher (P5 deliberately not inflated —
+  this is integration, not recognition-ahead-of-need accretion).
+
+**Why smallest**: it is the wiring half of module A, split from iter 40's effect
+half. It adds two small rule classes + a one-line gate + two registrations, reuses
+the already-tested `DescendOperator.effect` / `descent_path` / `descent_warranted`
+chain, and is provably answer-preserving (slow path verified 2/2 before *and* after:
+24→26 steps, the +2 being the single descent step + its S1 re-impasse).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0. Slow
+path (forced, empty proc-mem): 2/2 via copy_common_output, 24 steps, no live descent.
+**Probe after** : 2/2 correct; via=stored(easy000a) (fast path untouched → probe
+identical). Slow path: 2/2 via copy_common_output, **26 steps, module A now descends
+TASK→PAIR→GRID in the live cycle** (`focus-level=grid`, `descent-path.itinerary=
+[task,pair,grid]`) before scheduling the 7-spec agenda — verified against the real
+cycle.
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 0 — F1 no frozen
+edit; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule saved; F5 no
+`TF_` under semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError;
+F8 N/A — active_operators.py untouched, 448→448). positives=all Δ0. This iter is
+**metric-neutral but architecturally substantive**: a dormant in-scope module
+(module A descent) now drives the live solve — integration (PROMPT.md §7 priority 3),
+not the matcher-accretion that would game P5. Per INVARIANTS §3 this is exactly
+"scaffolding/integration work" the loop tolerates as neutral. P4 will tick
+mechanically when the loop re-runs the probe (disclaimed, per the standing
+iter-8/9/10 note). Full suite green (test_fast_path_reuse.py needs pytest, absent —
+pre-existing, not introduced here).
+
+**Next gap (note for future iter)**: module A now descends in the live cycle but the
+descent is single-shot (terminal computed up-front) and does not yet *re-comparison*
+one level deeper when a descend fails to resolve — fine for easy000a/a2 (always
+terminate at GRID) but the documented prerequisite for harder tasks (a focus-level-
+aware re-schedule, else descend↔identity loop). Module B's GoalStack still only
+*records* the goal (episode annotation), not *consumes* it to gate recognition.
+Both stay larger, behaviour-changing steps. Slice 1 remains functionally complete;
+Slice 2 is human-gated — do not start it.
