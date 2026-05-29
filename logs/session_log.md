@@ -4521,3 +4521,74 @@ independent pass — **Slice 1 is exhausted and the loop has run dry on it.** Th
 single unblock is **human action**: provide `SLICE_2_LOOP.md` (easy000b — G0
 analysis, intra-pair relation-of-relations, DSL activation rules, anti-
 unification). Do not start Slice 2 autonomously.
+
+> STAGNATION at iter 60 — 5 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 05:38
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_053818.log
+
+---
+## Iter 61 — 2026-05-30T05:40 — branch test21 — no defensible step found (analysis only)
+
+**Diagnosis**: Slice 1 is functionally complete, already declared `SLICE 1
+COMPLETE`, and human-gated (`SLICE_1_LOOP.md §10` — do not start Slice 2
+autonomously; await `SLICE_2_LOOP.md`). This is the 6th consecutive no-op and
+stagnation is firing. I re-derived the verdict from fresh evidence this iter
+rather than inherit iters 57–60, and additionally falsified one candidate gap
+the prior logs only asserted: the 11-module / 10-registered condition mismatch
+is **not** a latent bug.
+
+**Evidence gathered this iter (not inherited)**:
+- `ls docs/SLICE_*.md` → only `SLICE_1_LOOP.md`; `SLICE_2_LOOP.md` absent. The
+  human gate has not opened.
+- `git log -1 PROMPT.md` → last touched 2026-05-29 14:48; unchanged.
+- `procedural_memory/rule_003.json` is the sole rule: `condition.type =
+  copy_common_output_applies`, value-agnostic (`action.args == {}`), covers
+  both targets, `times_reused` 247. Schema-valid.
+- **Falsified the P5 11-vs-10 candidate**: the one unregistered module is
+  `agent/conditions/descent_path.py`. Read it in full — it intentionally
+  returns a descent *itinerary dict* (a recognition *helper* composing the
+  registered `descent_warranted`), not a boolean matcher, and documents that it
+  deliberately stays out of `CONDITION_REGISTRY`/P5. So 10 registered is
+  correct; there is no unregistered-but-consumed matcher to fix.
+- `scripts/check_invariants.sh --check` → NEUTRAL, all six at baseline:
+  P1 2.0, P2 2.0, P3 0.0, P4 3219, P5 10, P6 435; exit 0 (no forbidden trip).
+- Ran the three `test_slow_path_value_agnostic.py` functions directly (pytest
+  is absent in this env, so invoked via `python -c`): **3/3 PASS** — both
+  targets solve via the **intended SOAR pipeline from empty memory**, the path
+  is value-agnostic (red vs green), and the discovered rules are structurally
+  identical. The way-the-user-intends flow is live, not just the stored-rule
+  fast path the probe exercises.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 — 1 rule, 2 tasks; raising needs a new solved task
+  (pool frozen, F6) or a rule merge (only 1 rule). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4 OUT, §9`).
+- P4: auto-increments per solve regardless of code — not a code contribution.
+- P5: the only unregistered module is an intentional helper (above); registering
+  any *new* matcher would add dead recognition vocabulary (no live consumer) —
+  the failure mode the invariants prevent.
+- P6: `_try_*`/`_apply_*` accretion already removed; remaining operators are live
+  or intended scaffolding — deleting is cosmetic churn.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5.1).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design — a
+no-op deliberately moves no metric rather than fabricating one.
+
+**Next gap (note for future iter)**: unchanged and now confirmed by a sixth
+independent pass, with the last asserted candidate (P5 count mismatch) actively
+falsified — **Slice 1 is exhausted and the loop has run dry on it.** The single
+unblock is **human action**: provide `SLICE_2_LOOP.md` (easy000b — G0 analysis,
+intra-pair relation-of-relations, DSL activation rules, anti-unification). Do
+not start Slice 2 autonomously.
