@@ -67,3 +67,57 @@ role-of/filter` + property `pair-count/grid-count/size/color/contents`) under
 `agent/dsl/` — NOT `procedural_memory/DSL/` (F3 def-trap) — as the foundation the
 scope selector (module C) and a value-agnostic PredictByAllPairCommOp need to
 replace the wrong `color_mapping` path with the intended G1-COMM-copy mechanism.
+
+---
+## Learning Loop -- 2026-05-29 19:03
+
+- Split: None, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_190314.log
+
+---
+## Iter 2 — 2026-05-29 — branch test21
+
+**Diagnosis**: The probe solves easy000a/a2 via `color_mapping` — the *wrong*
+mechanism (it maps 0→2, which paints the whole background, hence INCORRECT).
+The intended Slice-1 mechanism (SLICE_1_LOOP §3/§8, raw prose easy000a
+paragraph) is value-agnostic: compare all example output grids (G1)
+role-aligned, and when {size, color, contents} are all-COMM, copy that common
+G1 as the test answer. The system has **no recognition vocabulary** for "all
+example outputs are identical" — there is no `agent/conditions/` registry at
+all (P5=0). The smallest defensible step toward the intended mechanism is to
+stand up that registry (module E recognition side, CLAUDE.md §6.3) plus the
+first value-agnostic matcher; wiring it into compare-scheduling + a
+PredictByAllPairCommOp is a larger change left for a later iter.
+
+**Change**:
+- `agent/conditions/__init__.py` (new): `CONDITION_REGISTRY`, `register`
+  decorator, `match()` dispatch, lazy sibling-module loading. This is
+  *recognition* vocabulary, which CLAUDE.md §6.3 explicitly permits to grow by
+  hand (unlike the frozen transformation DSL).
+- `agent/conditions/all_outputs_comm.py` (new): first matcher. Consumes
+  ARCKG.compare() receipts between example output grids; returns True iff all
+  are COMM. Strictly value-agnostic — only inspects COMM/DIFF *type*, never the
+  colour/coordinate values — so it fires identically for easy000a (red) and
+  easy000a2 (green) and cannot hard-code an answer (SLICE_1 §9 guardrail).
+- `tests/test_conditions_all_outputs_comm.py` (new): 8 tests built from *real*
+  compare() receipts on the actual slice grids (incl. value-agnostic a/a2 case
+  and an easy000b-style DIFF case). pytest is absent, so the file self-runs.
+  8/8 pass.
+- No edit to `agent/active_operators.py` (no F8 exposure); no frozen-file edit.
+
+**Probe before**: 0/2 correct; rules 2→2; covers mean 1.0; P5=0.
+**Probe after** : 0/2 correct (mechanism not yet wired into solve); rules 2→2;
+covers mean 1.0; P5=1.
+
+**Invariants**: forbidden=none; positives=P5 Δ+1 (0→1); others Δ0. Verdict CLEAN.
+
+**Next gap (note for future iter)**: The matcher exists but nothing produces
+its input (`output_grid_comparisons`) or acts on its verdict. The next gap is
+module C's scope-scheduling — emit role-aligned Inter-Grid (role==G1) example
+comparisons into WM — so this matcher can gate a value-agnostic
+PredictByAllPairCommOp that copies the common G1, replacing the wrong
+`color_mapping` path.
