@@ -7082,3 +7082,69 @@ in-scope positive-signal mover left: tests are green, the anti-hardcoding guard
 covers the probe's blind spot, and every P1–P6 lever is either pinned by the
 frozen pool or out of slice scope. The next real work is gated on the human
 handoff to Slice 2.
+
+> STAGNATION at iter 100 — 18 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 08:04
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_080436.log
+
+---
+## Iter 101 — 2026-05-30T08:06 — branch test21
+
+**Iter 101: no defensible step found — analysis only (PROMPT.md §5).** 19th
+consecutive neutral iter; STAGNATION already flagged. Non-redundant contribution
+this iter: I distinguished the two possible *causes* of the plateau by diffing
+this iter's snapshot against iter 100's, rather than re-asserting "stuck."
+
+**Diagnosis**: Slice 1 is complete and human-gated. Verified first-hand this iter
+(not from the log): `docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed);
+`data/ARC_easy/` = {easy000a, easy000a2} frozen (F6); exactly one valid rule
+(`rule_003.json` — condition `copy_common_output_applies`, action `make_grid`,
+value-agnostic, covers=[easy000a, easy000a2], au_trace=null = correct for a
+single-source rule, times_reused=344). Probe = 2/2 CORRECT via stored(easy000a).
+
+**First-hand checks (the contribution of this iter)**:
+- Full suite ran directly (no pytest module installed): **29/29 PASS**.
+- `scripts/check_invariants.sh --check` → exit 2 (NEUTRAL), base HEAD 72ff3a35
+  (= iter 100's commit, so iters compose correctly).
+- **Snapshot diff vs iter 100** (the new observation): of P1–P6, *only* P4 moved
+  — 3302 → 3304, i.e. +2 = exactly the probe's two solves this cycle. P1=2.0,
+  P2=2.0, P3=0.0, P5=10, P6=435 are byte-identical. This isolates the cause of
+  stagnation: the episodic writer is **healthy** (it increments by precisely the
+  per-cycle solve count — no leak, no stuck loop, no metric drift), and the
+  plateau is **structural** (the frozen 2-task pool pins every other lever), not
+  a broken or runaway writer. P4 is therefore the one quantity that *moves*, but
+  moving it is re-running solves = metric-gaming, not progress.
+
+**Why no commit**: every positive signal is structurally pinned on the frozen
+2-task slice. P1=2.0/P2=2.0 (2 tasks / 1 rule, both already in covers, F6 pool
+frozen → no merge/absorb possible); P3=0.0 (AU wiring is explicitly OUT of Slice
+1, §4/§9; a single-source rule cannot be AU'd anyway); P4 grows only by
+re-running solves (metric-gaming, per the diff above); P5=10 (§3 GRID-level
+recognition flow fully covered — an 11th matcher with no consumer is dead
+F4-class vocabulary); P6=435 (immovable — nothing dead remains to remove). Any
+code change now would trip a forbidden signal, game a metric, or risk a wrong
+commit, which §5 calls worse than no commit.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0
+(P1=2.0 P2=2.0 P3=0.0 P4=3304 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged structural unblock = **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ `data/ARC_easy/easy000b.json`). Do
+NOT start Slice 2 autonomously (§10). The snapshot diff this iter confirms there
+is no in-scope positive-signal lever that is not either pinned by the frozen pool
+or out of slice scope: the only moving quantity (P4) moves solely as a side
+effect of re-running the probe. The next real work is gated on the human handoff
+to Slice 2, not on any code in this repo.
