@@ -3095,3 +3095,77 @@ aware re-schedule, else descend↔identity loop). Module B's GoalStack still onl
 *records* the goal (episode annotation), not *consumes* it to gate recognition.
 Both stay larger, behaviour-changing steps. Slice 1 remains functionally complete;
 Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 03:01
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_030142.log
+
+---
+## Iter 42 — 2026-05-30T03:05 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete (SLICE 1 COMPLETE block above;
+both targets solve 2/2 via the stored `copy_common_output` rule) and Slice 2 is
+human-gated (no `SLICE_2_LOOP.md` yet). The genuinely in-scope remaining gaps
+(module B *consuming* its goal to gate recognition; focus-level-aware
+re-comparison) are behaviour-changing and were deferred by iters 39–41, and the
+out-of-scope work (Slice 2 / AU / new matchers) is forbidden by §9/§10. The one
+concrete, thrice-flagged-but-never-triaged issue is `tests/test_fast_path_reuse.py`:
+it is the **lone** test in the suite that requires pytest (absent on this machine)
+and lacks the project-wide `__main__` self-run convention — so it could not run at
+all here, leaving the value-agnostic fast-path-reuse contract (central to Slice 1,
+SLICE_1_LOOP §1.2/§9) without an executable guard. Smallest defensible step:
+convert it to self-run like its 19 siblings.
+
+**Change**:
+- `tests/test_fast_path_reuse.py` (test-only): removed the `import pytest` /
+  fixtures / `@parametrize` (the sole pytest dependency in `tests/`); rewrote with
+  plain `test_*` functions + a `sys.path` shim + the same `__main__` runner every
+  sibling uses. Same three contracts, same assertions (`method=="stored_rule"`,
+  `rule_type=="copy_common_output"`, value-agnostic red≠green, no new rule file,
+  `times_reused==2`). The pytest `tmp_path` isolation is replaced by
+  `tempfile.mkdtemp()`, and I additionally point `episodic_memory_root` at a temp
+  dir so the run mutates **no** repo state (proc-mem rule files *or* episodic
+  store) — verified by P4 staying 3153 across the check.
+- Touched no frozen file, `agent/active_operators.py`, any DSL primitive, any
+  rule, or the condition registry; no `_try_*`/`_apply_*`; added no new
+  recognition matcher (P5 deliberately not inflated). This is test-health
+  maintenance, not mechanism accretion.
+
+**Why smallest**: it changes only a test file, adds no production behaviour, and
+resolves the exact item iters 39/40/41 each flagged as "needs pytest (absent) /
+untriaged." It is provably answer-preserving (no production code touched) and now
+makes the **entire** suite green on this machine for the first time (22/22 files;
+previously 21 self-running + 1 un-runnable).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Identical — fast path untouched. Full unit suite: 22/22 files green, incl. the
+3/3 in the converted file, which previously could not execute here.)
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — F1 no frozen
+edit; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule saved; F5 no
+`TF_` under semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError;
+F8 N/A — active_operators.py untouched, 448→448). positives=all Δ0 (P1 2.0, P2 2.0,
+P3 0.0, P4 3153 [unchanged — temp-dir isolation confirmed], P5 8, P6 448). This
+iter is **metric-neutral by construction**: the six signals measure rule/operator
+architecture, not test-suite runnability, so restoring an executable guard cannot
+move them. Per INVARIANTS §3 this is tolerated test/scaffolding work, not a
+forbidden trip; it is real (a Slice-1 contract is guarded again) without forcing a
+fake metric bump or risking out-of-scope behaviour change.
+
+**Next gap (note for future iter)**: with Slice 1 complete and human-gated, the
+only substantive in-scope step left is module B *consuming* its now-recorded goal
+— making `GoalStack.is_satisfied()` (all three Gx properties comparison-grounded)
+the *single* basis the live `GeneralizeOperator` uses to recognise
+`copy_common_output`, replacing the duplicated per-property all-COMM check rather
+than computing it twice. That is behaviour-sensitive + F8 (net lines on
+active_operators.py, needs a companion under agent/conditions/ or memory.py), so it
+warrants a careful library-first split like module A got (iter 40 effect → iter 41
+wiring). Everything else (Slice 2, anti-unification, extra matchers) stays
+forbidden until `SLICE_2_LOOP.md` lands. Slice 1 remains functionally complete.
