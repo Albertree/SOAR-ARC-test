@@ -20,6 +20,7 @@ from agent.wm_logger import reset_wm_snapshot
 from agent.episodic import write_episode
 from agent import conditions
 from agent import goal as goal_module
+from agent.flow_trace import slice1_flow_steps
 from agent.compare_scheduler import build_patterns, pair_grid_counts
 
 
@@ -161,6 +162,11 @@ class ActiveSoarAgent:
         goal_record = self._slice1_goal_record(task, predicted)
         if goal_record is not None:
             trace.append(goal_record)
+        # The §3 comparison-flow *form* (module C), value-agnostic: which of the
+        # PAIR/Intra/Inter recognition steps the solve traversed, decisive one
+        # flagged. Records criterion-3 (접근성) alongside the goal walk — both
+        # observability, neither alters the answer.
+        trace.append(slice1_flow_steps(build_patterns(task)))
         write_episode(
             self.episodic_memory_root,
             task.task_hex,

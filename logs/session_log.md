@@ -3625,3 +3625,90 @@ analysis, activation rules, anti-unification) is human-gated — do not start it
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_042411.log
+
+---
+## Learning Loop -- 2026-05-30 04:33
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_043306.log
+
+---
+## Learning Loop -- 2026-05-30 04:40
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_044030.log
+
+---
+## Iter 49 — 2026-05-30T04:40 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated (2/2 via stored
+`copy_common_output`). The smallest genuine criterion-2/criterion-3 gap left:
+the three *non-decisive* §3 flow-step recognisers (`pair_grid_count_majority`,
+`intra_pair_grids_differ`, `inputs_vary`) — added in earlier iters so every
+comparison family module C schedules has a named recogniser — had **no live
+consumer**; they fired only in their own unit tests. So the episode trace
+recorded module B's goal walk + the answer, but never *that the solve traversed
+the §3 comparison-flow form* (SLICE_1_LOOP §3 lines 130-133: steps passed
+through "흐름상 거쳐가지만 정답엔 직접 기여 안 함"). Criterion 3 (접근성, §8) was
+unobservable on the live solve, and the three matchers were latent
+recognition-vocabulary-ahead-of-need.
+
+**Change** (give the orphan flow-step matchers a production consumer; record
+the §3 form — observability only, answer untouched):
+- `agent/flow_trace.py` (new, module C observability): `slice1_flow_steps(patterns)`
+  runs each §3 recogniser over a live `build_patterns` bundle and returns a
+  symbolic, JSON-serialisable record of which steps the comparison flow exhibited,
+  in §3 order, flagging the single **decisive** one (role==G1 all-COMM on
+  {size,color,contents}). Value-agnostic — delegates entirely to the COMM/DIFF-only
+  matchers, so easy000a (red) and easy000a2 (green) yield an identical record.
+  Mirrors the slot→matcher map already documented in `compare_scheduler.build_patterns`.
+- `agent/active_agent.py` (`_record_episode`): appends `slice1_flow_steps(build_patterns(task))`
+  to every episode trace, exactly parallel to the existing `_slice1_goal_record`
+  (module B). +6 lines (1 import + 5 at the call site). NOT `active_operators.py`
+  (F8 N/A), no frozen file, no DSL, no rule, no new matcher.
+- `tests/test_flow_trace.py` (new, 6/6): full §3 form recognised on the slice;
+  §3 step order + exactly one decisive; value-agnostic red==green (byte-identical);
+  JSON-serialisable; decisive step open when example outputs differ (non-decisive
+  DIFF steps still fire); empty patterns → nothing recognised, no raise.
+
+**Why smallest**: it adds *no* recognition vocabulary (P5 10→10 — it consumes the
+three matchers that already existed, the opposite of accretion), changes no
+answer (trace-only, like the goal record — probe byte-identical 2/2), and resolves
+the latent "matcher with no consumer" smell by wiring those matchers to the one
+artifact the slice judges by (the 4 observation criteria). Lower risk than the
+iter-47 deficiency-twice consolidation, which is behaviour-sensitive on
+out-of-slice censuses.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+flow-step matchers fired only in tests.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+every episode now records the §3 comparison-flow form (decisive step flagged).
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 frozen diff
+0 lines [verified]; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule
+changed; F5 no `TF_`; F6 no budget growth; F7 no swallowed RuleSchemaError; F8 N/A —
+active_operators.py untouched, 439→439). positives=P4 3186→3188 (+2, mechanical from
+probe runs — disclaimed per the standing iter-8/9/10 note); P1/P2/P3/P5/P6 Δ0.
+Module-C observability is criterion-3 progress that no positive signal captures;
+tolerated per INVARIANTS §3 — genuine wiring (orphan matchers → live consumer), not
+a metric bump in disguise. Full unit suite green (incl. new 6/6 flow_trace,
+unchanged 6/6 goal-trace, 22/22 episodic writer).
+
+**Next gap (note for future iter)**: the comparison-flow form and the goal walk are
+now both recorded, but independently — flow_trace recomputes `all_outputs_comm`
+that `_slice1_goal_record` also marks per-property. A future iter could let the
+decisive flow step *be* the goal's grounding so the two records share one
+comparison basis (criterion-2 uniformity), but that is behaviour-adjacent and
+warrants its own step. The iter-47 deficiency-twice consolidation (let module B's
+majority goal subsume the strict `test_output_missing` PAIR gate) also remains, and
+is the more faithful-to-raw-prose (다수결) but behaviour-sensitive option. Slice 1
+stays functionally complete; Slice 2 (easy000b: G0 analysis, activation rules,
+anti-unification) is human-gated — do not start it.
