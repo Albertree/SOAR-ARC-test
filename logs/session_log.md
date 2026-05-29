@@ -3712,3 +3712,85 @@ majority goal subsume the strict `test_output_missing` PAIR gate) also remains, 
 is the more faithful-to-raw-prose (다수결) but behaviour-sensitive option. Slice 1
 stays functionally complete; Slice 2 (easy000b: G0 analysis, activation rules,
 anti-unification) is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 04:42
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_044209.log
+
+---
+## Learning Loop -- 2026-05-30 04:48
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_044830.log
+
+---
+## Iter 50 — 2026-05-30T04:48 — branch test21
+
+**Diagnosis**: Module A (HierarchicalDescent) — the spine of the §3 flow (P1:
+TASK→PAIR→GRID, "Task수준에서 막히니까 Pair로...", the most-emphasized mechanism
+in the raw prose) — is live-wired into the slow-path cycle (iter 41,
+`DescendOperator`+`DescendRule`), but the probe solves via the **fast path**
+(stored `copy_common_output`) where the cycle never runs. The episode trace
+recorded module B's goal walk and module C's comparison-flow form yet **never**
+module A's descent path — so criterion 3 (접근성) was unobservable for the descent
+on every recorded episode, and `descent_itinerary` had no fast-path consumer.
+
+**Change** (give module A's descent a live, value-agnostic episode record;
+unify the task→itinerary assembly into one routine):
+- `agent/conditions/descent_path.py` (+2 fns): `descent_itinerary_for_task(task)`
+  — the single task→itinerary assembly (`build_patterns` + `level_sibling_counts`
+  + `descent_itinerary`) that both the live operator and the episode recorder now
+  share (criterion-2 uniformity); `slice1_descent_record(task)` — the shaped
+  `{phase: hierarchical_descent, module: A, descend_from, terminal, itinerary}`
+  observability record. Not registered matchers (P5 10→10 — no recognition
+  vocabulary added).
+- `agent/active_operators.py` (8+/11−, **net −3**): `DescendOperator.effect`
+  refactored to call `descent_itinerary_for_task` instead of re-assembling the
+  bundle inline — removes the would-be duplication, identical behaviour (live
+  descent tests still pass). F8 N/A (net-negative AND `agent/conditions/` touched).
+- `agent/active_agent.py` (`_record_episode`): append `slice1_descent_record(task)`
+  first, so every episode reads top-down (descend → goal → comparisons) and carries
+  the full module A+B+C observability triple. Docstring updated.
+- `tests/test_descent_record.py` (new, 6/6): TASK→PAIR→GRID walk (descend_from
+  ==[task,pair], terminal==grid); helper↔record payload identity; value-agnostic
+  red==green; no colour/coord vocabulary; JSON-serialisable; present in a real
+  episode trace alongside goal_evolution + comparison_flow.
+
+**Why smallest**: trace-only (probe byte-identical 2/2), adds **no** recognition
+vocabulary (the opposite of accretion — it gives an existing helper a fast-path
+consumer), and the operator refactor is a pure de-duplication that *removes* lines
+(P6). Lower risk than the long-deferred iter-47 deficiency-twice consolidation
+(behaviour-sensitive on out-of-slice censuses).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+episode trace = goal_evolution + comparison_flow (no descent).
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+episode trace = hierarchical_descent + goal_evolution + comparison_flow (A+B+C).
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 frozen diff
+0; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule changed; F5 no
+`TF_`; F6 no budget growth; F7 no swallowed RuleSchemaError; F8 N/A — active_operators.py
+net −3 AND conditions touched). positives=**P6 439→436 (−3 lines, genuine —
+duplicated descent assembly removed)**; P4 3190→3192 (+2, mechanical from probe runs,
+disclaimed per the standing iter-8/9/10 note); P1/P2/P3/P5 Δ0. Full unit suite green
+(26 modules incl. new 6/6 descent_record, unchanged 7/7 live-descent-wiring,
+11/11 descent_path, 6/6 goal-trace, 6/6 flow-trace, 22/22 episodic).
+
+**Next gap (note for future iter)**: the A+B+C observability triple is now complete
+on every episode, but each leg recomputes `build_patterns(task)` independently
+(2–3× per episode) — a criterion-4 (탐색 건전성) efficiency smell a future iter could
+fix by threading one bundle through `_record_episode`. The iter-47 deficiency-twice
+consolidation (let module B's majority goal subsume the strict `test_output_missing`
+PAIR gate — 다수결, more faithful to raw prose but behaviour-sensitive) also remains.
+Slice 1 stays functionally complete; Slice 2 (easy000b: G0 analysis, activation
+rules, anti-unification) is human-gated — do not start it.

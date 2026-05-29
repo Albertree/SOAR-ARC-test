@@ -115,3 +115,49 @@ def descent_itinerary(patterns, params=None):
         "terminal": DESCENT_LEVELS[-1],
         "itinerary": list(DESCENT_LEVELS),
     }
+
+
+def descent_itinerary_for_task(task, params=None):
+    """Assemble the Slice-1 pattern bundle for ``task`` and return its §3 descent.
+
+    The task-level convenience over ``descent_itinerary``: builds the full pattern
+    bundle (``compare_scheduler.build_patterns``) plus the structural sibling
+    census the ``nothing_to_compare`` disjunct needs (``level_sibling_counts`` —
+    ``build_patterns`` does not include it), then walks the itinerary. This is the
+    **single** task→itinerary assembly used by both module A's live
+    ``DescendOperator.effect`` and the episode-trace recorder, so the descent is
+    computed one way everywhere (criterion-2 uniformity, SLICE_1_LOOP.md §8) rather
+    than re-assembled per call site.
+
+    Value-agnostic: the bundle's recognisers read only COMM/DIFF verdicts and
+    structural counts, so easy000a (red) and easy000a2 (green) descend identically.
+    """
+    from agent.compare_scheduler import build_patterns, level_sibling_counts
+    patterns = dict(build_patterns(task))
+    patterns["level_sibling_counts"] = level_sibling_counts(task)
+    return descent_itinerary(patterns, params)
+
+
+def slice1_descent_record(task):
+    """Episode-trace record of module A's §3 hierarchical descent on ``task``.
+
+    Module A (HierarchicalDescentController) is the spine of the raw-prose flow
+    (``docs/arbor_context/arbor-flow-three-task-description.md``; P1 — "Task수준에서
+    막히니까 Pair로, Pair에서 막히니까 Grid로"): depth is entered strictly by
+    necessity, TASK→PAIR→GRID, stopping at the first level that can resolve the
+    goal. The slow-path cycle performs this descent live (``DescendOperator``,
+    iter 41) and leaves it in WM, but the probe solves via the fast path (stored
+    rule) where the cycle never runs, and the episode trace recorded module B's
+    goal walk and module C's comparison-flow form yet never module A's descent.
+    Criterion 3 (SLICE_1_LOOP.md §8 — 접근성: 풀이가 정답 방향으로 간다) was therefore
+    unobservable for the descent itself on every recorded episode.
+
+    This is that record. It recomputes the itinerary the same value-agnostic way
+    the live operator does (one shared assembly, ``descent_itinerary_for_task``),
+    so every solve — fast or slow path — shows its TASK→PAIR→GRID descent path
+    alongside the goal walk and comparison form (the module A+B+C observability
+    triple). Records the form; does not touch the answer. Returns a plain
+    JSON-serialisable dict (P7).
+    """
+    itinerary = descent_itinerary_for_task(task)
+    return {"phase": "hierarchical_descent", "module": "A", **itinerary}

@@ -271,17 +271,14 @@ class DescendOperator(Operator):
         task = getattr(wm, "task", None)
         if task is None:
             return
-        from agent.compare_scheduler import build_patterns, level_sibling_counts
-        from agent.conditions.descent_path import descent_itinerary
+        from agent.conditions.descent_path import descent_itinerary_for_task
 
-        # Full Slice-1 pattern bundle + the structural sibling census the
-        # `nothing_to_compare` disjunct needs (build_patterns does not include
-        # it). `descent_itinerary` stages these per level, so the descent is
-        # progressive (PAIR cannot see GRID's resolving comparisons), matching §3.
-        patterns = dict(build_patterns(task))
-        patterns["level_sibling_counts"] = level_sibling_counts(task)
-
-        itinerary = descent_itinerary(patterns)
+        # The §3 descent over the full Slice-1 pattern bundle (build_patterns +
+        # the sibling census the `nothing_to_compare` disjunct needs), staged per
+        # level so the descent is progressive (PAIR cannot see GRID's resolving
+        # comparisons). The task→itinerary assembly is the single shared routine
+        # the episode-trace recorder also uses (criterion-2 uniformity).
+        itinerary = descent_itinerary_for_task(task)
         wm.s1["descent-path"] = itinerary
         wm.s1["focus-level"] = itinerary["terminal"]
         wm.s1["descent-complete"] = True

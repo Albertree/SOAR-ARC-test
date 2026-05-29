@@ -21,6 +21,7 @@ from agent.episodic import write_episode
 from agent import conditions
 from agent import goal as goal_module
 from agent.flow_trace import slice1_flow_steps
+from agent.conditions.descent_path import slice1_descent_record
 from agent.compare_scheduler import build_patterns, pair_grid_counts
 
 
@@ -147,10 +148,13 @@ class ActiveSoarAgent:
         """Write one episodic attempt folder for this solve() (CLAUDE.md §3.3).
 
         Captured from outside the frozen cycle: the test input grids
-        (step_000…) followed by the submitted prediction (final step). The
-        trace also carries the §3 module-B goal evolution (``_slice1_goal_record``)
-        so every episode records the *goal-basis* of its answer, not just the
-        answer.
+        (step_000…) followed by the submitted prediction (final step). The trace
+        also carries the §3 flow's observability triple, value-agnostic and
+        answer-neutral: module A's hierarchical descent path
+        (``slice1_descent_record``), module B's goal evolution
+        (``_slice1_goal_record``), and module C's comparison-flow form
+        (``slice1_flow_steps``) — so every episode records *how* the solve
+        approached its answer (criterion 3), not just the answer.
         """
         grid_steps = []
         for pair in task.test_pairs:
@@ -159,6 +163,11 @@ class ActiveSoarAgent:
         if predicted:
             grid_steps.append(predicted)
         trace = list(trace or [])
+        # The §3 hierarchical descent *path* (module A), value-agnostic: the
+        # TASK→PAIR→GRID walk depth-entered-by-necessity (P1), terminal level
+        # flagged. The spine of the raw-prose flow — recorded first so the episode
+        # reads top-down (descend → form goal → run comparisons).
+        trace.append(slice1_descent_record(task))
         goal_record = self._slice1_goal_record(task, predicted)
         if goal_record is not None:
             trace.append(goal_record)
