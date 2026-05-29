@@ -5887,3 +5887,105 @@ is wiring module B's `GoalStack` as a live S1 WM object gating
 `preferences.select_operator` (satisfaction logic already live via
 `schema_goal_satisfied`); split it (consult-only first, then preference influence)
 for live-trigger regression safety.
+
+> STAGNATION at iter 81 — 26 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:59
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_065952.log
+
+---
+## Learning Loop -- 2026-05-30 07:01
+
+- Split: None, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 0 -> 0 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260530_070139.log
+
+---
+## Learning Loop -- 2026-05-30 07:01
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260530_070155.log
+
+---
+## Learning Loop -- 2026-05-30 07:03
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_070306.log
+
+---
+## Iter 82 — 2026-05-30T07:03 — branch test21
+
+**Iter 82: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand, and this turn went past the prior iters by
+using the probe as an actual microscope: the probe only ever exercises the *fast
+path* (`via=stored(easy000a)`), so I forced the *slow path* by relocating rule_003
+and re-running. Result: the full discovery pipeline works — `easy000a: CORRECT
+rule=copy_common_output via=pipeline(steps=26)` (descent→compare→extract→generalize→
+predict→submit), then easy000a2 reuses it (`via=stored`). The system genuinely solves
+"the way the user intends," not just via the stored-rule shortcut. No agent-side gap
+lifts a positive signal without gaming a metric or crossing the closed Slice-2 gate.
+
+**Fresh verification this turn (first-hand, not inherited)**:
+- Gate CLOSED: `docs/SLICE_2_LOOP.md` ABSENT; `data/ARC_easy/` = {easy000a.json,
+  easy000a2.json} only.
+- One rule on disk: `rule_003.json` (copy_common_example_output, value-agnostic,
+  anti_unification_trace=null — correct single-source initial rule; AU OUT of Slice 1).
+- **Slow path independently verified**: with rule_003 relocated, from-empty-memory
+  solve discovers copy_common_output via the 26-step pipeline and persists it; covers
+  easy000a; easy000a2 then reuses. Restored rule_003 and removed the experiment's
+  duplicate (`rule_001.json`) — `git status` confirms procedural_memory/ clean.
+- **`--log-wm` is NOT broken**: an apparent `[Errno 22] Invalid argument` (0/2) was a
+  pipe-truncation artifact (`| head` closing the pipe early → broken pipe → Errno 22
+  on Windows). Redirected to a file, `--log-wm` solves 2/2 cleanly. No bug; the
+  observability path is healthy.
+- `active_operators.py` (436 lines) read in full: no dead code; the lone `_apply_rule`
+  is the generic value-agnostic dispatcher (identity-only, unknown→None per P3), not a
+  closed-family `_apply_<name>`. Nothing safely removable → P6 not movable.
+- Invariant `--check` (base 86f42c0a): exit 2, NEUTRAL — P1=2.0 P2=2.0 P3=0.0
+  P4=3261 P5=10 P6=435 (all Δ0).
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks; pool frozen F6, only 1 rule so no merge).
+- P3: anti-unification explicitly OUT of Slice 1 (§4/§9).
+- P4: grows only by running more solves — metric-gaming, not a contribution.
+- P5: §3 flow fully covered by the 10 live matchers; an 11th would be dead vocabulary.
+- P6: nothing removable (full re-read this turn).
+- (pytest not installed on this interpreter; instead of the suite, the live 2/2 solve
+  — *both* fast and slow path — is this turn's stronger health signal.)
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched). Slow-path also verified 2/2.
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human action:
+provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json/easy000b2.json, absent).
+Do not start Slice 2 autonomously (§10). When it opens, the highest-value first step is
+wiring module B's `GoalStack` as a live S1 WM object gating
+`preferences.select_operator` (satisfaction logic already live via
+`schema_goal_satisfied`); split it (consult-only first, then preference influence) for
+live-trigger regression safety. Note for that iter: the slow path is confirmed
+working end-to-end this turn, so Slice-2 work builds on a verified pipeline.
+
+> STAGNATION at iter 82 — 27 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
