@@ -185,3 +185,94 @@ solve loop still ignores it. Next gap = the value-agnostic PredictByAllPairCommO
 output — replacing the wrong `color_mapping` path. Wiring it touches the SOAR
 pipeline (likely active_operators.py → mind F8: pair with a conditions/ or
 memory.py companion).
+
+---
+## Learning Loop -- 2026-05-29 19:53
+
+- Split: None, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_195322.log
+
+---
+## Learning Loop -- 2026-05-29 20:01
+
+- Split: None, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_200139.log
+
+---
+## Learning Loop -- 2026-05-29 20:02
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_200233.log
+
+---
+## Iter 4 — 2026-05-29 — branch test21
+
+**Diagnosis**: Iters 2-3 built the recognition chain (matcher `all_outputs_comm`
++ producer `compare_scheduler.build_patterns`) but left it dead — the solve loop
+still emitted the wrong `color_mapping` rule (0/2, paints the whole background).
+The smallest defensible step was to *wire* that chain into the pipeline: a
+value-agnostic copy-common-output path (module K / PredictByAllPairCommOp) that,
+when the example outputs are all-COMM, copies the common example G1 as the test
+answer — exactly the Slice-1 deciding comparison (SLICE_1_LOOP §3). This is
+wiring, not new mechanism, and is iter-3's own "Next gap" note.
+
+**Change**:
+- `agent/active_operators.py`: `GeneralizeOperator` now recognizes the
+  all-outputs-COMM regime *first* (via the `agent/conditions` registry fed by
+  `compare_scheduler.build_patterns` — recognition vocabulary, not a hand-coded
+  `_try_*`) and emits a value-agnostic `{type: copy_common_output}` rule.
+  `PredictOperator` applies it by copying the task's *common example output*
+  grid (read from `wm.task` at predict time — no literal in code), guarded by an
+  equality re-check so a misfire degrades to no-prediction. New helpers
+  `_recognizes_copy_common_output` / `_common_example_output` are NOT in the
+  closed `_try_*`/`_apply_*` family (F2 clean).
+- `agent/memory.py` (F8 companion + genuine): `copy_common_output` →
+  `condition.type = all_outputs_comm`, `action.dsl = make_grid` (the output is a
+  freshly *constructed* canvas, not an in-place recolour), and a concept label.
+  Two `copy_common_output` rules are equivalent (no stored grid) so the second
+  task merges into the first rule's `covers` — one general rule, two tasks.
+- `tests/test_predict_copy_common_output.py` (new): 7 tests on real ARCKG nodes
+  driving Generalize→Predict end-to-end, asserting the SAME code copies
+  easy000a's red and easy000a2's green outputs (value-agnostic) and does NOT
+  fire on varying outputs. Self-runs (pytest absent). 7/7 pass; existing 14/14 +
+  8/8 still pass.
+- No frozen-file edit; no DSL `def`/`register` (F3 clean).
+
+FINDING (test_output_missing is dead on real data): iter-3's PAIR-level matcher
+assumes the test pair lacks its output grid, but `ARCManager.load_task` loads
+easy tasks *with* the test ground-truth output (test `grid_count == 2`), so
+`test_output_missing` never fires on real loaded tasks. I therefore gate the
+mechanism on the GRID-level decider `all_outputs_comm` alone (which fires
+correctly, COMM 3/3 on {size,color,contents}). The PAIR-level trigger needs
+either a representation that hides the test output or a count-asymmetry reframing
+— flagged for a future iter.
+
+**Probe before**: 0/2 correct; rules 2→2 (+0); via=color_mapping (wrong path); covers mean 1.0.
+**Probe after** : 2/2 correct; rules 2→3 (+1); via=copy_common_output (intended path);
+rule_003 covers [easy000a, easy000a2]; covers mean 1.33.
+
+**Invariants**: forbidden=none (F1/F2/F3/F4/F8 all clear; F8 satisfied by the
+`agent/memory.py` companion edit). positives=P2 Δ+0.33 (1.0→1.33, the
+generalization win — one rule, two tasks). P1 Δ−0.33 (1.0→0.67) is an artifact
+of the two stale `color_mapping` rules still on disk (they never match — dead but
+harmless); P3/P4/P5 Δ0; P6 +84 lines (the cost of wiring). Verdict CLEAN.
+
+**Next gap (note for future iter)**: Both Slice-1 tasks now solve via the
+intended value-agnostic path, but (a) the stale `color_mapping` rule_001/002
+could be pruned (would lift P1), (b) fast-path *reuse* of `copy_common_output` is
+not yet wired — `_apply_rule` returns None for it (no `wm.task`), so each new
+copy-task re-runs the slow path instead of a stored-rule hit; threading example
+outputs into the fast path would let `times_reused` climb, and (c)
+`test_output_missing` needs reframing against the loaded representation.

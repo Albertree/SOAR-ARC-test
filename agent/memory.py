@@ -176,6 +176,9 @@ _CONDITION_TYPE_BY_RULE = {
     "color_mapping": "consistent_color_mapping",
     "recolor_sequential": "sequential_recoloring",
     "identity": "identity_transformation",
+    # Slice-1 value-agnostic copy-common-output: recognised when every example
+    # output grid is COMM under a role-aligned Inter-Grid comparison.
+    "copy_common_output": "all_outputs_comm",
 }
 
 
@@ -194,6 +197,12 @@ def _build_action(rule: dict) -> dict:
     action.dsl is `coloring`; the rule's own parameters become the args.
     """
     rule = rule or {}
+    if rule.get("type") == "copy_common_output":
+        # The output is a freshly *constructed* canvas equal to the common
+        # example output (a make_grid composition), not an in-place recolour.
+        # Args stay empty: the grid is read from the task's example outputs at
+        # apply time, keeping the rule value-agnostic (no stored literal).
+        return {"dsl": "make_grid", "args": {}}
     args = {k: v for k, v in rule.items() if k not in ("type", "confidence")}
     return {"dsl": "coloring", "args": args}
 
@@ -250,6 +259,8 @@ def _infer_concept(rule: dict) -> str:
         return "color_remap"
     if t == "recolor_sequential":
         return "recolor_objects_sequentially"
+    if t == "copy_common_output":
+        return "copy_common_example_output"
     if t == "identity":
         return "identity"
     # For custom types added by Claude, use the type name directly

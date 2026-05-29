@@ -12,6 +12,8 @@ Pipeline operators (all fire in S2, read/write S1):
 
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
+from agent import conditions
+from agent.compare_scheduler import build_patterns
 
 
 # ======================================================================
@@ -291,8 +293,19 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
+        # Recognition-first (Slice 1): the value-agnostic all-outputs-COMM path.
+        # When the example pairs are complete + the test output is missing
+        # (test_output_missing) AND every example output grid is COMM under a
+        # role-aligned Inter-Grid comparison (all_outputs_comm), the test output
+        # is the *common* example output — copied, not computed. This dispatches
+        # via the recognition registry (CLAUDE.md §6.3), not a hand-coded
+        # detector, so no new _try_* is introduced.
+        if self._recognizes_copy_common_output(wm):
+            rule = {"type": "copy_common_output", "confidence": 1.0}
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
 
         # Strategy 2: simple 1:1 color mapping
         if rule is None:
@@ -303,6 +316,42 @@ class GeneralizeOperator(Operator):
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- recognition: value-agnostic copy-common-output -----------------
+
+    @staticmethod
+    def _recognizes_copy_common_output(wm) -> bool:
+        """True iff the Slice-1 copy-common-output mechanism applies.
+
+        Delegates to the registered recognition matchers (agent/conditions),
+        fed by the module-C producer (agent/compare_scheduler.build_patterns).
+        Strictly value-agnostic: the matchers inspect only COMM/DIFF verdicts
+        and structural grid counts, never a colour or coordinate value, so this
+        fires identically for easy000a (red) and easy000a2 (green).
+        """
+        task = getattr(wm, "task", None)
+        if task is None:
+            return False
+        patterns = build_patterns(task)
+        # The *deciding* comparison (SLICE_1_LOOP.md §3): role-aligned Inter-Grid
+        # over the example outputs, COMM on {size, color, contents}. When that
+        # holds, every example output is the same grid and the test output is
+        # that common grid. min_evidence=1 requires at least one pairwise COMM
+        # receipt — i.e. >=2 example outputs actually compared — so the
+        # mechanism never fires off a single example.
+        #
+        # NB: the PAIR-level `test_output_missing` trigger is intentionally NOT
+        # required here. It assumes the test pair lacks its output grid, but
+        # ARCManager loads easy tasks with the test output present
+        # (test grid_count == 2), so it never fires on real data — see the iter-4
+        # session-log "Next gap" note.
+        return bool(
+            conditions.match(
+                "all_outputs_comm", patterns,
+                {"min_evidence": 1,
+                 "required_properties": ["size", "color", "contents"]},
+            )
+        )
 
     # ---- strategy: sequential recoloring --------------------------------
 
@@ -443,6 +492,14 @@ class PredictOperator(Operator):
         rule = active_rules[0]
         predictions = dict(wm.s1.get("predictions") or {})
 
+        # Value-agnostic copy-common-output (Slice 1): the answer is the common
+        # example output grid, *copied* — never a hard-coded literal. It is read
+        # from the task's own example outputs here (where wm.task is available),
+        # so the same rule stays general across tasks with different outputs.
+        common_output = None
+        if rule.get("type") == "copy_common_output":
+            common_output = self._common_example_output(task)
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -450,11 +507,38 @@ class PredictOperator(Operator):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            predicted = self._apply_rule(rule, g0)
+            if common_output is not None:
+                predicted = [row[:] for row in common_output]
+            else:
+                predicted = self._apply_rule(rule, g0)
             if predicted is not None:
                 predictions[key] = predicted
 
         wm.s1["predictions"] = predictions
+
+    @staticmethod
+    def _common_example_output(task):
+        """Return the common example output grid (raw) iff all example outputs
+        are identical, else None.
+
+        Value-agnostic: returns *whatever* the shared output is. The
+        all_outputs_comm precondition guarantees this is well-defined when the
+        copy-common-output rule fires; the equality re-check here is a guard so
+        a misfire degrades to "no prediction" rather than a wrong answer.
+        """
+        raws = []
+        for pair in task.example_pairs:
+            g1 = pair.output_grid
+            if g1 is None:
+                return None
+            raws.append(g1.raw)
+        if not raws:
+            return None
+        first = raws[0]
+        for other in raws[1:]:
+            if other != first:
+                return None
+        return [row[:] for row in first]
 
     # ---- rule application dispatchers ------------------------------------
 
