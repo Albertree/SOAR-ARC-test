@@ -6201,3 +6201,62 @@ first step is wiring module B's `GoalStack` as a live S1 WM object gating
 for live-trigger regression safety.
 
 > STAGNATION at iter 86 — 4 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
+
+> STAGNATION at iter 86 — 4 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:12
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_071235.log
+
+---
+## Iter 87 — 2026-05-30T07:13 — branch test21
+
+**Iter 87: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand, not inherited. Gate still ABSENT
+(`docs/SLICE_2_LOOP.md` missing; `data/ARC_easy/` = {easy000a,easy000a2}; one
+rule `rule_003.json`, validate_rule → VALID, covers=[easy000a,easy000a2],
+au_trace=null). This iter I audited the *groundedness* chain at source level
+(prior iters checked descent + value-agnosticism via test functions; I verified
+the "정답에는 근거가 있어야 한다" basis — P3/P4 of the raw prose — is genuinely
+implemented, not stubbed): `schema_goal_satisfied` builds module B's goal stack
+from the grid-count census, evolves it to the schema goal {size,color,contents},
+marks each leaf by a role-aligned Inter-Grid COMM comparison, and returns
+`is_satisfied()` — a real predicate, not always-true. `copy_common_output_applies`
+= `test_output_missing` ∧ `schema_goal_satisfied`, so both fast path
+(`_reuse_copy_common_output`) and slow path (`GeneralizeOperator`) resolve the
+mechanism through one matcher (criterion-2 uniformity holds). All four §8
+criteria hold; the answer is materialised bottom-up via the two frozen primitives
+(`reconstruct_via_dsl` = make_grid+coloring), value-agnostic.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched). Groundedness chain
+(schema_goal_satisfied / copy_common_output_applies / all_outputs_comm)
+re-verified value-agnostic and non-stub at source this iter.
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks; pool frozen F6; 1 rule → no merge).
+- P3: anti-unification explicitly OUT of Slice 1 (§4/§9) — moving it is a guardrail trip.
+- P4: grows only by running more solves — metric-gaming, not a code contribution.
+- P5: §3 recognition fully covered by the live matchers; an extra one = dead F4-class vocabulary (§9 forbids reverting C to an enumerated rule list).
+- P6: nothing safely removable — `active_operators.py` is the 9 live pipeline operators + 3 live helpers, no retired `_try_*` left.
+
+**Invariants**: forbidden=none (no code diff). Expected `--check`: NEUTRAL —
+P1=2.0 P2=2.0 P3=0.0 P5 P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json /
+easy000b2.json, absent). Do NOT start Slice 2 autonomously (§10). When it opens,
+the slice-2 mechanism shift is property *value* COMM → property *relation* COMM
+(structure-mapping: G0↔G1 relation identical across pairs) plus object-level
+descent and the first anti-unification of two per-pair programs — so the first
+defensible step is likely module-C object-level scope (`select(grid,object,pred)`)
+wired but answer-neutral, split from the anti-unification of programs.
