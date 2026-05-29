@@ -1845,3 +1845,94 @@ describe `save_rule()` wiring `anti_unification.unify()`, which does not match
 `test21`'s `save_rule_to_ltm` (no AU call site, and the live AU entry point is
 now `anti_unify_pair_programs`, not `unify()`) — a remaining spec↔code desync.
 Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.
+
+> STAGNATION at iter 26 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 00:19
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_001901.log
+
+---
+## Learning Loop -- 2026-05-30 00:29
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_002955.log
+
+---
+## Iter 27 — 2026-05-30T00:30 — branch test21
+
+**Diagnosis**: 3-iter STAGNATION (iters 24–26: two doc-reconciles + a package
+fix, all NEUTRAL). Used the clean 2/2 probe as a microscope on the *slow path*
+itself: `ExtractPatternOperator` still ran a hand-written cell-level diff
+(`_analyze_pair` / `_group_changes`, ~85 lines) — a relic of the retired
+`_try_*` / `color_mapping` lineage (CLAUDE.md §5.1). Its `pair_analyses` /
+`grid_size_preserved` output is consumed by **nothing**: recognition long ago
+moved to the value-agnostic compare-scheduler matchers, and both
+`GeneralizeOperator._recognizes_copy_common_output` and the fast path recompute
+`build_patterns(task)` fresh. The only thing any consumer reads from the
+`patterns` slot is its *truthiness* (the generalize early-return guard + the
+`ready_for_generalization` elaboration rule). This is dead superseded code — the
+exact thing P6 rewards removing — and the smaller half of the §7-priority-3
+"all six modules exist but aren't woven into one solve" integration gap.
+
+**Change**:
+- `agent/active_operators.py`: `ExtractPatternOperator.effect` now emits the real
+  Slice-1 patterns — `agent/compare_scheduler.build_patterns(task)` (the
+  module-C/D COMM/DIFF receipts of the Inter-Grid role==G1/G0, Intra-Pair, and
+  Inter-Pair comparisons + the grid-count census, i.e. the §3 sequence) — into
+  `wm.s1["patterns"]`. Deleted the dead `_analyze_pair` / `_group_changes`
+  helpers. Net −89 lines (23+/112−). `GeneralizeOperator` recognition is left
+  untouched (it still recomputes build_patterns), so this is the *smaller* half:
+  it makes the patterns slot honest (the episodic trace now records the intended
+  flow's comparison results, not a cell-diff) without changing what generalize
+  consumes. Behaviour-neutral on the solve. `build_patterns` was already
+  imported (line 16); it is value-agnostic (P7).
+- `tests/test_extract_pattern.py` (new): 7 cases — the operator emits exactly the
+  five Slice-1 comparison-receipt keys (no `pair_analyses`/`grid_size_preserved`
+  residue), the slot stays a non-empty dict (cycle still advances to generalize),
+  no-task is a no-op, and the emitted patterns still drive `test_output_missing`
+  + `all_outputs_comm` recognition value-agnostically for both the red (easy000a)
+  and green (easy000a2) fixed-output tasks. 7/7 pass.
+
+**Verification**: full suite green (test_compare_scheduler 14, conditions 8/10/10/
+9/12, dsl 30, episodic 22, extract_pattern 7, predict_copy_common_output 7,
+program_package_import 12, reconstruct_via_dsl 11, validate_rule 17,
+validate_rule_reuse 4; test_fast_path_reuse skipped — pytest absent, pre-existing,
+fast path untouched). Slow path still solves both end-to-end via the SOAR cycle:
+easy000a → (5,5)=red, easy000a2 → (0,0)=green, 14 steps each, rule
+copy_common_output. Probe unchanged 2/2.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P6 522 → 433 (Δ +89 lines removed)** — the strongest single architectural-
+progress signal, and it breaks the 3-iter stagnation by removing dead retired-
+lineage code rather than reconciling docs. P4 3101 → 3103 (+2, automatic probe
+episodes). P1 2.0, P2 2.0, P3 0.0, P5 5 unchanged (Slice-1 saturated / AU is
+Slice-2). F1 not tripped (active_operators.py not frozen); F2 none (deletions,
+no new `_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved; F5 no
+`TF_` under semantic_memory; F6 no budget growth; F7 no swallowed
+RuleSchemaError; F8 satisfied (active_operators.py net-negative −89 → the
+deletion/refactor exemption, no other file needed).
+
+**Next gap (note for future iter)**: the *larger* half of the integration gap
+remains — `GeneralizeOperator._recognizes_copy_common_output` (and the fast-path
+`_reuse_copy_common_output`) still **recompute** `build_patterns(task)` instead
+of consuming the `wm.s1["patterns"]` the extract step now produces; wiring
+generalize to consume the precomputed slot would finish weaving extract→generalize
+into one patterns object (needs updating `test_predict_copy_common_output.py`,
+which hand-sets a minimal patterns dict). Deeper still: modules A/B
+(`DescendOperator` impasse-driven descent + GoalStack evolution) remain stubs —
+the centre of the raw-prose flow, large and F8-risky. Slice 1 stays functionally
+complete; Slice 2 is human-gated — do not start it.

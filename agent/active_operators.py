@@ -141,9 +141,28 @@ class CompareOperator(Operator):
 
 class ExtractPatternOperator(Operator):
     """
-    Analyzes each example pair at the cell level to discover what changes
-    between input and output grids. Groups changed cells into connected
-    components and records color/position information for generalization.
+    Emits the Slice-1 ``patterns`` dict — the module-C/D comparison receipts the
+    §3 flow produces — into ``wm.s1["patterns"]`` for GeneralizeOperator.
+
+    Historically this operator ran a hand-written cell-level diff
+    (``_analyze_pair`` / ``_group_changes``) that grouped changed cells into
+    4-connected components and recorded their colours/positions. That machinery
+    was a relic of the retired ``_try_*`` / ``color_mapping`` lineage
+    (CLAUDE.md §5.1): once recognition moved to the value-agnostic
+    compare-scheduler matchers (``test_output_missing`` + ``all_outputs_comm``),
+    its ``pair_analyses`` / ``grid_size_preserved`` output fed **nothing** — the
+    only thing any consumer read from the slot was its *truthiness*
+    (``GeneralizeOperator``'s early-return guard and the
+    ``ready_for_generalization`` elaboration rule). It is removed here.
+
+    The slot now carries the real Slice-1 comparison receipts
+    (``agent/compare_scheduler.build_patterns``): the COMM/DIFF verdicts of the
+    Inter-Grid (role==G1 / role==G0), Intra-Pair, and Inter-Pair comparisons plus
+    the grid-count census — exactly the §3 sequence and the data the matchers
+    consume. So the patterns the episodic trace records now *are* the intended
+    flow's comparison results (CLAUDE.md §5: "extract_pattern reads comparisons,
+    writes patterns") rather than a dead cell-diff. Value-agnostic: build_patterns
+    only schedules/compares, never reading a colour/coordinate value (P7).
     """
 
     def __init__(self):
@@ -156,115 +175,7 @@ class ExtractPatternOperator(Operator):
         task = wm.task
         if task is None:
             return
-
-        patterns = {
-            "grid_size_preserved": True,
-            "pair_analyses": [],
-        }
-
-        for pair in task.example_pairs:
-            g0 = pair.input_grid
-            g1 = pair.output_grid
-            if g0 is None or g1 is None:
-                continue
-
-            analysis = self._analyze_pair(g0, g1)
-            patterns["pair_analyses"].append(analysis)
-
-            if g0.height != g1.height or g0.width != g1.width:
-                patterns["grid_size_preserved"] = False
-
-        wm.s1["patterns"] = patterns
-
-    # ---- internal helpers ------------------------------------------------
-
-    def _analyze_pair(self, g0, g1):
-        """Cell-level diff between input and output grid."""
-        raw_in = g0.raw
-        raw_out = g1.raw
-        h = min(len(raw_in), len(raw_out))
-        w = min(
-            len(raw_in[0]) if raw_in else 0,
-            len(raw_out[0]) if raw_out else 0,
-        )
-
-        changes = []
-        for r in range(h):
-            for c in range(w):
-                if raw_in[r][c] != raw_out[r][c]:
-                    changes.append({
-                        "row": r, "col": c,
-                        "input_color": raw_in[r][c],
-                        "output_color": raw_out[r][c],
-                    })
-
-        groups = self._group_changes(changes)
-
-        group_analyses = []
-        for group_cells in groups:
-            input_colors = set()
-            output_colors = set()
-            positions = []
-            for cell in group_cells:
-                input_colors.add(cell["input_color"])
-                output_colors.add(cell["output_color"])
-                positions.append((cell["row"], cell["col"]))
-
-            top_row = min(r for r, c in positions)
-            top_col = min(c for r, c in positions)
-
-            group_analyses.append({
-                "input_colors": sorted(input_colors),
-                "output_colors": sorted(output_colors),
-                "top_row": top_row,
-                "top_col": top_col,
-                "cell_count": len(group_cells),
-            })
-
-        return {
-            "total_changes": len(changes),
-            "num_groups": len(groups),
-            "groups": group_analyses,
-            "size_match": (
-                len(raw_in) == len(raw_out)
-                and (len(raw_in[0]) if raw_in else 0)
-                    == (len(raw_out[0]) if raw_out else 0)
-            ),
-        }
-
-    @staticmethod
-    def _group_changes(changes):
-        """Group changed cells into 4-connected components."""
-        if not changes:
-            return []
-
-        pos_to_change = {}
-        for c in changes:
-            pos_to_change[(c["row"], c["col"])] = c
-
-        visited = set()
-        groups = []
-
-        for change in changes:
-            pos = (change["row"], change["col"])
-            if pos in visited:
-                continue
-
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_to_change:
-                    continue
-                visited.add(p)
-                group.append(pos_to_change[p])
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (p[0] + dr, p[1] + dc)
-                    if nb in pos_to_change and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
+        wm.s1["patterns"] = build_patterns(task)
 
 
 # ======================================================================
