@@ -6528,3 +6528,65 @@ answer preservation, so it is not a defensible positive-signal step on its own.
 When Slice 2 opens, the mechanism shift is property *value* COMM → property
 *relation* COMM + object-level descent + the first anti-unification of two
 per-pair programs.
+
+> STAGNATION at iter 92 — 10 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:33
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_073332.log
+
+---
+## Iter 93 — 2026-05-30 — branch test21
+
+**Iter 93: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand. Slice 1 is complete and human-gated:
+`docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed); `data/ARC_easy/` = {easy000a,
+easy000a2} frozen (F6); exactly one rule (`rule_003.json` — valid
+{condition:`copy_common_output_applies`, action:`make_grid`}, value-agnostic,
+covers=[easy000a,easy000a2], au_trace=null, times_reused=322). Probe = 2/2 CORRECT
+via stored rule. This iter I specifically resolved the 11-files-vs-10-registry gap
+the prior logs glossed: the extra file is `agent/conditions/descent_path.py`, a
+*deliberately non-registered* itinerary helper (returns a dict, consumed by
+`DescendOperator.effect` + the episode recorder) — not dead code, so P5=10 is
+genuine and there is nothing stale to prune there.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Positive-signal analysis (verified live via `check_invariants.sh --check`,
+exit 0 = clean, verdict NEUTRAL)**:
+- P1=2.0, P2=2.0 — mathematically capped (2 tasks / 1 rule, pool frozen F6; a
+  lone rule has no second rule to merge with, no third task to absorb).
+- P3=0.0 — improving it requires anti-unification wiring, explicitly OUT of
+  Slice 1 (§4/§9 guardrail). Blocked, not unfilled.
+- P4=3288 — increments only by re-running solves (the probe already bumped it
+  3286→3288); my running another solve would be metric-gaming, not a contribution.
+- P5=10 — the §3 GRID-level recognition flow is fully covered by live matchers
+  (verified: `descent_path` is a helper, not a missing matcher). An 11th matcher
+  with no consuming recognition need is dead vocabulary accretion — the very
+  pattern §5.1 warns against.
+- P6=435 — `active_operators.py` is all live pipeline operators (SolveTask,
+  SelectTarget, Compare, ExtractPattern, Generalize, Descend, Predict, Submit,
+  Verify); the `_try_*`/`_apply_*` detector family is already gone. Nothing safely
+  removable.
+
+**Invariants**: forbidden=none (no code diff). Live `--check` verdict = NEUTRAL,
+all six deltas Δ0 (P1=2.0 P2=2.0 P3=0.0 P4=3288 P5=10 P6=435), exit 0.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json). Do NOT
+start Slice 2 autonomously (§10). When it opens, the mechanism shift is property
+*value* COMM → property *relation* COMM (structure-mapping across pairs) +
+object-level descent + the first anti-unification of two per-pair programs; the
+first defensible step is likely module-C object-level scope
+(`select(grid, object, pred)`) wired but answer-neutral, split from the program
+anti-unification itself.
