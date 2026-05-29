@@ -55,8 +55,8 @@ Read these, in this order, every iter:
    task(s) the slice must solve, the module scope (IN/OUT), the 7 design
    principles, the exact select/compare sequence, and the (relaxed) pass
    criteria. **It also lists original sources you MUST read in full** (the
-   user's raw prose at `~/Desktop/wiki/raw/notion-idea-arbor-flow-three-task-description-2026-05-21.md`
-   and `~/Desktop/wiki/wiki/arbor-execution-trace.md`) — do not work from the
+   user's raw prose at `docs/arbor_context/arbor-flow-three-task-description.md`
+   and `docs/arbor_context/arbor-execution-trace.md`) — do not work from the
    slice doc's summary alone; read those originals so detail is not lost.
 2. `CLAUDE.md` — architecture invariants (frozen files, operator pipeline,
    memory schema).
@@ -66,7 +66,7 @@ Read these, in this order, every iter:
    the prompt context as `${PROBE_OUTPUT}` — see Step 2). Note: until the probe
    targets the slice's tasks (see §below), treat it as a *secondary* signal and
    run the slice's own target task(s) per `docs/SLICE_1_LOOP.md` directly.
-6. The wiki module map at `~/Desktop/wiki/wiki/arbor-modules.md` if it
+6. The wiki module map at `docs/arbor_context/arbor-modules.md` if it
    exists — its **Gap** column is the canonical list of unfilled holes.
 
 ### Step 2 — Diagnose one gap

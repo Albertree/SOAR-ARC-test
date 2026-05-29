@@ -18,7 +18,7 @@ A purely symbolic ARC solver built on the **SOAR** cognitive architecture, using
 embeddings. No external ML dependencies.
 
 The complete system specification lives outside this repo in the LLM Wiki
-(`~/Desktop/wiki/`) under pages `[[arbor]]`, `[[arbor-modules]]`, and
+(`docs/arbor_context/`) under pages `[[arbor]]`, `[[arbor-modules]]`, and
 `[[arckg-3repository]]`. This file extracts the *invariants* needed for safe
 code modification.
 

@@ -15,19 +15,19 @@
 
 이 다섯을 *매번* 읽는다. 이 문서는 그 요약이 아니라 *실행 맥락* 일 뿐이다.
 
-1. **`~/Desktop/wiki/raw/notion-idea-arbor-flow-three-task-description-2026-05-21.md`**
+1. **`docs/arbor_context/arbor-flow-three-task-description.md`**
    — 사용자가 직접 쓴 easy000a / easy000b / 08ed6ac7 풀이 시나리오 원본.
    *왜 각 단계를 그렇게 하는지의 당위성* 이 여기 있다. Slice 1 은 그중
    **easy000a 문단** (첫 큰 문단) 이 대상.
-2. **`~/Desktop/wiki/wiki/arbor-execution-trace.md`**
+2. **`docs/arbor_context/arbor-execution-trace.md`**
    — 11 모듈 각각의 역할·현 코드·다음 액션 + **7 원리** + Slice 계획.
-3. **`~/Desktop/wiki/wiki/arbor-dsl-taxonomy.md`**
+3. **`docs/arbor_context/arbor-dsl-taxonomy.md`**
    — DSL 4종 분리, 씨앗 함수 명세, scope selector = filter+util+property.
-4. **`~/Desktop/wiki/wiki/arbor-open-questions.md`**
+4. **`docs/arbor_context/arbor-open-questions.md`**
    — 아직 답 없는 부분. Slice 1 범위에서 막히면 여기 먼저 확인.
 5. **`CLAUDE.md` + `docs/INVARIANTS.md`** — 아키텍처 불변 + F1-F8/P1-P6.
 
-`~/Desktop/wiki/ARBOR_flow_description/easy000a.json` 의 실제 grid 도 직접 열어
+`data/ARC_easy/easy000a.json` 의 실제 grid 도 직접 열어
 값을 확인할 것 (추측 금지).
 
 ---
