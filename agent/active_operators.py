@@ -221,28 +221,19 @@ class GeneralizeOperator(Operator):
         Consumes the precomputed ``patterns`` slot ExtractPatternOperator wrote
         instead of recomputing build_patterns — the extract→generalize wiring
         (CLAUDE.md §5: extract writes patterns, generalize reads them).
-        The intended §3 two-step (SLICE_1_LOOP.md §3), both value-agnostic — the
-        matchers read only COMM/DIFF verdicts and grid counts, never a
-        colour/coordinate value, so it fires identically for easy000a (red) and
-        easy000a2 (green):
-          1. test_output_missing (PAIR): the test pair carries input only
-             (grid_count 1 vs the examples' 2) — its output must be constructed.
-          2. all_outputs_comm (GRID): role-aligned Inter-Grid over the example
-             outputs is COMM on {size, color, contents}, so the test output is
-             that common grid. min_evidence=1 needs >=2 outputs compared.
+
+        The §3 two-step (PAIR ``test_output_missing`` ∧ GRID ``all_outputs_comm``
+        on {size, color, contents}) is recognised through the single
+        ``copy_common_output_applies`` matcher — the *same* recogniser the fast
+        path (``ActiveSoarAgent._reuse_copy_common_output``) uses, so discovery
+        and reuse no longer hand-inline the conjunction twice. Value-agnostic
+        (SLICE_1_LOOP.md §9): the matcher reads only COMM/DIFF verdicts and grid
+        counts, so it fires identically for easy000a (red) and easy000a2 (green).
         """
         if not patterns:
             return False
-        if not conditions.match("test_output_missing", patterns,
-                                {"min_evidence": 1}):
-            return False
-        return bool(
-            conditions.match(
-                "all_outputs_comm", patterns,
-                {"min_evidence": 1,
-                 "required_properties": ["size", "color", "contents"]},
-            )
-        )
+        return conditions.match("copy_common_output_applies", patterns,
+                                {"min_evidence": 1})
 
 
 # ======================================================================

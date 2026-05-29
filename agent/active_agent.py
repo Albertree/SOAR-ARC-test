@@ -250,12 +250,15 @@ class ActiveSoarAgent:
     def _reuse_copy_common_output(self, entry, task):
         """Reuse a stored copy-common-output rule (value-agnostic).
 
-        Recognition reuses the *exact* matchers the slow path's
-        ``GeneralizeOperator`` fires (``test_output_missing`` +
-        ``all_outputs_comm``, the latter named by the rule's own
-        ``condition.type``); construction reuses ``PredictOperator``'s common
-        example output materialised bottom-up through the two frozen DSL
-        primitives. No comparison route or literal is re-derived here.
+        Recognition reuses the *exact* recogniser the slow path's
+        ``GeneralizeOperator`` fires — the single ``copy_common_output_applies``
+        matcher (PAIR ``test_output_missing`` ∧ GRID recogniser), driving its
+        GRID half from the stored rule's own ``condition.type`` (CLAUDE.md §5.2:
+        the fast path matches patterns against the rule's condition) so reuse and
+        discovery share one routine instead of each hand-inlining the conjunction.
+        Construction reuses ``PredictOperator``'s common example output
+        materialised bottom-up through the two frozen DSL primitives. No
+        comparison route or literal is re-derived here.
         """
         condition = entry.get("condition") or {}
         ctype = condition.get("type")
@@ -263,13 +266,10 @@ class ActiveSoarAgent:
             return None
 
         patterns = build_patterns(task)
-        if not conditions.match("test_output_missing", patterns,
-                                {"min_evidence": 1}):
-            return None
         if not conditions.match(
-            ctype, patterns,
-            {"min_evidence": condition.get("min_evidence", 1),
-             "required_properties": ["size", "color", "contents"]},
+            "copy_common_output_applies", patterns,
+            {"grid_matcher": ctype,
+             "min_evidence": condition.get("min_evidence", 1)},
         ):
             return None
 

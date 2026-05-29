@@ -3169,3 +3169,81 @@ active_operators.py, needs a companion under agent/conditions/ or memory.py), so
 warrants a careful library-first split like module A got (iter 40 effect → iter 41
 wiring). Everything else (Slice 2, anti-unification, extra matchers) stays
 forbidden until `SLICE_2_LOOP.md` lands. Slice 1 remains functionally complete.
+
+---
+## Learning Loop -- 2026-05-30 03:09
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_030923.log
+
+---
+## Learning Loop -- 2026-05-30 03:15
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_031558.log
+
+---
+## Iter 43 — 2026-05-30T03:16 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated, so the
+defensible work is integration/uniformity, not new mechanism. The probe is a
+microscope: it shows 2/2 via the *fast path* (`stored(easy000a)`), but reading
+the recognition code exposed a uniformity smell (SLICE_1_LOOP §8 criterion 2 —
+같은 종류 작업이 같은 모듈로): the copy-common-output recognition — the PAIR
+`test_output_missing` ∧ GRID `all_outputs_comm` conjunction — was **hand-inlined
+identically in two modules**, the slow path (`GeneralizeOperator
+._recognizes_copy_common_output`) and the fast path (`ActiveSoarAgent
+._reuse_copy_common_output`). One mechanism, recognised by two divergent-able
+copies.
+
+**Change**:
+- `agent/conditions/copy_common_output_applies.py` (new matcher): names that
+  conjunction once. Composes `test_output_missing` (PAIR) with a GRID recogniser
+  (default `all_outputs_comm`, overridable via a `grid_matcher` param so the fast
+  path can drive it from the stored rule's own `condition.type`, CLAUDE.md §5.2).
+  Value-agnostic (P7): reads only COMM/DIFF verdicts + structural grid counts.
+- `agent/active_operators.py` (net **−9** lines): `GeneralizeOperator
+  ._recognizes_copy_common_output` now delegates to the single matcher instead of
+  inlining the two-step. Pure simplification (net-negative → F8 allowed exception,
+  and a `conditions/` companion is touched anyway).
+- `agent/active_agent.py`: `_reuse_copy_common_output` delegates to the same
+  matcher, passing the rule's `condition.type` as `grid_matcher` and its
+  `min_evidence` — behaviour-identical for the stored rule (min_evidence=1) and
+  now rule-driven through one route shared with discovery.
+- `tests/test_conditions_copy_common_output_applies.py` (new, self-run): 7 cases
+  over real `build_patterns` — fires on easy000a(red)/easy000a2(green) identically,
+  not on varying outputs, not when the test pair already has an output, empty
+  fail-closed, `grid_matcher` override.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Identical — recognition is the same predicate, just consolidated. Full unit
+suite 23/23 files green, incl. the new 7/7.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 no frozen
+edit; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule changed; F5
+no `TF_`; F6 no budget growth; F7 no swallowed RuleSchemaError; F8 satisfied two
+ways — active_operators.py net **−9** *and* `agent/conditions/` touched).
+positives=P5 8→9 (+1, the single composite recogniser, consumed immediately by
+two live call sites — not ahead-of-need accretion), P6 448→439 (−9 lines removed),
+P4 3155→3157 (+2, mechanical from the probe runs — disclaimed per the standing
+iter-8/9/10 note). P1/P2/P3 Δ0.
+
+**Next gap (note for future iter)**: the recognition is now uniform, but the
+stored rule's `condition.type` is still only the GRID half (`all_outputs_comm`)
+with the PAIR `test_output_missing` supplied separately by the (now shared)
+matcher default — a future iter could migrate `rule_003.json`'s `condition.type`
+to `copy_common_output_applies` so the rule's condition is *fully* self-describing
+(both levels named by the rule, fast path purely rule-driven). Behaviour-sensitive
+(touches a live rule + F4 validation) so it warrants its own careful step. Module
+B's GoalStack still only *records* the goal; consuming it to gate recognition
+remains the larger deferred step. Slice 1 stays functionally complete; Slice 2 is
+human-gated — do not start it.
