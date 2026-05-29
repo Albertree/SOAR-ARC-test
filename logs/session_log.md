@@ -7238,3 +7238,43 @@ NEUTRAL, INVARIANTS §3).
 **Next gap (note for future iter)**: unchanged — gated on **human handoff**:
 provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start
 Slice 2 autonomously (§10). Until that lands, no-op is the correct output.
+
+---
+## Learning Loop -- 2026-05-30 08:22
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_082202.log
+
+---
+## Iter 104 — 2026-05-30T08:23 — branch test21
+
+**Iter 104: no defensible step found — analysis only (PROMPT.md §5).** Converged
+NEUTRAL (INVARIANTS §3), not an unfilled gap. Recalled `slice1_converged.md`
+instead of re-deriving from zero.
+
+**Diagnosis**: Re-confirmed the two gating facts first-hand: `docs/SLICE_2_LOOP.md`
+ABSENT (§10 human-gate closed) and `data/ARC_easy/` = {easy000a, easy000a2}
+frozen (F6). Probe = 2/2 CORRECT via stored(easy000a), +0 learned. State is
+byte-identical to iter 103; nothing in scope has changed.
+
+**Why no commit**: every positive signal is pinned by the frozen 2-task slice —
+P1=2.0/P2=2.0 (both tasks already in covers, F6 freezes pool → no merge/absorb),
+P3=0.0 (AU is OUT of Slice 1 per §9; a single-source rule can't be AU'd), P4
+moves only as a side effect of re-running solves (metric-gaming), P5/P6 immovable
+(GRID-level recognition complete; nothing dead to remove). Any code change trips
+a forbidden signal or games a metric; §5 calls a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start
+Slice 2 autonomously (§10). Until that lands, no-op is the correct output.
