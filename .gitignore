@@ -213,6 +213,13 @@ semantic_memory/*
 !semantic_memory/.gitkeep
 procedural_memory/*
 !procedural_memory/.gitkeep
+# The DSL/ package is hand-coded SOURCE (the two frozen transformation
+# primitives coloring/make_grid + apply_DSL dispatcher), not learned runtime
+# memory like rule_*.json. It is version-controlled so INVARIANTS F3's
+# `git diff -- procedural_memory/DSL/*.py` check can actually guard it.
+!procedural_memory/DSL/
+procedural_memory/DSL/__pycache__/
+!procedural_memory/DSL/*.py
 episodic_memory/*
 !episodic_memory/.gitkeep
 # Result code

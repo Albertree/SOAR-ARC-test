@@ -665,3 +665,83 @@ in-scope step exists until `SLICE_2_LOOP.md` lands. Future iters should
 re-confirm the §8 criteria and decline out-of-scope work (fast-path reuse /
 module J, anti-unification / module H, extra recognition matchers) rather than
 accrete it.
+
+---
+## Learning Loop -- 2026-05-29 20:39
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_203902.log
+
+---
+## Learning Loop -- 2026-05-29 20:47
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_204758.log
+
+---
+## Iter 10 — 2026-05-29T20:49 — branch test21
+
+**Diagnosis**: Re-diagnosed from scratch (not trusting iter 8/9's "complete").
+Slice 1 still solves 2/2 via `copy_common_output`, but a foundational gap that
+prior iters never surfaced: on this branch `procedural_memory/DSL/` holds **no
+source at all** (only stale `__pycache__`), so the *entire* hand-coded
+transformation vocabulary the architecture rests on — `coloring` /
+`make_grid`, the only two primitives ARBOR may ship with (CLAUDE.md §6.1, raw
+prose opening, PROMPT §3) — is absent. `rule_003.action.dsl == "make_grid"`
+therefore points at a **phantom** primitive (the {condition, action} pair's
+action half is unresolvable), and F3's `git diff -- procedural_memory/DSL/*.py`
+guard is toothless because that path is gitignored. The smallest defensible
+step is to lay the substrate (just the two primitives + dispatcher + tests);
+*wiring* PredictOperator to compose through it is the larger half, deferred.
+
+**Change**:
+- `procedural_memory/DSL/{__init__,apply,coloring,make_grid}.py` (new): the two
+  frozen primitives + `DSL_REGISTRY`/`register`/`apply_DSL`, reused verbatim
+  from the proven canonical implementation in git history (`25831eb4`). Pure,
+  value-agnostic, OOB/type-validated. Registry is closed at exactly two.
+- `.gitignore`: un-ignore the `DSL/` *code* package (it is hand-coded source,
+  not learned runtime memory like `rule_*.json`) so it is version-controlled
+  and F3's diff-check can actually guard it. `__pycache__` stays ignored.
+- `tests/test_dsl.py` (new): 30 assertions — registry closure, happy paths,
+  validation, purity, `apply_DSL` dispatch, and a Slice-1 tie-in showing
+  `make_grid`+`coloring` reconstructs BOTH easy000a's red(2)@(5,5) and
+  easy000a2's green(3)@(0,0) from the SAME primitives (value-agnostic) — i.e.
+  `copy_common_output` IS such a composition, so this is the real substrate,
+  not dead code. 30/30 pass; existing 8+14+7+22 still pass (81/81 total).
+- No frozen-file edit; `agent/active_operators.py` untouched (F8 inert); no rule
+  written; solve path unchanged (probe still 2/2 via copy_common_output).
+
+**Probe before**: 2/2 correct; rule_003 only; via=copy_common_output; P1=2.0,
+P2=2.0; `procedural_memory/DSL/` empty of source; `action.dsl=make_grid` phantom.
+**Probe after** : 2/2 correct (unchanged — substrate is additive, not wired);
+via=copy_common_output; the two frozen primitives now exist and are tracked;
+`make_grid` is a real, resolvable primitive.
+
+**Invariants**: forbidden=none (F1 no frozen edit; F2 no `_try_*`/`_apply_*`;
+F3 clean — only `@register("coloring")`/`@register("make_grid")` and only
+whitelisted `def coloring/make_grid/apply_DSL/register/_*`, verified by the
+checker AND manually; F4 rule_003 still valid; F5 no TF_; F6 no budget growth;
+F7 no swallowed RuleSchemaError; F8 inert — active_operators.py at 680, untouched).
+positives=P4 Δ+2 (3026→3028) — but that is the *mechanical* episode-write
+artifact of running the probe/tests during verification (as iters 8/9 noted),
+**not** claimed as this iter's contribution. The substantive contribution is
+structural (the absent foundational DSL now exists) and is neutral on the six
+metrics — honest scaffolding whose payoff lands when a future iter composes
+copy_common_output through `apply_DSL` (INVARIANTS §3 anticipates this). Verdict
+CLEAN per the checker.
+
+**Next gap (note for future iter)**: The substrate exists but PredictOperator
+still copies the common grid directly rather than composing it via
+`apply_DSL("make_grid", …)` then `apply_DSL("coloring", …)`. The next smallest
+step is to route the `copy_common_output` action through `apply_DSL` so the
+rule becomes genuinely self-contained/executable (touches active_operators.py +
+memory.py → F8 satisfied by the memory.py companion). Anti-unification / module
+H and object/pixel DSL remain Slice-1 OUT; Slice 2 stays human-gated.
