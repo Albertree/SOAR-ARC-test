@@ -9,34 +9,51 @@ fi
 export PATH="${PRE}/Users/Sir_K/anaconda3:${PRE}/Users/Sir_K/anaconda3/Scripts:${PRE}/Program Files/nodejs:${PRE}/Users/Sir_K/AppData/Roaming/npm:${PRE}/Users/Sir_K/AppData/Local/Microsoft/WindowsApps:$PATH"
 
 # ============================================================
-# SOAR-ARC Infinite Loop
+# ARBOR Infinite Loop  (post-test20 redesign)
 #
-# The only script you need to run.
+# Single ultimate goal: develop an agent whose knowledge grows and whose
+# problems get solved in the way the user intends. ARC score is a *probe*,
+# not the reward. The reward function lives in docs/INVARIANTS.md.
 #
 # Each iteration:
-#   1. Agent solves 20 tasks, accumulates rules in memory
-#   2. Claude Code reads results, improves the agent
-#   3. Regression check
-#   4. Git commit & push
-#   5. Repeat
+#   1. PROBE     — run a small fixed-seed task set, save its output.
+#   2. SNAPSHOT  — capture baseline metrics + HEAD hash.
+#   3. CLAUDE    — invoke Claude with PROMPT.md + probe output.
+#                  Claude self-diagnoses the smallest gap and fills it.
+#   4. VERIFY    — scripts/check_invariants.sh evaluates the diff.
+#                    exit 0 → CLEAN     (commit + push)
+#                    exit 1 → VIOLATION (git revert HEAD, no push)
+#                    exit 2 → NEUTRAL   (commit anyway, count toward
+#                                        stagnation tally)
+#   5. LOG       — append result to logs/session_log.md.
+#   6. REPEAT
 #
-# Usage (from PowerShell — must use Git Bash, NOT WSL):
-#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh
-#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --max-sessions 10
-#   & "C:\Program Files\Git\bin\bash.exe" run_loop.sh --tasks-per-session 30
+# Usage:
+#   ./run_loop.sh
+#   ./run_loop.sh --max-sessions 10
+#   ./run_loop.sh --probe-size 3
+#   ./run_loop.sh --probe-seed 42
+#
+# Notes:
+# - Task budget (--probe-size) does NOT auto-grow. Reproducibility over
+#   score chasing.  See docs/INVARIANTS.md F6.
+# - Stagnation: 3 consecutive NEUTRAL iters → loud notice to session_log.
+#   Loop continues; this is information for the user, not auto-stop.
 # ============================================================
 
 MAX_SESSIONS=999
 MAX_DURATION=$((48 * 60 * 60))
-TASKS_PER_SESSION=20
-MAX_TASKS=1000
+PROBE_SIZE=3
+PROBE_SEED=42
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
+SNAPSHOT_PATH="${LOG_DIR}/_invariant_snapshot.json"
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
         --max-sessions) MAX_SESSIONS="$2"; shift ;;
-        --tasks-per-session) TASKS_PER_SESSION="$2"; shift ;;
+        --probe-size)   PROBE_SIZE="$2";   shift ;;
+        --probe-seed)   PROBE_SEED="$2";   shift ;;
         *) echo "Unknown: $1"; exit 1 ;;
     esac
     shift
@@ -50,125 +67,145 @@ log() {
     echo "[$(date '+%Y-%m-%d %H:%M:%S')] $1" | tee -a "$PIPELINE_LOG"
 }
 
-get_last_session() {
+get_last_iter() {
     if [ -f "${LOG_DIR}/session_log.md" ]; then
-        grep -o 'Session [0-9]*' "${LOG_DIR}/session_log.md" | tail -1 | grep -o '[0-9]*' || echo "0"
+        grep -oE 'Iter [0-9]+' "${LOG_DIR}/session_log.md" | tail -1 | grep -oE '[0-9]+' || echo "0"
     else
         echo "0"
     fi
 }
 
-# ============================================================
-# Clean start: reset memory folders
-# ============================================================
-log "Cleaning memory folders..."
-find semantic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find semantic_memory -type d -empty ! -path 'semantic_memory' -delete 2>/dev/null
-find procedural_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find episodic_memory -type f ! -name '.gitkeep' -delete 2>/dev/null
-find . -name '__pycache__' -type d -exec rm -rf {} + 2>/dev/null
-
-SESSION=$(get_last_session)
+ITER=$(get_last_iter)
+NEUTRAL_STREAK=0
 
 log "=========================================="
-log "SOAR-ARC Infinite Loop"
-log "Tasks per session: $TASKS_PER_SESSION"
-log "Max sessions: $MAX_SESSIONS"
+log "ARBOR Infinite Loop"
+log "Branch: $BRANCH | probe-size: $PROBE_SIZE | probe-seed: $PROBE_SEED"
+log "Reward function: docs/INVARIANTS.md"
 log "=========================================="
 
 while true; do
 
     ELAPSED=$(( $(date +%s) - START_TIME ))
-    if [ $ELAPSED -ge $MAX_DURATION ]; then
+    if [ "$ELAPSED" -ge "$MAX_DURATION" ]; then
         log "Time limit reached."
         break
     fi
 
-    SESSION=$((SESSION + 1))
-    if [ $SESSION -gt $MAX_SESSIONS ]; then
+    ITER=$((ITER + 1))
+    if [ "$ITER" -gt "$MAX_SESSIONS" ]; then
         log "Max sessions reached."
         break
     fi
 
     TIMESTAMP=$(date '+%Y%m%d_%H%M%S')
-    SESSION_LOG="${LOG_DIR}/session_${SESSION}_${TIMESTAMP}.log"
+    ITER_LOG="${LOG_DIR}/iter_${ITER}_${TIMESTAMP}.log"
 
     log ""
-    log "========== SESSION $SESSION =========="
+    log "========== ITER $ITER =========="
 
-    # ── 1. Agent solves tasks, accumulates memory ────────────
-    log "Agent solving $TASKS_PER_SESSION tasks..."
-    LEARN_OUTPUT=$(python run_learn.py --limit "$TASKS_PER_SESSION" --shuffle 2>&1)
-    echo "$LEARN_OUTPUT" | tee -a "$PIPELINE_LOG"
+    # ── 1. PROBE ────────────────────────────────────────────
+    log "Probe: run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED"
+    PROBE_OUTPUT=$(python run_learn.py --limit "$PROBE_SIZE" --seed "$PROBE_SEED" 2>&1 || true)
+    echo "$PROBE_OUTPUT" >> "$PIPELINE_LOG"
+    PROBE_SCORE=$(echo "$PROBE_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $PROBE_SIZE")
+    log "Probe score (microscope, NOT reward): $PROBE_SCORE"
 
-    SCORE_LINE=$(echo "$LEARN_OUTPUT" | grep "Correct:" | tail -1)
-    RULES_LINE=$(echo "$LEARN_OUTPUT" | grep "Rules:" | tail -1)
-    log "Result: $SCORE_LINE"
-    log "Memory: $RULES_LINE"
+    # ── 2. SNAPSHOT ─────────────────────────────────────────
+    ./scripts/check_invariants.sh --snapshot "$SNAPSHOT_PATH" \
+        2>&1 | tee -a "$PIPELINE_LOG"
 
-    # ── Auto-grow task pool on 100% score ──────────────────
-    CORRECT_N=$(echo "$SCORE_LINE" | grep -oP '\d+(?= /)' || echo "0")
-    TOTAL_N=$(echo "$SCORE_LINE" | grep -oP '(?<= / )\d+' || echo "0")
-    if [ "$CORRECT_N" -eq "$TOTAL_N" ] && [ "$TOTAL_N" -gt 0 ] && [ "$TASKS_PER_SESSION" -lt "$MAX_TASKS" ]; then
-        TASKS_PER_SESSION=$((TASKS_PER_SESSION * 2))
-        if [ "$TASKS_PER_SESSION" -gt "$MAX_TASKS" ]; then
-            TASKS_PER_SESSION=$MAX_TASKS
-        fi
-        log "*** 100% score! Growing task pool to $TASKS_PER_SESSION ***"
-    fi
-
-    # ── 2. Claude Code improves the agent ────────────────────
-    log "Claude Code improving agent..."
+    # ── 3. CLAUDE ───────────────────────────────────────────
+    log "Invoking Claude with PROMPT.md..."
 
     claude -p "$(cat <<PROMPT
-You are session ${SESSION} of the SOAR-ARC loop.
+You are iter ${ITER} of the ARBOR infinite loop on branch ${BRANCH}.
 
-Read PROMPT.md for the mission. Read CLAUDE.md for architecture details.
+Your authoritative input is PROMPT.md. Read it now and execute it.
 
-Here are the agent's results from this session:
+CONTEXT FROM THE LOOP (not part of PROMPT.md, just situational):
 
-${LEARN_OUTPUT}
+  - The probe (run_learn.py --limit ${PROBE_SIZE} --seed ${PROBE_SEED}) has
+    already been run for you. Its output:
 
-Your task:
-1. Pick 1-3 INCORRECT tasks from above
-2. Read their JSON from data/ARC_AGI/training/<hex>.json
-3. Understand what transformation each task needs
-4. Add _try_* methods in GeneralizeOperator (agent/active_operators.py)
-5. Add matching _apply_* methods in PredictOperator
-6. Verify: python run_task.py must output CORRECT
-7. Verify: python run_learn.py --limit ${TASKS_PER_SESSION} --shuffle shows improvement
-8. Append results to logs/session_log.md
+    ===== PROBE OUTPUT =====
+${PROBE_OUTPUT}
+    ===== END PROBE =====
 
-Do NOT modify: data/, agent/cycle.py, agent/wm.py
-Each strategy must handle a CATEGORY of tasks, not just one.
+  - The baseline metric snapshot is at ${SNAPSHOT_PATH} — your post-iter
+    verification (scripts/check_invariants.sh --check) will diff against
+    this.
+
+  - Forbidden signals are listed in docs/INVARIANTS.md §1. Tripping any of
+    them causes the loop to auto-revert your commit. The list includes:
+    frozen-file edits, new _try_* / _apply_* methods, hand-coded DSL
+    primitives other than coloring/make_grid, rules without a condition
+    key, TF_GRID under semantic_memory/, auto-grown task budgets,
+    swallowed RuleSchemaError, and unaccompanied edits to
+    agent/active_operators.py.
+
+  - Positive signals (P1–P6 in §2) are how the loop measures progress.
+    Improving even one is "real work" for this iter.
+
+Now execute PROMPT.md. Do not solve ARC tasks for the score; treat the probe
+output as a microscope showing where the system is blind.
 PROMPT
 )" \
         --permission-mode bypassPermissions \
         --output-format stream-json \
         --verbose \
-        2>&1 | tee -a "$PIPELINE_LOG" | tee "$SESSION_LOG"
+        2>&1 | tee -a "$PIPELINE_LOG" | tee "$ITER_LOG"
 
-    log "Claude Code finished."
+    log "Claude finished."
 
-    # ── 3. Regression check ──────────────────────────────────
-    if python run_task.py 2>&1 | grep -q "RESULT  : CORRECT"; then
-        log "Regression: PASSED"
+    # ── 4. VERIFY ───────────────────────────────────────────
+    log "Verifying invariants..."
+    ./scripts/check_invariants.sh --check "$SNAPSHOT_PATH" 2>&1 | tee -a "$PIPELINE_LOG"
+    CHECK_RC=${PIPESTATUS[0]}
+
+    VERDICT=""
+    case "$CHECK_RC" in
+        0) VERDICT="CLEAN"    ; NEUTRAL_STREAK=0 ;;
+        1) VERDICT="VIOLATION"; NEUTRAL_STREAK=0 ;;
+        2) VERDICT="NEUTRAL"  ; NEUTRAL_STREAK=$((NEUTRAL_STREAK + 1)) ;;
+        *) VERDICT="ERROR_$CHECK_RC" ;;
+    esac
+    log "Verdict: $VERDICT (rc=$CHECK_RC)"
+
+    # ── 5. COMMIT / REVERT / LOG ────────────────────────────
+    if [ "$VERDICT" = "VIOLATION" ]; then
+        log "Reverting current iter — forbidden signal tripped."
+        git reset --hard HEAD 2>&1 | tee -a "$PIPELINE_LOG"
+        # If Claude already committed, undo that too.
+        if git log -1 --format=%s | grep -q "^Iter $ITER"; then
+            git revert --no-edit HEAD 2>&1 | tee -a "$PIPELINE_LOG" || true
+        fi
     else
-        log "[!] Regression: FAILED"
+        # CLEAN or NEUTRAL — accept the work.
+        git add -A
+        if ! git diff --cached --quiet; then
+            COMMIT_MSG="Iter $ITER [$VERDICT]: $PROBE_SCORE ($TIMESTAMP)"
+            git commit -m "$COMMIT_MSG" 2>&1 | tee -a "$PIPELINE_LOG"
+            GIT_TERMINAL_PROMPT=0 git push origin "$BRANCH" \
+                2>&1 | tee -a "$PIPELINE_LOG" \
+                && log "Pushed." \
+                || log "Push skipped (no credentials cached)."
+        else
+            log "Claude produced no changes — no-op iter."
+        fi
     fi
 
-    # ── 4. Git commit & push ─────────────────────────────────
-    git add -A
-    if ! git diff --cached --quiet; then
-        git commit -m "Session $SESSION: $SCORE_LINE ($TIMESTAMP)" 2>&1 | tee -a "$PIPELINE_LOG"
-        GIT_TERMINAL_PROMPT=0 git push origin "$BRANCH" 2>&1 | tee -a "$PIPELINE_LOG" && log "Pushed." || log "Push skipped (no credentials cached)."
-    else
-        log "No changes."
+    # ── stagnation surface ──
+    if [ "$NEUTRAL_STREAK" -ge 3 ]; then
+        log "*** STAGNATION: $NEUTRAL_STREAK consecutive NEUTRAL iters ***"
+        echo "" >> "${LOG_DIR}/session_log.md"
+        echo "> STAGNATION at iter $ITER — $NEUTRAL_STREAK consecutive neutral iters." \
+            >> "${LOG_DIR}/session_log.md"
     fi
 
-    log "========== SESSION $SESSION done =========="
+    log "========== ITER $ITER done ($VERDICT) =========="
     sleep 3
 
 done
 
-log "Loop finished. Sessions: $SESSION"
+log "Loop finished. Iters: $ITER"
