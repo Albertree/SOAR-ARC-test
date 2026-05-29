@@ -2574,3 +2574,81 @@ it must ride with an anti-unification-side companion (memory.py /
 anti_unification.py / conditions/) to clear F8, or be paired with a compensating
 deletion. Slice 1 stays functionally complete; Slice 2 is human-gated — do not
 start it.
+
+---
+## Learning Loop -- 2026-05-30 02:11
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_021129.log
+
+---
+## Iter 36 — 2026-05-30T02:14 — branch test21
+
+**Diagnosis**: Module A's two descent-trigger recognisers exist as level-specific
+shards — `nothing_to_compare` (TASK-level `n_at_level==1`, goal-free) and
+`needs_descend` (PAIR-level goal-present-but-unresolved) — but there is no single
+matcher expressing module A's *full* trigger (the exec-trace disjunction
+`(n_at_level==1 ∨ … ) ∧ goal 달성 불가`) evaluated at the current focus level.
+The `DescendOperator` (still a NotImplementedError stub) needs one composed
+"does this level warrant a descent?" boolean as its precondition; it currently
+has none. Smallest defensible step: build that composite, `descent_warranted`, as
+a standalone value-agnostic tested matcher (library-first, mirroring iters
+33–35), so the operator-wiring iter has its precondition ready with **no F8
+exposure** (no `active_operators.py` touch).
+
+**Change**:
+- `agent/conditions/descent_warranted.py` (new, module A): the unified
+  descent-trigger recogniser. ORs the two level-appropriate disjuncts —
+  `nothing_to_compare` (parameterised by current `level`) and `needs_descend` —
+  so one call answers the descend decision for whichever level the flow is on:
+  TASK→descend (nothing to compare), PAIR→descend (goal present, unresolvable),
+  GRID→stop (level resolves the goal). Descent is therefore self-terminating
+  (P1). Strictly value-agnostic: delegates wholly to the two value-agnostic
+  sub-matchers, never reads a colour/coordinate/count value; fail-closed on
+  malformed/unknown-level input. Forwards sub-params (`level`,
+  `nothing_to_compare_params`, `needs_descend_params`).
+- `tests/test_conditions_descent_warranted.py` (new, 10 tests, all pass):
+  TASK/PAIR descend & GRID stop against the real module-C producers
+  (`level_sibling_counts`/`pair_grid_counts`) with GRID resolving evidence as
+  explicit COMM receipts; full three-level descent chain; **identical verdict for
+  easy000a (red) and easy000a2 (green)** at every level (value-agnostic guard);
+  either disjunct alone suffices; configurable sub-params; fail-closed on
+  empty/unknown-level; JSON-serialisable inputs (P7).
+- Did **not** touch `agent/active_operators.py` (no F8 exposure), any frozen
+  file, or any DSL primitive; no rule written; no `_try_*`/`_apply_*`.
+
+**Why smallest**: it composes two *existing* recognisers into the one decision
+module A's operator consumes — no new trigger semantics, no solve-behaviour
+change (purely additive recognition vocabulary the wiring iter will consume), so
+both targets still solve via the unchanged fast path.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Solve path untouched → probe identical; easy000a→red(2), easy000a2→green(3).)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P5 7 → 8 (+1 condition matcher: `descent_warranted`)**. P1 2.0, P2 2.0, P3 0.0,
+P4 3133, P6 417 unchanged (no rule/AU/active_operators change — module A's
+unified recogniser is a new standalone matcher). F1 not tripped (no frozen file);
+F2 none (no new `_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved;
+F5 no `TF_` under semantic_memory; F6 no budget growth; F7 no swallowed
+RuleSchemaError; F8 not applicable (active_operators.py untouched, 0 net additions).
+
+**Next gap (note for future iter)**: module A now has all three recognition
+pieces — both trigger shards (`nothing_to_compare`, `needs_descend`) *and* their
+unified decision (`descent_warranted`) — plus module B's GoalStack
+(`agent/goal.py`), all unwired. The remaining gap is module A's **effect** half:
+`DescendOperator` is still a NotImplementedError stub, never in the cycle's
+operator order, so no real solve descends or evolves a goal — the flow jumps
+straight to GRID-level recognition in `GeneralizeOperator`. The next smallest
+step is to implement `DescendOperator` (precondition = `descent_warranted` at the
+current focus level; effect = advance `wm.s1["focus-level"]` task→pair→grid and
+`advance()` the GoalStack), then insert it into the pipeline. That edit adds net
+lines to `active_operators.py`, so under F8 it must ride with a companion under
+`agent/conditions/` (e.g. consuming `descent_warranted`) or `agent/memory.py`, or
+be paired with a compensating deletion. Slice 1 stays functionally complete;
+Slice 2 is human-gated — do not start it.
