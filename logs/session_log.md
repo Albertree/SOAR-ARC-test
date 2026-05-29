@@ -4253,3 +4253,79 @@ flag logic — both add net lines to `active_operators.py`/the cycle path (F8
 companion needed) and neither is required by `SLICE_1_LOOP.md §8`'s relaxed
 criteria. Slice 1 stays functionally complete and human-gated; do not start
 Slice 2 (easy000b) autonomously — wait for `SLICE_2_LOOP.md`.
+
+---
+## Learning Loop -- 2026-05-30 05:26
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_052621.log
+
+---
+## Iter 57 — 2026-05-30T05:33 — branch test21 — no defensible step found (analysis only)
+
+**Diagnosis**: Slice 1 is functionally complete *and already declared* (SLICE 1
+COMPLETE block, session_log L558), and iters 54–56 were all documentation-faithfulness
+reconciliations that legitimately moved no P-signal (each NEUTRAL, exit 2). This iter
+re-diagnosed from scratch and confirmed there is no smallest-step gap that improves a
+positive signal without either (a) accreting dead recognition vocabulary, (b) adding a
+4th cosmetic doc-only neutral that pollutes the baseline, or (c) tripping a Slice-1
+guardrail / F-signal. Per PROMPT.md §5 the correct output is a no-op.
+
+**What was verified this iter (not from the slice-doc summary — from source)**:
+- Read in full: `arbor-flow-three-task-description.md` (easy000a paragraph) and
+  `arbor-execution-trace.md` (11 modules + 7 principles), `SLICE_1_LOOP.md`,
+  `INVARIANTS.md`, `RULE_FORMAT.md` context.
+- All 28 unit tests pass (ran each standalone; no pytest in env).
+- Live solve path reviewed for faithfulness, not just function:
+  * `GeneralizeOperator.effect` → recognition-first `copy_common_output`, else
+    identity (confidence 0). No hand-coded surface detector; retired `_try_*` family
+    confirmed absent (`grep "def _(try|apply)_"` → only the live `_apply_rule`,
+    identity-only).
+  * `PredictOperator` reconstructs the answer bottom-up via the two frozen DSL
+    primitives from the task's *own* common example output — no stored literal
+    (value-agnostic, P3/P5-faithful).
+  * The decisive recognition is grounded **per-property**: `schema_goal_satisfied`
+    → `goal.mark_schema_leaves_by_comparison` marks each of {size,color,contents}
+    only when `all_outputs_comm` is COMM on *that single property* — i.e. the
+    answer is believed *because module B's schema goal is satisfied property-by-
+    property* (정답에는 근거가 있어야 하고 근거는 비교에서 나온다), not by a lumped
+    grid-equality shortcut. Module A (descent) and module B (goalstack) both
+    participate in the live recognition path, value-agnostically.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1 (2.0) / P2 (2.0): capped — only 1 rule, 2 tasks; raising needs a new solved
+  task (task pool frozen, F6) or a rule merge (only 1 rule exists). Frozen.
+- P3 (0.0): anti-unification is explicitly OUT of Slice 1 (SLICE_1_LOOP §4 OUT, §9);
+  touching it violates the slice guardrail.
+- P4 (3211): auto-increments on every solve regardless of code — not a deliberate
+  code contribution this iter can claim.
+- P5 (10): could grow only by registering a matcher with **no live consumer** — dead
+  recognition vocabulary, the very "dead memory" failure mode the invariants warn
+  against. The Slice-1 recognition set (Intra/Inter verdict recognisers + the two
+  live composites + descent libraries) is already complete; no genuine pattern is
+  unrepresented.
+- P6 (435): nothing left to remove — the `_try_*`/`_apply_*` accretion family is
+  already gone; every remaining method is live and on the solve path. Removing live
+  code would break the pipeline.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5.1).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no diff to check). positives=all Δ0 by design — a
+no-op iter deliberately moves no metric rather than manufacturing a cosmetic one.
+
+**Next gap (note for future iter)**: Slice 1 is exhausted and human-gated. The only
+remaining in-slice integration ever named (route module A's descent trigger through
+the `descent_warranted` matcher instead of flag logic, and have module B's GoalStack
+*gate operator selection* rather than gate *recognition*) adds net lines to
+`active_operators.py`/the cycle path, needs an F8 companion, and is **not** required
+by SLICE_1_LOOP §8's relaxed criteria — so it is not a defensible smallest step. The
+honest state to surface: **Slice 1 is complete; the loop has run dry on it. Await
+human-gated `SLICE_2_LOOP.md` (easy000b: G0 analysis, activation rules, anti-
+unification) before there is new defensible work.** Do not start Slice 2 autonomously.
