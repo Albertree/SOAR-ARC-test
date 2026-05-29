@@ -7197,3 +7197,44 @@ added (`slice1_converged.md`) so future iters stop re-deriving this from zero.
 **Next gap (note for future iter)**: unchanged — gated on the **human handoff**:
 provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start
 Slice 2 autonomously (§10). Until that lands, the correct iter output is no-op.
+
+---
+## Learning Loop -- 2026-05-30 08:20
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_082057.log
+
+---
+## Iter 103 — 2026-05-30T08:21 — branch test21
+
+**Iter 103: no defensible step found — analysis only (PROMPT.md §5).** Converged
+NEUTRAL, not an unfilled gap. Recalled `slice1_converged.md` rather than
+re-deriving from zero (the churn iters 98–101 were chided for).
+
+**Diagnosis**: First-hand re-confirmed the two structural facts that pin every
+lever: `docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed) and `data/ARC_easy/` =
+{easy000a, easy000a2} frozen (F6). Probe = 2/2 CORRECT via stored(easy000a),
++0 learned. Nothing has changed since iter 102.
+
+**Why no commit**: every positive signal is pinned on the frozen 2-task slice —
+P1=2.0/P2=2.0 (both tasks already in covers, F6 freezes pool → no merge/absorb),
+P3=0.0 (AU is OUT of Slice 1 per §9; single-source rule can't be AU'd), P4 moves
+only as a side effect of re-running solves (metric-gaming), P5/P6 immovable
+(GRID-level recognition complete; nothing dead to remove). Any code change trips
+a forbidden signal or games a metric; §5 says a wrong commit is worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged
+NEUTRAL, INVARIANTS §3).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start
+Slice 2 autonomously (§10). Until that lands, no-op is the correct output.
