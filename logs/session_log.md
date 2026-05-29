@@ -1150,3 +1150,84 @@ WM trail more closely resembles the §3 flow (criterion 3) — but that touches
 and risks over-constraining a working solve, so weigh carefully. Separately:
 Slice 1 may now be close enough to a clean §8 self-assessment to consider the
 §10 SLICE 1 COMPLETE declaration. Observe; do not commit to either.
+
+---
+## Learning Loop -- 2026-05-29 22:56
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_225648.log
+
+---
+## Learning Loop -- 2026-05-29 23:02
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_230237.log
+
+---
+## Iter 18 — 2026-05-29T23:02 — branch test21
+
+**Diagnosis**: Re-read the raw prose (arbor-flow easy000a paragraph) and §3 in
+full, not the summary. The §3 GRID-level "② Inter-Grid (role-aligned)" step has
+*two* limbs — `compare(P0.G1,P1.G1)→COMM` (decider) **and**
+`compare(P0.G0,P1.G0)→DIFF` ("색집합이 모두 다르다", traversed but 정답 기여
+안 함). Module C produced only the G1 limb (`output_grid_comparisons` →
+`all_outputs_comm`); the G0 limb had **no producer and no recogniser**. That is
+the last §3 comparison family without recognition vocabulary — the same kind of
+gap iters 15 (`intra_pair_grids_differ`) and 17 (`pair_grid_count_majority`)
+filled. The contrast it names is meaningful: easy000a's signature is *outputs
+COMM ∧ inputs DIFF*, and the system named only the first half.
+
+**Change**:
+- `agent/compare_scheduler.py` (new `input_grid_comparisons`): Inter-Grid,
+  role==G0 producer — pairwise (P6) comparison of example *input* grids, the
+  mirror of `output_grid_comparisons`. Wired into `build_patterns` under key
+  `input_grid_comparisons`. Value-agnostic (schedules/compares only; reads no
+  colour/coordinate value). Verified against real ARCKG.compare(): easy000a's
+  P0.G0↔P1.G0 → overall DIFF (size COMM, color/contents DIFF).
+- `agent/conditions/inputs_vary.py` (new matcher): the role==G0 counterpart to
+  `all_outputs_comm`. Fires iff every example-input Inter-Grid receipt is DIFF
+  (reads only COMM/DIFF type — fires identically for easy000a red and easy000a2
+  green; cannot hard-code an answer). Names the §3 contrast half so module C's
+  single Inter-Grid (Grid-level) kind now has recognition vocabulary for *both*
+  roles. Registered via the existing decorator (P5 +1).
+- `tests/test_conditions_inputs_vary.py` (new): 10 tests on real ARCKG Grid
+  nodes + real compare() — producer cardinality, test-pair-G0 excluded, DIFF for
+  easy000a, value-agnostic easy000a2, required-property `color`, does-NOT-fire
+  on identical inputs (COMM), min_evidence + non-list fail-closed, end-to-end via
+  build_patterns, registry membership. 10/10 pass; all pre-existing suites green
+  (8/14/7/22/30/11/10/9).
+- No frozen-file edit (F1); no `_try_*`/`_apply_*` (F2); no DSL `def`/`register`
+  (F3 — no transformation primitive touched); no rule saved (F4 inert); no `TF_`
+  write (F5); no budget growth (F6); no swallowed RuleSchemaError (F7);
+  `agent/active_operators.py` untouched, 687→687 (F8 inert).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); Reused 2; 1 rule; P5=4.
+**Probe after** : 2/2 correct; via=stored(easy000a); Reused 2; 1 rule; P5=5;
+module C's Inter-Grid kind now schedules + names both roles (G0 and G1).
+
+**Invariants**: forbidden=none (checker verdict CLEAN, exit 0). positives:
+P5 +1 (4→5, the substantive contribution — the §3 contrast step now has a
+recogniser, completing module C's Inter-Grid recognition vocabulary across both
+roles). P4 +2 is the mechanical artifact of running the probe/tests this iter
+(each solve writes an episode), disclaimed as in prior iters, NOT claimed as the
+contribution. P1/P2 saturated for a 1-rule/2-task probe; P3 needs
+anti-unification (Slice-1 OUT); P6 needs an AU-superseded deletion (declined).
+
+**Next gap (note for future iter)**: every §3 comparison family now has a named
+recogniser (5 matchers; module C's two analysis kinds, Intra/Inter, fully
+covered across roles/levels for the Slice-1 flow). The deciding path still gates
+only on `test_output_missing` + `all_outputs_comm` (correct per §3 — the other
+three are traversed-but-non-deciding flow steps, NOT extra AND-gates; corroborating
+them would violate §3's "정답 기여 안 함"). With recognition vocabulary complete,
+the most glaring remaining gaps are out-of-scope for Slice 1: anti-unification /
+module H (P3), fast-path-already-live, and `_try_*` removal (needs AU
+supersession). Slice 1 looks ready for a clean §8 self-assessment / §10 COMPLETE;
+Slice 2 remains human-gated. Observe; do not start it.
