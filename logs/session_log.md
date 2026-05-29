@@ -1447,3 +1447,90 @@ iter could reconcile the canonical function-name references with the actual
 `memory.py` surface (or add the missing `validate_rule`/`save_rule` aliases) so
 the spec and code agree on the rule-validation entry point. Observe; do not
 start Slice 2 (human-gated).
+
+---
+## Learning Loop -- 2026-05-29 23:48
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_234801.log
+
+---
+## Learning Loop -- 2026-05-29 23:53
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_235343.log
+
+---
+## Iter 22 — 2026-05-29T23:53 — branch test21
+
+**Diagnosis**: The probe is a clean 2/2, so I used it as a microscope on the
+*spec-vs-code* contract rather than the solve. `CLAUDE.md §3.2` ("`save_rule()`
+raises on violation"), `docs/RULE_FORMAT.md §3` ("`save_rule()` **must** enforce
+... Failure raises `RuleSchemaError`"), and `INVARIANTS.md §1 F7` (forbids
+*swallowing* `RuleSchemaError`) all presuppose an in-process rule validator —
+but on this branch **neither `RuleSchemaError` nor any `validate_rule`/`save_rule`
+existed**: `agent/memory.py:save_rule_to_ltm()` writes a freshly-built entry to
+disk with zero schema enforcement. ARBOR's only guard against the dead-memory /
+168-rule failure mode was therefore the *external* post-hoc `check_invariants.sh`
+F4 (auto-revert) — nothing stopped a rule with an unresolvable
+`condition`/`action` from being written in the first place. Filling that
+in-process guard is the smallest defensible step: it's the documented MUST, it
+makes F7 meaningful (the exception it polices now exists), and it reconciles the
+function-name desync iter 21 flagged.
+
+**Change**:
+- `agent/memory.py`: added `class RuleSchemaError(ValueError)` and
+  `validate_rule(entry)` enforcing CLAUDE.md §3.2 hard requirements 1-2 +
+  RULE_FORMAT V4 — `{condition, action}` both present/non-empty with non-empty
+  string `type`/`dsl`; `condition.type` resolves in `CONDITION_REGISTRY` and
+  `action.dsl` in `DSL_REGISTRY` (an unresolvable name = dead memory, rejected);
+  `source_task ∈ covers`. Registries imported lazily (no circular import).
+  Wired `validate_rule(entry)` into `save_rule_to_ltm` *before* the new-rule
+  write, so an invalid entry never reaches disk; the exception propagates (never
+  swallowed — F7). Added `save_rule = save_rule_to_ltm` alias (the name
+  CLAUDE.md §3.2 / RULE_FORMAT use).
+- `tests/test_validate_rule.py` (new): 17 standalone cases — live rule_003 shape
+  passes; every registered matcher name passes (no false negatives); missing/
+  empty/blank condition & action, non-dict entry, unknown `condition.type`,
+  unknown `action.dsl` (e.g. "rotate"), `source_task ∉ covers`, empty covers all
+  raise; `save_rule_to_ltm` writes a valid copy_common_output rule and *refuses*
+  a dead-memory rule (asserting nothing leaks to disk); `save_rule` alias
+  identity.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (solve path unchanged — the probe tasks hit the fast-path reuse return, which
+  is *before* the new-rule build/validate, so validation does not execute on
+  them; it guards future slow-path saves).
+
+**Invariants**: forbidden=none. positives: checker verdict **CLEAN** (exit 0) —
+P4 episodic 3087→3089 (Δ+2 from the probe run). P1 2.0, P2 2.0, P3 0.0, P5 5,
+P6 522 unchanged. The change's real value (in-process rule validation) is not
+measured by any P1–P6 metric; the positive delta is incidental P4. No frozen
+edit (F1 — `agent/memory.py` is not frozen); no `active_operators.py` touch so
+F2/F8 inert; no DSL `def`/`register` (F3); no rule saved without condition (F4 —
+the new code *strengthens* this); no `TF_` under semantic_memory (F5); no budget
+growth (F6); the new `raise RuleSchemaError` is never paired with an `except`
+that swallows it (F7 — verified clean). 11/12 test files green (54 sibling +
+17 new); pre-existing `test_fast_path_reuse.py` still needs pytest (not a
+regression).
+
+**Next gap (note for future iter)**: validation now guards the *new-rule* branch
+of `save_rule_to_ltm`; the *reuse* branch (which backfills `condition`/`action`
+onto a matched legacy rule before extending `covers`) does not yet re-validate
+the mutated entry — a stored legacy rule with a malformed pair could still be
+extended without being caught. A future iter could also call `validate_rule` on
+the backfilled `stored` entry in the equivalence branch. Separately, the deeper
+desync persists: `docs/RULE_FORMAT.md §1`'s JSON Schema (`additionalProperties:
+false`; `covers` items `^[0-9a-f]{8}$`) contradicts the actual stored entries
+(extra `"rule"` key; synthetic ids like `easy000a`), so a full §1-faithful
+validator would reject the system's own rules — reconciling schema-vs-reality is
+larger than one step. Observe; do not start Slice 2 (human-gated).

@@ -31,6 +31,72 @@ from datetime import datetime
 PROCEDURAL_MEMORY_ROOT = "procedural_memory"
 
 
+class RuleSchemaError(ValueError):
+    """Raised when a rule entry violates the {condition, action} contract.
+
+    ARBOR's in-process guard against the *dead-memory* failure mode — a rule
+    the fast path cannot look up because it lacks a well-formed, resolvable
+    ``condition``/``action`` pair (CLAUDE.md §3.2; docs/RULE_FORMAT.md §3). It
+    is the same boundary ``docs/INVARIANTS.md §1 F4`` enforces post-hoc by
+    auto-revert, asserted here *before* the file is written so an invalid rule
+    never reaches disk. Per ``INVARIANTS.md §1 F7`` this must never be silently
+    swallowed: callers either let it propagate or log-and-re-raise.
+    """
+
+
+def validate_rule(entry: dict) -> None:
+    """Validate a procedural-memory rule entry, raising on the first violation.
+
+    Enforces CLAUDE.md §3.2's hard requirements (1-2) plus docs/RULE_FORMAT.md
+    V4 — exactly the checks that keep a rule *retrievable* by the fast path:
+
+      1. ``condition`` and ``action`` are both present, non-empty dicts, and
+         carry a non-empty string ``condition.type`` / ``action.dsl``.
+      2. ``condition.type`` resolves in the condition-matcher registry and
+         ``action.dsl`` resolves in the DSL-primitive registry. An unresolvable
+         name is dead memory (it can never fire), so it is rejected here.
+      3. ``source_task`` (when present) appears in ``covers``.
+
+    Registries are imported lazily so importing :mod:`agent.memory` never
+    triggers a circular import. Deterministic and side-effect-free.
+    """
+    if not isinstance(entry, dict):
+        raise RuleSchemaError(
+            f"rule entry must be a dict, got {type(entry).__name__}"
+        )
+
+    # (1) {condition, action} pair present, non-empty, well-typed
+    cond = entry.get("condition")
+    if not isinstance(cond, dict) or not cond:
+        raise RuleSchemaError("rule missing non-empty 'condition' (CLAUDE.md §3.2)")
+    act = entry.get("action")
+    if not isinstance(act, dict) or not act:
+        raise RuleSchemaError("rule missing non-empty 'action' (CLAUDE.md §3.2)")
+
+    ctype = cond.get("type")
+    if not isinstance(ctype, str) or not ctype:
+        raise RuleSchemaError("condition.type must be a non-empty string")
+    dsl = act.get("dsl")
+    if not isinstance(dsl, str) or not dsl:
+        raise RuleSchemaError("action.dsl must be a non-empty string")
+
+    # (2) referenced names must resolve in their registries, else dead memory
+    from agent.conditions import get as _get_matcher
+    if _get_matcher(ctype) is None:
+        raise RuleSchemaError(f"unknown condition.type: {ctype!r}")
+    from procedural_memory.DSL.apply import DSL_REGISTRY
+    if dsl not in DSL_REGISTRY:
+        raise RuleSchemaError(f"unknown action.dsl: {dsl!r}")
+
+    # (3) source_task must appear in covers (RULE_FORMAT V4)
+    covers = entry.get("covers")
+    if not isinstance(covers, list) or not covers:
+        raise RuleSchemaError("rule 'covers' must be a non-empty list")
+    source = entry.get("source_task")
+    if source is not None and source not in covers:
+        raise RuleSchemaError("source_task must appear in covers")
+
+
 # ======================================================================
 # Public API
 # ======================================================================
@@ -101,12 +167,24 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
         "times_reused": 0,
     }
 
+    # Guard the dead-memory failure mode (CLAUDE.md §3.2, INVARIANTS §1 F4)
+    # *before* the file touches disk: an entry without a resolvable
+    # {condition, action} pair never gets written. RuleSchemaError propagates
+    # (never swallowed — INVARIANTS §1 F7).
+    validate_rule(entry)
+
     filename = f"rule_{next_id:03d}.json"
     path = os.path.join(procedural_memory_root, filename)
     with open(path, "w") as fh:
         json.dump(entry, fh, indent=2)
 
     return path
+
+
+# Canonical alias: CLAUDE.md §3.2 and docs/RULE_FORMAT.md refer to the save
+# entry point as ``save_rule()``. The implementation is ``save_rule_to_ltm``;
+# this alias keeps the documented name resolvable without duplicating logic.
+save_rule = save_rule_to_ltm
 
 
 def load_all_rules(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:
