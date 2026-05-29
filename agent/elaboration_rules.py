@@ -135,29 +135,77 @@ class InputTaskToStateRule(ElaborationRule):
         return {"current-task": task_val}
 
 
+def _descent_warranted_here(wm) -> bool:
+    """P1 gate for module A's descent trigger: does the *current focus level*
+    warrant a descent, per the recognition vocabulary (``descent_warranted``)?
+
+    This is the wiring RULE_FORMAT.md §4 flagged as deferred — the descent-trigger
+    matchers (``descent_warranted`` → ``nothing_to_compare`` / ``needs_descend``)
+    were registered as a *library* but the live trigger gated on the bare
+    ``descent-complete`` flag, never consulting them. Consulting them here makes
+    the descent *necessity-driven* (P1) rather than unconditional: the trigger
+    descends because a value-agnostic matcher recognises the level offers nothing
+    to compare (or holds an unresolvable goal), not because a flag is unset.
+
+    At the trigger point the flow is at the top of the descent (no comparisons
+    scheduled yet), so the only evidence in hand is the structural sibling census
+    (``level_sibling_counts``). At the TASK level that census has one task node, so
+    ``nothing_to_compare`` fires and descent is warranted — the §3 ``[TASK level]``
+    step ("형제 TASK 없음 → 비교 자연 skip → descend"). Value-agnostic: the census is
+    counts only, so easy000a (red) and easy000a2 (green) gate identically.
+
+    Fail-open: when no loaded task is reachable (e.g. a minimal WM stub), the
+    census cannot be built, so the structural gate in ``NeedsDescentRule`` stands
+    alone and the §3 descent still begins. This is *not* a swallowed validation
+    error (it builds no rule and raises nothing); it is the absence of evidence to
+    refine the gate with.
+    """
+    task = getattr(wm, "task", None)
+    if task is None:
+        return True
+    from agent.compare_scheduler import level_sibling_counts
+    from agent import conditions
+
+    census = level_sibling_counts(task)
+    level = wm.s1.get("focus-level") or "task"
+    return conditions.match(
+        "descent_warranted",
+        {"level_sibling_counts": census},
+        {"level": level},
+    )
+
+
 class NeedsDescentRule(ElaborationRule):
     """Module A (HierarchicalDescentController) trigger, fires in S2.
 
     Fires when S1 has a current-task but the hierarchical descent has not yet
-    run (no ``descent-complete`` flag) and no comparison agenda exists. This
-    sequences module A *before* target selection: the §3 flow descends
-    TASK→PAIR→GRID to the level that can resolve the goal (P1 — depth entered by
-    necessity), and only then schedules the level-appropriate comparisons.
-    Self-terminating — once ``DescendOperator`` writes ``descent-complete`` to
-    S1 this stops firing and ``NeedsTargetSelectionRule`` takes over, so the
-    level walk runs exactly once (no descend↔select loop on the Slice-1 tasks,
-    which always terminate at GRID).
+    run (no ``descent-complete`` flag) and no comparison agenda exists, *and* the
+    recognition vocabulary confirms the current focus level warrants a descent
+    (``_descent_warranted_here`` → ``descent_warranted``). The matcher gate makes
+    the descent necessity-driven (P1): the flow descends because the level offers
+    nothing to compare / holds an unresolvable goal, not merely because a flag is
+    unset — closing the "registered but unconsumed by the live trigger" gap
+    RULE_FORMAT.md §4 named.
+
+    This sequences module A *before* target selection: the §3 flow descends
+    TASK→PAIR→GRID to the level that can resolve the goal, and only then schedules
+    the level-appropriate comparisons. Self-terminating — once ``DescendOperator``
+    writes ``descent-complete`` to S1 this stops firing and
+    ``NeedsTargetSelectionRule`` takes over, so the level walk runs exactly once
+    (no descend↔select loop on the Slice-1 tasks, which always terminate at GRID).
     """
 
     def condition(self, wm) -> bool:
         if wm.depth == 0:
             return False
         s1 = wm.s1
-        return (
+        if not (
             bool(s1.get("current-task"))
             and not s1.get("comparison-agenda")
             and not s1.get("descent-complete")
-        )
+        ):
+            return False
+        return _descent_warranted_here(wm)
 
     def derive(self, wm) -> dict:
         return {"needs_descent": True}

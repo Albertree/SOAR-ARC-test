@@ -4742,3 +4742,52 @@ easy000b's G0 analysis / intra-pair relation-of-relations / DSL activation rules
 / anti-unification. Do not start Slice 2 autonomously.
 
 > STAGNATION at iter 63 — 8 consecutive neutral iters.
+
+> STAGNATION at iter 63 — 8 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 05:46
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_054657.log
+
+---
+## Iter 64 — 2026-05-30 — branch test21
+
+**Diagnosis**: RULE_FORMAT.md §4 (and §7.2) document that module A's descent-trigger
+matchers (`descent_warranted` → `nothing_to_compare` / `needs_descend`) are
+*registered as a library but unconsumed by the live trigger*: `NeedsDescentRule`
+gated descent on the bare `descent-complete`/`comparison-agenda` flags, never on the
+recognition vocabulary. So the live descent fired *unconditionally* (flag-driven),
+not *by necessity* (P1) — the trigger had no comparison-grounded basis (P3/P4). This
+is the exact "highest-value in-architecture step" iter 63's Next-gap note named, and
+it is Slice-1 module-A grounding (not Slice 2 work). Smallest defensible gap: make the
+trigger consult the already-built matcher.
+
+**Change**:
+- `agent/elaboration_rules.py` — added `_descent_warranted_here(wm)` helper and gated
+  `NeedsDescentRule.condition` on it. The helper builds the structural sibling census
+  (`level_sibling_counts`, the only evidence in hand at the pre-comparison trigger
+  point) and consults `descent_warranted` at the current focus level (default `task`).
+  Fail-open when no loaded task is reachable (WM stub), so the structural gate stands
+  alone and the §3 descent still begins. Value-agnostic (counts only). Not frozen; not
+  `active_operators.py` (no F8); no rule written; no `RuleSchemaError` path (no F7).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct (slow path answer-preserving — `test_live_descent_wiring`
+7/7, all 28 test modules pass); descent on easy000a/a2 byte-identical (value-agnostic).
+
+**Invariants**: forbidden=none. positives=all Δ0 (the trigger coincides with the prior
+flag behaviour on Slice-1 single-task input — task level always warrants descent — so
+behaviour is preserved while its *basis* is now the recognition vocabulary, not a flag).
+
+**Next gap (note for future iter)**: descent_warranted is now consumed by the live
+trigger, closing the §4-documented gap. The remaining genuinely-deferred Slice-1
+capability is module B: `agent/goal.py`'s evolving GoalStack is recorded in the episode
+trace but does **not** gate operator selection (RULE_FORMAT §7.2). Wiring goal-satisfaction
+into selection/preferences is larger and riskier — split it before attempting. Otherwise
+Slice 1 is exhausted; Slice 2 (easy000b) is human-gated — do not start autonomously.
