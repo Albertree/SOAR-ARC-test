@@ -1071,3 +1071,82 @@ commit to it.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260529_221423.log
+
+---
+## Learning Loop -- 2026-05-29 22:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_221452.log
+
+---
+## Learning Loop -- 2026-05-29 22:29
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_222945.log
+
+---
+## Iter 17 — 2026-05-29T22:30 — branch test21
+
+**Diagnosis**: Slice 1 already passes functionally (probe: easy000a + easy000a2
+both CORRECT, value-agnostically, via the one stored `copy_common_output` rule).
+Using the probe as a microscope on *how* it solves: module C
+(`compare_scheduler.build_patterns`) schedules four comparison families, but only
+three have a recognition matcher — `output_grid_comparisons`→`all_outputs_comm`,
+`intra_pair_grid_comparisons`→`intra_pair_grids_differ`,
+`pair_grid_counts`→`test_output_missing`. The fourth, `pair_grid_count_comparisons`
+(the §3 "Inter-Pair, Pair-level, pairwise grid-count" majority-vote step), is
+*produced every solve and discarded* — a producer with no consumer. That orphan
+is the smallest module-uniformity gap (criterion 2): a scheduled comparison the
+system cannot yet *name*. (The larger flagged gap — deleting the old-lineage
+`_try_*`/`_apply_*` family — was declined by iters 15 & 16 and is not cleanly
+authorised by CLAUDE.md §5.1, which permits removal only when *superseded by
+anti-unification*; those detectors cover colour-map / sequential-recolour cases
+nothing else replaces, so removing them is capability loss, not supersession.)
+
+**Change**:
+- `agent/conditions/pair_grid_count_majority.py` (new): value-agnostic matcher
+  consuming the orphaned `pair_grid_count_comparisons`. Fires iff the pairwise
+  PAIR grid_count comparisons show **consensus AND dissent** (≥1 COMM and ≥1
+  DIFF) — the receipt-level signature of §3's "grid-count 다수결 2 vs Pa 의 1".
+  Reads only COMM/DIFF *types* (never a colour/coord/count value), so it fires
+  identically for easy000a and easy000a2. A flow-step recogniser, not the
+  decider — same status as the precedent `intra_pair_grids_differ`. Not wired
+  into the deciding operator (F8 inert; `active_operators.py` untouched).
+- `tests/test_conditions_pair_grid_count_majority.py` (new): 9 tests over real
+  `ARCKG.compare()` receipts built from real `Pair` nodes — fires on 2-examples
+  +test (COMM,DIFF,DIFF), end-to-end via `build_patterns`, value-agnostic under
+  recolour, and fail-closed on all-COMM / single-comparison / empty / non-list.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); Reused 2; 1 rule; P5=3.
+**Probe after** : 2/2 correct; via=stored(easy000a); Reused 2; 1 rule; P5=4.
+
+**Invariants**: forbidden=none (checker verdict CLEAN, exit 0). positives:
+P5 +1 (3→4, the substantive contribution — module C's four scheduled comparison
+families now each have a named recogniser). P4 +2 is the mechanical artifact of
+running the probe/tests this iter (each solve writes an episode), disclaimed as
+in prior iters, NOT claimed as the contribution. P1/P2 saturated for a
+1-rule/2-task probe; P3 needs anti-unification (Slice-1 OUT); P6 needs an
+AU-superseded deletion (declined, see Diagnosis). No frozen edit (F1);
+`active_operators.py` 687→687 (F2/F8 inert); no DSL def/register (F3); no rule
+saved (F4); no `TF_` write (F5); no budget growth (F6); no swallowed
+RuleSchemaError (F7). All standalone tests pass (9/9 new; pre-existing suites
+green; `test_fast_path_reuse.py` needs pytest, unavailable here — pre-existing).
+
+**Next gap (note for future iter)**: every module-C comparison family now has a
+recogniser, but only two (`test_output_missing`, `all_outputs_comm`) gate the
+deciding `_recognizes_copy_common_output`; the two flow-step matchers
+(`intra_pair_grids_differ`, `pair_grid_count_majority`) are named but unconsumed.
+A future iter could make the deciding recognition corroborate with them so the
+WM trail more closely resembles the §3 flow (criterion 3) — but that touches
+`active_operators.py` (needs an F8 companion, which `agent/conditions/` satisfies)
+and risks over-constraining a working solve, so weigh carefully. Separately:
+Slice 1 may now be close enough to a clean §8 self-assessment to consider the
+§10 SLICE 1 COMPLETE declaration. Observe; do not commit to either.
