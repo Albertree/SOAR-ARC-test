@@ -2493,3 +2493,84 @@ anti_unification.py / conditions/) to clear F8, or be paired with a compensating
 deletion. A second still-missing module-A recogniser is the TASK-level
 `n_at_level == 1` "nothing to compare" descent (distinct trigger shape — no goal
 yet). Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:07
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_020732.log
+
+---
+## Iter 35 — 2026-05-30T02:08 — branch test21
+
+**Diagnosis**: Iter 34 built module A's *goal-present-but-unresolved* descent
+recogniser (`needs_descend`) and flagged a still-missing, distinct module-A
+trigger: the §3 `[TASK level]` `n_at_level == 1` "nothing to compare" descent.
+exec-trace module A lists the trigger as a disjunction — `needs_descend` covers
+the right conjunct's central case, but the first disjunct (a single loaded task
+has no sibling tasks → Inter comparison candidates 0 → descend to PAIR *before*
+any goal forms) has **no recogniser**. Smallest defensible step: build that
+recogniser as a standalone, value-agnostic, tested matcher (P5 recognition
+vocabulary, CLAUDE.md §6.3), mirroring iters 33/34 (library-first, unwired) so
+there is no F8 exposure.
+
+**Change**:
+- `agent/conditions/nothing_to_compare.py` (new): module A's *no-goal* descent
+  matcher. Fires iff a level's sibling count is below `min_to_compare` (default
+  2 — P6 is strictly 2-at-a-time, so < 2 ⇒ nothing to compare). `level` param
+  (default `"task"`) selects which level's count to read. Distinct trigger shape
+  from `needs_descend`: it needs *no* goal-bearing pattern — the level is blocked
+  simply because there is nothing to compare (P1 in its earliest, goal-free
+  form). Strictly value-agnostic: reads only a structural count, never a
+  colour/coordinate/property value; fail-closed on malformed input (bool count
+  rejected).
+- `agent/compare_scheduler.py` (+22, module C producer): `level_sibling_counts`
+  — value-agnostic census `{"task": 1, "pair": len(pairs_of)}`. The TASK level
+  is 1 (a single loaded task has no sibling tasks → pairwise impossible, the §3
+  `n_at_level==1` impasse); the PAIR level is examples+test ≥ 2 (has siblings).
+  Counts only → P7. Feeds the new matcher (every matcher has a module-C
+  producer, mirroring `test_output_missing` ← `pair_grid_counts`).
+- `tests/test_conditions_nothing_to_compare.py` (new, 9 tests, all pass):
+  TASK-level descends / PAIR-level does not, against the real producer; counts
+  are `{"task":1,"pair":3}`; **identical verdict for easy000a (red) and
+  easy000a2 (green)** (value-agnostic guard); fires with *no* goal present
+  (distinct from `needs_descend`); configurable `min_to_compare`; fail-closed on
+  empty/non-int/bool/missing-level; JSON-serialisable inputs (P7).
+- Did **not** touch `agent/active_operators.py` (no F8 exposure), any frozen
+  file, or any DSL primitive; no rule written; no `_try_*`/`_apply_*`.
+
+**Why smallest**: module A's TASK-level descent trigger was entirely absent —
+the explicit "next gap" from iter 34. The recogniser is a self-contained matcher
++ its producer; it changes no solve behaviour (purely additive recognition
+vocabulary the wiring iter will consume), so both targets still solve via the
+unchanged fast path.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Solve path untouched → probe identical; easy000a→red(2), easy000a2→green(3).)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P5 6 → 7 (+1 condition matcher: `nothing_to_compare`)**. P1 2.0, P2 2.0,
+P3 0.0, P4 3131, P6 417 unchanged (no rule/AU/active_operators change — module
+A's second recogniser is a new standalone matcher + a pure module-C producer).
+F1 not tripped (no frozen file); F2 none (no new `_try_`/`_apply_`); F3 no DSL
+`def`/`register`; F4 no rule saved; F5 no `TF_` under semantic_memory; F6 no
+budget growth; F7 no swallowed RuleSchemaError; F8 not applicable
+(active_operators.py untouched, 0 net additions).
+
+**Next gap (note for future iter)**: module A now has *both* descent recognisers
+(`needs_descend`, `nothing_to_compare`) and module B has its GoalStack library
+(`agent/goal.py`), all unwired. The cycle still forms no goal and never descends
+— they sit dormant until a pipeline operator consumes them. The next smallest
+step is the wiring that ties them: test `nothing_to_compare` at TASK level to
+descend to PAIR, form the PAIR-level value goal from the grid-count census, test
+`needs_descend` to drive the PAIR→GRID transition, and `advance()` the GoalStack
+as the flow reaches GRID. That edit adds net lines to `active_operators.py`, so
+it must ride with an anti-unification-side companion (memory.py /
+anti_unification.py / conditions/) to clear F8, or be paired with a compensating
+deletion. Slice 1 stays functionally complete; Slice 2 is human-gated — do not
+start it.

@@ -183,6 +183,29 @@ def pair_grid_count_comparisons(task, compare_fn=None):
     return _compare_pairwise(pairs_of(task), compare_fn)
 
 
+def level_sibling_counts(task):
+    """Structural census of how many sibling nodes sit at each Slice-1 level for
+    *pairwise* (Inter) comparison (value-agnostic counts only).
+
+    Returns ``{"task": <#task nodes>, "pair": <#pairs>}``. A node is compared
+    against its role-aligned *siblings* (P6: 2-at-a-time), so a level offers
+    "something to compare" only when its sibling count is >= 2:
+
+      · ``task`` == 1 always in Slice 1 — the working memory holds a single
+        loaded task with no sibling tasks, so the TASK level has nothing to
+        compare pairwise. This is the §3 ``[TASK level]`` step's ``n_at_level==1``
+        impasse ("형제 TASK 없음 → Inter 비교 대상 0 → 비교 자연 skip → descend"):
+        the flow must descend to PAIR before any comparison — or goal — can form
+        (P1: depth entered by necessity, never gratuitously).
+      · ``pair`` == len(pairs_of(task)) (examples + test) >= 2 — the PAIR level
+        has siblings to compare, so it does *not* trigger this descent.
+
+    Counts only (never a colour/coordinate/grid_count value) → value-agnostic
+    (P7); it feeds the `nothing_to_compare` recognition matcher.
+    """
+    return {"task": 1, "pair": len(pairs_of(task))}
+
+
 def pair_grid_counts(task):
     """Structural grid-count census, split by role (value-agnostic counts only).
 
