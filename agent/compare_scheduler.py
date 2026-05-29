@@ -34,6 +34,7 @@ the previously-dead `all_outputs_comm` matcher becomes live.
 from itertools import combinations
 
 from ARCKG.comparison import compare as arckg_compare
+from agent import conditions
 
 
 # ----------------------------------------------------------------------
@@ -299,18 +300,56 @@ def pair_comparison_specs(task):
     return specs
 
 
+# Module A (HierarchicalDescent) descent order for Slice 1: the agenda is built
+# top-down, TASK→PAIR→GRID, so the cycle's compare step *executes* the §3
+# sequence in descent order — the PAIR-level grid_count evidence (the §3 goal-B
+# trigger) before the GRID-level deciding Inter-Grid comparison — rather than the
+# reverse. Each entry is ``(level, builder)``; ``elements-at`` the TASK level is a
+# single loaded task with no sibling tasks, so the TASK level schedules no
+# pairwise spec (its builder yields none) and module A descends past it.
+_DESCENT_PLAN = (
+    ("task", lambda _task: []),       # no sibling tasks → nothing to compare here
+    ("pair", pair_comparison_specs),  # Inter-Pair grid_count (§3 PAIR-level)
+    ("grid", grid_comparison_specs),  # Intra-Pair + Inter-Grid (§3 GRID-level)
+)
+
+
 def comparison_specs(task):
     """The full Slice-1 comparison agenda the SOAR cycle executes (module C).
 
-    Concatenates the GRID-level specs (``grid_comparison_specs``: Intra-Pair
-    G0↔G1 + role-aligned Inter-Grid over both roles) with the PAIR-level
-    Inter-Pair grid_count specs (``pair_comparison_specs``). Routing *every* §3
-    comparison kind through one agenda means select→compare→extract share one
-    receipt set rather than extract recomputing comparisons the cycle never ran
-    (CLAUDE.md §5). Each spec carries a unique ``key`` (the GRID and PAIR key
-    prefixes differ), so CompareOperator stores receipts without collision.
+    Built by **descending the KG levels TASK→PAIR→GRID** (module A,
+    HierarchicalDescent — SLICE_1_LOOP.md §3 / P1: depth is entered by necessity,
+    top-down). At each level module A's value-agnostic ``nothing_to_compare``
+    recogniser decides whether the level offers a pairwise comparison: when it
+    fires (``n_at_level < 2`` — e.g. the TASK level holds the single loaded task
+    with no siblings), the agenda schedules nothing there and descends; otherwise
+    the level's specs are appended, tagged with their ``level``. The result is the
+    §3 descent order — the PAIR-level Inter-Pair grid_count evidence before the
+    GRID-level Intra-Pair + role-aligned Inter-Grid comparisons — instead of the
+    reverse concatenation.
+
+    This makes module A's recogniser fire in the **live** solve (SelectTargetOp
+    calls this), not just in isolation. It is behaviour-preserving for the answer:
+    the scheduled spec *set* is unchanged (a level skipped by ``nothing_to_compare``
+    has ``< 2`` siblings, so its pairwise builder would yield an empty list
+    anyway), only the order and a per-spec ``level`` tag are added. Routing every
+    §3 comparison kind through one agenda still means select→compare→extract share
+    one receipt set (CLAUDE.md §5); each spec keeps its unique ``key`` (the GRID
+    and PAIR prefixes differ) so CompareOperator stores receipts without collision.
+    Value-agnostic (P7): the descent decision reads only the structural sibling
+    census (``level_sibling_counts``), never a colour/coordinate/count *value*.
     """
-    return grid_comparison_specs(task) + pair_comparison_specs(task)
+    census = {"level_sibling_counts": level_sibling_counts(task)}
+    specs = []
+    for level, builder in _DESCENT_PLAN:
+        # P1: descend without scheduling when this level has nothing to compare.
+        if conditions.match("nothing_to_compare", census, {"level": level}):
+            continue
+        level_specs = builder(task)
+        for spec in level_specs:
+            spec["level"] = level
+        specs.extend(level_specs)
+    return specs
 
 
 def build_node_lookup(task):

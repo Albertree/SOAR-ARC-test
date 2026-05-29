@@ -191,9 +191,37 @@ def test_pair_comparison_specs_pairwise_over_all_pairs():
 def test_comparison_specs_unions_grid_and_pair_with_unique_keys():
     task = _easy000a_task()
     specs = cs.comparison_specs(task)
-    assert specs == cs.grid_comparison_specs(task) + cs.pair_comparison_specs(task)
+    # Behaviour-preserving for the answer: the scheduled spec *set* (keyed) is
+    # exactly the GRID ∪ PAIR specs; module A only reorders them (descent) and
+    # tags each with its level.
+    def _bare(s):
+        return {k: v for k, v in s.items() if k != "level"}
+    expected = cs.grid_comparison_specs(task) + cs.pair_comparison_specs(task)
+    by_key = lambda lst: sorted(lst, key=lambda s: s["key"])
+    assert by_key([_bare(s) for s in specs]) == by_key(expected)
     keys = [s["key"] for s in specs]
     assert len(keys) == len(set(keys))  # GRID and PAIR key prefixes never collide
+
+
+def test_comparison_specs_descend_order_pair_before_grid():
+    # Module A (P1) builds the agenda top-down TASK→PAIR→GRID, so the PAIR-level
+    # Inter-Pair grid_count evidence (the §3 goal-B trigger) is scheduled before
+    # the GRID-level deciding Inter-Grid comparison — not the reverse.
+    specs = cs.comparison_specs(_easy000a_task())
+    levels = [s["level"] for s in specs]
+    assert set(levels) == {"pair", "grid"}            # TASK level schedules nothing
+    assert levels == sorted(levels, key={"pair": 0, "grid": 1}.get)
+    last_pair = max(i for i, lv in enumerate(levels) if lv == "pair")
+    first_grid = min(i for i, lv in enumerate(levels) if lv == "grid")
+    assert last_pair < first_grid                     # all PAIR specs precede all GRID
+
+
+def test_comparison_specs_descent_value_agnostic_a_and_b_identical_order():
+    # The descent decision reads only the structural sibling census, so the
+    # level sequence is identical for easy000a and easy000b (P7, value-agnostic).
+    a_levels = [s["level"] for s in cs.comparison_specs(_easy000a_task())]
+    b_levels = [s["level"] for s in cs.comparison_specs(_easy000b_task())]
+    assert a_levels == b_levels
 
 
 def test_build_node_lookup_indexes_pairs_and_grids():

@@ -2652,3 +2652,89 @@ lines to `active_operators.py`, so under F8 it must ride with a companion under
 `agent/conditions/` (e.g. consuming `descent_warranted`) or `agent/memory.py`, or
 be paired with a compensating deletion. Slice 1 stays functionally complete;
 Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:19
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_021901.log
+
+---
+## Learning Loop -- 2026-05-30 02:27
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_022742.log
+
+---
+## Iter 37 — 2026-05-30T02:28 — branch test21
+
+**Diagnosis**: Module A's recognisers (`nothing_to_compare`, `needs_descend`,
+`descent_warranted`) were built and tested (iters 34–36) but **never fired in a
+live solve** — purely dormant vocabulary. Worse, the live comparison agenda
+(`comparison_specs`) concatenated GRID specs *before* PAIR specs, the reverse of
+the §3 intended descent (TASK→PAIR→GRID: PAIR-level grid_count evidence — the
+goal-B trigger — should precede the GRID-level deciding Inter-Grid comparison).
+The smallest defensible step: rebuild the agenda by descending the levels and
+letting module A's `nothing_to_compare` decide each descent, so module A fires in
+the real solve and the compare step proceeds in §3 order — behaviour-preserving
+for the answer.
+
+**Change**:
+- `agent/compare_scheduler.py` (module C, not frozen / not F8-listed):
+  `comparison_specs` rewritten from `grid + pair` concatenation into a top-down
+  `_DESCENT_PLAN` loop over (`task`, `pair`, `grid`). At each level module A's
+  value-agnostic `nothing_to_compare` recogniser (via `conditions.match`, reading
+  only `level_sibling_counts`) decides whether to schedule there or descend: the
+  TASK level (single loaded task, `n_at_level==1`) fires it → skipped; PAIR/GRID
+  schedule normally. Each spec is tagged with its `level`. Added
+  `from agent import conditions`. This is the **first live consumption** of a
+  module-A recogniser in the solve path (`SelectTargetOperator` calls this).
+- `tests/test_compare_scheduler.py`: updated the union test to assert the spec
+  *set* (keyed, level-stripped) is unchanged — proving behaviour preservation —
+  and added two tests: descent order (all PAIR specs precede all GRID specs, TASK
+  schedules nothing) and value-agnostic identical level sequence for
+  easy000a/easy000b.
+- Did **not** touch `agent/active_operators.py` (no F8 exposure), any frozen
+  file, any DSL primitive; no rule written; no `_try_*`/`_apply_*`.
+
+**Why smallest**: it is the read-only, behaviour-preserving half of module-A
+wiring — the recogniser now *fires* in the live agenda construction and the
+agenda *descends in §3 order*, without yet letting a `DescendOperator` *drive*
+the cycle (the goal-stack-driven effect half is deferred). The scheduled spec set
+is provably unchanged (a level skipped by `nothing_to_compare` has `<2` siblings,
+so its pairwise builder is empty anyway), so both targets still solve identically.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Answer unchanged: easy000a→red(2), easy000a2→green(3). Slow-path verified:
+agenda now PAIR→GRID, TASK skipped by module A, recognition still
+`copy_common_output` conf 1.0.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+P4 3135→3137 (+2, probe re-run). P1 2.0, P2 2.0, P3 0.0, P5 8, P6 417 unchanged
+(no rule/AU/matcher/active_operators change — this iter is a module-C scheduling
+change that consumes existing module-A vocabulary). F1 not tripped (no frozen
+file); F2 none (no new `_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule
+saved; F5 no `TF_` under semantic_memory; F6 no budget growth; F7 no swallowed
+RuleSchemaError; F8 not applicable (active_operators.py untouched, 417→417).
+
+**Next gap (note for future iter)**: module A now *recognises* descent in the
+live path and the agenda descends in order, but no operator *acts* on it —
+`DescendOperator` is still a NotImplementedError stub outside the cycle, and the
+GoalStack (`agent/goal.py`) never evolves during a solve. The remaining gap is
+the effect half: implement `DescendOperator` (precondition = `descent_warranted`
+at the current focus-level; effect = advance `wm.s1["focus-level"]` and
+`advance()` the GoalStack) and add a `DescendRule`. That edit adds net lines to
+`active_operators.py`, so under F8 it must ride with a genuine companion under
+`agent/conditions/`, `agent/memory.py`, or `program/anti_unification.py` (or a
+compensating deletion) — and must stay behaviour-preserving for the answer (the
+descent must always reach GRID for these tasks). Slice 1 stays functionally
+complete; Slice 2 is human-gated — do not start it.
