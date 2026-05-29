@@ -845,3 +845,13 @@ anti-unification / module H stays Slice-1 OUT, and Slice 2 remains human-gated.
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260529_211057.log
+
+---
+## Learning Loop -- 2026-05-29 21:11
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_211131.log
