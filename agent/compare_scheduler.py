@@ -123,6 +123,31 @@ def output_grid_comparisons(task, compare_fn=None):
     return _compare_pairwise(outputs, compare_fn)
 
 
+def intra_pair_grid_comparisons(task, compare_fn=None):
+    """Intra-Pair, Grid-level: within each example pair, compare its sibling
+    grids (G0 ↔ G1) pairwise (P6: 2-at-a-time).
+
+    The §3 "Intra-Pair, Grid-level" step (SLICE_1_LOOP.md §3 ①; §5 names
+    Intra-Pair(Grid-level) as one of the two analysis kinds Slice 1 uses). Each
+    example pair holds exactly two sibling grids under one parent, so this yields
+    one receipt per complete example pair; that receipt is DIFF for easy000a
+    (input and output share size/colour but differ in contents). The test pair
+    carries only G0 — no sibling — so it is naturally skipped (combinations over
+    a single grid is empty), matching §3's "Pa 는 G0뿐 → 형제 없어 자연 skip".
+
+    This is the **Intra** half of module C's two-analysis-kind contract; the
+    previously-implemented producers (`output_grid_comparisons`,
+    `pair_grid_count_comparisons`) are both **Inter**. Value-agnostic: it only
+    schedules sibling comparisons and returns ARCKG.compare() receipts; it never
+    reads a colour or coordinate value to decide anything. It feeds the
+    `intra_pair_grids_differ` recognition matcher.
+    """
+    receipts = []
+    for pair in task.example_pairs:
+        receipts.extend(_compare_pairwise(grids_of(pair), compare_fn))
+    return receipts
+
+
 def pair_grid_count_comparisons(task, compare_fn=None):
     """Inter-Pair, Pair-level: pairwise comparison of every pair's grid_count.
 
@@ -149,12 +174,14 @@ def build_patterns(task, compare_fn=None):
     """Assemble the Slice-1 `patterns` dict consumed by the condition matchers.
 
     Keys:
-      output_grid_comparisons     -> all_outputs_comm  (GRID-level decider)
-      pair_grid_count_comparisons -> evidence trail    (PAIR-level)
-      pair_grid_counts            -> test_output_missing (PAIR-level trigger)
+      output_grid_comparisons      -> all_outputs_comm       (GRID-level decider, Inter)
+      intra_pair_grid_comparisons  -> intra_pair_grids_differ (GRID-level, Intra)
+      pair_grid_count_comparisons  -> evidence trail          (PAIR-level, Inter)
+      pair_grid_counts             -> test_output_missing     (PAIR-level trigger)
     """
     return {
         "output_grid_comparisons": output_grid_comparisons(task, compare_fn),
+        "intra_pair_grid_comparisons": intra_pair_grid_comparisons(task, compare_fn),
         "pair_grid_count_comparisons": pair_grid_count_comparisons(task, compare_fn),
         "pair_grid_counts": pair_grid_counts(task),
     }

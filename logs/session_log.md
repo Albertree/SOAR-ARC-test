@@ -855,3 +855,80 @@ anti-unification / module H stays Slice-1 OUT, and Slice 2 remains human-gated.
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260529_211131.log
+
+> STAGNATION at iter 14 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-29 21:12
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_211231.log
+
+---
+## Learning Loop -- 2026-05-29 21:17
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_211700.log
+
+---
+## Iter 15 — 2026-05-29T21:17 — branch test21
+
+**Diagnosis**: Re-diagnosed from scratch. Slice 1 solves 2/2 and the intended
+recognition chain (`test_output_missing` → `all_outputs_comm`) is live, but
+module C (`compare_scheduler`) only realises the **Inter** analysis kind
+(`output_grid_comparisons` = Inter-Grid, `pair_grid_count_comparisons` =
+Inter-Pair). SLICE_1_LOOP.md §5 defines module C as *exactly two* kinds
+(Intra-/Inter-[Level]) and §3 ① explicitly walks the **Intra-Pair (Grid-level)**
+G0↔G1 step ("flows through though info-poor"). That step had no producer and no
+recognition vocabulary — the smallest defensible gap is to complete C's
+two-kind contract and name the Intra step value-agnostically.
+
+**Change**:
+- `agent/compare_scheduler.py` (new `intra_pair_grid_comparisons(task)`):
+  Intra-Pair, Grid-level producer — within each example pair, compares its
+  sibling grids G0↔G1 pairwise (P6). One receipt per complete example pair;
+  the test pair (G0 only) is naturally skipped (no sibling), matching §3's
+  "Pa 는 G0뿐 → 형제 없어 자연 skip". Value-agnostic. Wired into `build_patterns`
+  under key `intra_pair_grid_comparisons`.
+- `agent/conditions/intra_pair_grids_differ.py` (new matcher): the recognition
+  half — true iff every intra-pair G0↔G1 receipt is DIFF (value-agnostic, reads
+  only COMM/DIFF type; fires identically for easy000a red and easy000a2 green).
+  The **Intra** counterpart to `all_outputs_comm`'s **Inter** decider; together
+  they name the two GRID-level kinds of C's contract. Registered via the
+  existing decorator (P5 +1).
+- `tests/test_conditions_intra_pair_grids_differ.py` (new): 10 tests on real
+  ARCKG receipts — producer cardinality, DIFF for easy000a, value-agnostic
+  easy000a2, required-property `contents`, does-not-fire for identity (COMM),
+  min_evidence guard, all-must-be-DIFF. 10/10 pass; existing
+  test_compare_scheduler 14/14 and test_conditions_all_outputs_comm 8/8 intact.
+- No frozen-file edit (F1); no `_try_*`/`_apply_*` (F2); no DSL `def`/`register`
+  (F3 — no transformation primitive touched); no rule saved (F4 inert); no
+  `TF_` write (F5); no budget growth (F6); no swallowed `RuleSchemaError` (F7);
+  `agent/active_operators.py` untouched (F8 inert).
+
+**Probe before**: 2/2 correct; rule_003 only; 2 registered condition matchers.
+**Probe after** : 2/2 correct; rule_003 only; 3 registered condition matchers;
+module C now produces both Intra and Inter analysis kinds per §5.
+
+**Invariants**: forbidden=none (checker verdict CLEAN, exit 0). positives:
+P5 Δ+1 (2→3 matchers). P1/P2/P3/P4/P6 Δ0. The substantive contribution is
+completing module C's Intra/Inter contract and naming the §3 Intra-Pair step in
+recognition vocabulary (observation criteria 2 module-uniformity + 3
+approaches-answer-via-intended-path), surfaced as a real P5 increment rather
+than dead scaffolding.
+
+**Next gap (note for future iter)**: `_recognizes_copy_common_output` in
+GeneralizeOperator recomputes comparisons via `build_patterns(task)` directly,
+bypassing the pipeline's own SelectTarget→Compare operators (which build a
+separate intra-pair cell-diff path) — two parallel comparison routes is a
+module-uniformity smell (criterion 2). A future iter could converge them, but
+that touches `agent/active_operators.py` and needs an F8 companion; observe, do
+not commit to it.
