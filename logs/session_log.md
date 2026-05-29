@@ -2828,3 +2828,93 @@ in the live recognition path, or (b) implement `DescendOperator` (precondition =
 which adds net lines to active_operators.py and so must ride with a genuine
 companion under agent/conditions/ or agent/memory.py (F8). Slice 1 stays
 functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:36
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_023619.log
+
+---
+## Iter 39 — 2026-05-30T02:41 — branch test21
+
+**Diagnosis**: Iter 38 wired module B (GoalStack) into the live episode trace, but
+the schema goal's per-property leaves (size/color/contents) were marked solved
+purely from `predicted` being truthy — an *answer-driven* justification. That
+inverts P3/P4 (정답에는 근거가 있어야 하고, 근거는 *비교의 결과*에서 나온다): the
+goal-basis trace claimed "we determined {size,color,contents}" whenever any answer
+appeared, even though the actual basis is the per-property COMM of the decisive
+role-aligned Inter-Grid comparison (SLICE_1_LOOP §3 lines 121-126). The smallest
+defensible step is to ground each leaf in *its own* comparison verdict, so the
+trace records which properties actually have a comparison basis rather than
+blanket-solving them.
+
+**Change**:
+- `agent/active_agent.py` (`_slice1_goal_record`, not frozen / not F8-listed): a
+  schema leaf "determine Gx.<prop>" is now solved iff a prediction was produced
+  AND the decisive `output_grid_comparisons` are COMM on <prop> — evaluated via
+  the existing `all_outputs_comm` matcher restricted to one property at a time
+  (reusing module-E recognition; no new matcher). A property the comparison did
+  not settle stays open even when an answer was emitted. Value-agnostic
+  (per-property COMM type only, no colour/coord), so easy000a (red) and easy000a2
+  (green) keep byte-identical trees. Reuses imports already present (`conditions`,
+  `build_patterns`); no new import.
+- `tests/test_active_agent_goal_trace.py` (+1 test, docstring updated): a task
+  whose example outputs share size + colour-set but DIFFER in contents now leaves
+  the `contents` leaf *open* (size/color solved) with `satisfied=False`, even
+  though a prediction was produced — proving the leaf-satisfaction is grounded in
+  the comparison, not the answer. Existing 5 tests unchanged and still pass
+  (easy000a/a2 are COMM on all three → all leaves solved, as before).
+- Did **not** touch `agent/active_operators.py` (F8 N/A), any frozen file, any DSL
+  primitive, any rule, the condition registry; no `_try_*`/`_apply_*`.
+
+**Why smallest**: it refines iter-38's own contribution (the goal-basis trace) by
+one principle (per-property comparison grounding), changes no solve behaviour (the
+trace is an episode annotation, never read to decide the prediction), and is
+provably answer-preserving — both targets still solve 2/2 via the unchanged fast
+path.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Answer unchanged: easy000a→red(2), easy000a2→green(3). The easy000a episode goal
+trace now shows size/color/contents each `solved` *because* their Inter-Grid
+comparison is COMM — verified in episodic_memory/easy000a/attempt_067/trace.json.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+P4 3143→3145 (+2, probe re-run — the *mechanical* episode-write artifact of
+verification, **not** claimed as the contribution, per the standing iter-8/9/10
+disclaimer). P1 2.0, P2 2.0, P3 0.0, P5 8, P6 417 unchanged. The substantive
+contribution is structural (P3/P4 grounding of the goal-basis trace) and neutral
+on the six crude metrics. F1 no frozen edit; F2 no new `_try_`/`_apply_`; F3 no
+DSL def/register; F4 no rule saved; F5 no TF_ under semantic_memory; F6 no budget
+growth; F7 no swallowed RuleSchemaError; F8 N/A (active_operators.py untouched,
+417→417). NOTE: `tests/test_fast_path_reuse.py` fails on the *clean* tree (verified
+via `git stash`) — a pre-existing failure, not introduced this iter.
+
+**Next gap (note for future iter)**: the goal-basis is now per-property
+comparison-grounded but module B still does not *drive* the solve — the goal is
+recorded, not consumed by GeneralizeOperator/PredictOperator to gate recognition,
+and `DescendOperator` is still a NotImplementedError stub outside the cycle. Four
+matchers remain dormant (`needs_descend`, `descent_warranted`, `inputs_vary`,
+`intra_pair_grids_differ`, `pair_grid_count_majority`). The next smallest step is
+either (a) consume the formed goal / a dormant matcher in the live recognition
+path, or (b) implement `DescendOperator` (precondition = `descent_warranted`;
+effect = advance focus-level + `GoalStack.advance()`), which adds net lines to
+active_operators.py and so must ride with a genuine companion under
+agent/conditions/ or agent/memory.py (F8). Separately, `test_fast_path_reuse.py`
+is failing on the clean tree and wants triage. Slice 1 stays functionally
+complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:40
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_024043.log

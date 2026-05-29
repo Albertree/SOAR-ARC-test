@@ -14,6 +14,11 @@ targets — easy000a (red output) and easy000a2 (green output) — must produce
 byte-identical goal trees. A test asserts exactly that, and that the recorded
 trace carries no colour/coordinate vocabulary.
 
+Iter 39 grounds each schema leaf in its *comparison basis* (P3/P4): a leaf
+"determine Gx.<prop>" is solved only when a prediction was produced AND the
+decisive role-aligned Inter-Grid comparison is COMM on <prop>, so a property the
+comparison did not settle stays open even when an answer was emitted.
+
 pytest is not installed here, so the file is also runnable directly:
     python tests/test_active_agent_goal_trace.py
 """
@@ -76,6 +81,30 @@ def test_goal_record_forms_full_chain_when_output_constructed():
     assert [g["kind"] for g in goal["history"]] == ["value", "action"]
     # a produced prediction satisfies every schema leaf
     assert rec["satisfied"] is True
+
+
+def test_goal_leaf_open_without_comparison_basis_even_when_predicted():
+    """A schema leaf is solved on its *comparison basis*, not the answer alone
+    (P3/P4, SLICE_1_LOOP §3 lines 121-126): example outputs that share size and
+    colour-set but DIFFER in contents leave the `contents` leaf open even though
+    a prediction was produced — the trace localises which properties the
+    role-aligned Inter-Grid comparison actually settled."""
+    out0 = [[0] * 6 for _ in range(6)]; out0[5][5] = 2   # 2 at (5,5)
+    out1 = [[0] * 6 for _ in range(6)]; out1[0][0] = 2   # 2 at (0,0): same size+colour, diff contents
+    in0 = [[0] * 6 for _ in range(6)]; in0[1][1] = 2
+    in1 = [[0] * 6 for _ in range(6)]; in1[1][4] = 1
+    intest = [[0] * 6 for _ in range(6)]; intest[4][2] = 4
+    task = SimpleNamespace(
+        task_hex="contents_differ",
+        example_pairs=[_pair("P0", in0, out0), _pair("P1", in1, out1)],
+        test_pairs=[_pair("Pa", intest)],
+    )
+    rec = _agent()._slice1_goal_record(task, predicted=[[[0]]])
+    subs = rec["goal"]["current"]["subgoals"]
+    assert subs["size"]["status"] == "solved"      # size COMM -> determined
+    assert subs["color"]["status"] == "solved"     # colour-set COMM -> determined
+    assert subs["contents"]["status"] == "open"    # contents DIFF -> no basis, open
+    assert rec["satisfied"] is False               # not every leaf has a basis
 
 
 def test_goal_record_left_open_when_no_prediction():

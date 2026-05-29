@@ -186,9 +186,20 @@ class ActiveSoarAgent:
         grid-count census (counts, never a colour/coordinate), so easy000a (red)
         and easy000a2 (green) yield byte-identical goal trees. Returns ``None``
         when no output needs constructing (no deficient test pair) — module B has
-        nothing to form. The schema goal's per-property leaves are marked solved
-        only when a prediction was produced, so a failed solve leaves the
-        construct-output goal *open* (an honest, inspectable trace).
+        nothing to form.
+
+        Each schema leaf "determine Gx.<prop>" is marked solved on its own
+        *comparison basis*, not on the answer alone: a prediction must have been
+        produced AND the decisive role-aligned Inter-Grid comparison of the
+        example outputs must be COMM on that property (the ``all_outputs_comm``
+        matcher restricted to a single property — the same module-E recognition
+        the slow path fires). This operationalises P3/P4 in the goal trace
+        (정답에는 근거가 있어야 하고, 근거는 비교의 결과에서 나온다 —
+        SLICE_1_LOOP.md §3 lines 121-126: size/color/contents COMM → that leaf
+        is determined): a property the comparison did *not* settle stays open
+        even when an answer was emitted, so the trace localises which properties
+        actually have a comparison basis rather than blanket-solving them because
+        an answer appeared. A failed solve (no prediction) leaves every leaf open.
         """
         census = pair_grid_counts(task)
         value = goal_module.value_goal_from_grid_count_census(census)
@@ -198,8 +209,13 @@ class ActiveSoarAgent:
         stack.advance()   # Refinement:   value  -> action  (construct Gx)
         stack.advance()   # Decomposition: action -> schema  ({size,color,contents})
         if predicted:
+            patterns = build_patterns(task)
             for prop in goal_module.GRID_SCHEMA:
-                stack.mark_property_solved(prop)
+                if conditions.match(
+                    "all_outputs_comm", patterns,
+                    {"min_evidence": 1, "required_properties": [prop]},
+                ):
+                    stack.mark_property_solved(prop)
         return {
             "phase": "goal_evolution",
             "module": "B",
