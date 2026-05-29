@@ -323,28 +323,24 @@ class GeneralizeOperator(Operator):
     def _recognizes_copy_common_output(wm) -> bool:
         """True iff the Slice-1 copy-common-output mechanism applies.
 
-        Delegates to the registered recognition matchers (agent/conditions),
-        fed by the module-C producer (agent/compare_scheduler.build_patterns).
-        Strictly value-agnostic: the matchers inspect only COMM/DIFF verdicts
-        and structural grid counts, never a colour or coordinate value, so this
-        fires identically for easy000a (red) and easy000a2 (green).
+        The intended §3 two-step (SLICE_1_LOOP.md §3), fed by module C
+        (compare_scheduler.build_patterns) and both value-agnostic — the matchers
+        read only COMM/DIFF verdicts and grid counts, never a colour/coordinate
+        value, so it fires identically for easy000a (red) and easy000a2 (green):
+          1. test_output_missing (PAIR): the test pair carries input only
+             (grid_count 1 vs the examples' 2) — its output must be constructed.
+             Live now that ARCManager loads it with output_grid=None (P5).
+          2. all_outputs_comm (GRID): role-aligned Inter-Grid over the example
+             outputs is COMM on {size, color, contents}, so the test output is
+             that common grid. min_evidence=1 needs >=2 outputs compared.
         """
         task = getattr(wm, "task", None)
         if task is None:
             return False
         patterns = build_patterns(task)
-        # The *deciding* comparison (SLICE_1_LOOP.md §3): role-aligned Inter-Grid
-        # over the example outputs, COMM on {size, color, contents}. When that
-        # holds, every example output is the same grid and the test output is
-        # that common grid. min_evidence=1 requires at least one pairwise COMM
-        # receipt — i.e. >=2 example outputs actually compared — so the
-        # mechanism never fires off a single example.
-        #
-        # NB: the PAIR-level `test_output_missing` trigger is intentionally NOT
-        # required here. It assumes the test pair lacks its output grid, but
-        # ARCManager loads easy tasks with the test output present
-        # (test grid_count == 2), so it never fires on real data — see the iter-4
-        # session-log "Next gap" note.
+        if not conditions.match("test_output_missing", patterns,
+                                {"min_evidence": 1}):
+            return False
         return bool(
             conditions.match(
                 "all_outputs_comm", patterns,

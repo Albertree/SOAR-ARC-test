@@ -120,16 +120,34 @@ class ARCManager:
             input_grid = Grid(grid_id=input_id, raw=raw_pair["input"])
             input_grid.extract_objects()
 
-            # Output grid (test pairs have no actual answer → construct if output exists, otherwise None)
+            # Output grid. Data files ship the test pair's answer for grading,
+            # but the *reasoning* representation must honour principle P5
+            # (SLICE_1_LOOP.md §2: "test 엔 G1 없음" — the test output is what
+            # must be constructed, not read). So a test pair gets output_grid=None
+            # (grid_count == 1, which lets the §3 PAIR-level `test_output_missing`
+            # trigger fire), and the data file's answer is kept *only* on the
+            # grading alias `pair.output` — read solely by the run_*.py scorers,
+            # never by any reasoning code (which uses output_grid).
             output_raw = raw_pair.get("output")
-            if output_raw is not None and len(output_raw) > 0 and len(output_raw[0]) > 0:
-                output_id = f"{pair_id}.G1"
-                output_grid = Grid(grid_id=output_id, raw=output_raw)
-                output_grid.extract_objects()
-            else:
-                output_grid = None
+            has_output = (
+                output_raw is not None
+                and len(output_raw) > 0
+                and len(output_raw[0]) > 0
+            )
+
+            answer_grid = None
+            output_grid = None
+            if has_output:
+                grid = Grid(grid_id=f"{pair_id}.G1", raw=output_raw)
+                grid.extract_objects()
+                if test:
+                    answer_grid = grid          # grading key only
+                else:
+                    output_grid = grid          # reasoning node
 
             pair = Pair(pair_id=pair_id, input_grid=input_grid, output_grid=output_grid)
+            if answer_grid is not None:
+                pair.output = answer_grid        # not exposed to reasoning
             pairs.append(pair)
         return pairs
 

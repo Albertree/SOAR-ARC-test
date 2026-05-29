@@ -415,3 +415,74 @@ count-asymmetry trigger and principle P5 ("test has no G1") are not honored by
 the representation; and (b) the `copy_common_output` rule is not fast-path
 reusable (`action.args` empty, prediction reads `wm.task` at predict time, so
 `times_reused` stays 0). Neither is anti-unification (Slice-1 OUT).
+
+---
+## Learning Loop -- 2026-05-29 20:18
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_201759.log
+
+---
+## Learning Loop -- 2026-05-29 20:25
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_202530.log
+
+---
+## Iter 7 — 2026-05-29T20:25 — branch test21
+
+**Diagnosis**: For three iters running the most-glaring named gap was a
+representation-fidelity violation of principle P5 ("test 엔 G1 없음"):
+`ARCManager` loaded the test pair *with* its data-file answer as `output_grid`,
+so the test pair's `grid_count == 2` and the §3 PAIR-level `test_output_missing`
+trigger — the asymmetry that is supposed to set goal B and drive descent — could
+never fire on real data (it was dead, exercised only by synthetic unit tests
+that already model the ideal representation). The smallest defensible step is to
+load the test pair with `output_grid=None` (reasoning has no G1) while keeping
+the data-file answer on the grading-only alias `pair.output`, then require the
+now-live trigger in the solve recognition so the §3 two-step is honored.
+
+**Change**:
+- `managers/arc_manager.py` (`_build_pairs`, not frozen): a **test** pair is now
+  built with `output_grid=None` so `to_json()["grid_count"] == 1` (P5 honored;
+  `test_output_missing` fires on real data). The data file's answer grid is kept
+  *only* on `pair.output` — the alias read solely by the `run_*.py` scorers via
+  `.contents`, never by any reasoning code (which uses `output_grid`). Example
+  pairs unchanged. Side benefit: the hidden test G1 is no longer `save()`d into
+  `semantic_memory/` (it was never declarative knowledge).
+- `agent/active_operators.py` (`GeneralizeOperator._recognizes_copy_common_output`):
+  now requires BOTH `test_output_missing` (PAIR-level §3 trigger, now live) AND
+  `all_outputs_comm` (GRID-level decider), replacing the stale NB comment that
+  said the PAIR trigger "never fires on real data." Net **−4 lines** (13+/17−),
+  so F8 is inert (net-negative refactor exception) and P6 improves.
+- No new matcher, no new `_try_*`/`_apply_*`, no DSL `def`/`register`, no frozen
+  file touched.
+
+**Probe before**: 2/2 correct; rule_003 only; via=copy_common_output; test pair
+grid_count==2 (P5 violated); `test_output_missing` dead on real data.
+**Probe after** : 2/2 correct (unchanged — proves the change is correctness-
+preserving); via=copy_common_output; test pair grid_count==1; both
+`test_output_missing` AND `all_outputs_comm` fire on the real loaded easy000a;
+14/14 + 8/8 + 7/7 + 22/22 unit tests pass.
+
+**Invariants**: forbidden=none (F1 no frozen edit — only arc_manager.py +
+active_operators.py; F2 no new `_try_*`/`_apply_*`; F3 no DSL `def`/`register`;
+F4 rule_003 still valid; F5 nothing TF_ under semantic_memory — in fact one
+fewer test G1 written there; F6 no budget growth; F7 no swallowed
+RuleSchemaError; F8 inert — active_operators.py net −4). positives=P6 Δ+4
+(684→680 lines removed), P4 Δ+2 (3016→3018); P1/P2/P3/P5 Δ0. Verdict CLEAN.
+
+**Next gap (note for future iter)**: With P5 honored and the §3 two-step wired,
+the most glaring remaining gap is fast-path *reuse* — rule_003 (`action.args`
+empty; the common output is read from `wm.task` at predict time) still re-runs
+the full slow pipeline each task, so "Stored rule hits: 0" and `times_reused`
+stays 0 (no P1 numerator lift from reuse). Anti-unification / module H remain
+Slice-1 OUT.
