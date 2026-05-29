@@ -4592,3 +4592,77 @@ falsified — **Slice 1 is exhausted and the loop has run dry on it.** The singl
 unblock is **human action**: provide `SLICE_2_LOOP.md` (easy000b — G0 analysis,
 intra-pair relation-of-relations, DSL activation rules, anti-unification). Do
 not start Slice 2 autonomously.
+
+> STAGNATION at iter 61 — 6 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 05:40
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_054055.log
+
+---
+## Iter 62 — 2026-05-30T05:43 — branch test21 — no defensible step found (analysis only)
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated (`SLICE_1_LOOP.md
+§10` — await `SLICE_2_LOOP.md`, do not start Slice 2 autonomously). This is the
+7th consecutive no-op. I re-derived the verdict from fresh evidence rather than
+inherit iters 57–61, and in doing so **falsified a factual claim the prior two
+logs carried**: iters 60–61 called `VerifyOperator` "the only non-wired remnant…
+deleting it is cosmetic churn (P6)." That is wrong — `VerifyOperator` is wired
+(`agent/rules.py:26` imports it into `build_proposer`; `agent/preferences.py:24`
+lists `"verify"` in PREFERENCE_ORDER). Deleting it is a regression, not churn, so
+P6 is **not** movable that way either.
+
+**Evidence gathered this iter (not inherited)**:
+- `docs/SLICE_2_LOOP.md` absent; `git log -1 PROMPT.md` → 2026-05-29 14:48,
+  unchanged. The human gate has not opened.
+- Sole rule `procedural_memory/rule_003.json` (`copy_common_output_applies`,
+  value-agnostic, covers both targets). `ls rule_*.json` → 1 file.
+- `scripts/check_invariants.sh --check` → NEUTRAL, exit 2, all six at baseline:
+  P1 2.0, P2 2.0, P3 0.0, P4 3221, P5 10, P6 435.
+- `VerifyOperator` usage grep → referenced live in `rules.py` + `preferences.py`
+  (correction above).
+- Registered matchers = exactly the 10 in RULE_FORMAT.md §4, covering every §3
+  recognition step (TASK no-compare → `nothing_to_compare`; PAIR majority/goal →
+  `pair_grid_count_majority`/`test_output_missing`/`needs_descend`; GRID
+  Intra/Inter → `intra_pair_grids_differ`/`all_outputs_comm`/`inputs_vary`; plus
+  the three composites). **No §3 recognition gap remains**, so adding a matcher
+  would be dead vocabulary (P5 gaming), not a real recogniser.
+- Stale `agent/conditions/__pycache__/sequential_recoloring.cpython-310.pyc`
+  (deleted module) is `git check-ignore`-confirmed ignored and untracked — a
+  build artifact, not a repo concern.
+- Ran `tests/test_slow_path_value_agnostic.py` (pytest absent; invoked directly):
+  **3/3 PASS** — both targets solve via the intended SOAR pipeline from empty
+  memory, value-agnostic (red vs green), discovered rules structurally identical.
+  The way-the-user-intends flow is live, not just the probe's stored-rule fast
+  path.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 — 1 rule, 2 tasks; raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4 OUT, §9`).
+- P4: auto-increments per solve regardless of code — not a code contribution.
+- P5: recognition vocabulary already covers the whole §3 flow (above); a new
+  matcher would have no live consumer.
+- P6: `_try_*`/`_apply_*` already retired; the remaining operators incl.
+  `VerifyOperator` are wired-live (correction above) — nothing safely removable.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design — a
+no-op deliberately moves no metric rather than fabricating one.
+
+**Next gap (note for future iter)**: confirmed by a 7th independent pass, with a
+stale inherited claim (`VerifyOperator` deletable) actively corrected — **Slice 1
+is exhausted; the loop has run dry on it.** The single unblock is **human
+action**: provide `SLICE_2_LOOP.md` (easy000b — G0 analysis, intra-pair
+relation-of-relations, DSL activation rules, anti-unification). Do not start
+Slice 2 autonomously.
