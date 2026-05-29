@@ -6043,3 +6043,53 @@ for live-trigger regression safety. The slow path is re-confirmed working
 end-to-end this turn, so Slice-2 work builds on a verified pipeline.
 
 > STAGNATION at iter 83 — 28 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
+
+---
+## Learning Loop -- 2026-05-30 07:06
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_070658.log
+
+---
+## Iter 84 — 2026-05-30T07:07 — branch test21
+
+**Iter 84: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-verified the gate state first-hand: `docs/SLICE_2_LOOP.md` is
+still ABSENT, `data/ARC_easy/` holds only {easy000a.json, easy000a2.json} (no
+easy000b*), and one rule (`rule_003.json`, covers `['easy000a','easy000a2']`,
+value-agnostic, `anti_unification_trace=null` — the correct single-source initial
+rule; AU is OUT of Slice 1 per §4/§9) is on disk. Slice 1 stays complete by all
+four observation criteria (probe this iter: 2/2 CORRECT, value-agnostic since
+easy000a2's distinct fixed output rules out a baked-in literal). No agent-side
+change lifts a positive signal without either gaming a metric or crossing the
+closed Slice-2 gate (SLICE_1_LOOP.md §10 forbids starting Slice 2 autonomously).
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks; pool frozen F6; only 1 rule → no merge).
+- P3: anti-unification explicitly OUT of Slice 1 (§4/§9).
+- P4: grows only by running more solves — metric-gaming, not a contribution.
+- P5: §3 flow fully covered by the 10 live matchers; an 11th = dead F4-class vocabulary.
+- P6: nothing safely removable (435 lines, confirmed by prior full re-reads; no dead code).
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). `--check` (base 9b90b49b): exit 2,
+NEUTRAL — P1=2.0 P2=2.0 P3=0.0 P4=3270 P5=10 P6=435 (all Δ0).
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json/easy000b2.json,
+absent). Do NOT start Slice 2 autonomously (§10). When it opens, the highest-value
+first step is wiring module B's `GoalStack` as a live S1 WM object gating
+`preferences.select_operator` (satisfaction logic already live via
+`schema_goal_satisfied`); split it (consult-only first, then preference influence)
+for live-trigger regression safety.
+
+> STAGNATION at iter 84 — 29 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
