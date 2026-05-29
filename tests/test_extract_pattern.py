@@ -129,6 +129,34 @@ def test_no_effect_without_task():
     assert "patterns" not in wm.s1
 
 
+# --- extract READS the cycle's comparisons (CLAUDE.md §5) ------------------
+
+def test_consumes_cycle_intra_pair_comparisons():
+    # Simulate what CompareOperator leaves in wm.s1["comparisons"]: one
+    # Intra-Pair G0↔G1 receipt per example pair, keyed grid_<idx>, each a
+    # {"spec": ..., "result": <receipt>} entry. extract_pattern must put those
+    # exact receipts into the intra_pair_grid_comparisons key, not recompute.
+    task = _fixed_output_task("easy000a", fill_color=2)
+    wm = _WM(task)
+    sentinel0 = {"type": "DIFF", "tag": "cycle-receipt-0"}
+    sentinel1 = {"type": "DIFF", "tag": "cycle-receipt-1"}
+    wm.s1["comparisons"] = {
+        "grid_0": {"spec": {"pair_idx": 0}, "result": sentinel0},
+        "grid_1": {"spec": {"pair_idx": 1}, "result": sentinel1},
+    }
+    ExtractPatternOperator().effect(wm)
+    assert wm.s1["patterns"]["intra_pair_grid_comparisons"] == [sentinel0, sentinel1]
+
+
+def test_falls_back_to_recompute_when_no_comparisons():
+    # With no comparisons in the slot (e.g. operator invoked standalone), the
+    # intra key is computed from the task — i.e. identical to build_patterns(task).
+    task = _fixed_output_task("easy000a", fill_color=2)
+    wm = _WM(task)
+    ExtractPatternOperator().effect(wm)
+    assert wm.s1["patterns"] == build_patterns(task)
+
+
 # --- the emitted patterns still drive recognition, value-agnostically -----
 
 def _recognises_copy_common(patterns):

@@ -142,27 +142,20 @@ class CompareOperator(Operator):
 class ExtractPatternOperator(Operator):
     """
     Emits the Slice-1 ``patterns`` dict — the module-C/D comparison receipts the
-    §3 flow produces — into ``wm.s1["patterns"]`` for GeneralizeOperator.
+    §3 flow produces (``agent/compare_scheduler.build_patterns``) — into
+    ``wm.s1["patterns"]`` for GeneralizeOperator. The slot carries the COMM/DIFF
+    verdicts of the Inter-Grid (role==G1 / role==G0), Intra-Pair, and Inter-Pair
+    comparisons plus the grid-count census: the §3 sequence the matchers consume.
+    (The retired hand-written cell-diff — ``_analyze_pair`` / ``_group_changes``
+    of the ``_try_*`` / ``color_mapping`` lineage — was removed in iter 27.)
 
-    Historically this operator ran a hand-written cell-level diff
-    (``_analyze_pair`` / ``_group_changes``) that grouped changed cells into
-    4-connected components and recorded their colours/positions. That machinery
-    was a relic of the retired ``_try_*`` / ``color_mapping`` lineage
-    (CLAUDE.md §5.1): once recognition moved to the value-agnostic
-    compare-scheduler matchers (``test_output_missing`` + ``all_outputs_comm``),
-    its ``pair_analyses`` / ``grid_size_preserved`` output fed **nothing** — the
-    only thing any consumer read from the slot was its *truthiness*
-    (``GeneralizeOperator``'s early-return guard and the
-    ``ready_for_generalization`` elaboration rule). It is removed here.
-
-    The slot now carries the real Slice-1 comparison receipts
-    (``agent/compare_scheduler.build_patterns``): the COMM/DIFF verdicts of the
-    Inter-Grid (role==G1 / role==G0), Intra-Pair, and Inter-Pair comparisons plus
-    the grid-count census — exactly the §3 sequence and the data the matchers
-    consume. So the patterns the episodic trace records now *are* the intended
-    flow's comparison results (CLAUDE.md §5: "extract_pattern reads comparisons,
-    writes patterns") rather than a dead cell-diff. Value-agnostic: build_patterns
-    only schedules/compares, never reading a colour/coordinate value (P7).
+    The Intra-Pair G0↔G1 receipts are *read from* ``wm.s1["comparisons"]`` — the
+    receipts the cycle's ``compare`` step already produced — rather than
+    recomputed, so select→compare→extract share one receipt set (CLAUDE.md §5:
+    "extract_pattern reads comparisons, writes patterns") instead of the compare
+    step's work being discarded. The other comparison kinds are not yet scheduled
+    into the cycle agenda, so build_patterns still computes those from the task.
+    Value-agnostic: nothing here reads a colour/coordinate value (P7).
     """
 
     def __init__(self):
@@ -175,7 +168,11 @@ class ExtractPatternOperator(Operator):
         task = wm.task
         if task is None:
             return
-        wm.s1["patterns"] = build_patterns(task)
+        # Reuse the Intra-Pair receipts the cycle's compare step already computed.
+        receipts = wm.s1.get("comparisons") or {}
+        intra = [c["result"] for c in receipts.values()
+                 if isinstance(c, dict) and "result" in c]
+        wm.s1["patterns"] = build_patterns(task, intra_pair_receipts=intra or None)
 
 
 # ======================================================================

@@ -1994,3 +1994,80 @@ not the same wiring). The *larger* integration half remains: modules A
 (`DescendOperator` impasse-driven descent) and B (GoalStack evolution) are still
 stubs — the centre of the raw-prose flow, large and F8-risky. Slice 1 stays
 functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 01:24
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_012405.log
+
+---
+## Iter 29 — 2026-05-30T01:30 — branch test21
+
+**Diagnosis**: Iters 27→28 built the chain *extract emits the real Slice-1
+patterns into `wm.s1["patterns"]`* → *generalize consumes that slot*. The
+remaining un-wired link sits one step upstream: `ExtractPatternOperator`
+recomputed `build_patterns(task)` from scratch and **discarded**
+`wm.s1["comparisons"]` — the Intra-Pair G0↔G1 receipts the cycle's
+`select_target`→`compare` operators had just computed. That violates the
+CLAUDE.md §5 contract ("extract_pattern *reads* comparisons") and makes the
+cycle's compare step decorative (its only effect was gating
+`ready_for_pattern_extraction`). Smallest defensible step: have extract consume
+those cycle receipts for the one comparison kind the agenda actually schedules.
+
+**Change**:
+- `agent/compare_scheduler.py`: `build_patterns(task, compare_fn=None,
+  intra_pair_receipts=None)` — when precomputed Intra-Pair receipts are supplied
+  they populate the `intra_pair_grid_comparisons` key instead of being
+  recomputed; `None` keeps the original standalone behaviour. Module C owns
+  pattern assembly, so the parameter lives here, not in the operator.
+- `agent/active_operators.py`: `ExtractPatternOperator.effect` now reads
+  `wm.s1["comparisons"]`, lifts each entry's `["result"]` receipt, and passes
+  them to `build_patterns(..., intra_pair_receipts=intra or None)`. So
+  select→compare→extract share one receipt set rather than extract silently
+  redoing the cycle's work. Docstring trimmed (the iter-27 cell-diff history is
+  in git/log) to keep the file **net −3 lines** (19+/22−) → F8 refactor-exempt.
+- `tests/test_extract_pattern.py` (+2 cases): `test_consumes_cycle_intra_pair_comparisons`
+  pins that sentinel receipts placed in `wm.s1["comparisons"]` appear verbatim
+  as the `intra_pair_grid_comparisons` key (extract reads, does not recompute);
+  `test_falls_back_to_recompute_when_no_comparisons` pins the standalone path
+  still equals `build_patterns(task)`.
+
+**Why smallest**: only the Intra-Pair kind is currently scheduled into the cycle
+agenda, so only that key is wired; the other four still compute from the task.
+Behaviour-preserving — the cycle's Intra-Pair receipts are identical (same nodes,
+same deterministic `arckg_compare`) to the recomputed ones, and that key feeds
+only `intra_pair_grids_differ`, which is not in the deciding recognition path
+(`test_output_missing` + `all_outputs_comm`). Both targets still solve via the
+slow path: easy000a → (5,5)=red(2), easy000a2 → (0,0)=green(3), 14 steps each.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Fast path untouched → probe identical. Slow path re-verified end-to-end with
+stored rules bypassed: both pipeline, 14 steps, value-agnostic outputs above.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P6 433 → 430 (Δ +3 lines removed)** — extends the iter-27/28 integration
+narrative (compare→extract now share receipts) while net-shrinking
+active_operators.py. P1 2.0, P2 2.0, P3 0.0, P4 3109 (temp-dir verification did
+not write to the real episodic_memory; the loop probe will bump it), P5 5
+unchanged (Slice-1 vocabulary saturated; AU is Slice-2/human-gated). F1 not
+tripped (active_operators.py/compare_scheduler.py not frozen); F2 none (no new
+`_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved; F5 no `TF_`
+under semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError; F8
+satisfied (active_operators.py net −3 → deletion/refactor exemption; companion
+edit is compare_scheduler.py, outside the gate but the net-negative exemption
+applies regardless).
+
+**Next gap (note for future iter)**: only Intra-Pair is scheduled into the cycle
+agenda, so extract still recomputes the other four comparison kinds (the
+*deciding* Inter-Grid role==G1, plus role==G0 / Inter-Pair / grid-count census).
+Routing those through `select_target`→`compare` so the cycle visibly executes the
+§3 deciding comparison (and extract reads all of it) is the next integration
+half — larger, touches SelectTargetOperator's agenda structure. Deeper still:
+modules A (`DescendOperator` impasse-driven descent) and B (GoalStack) remain
+stubs. Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.

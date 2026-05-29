@@ -196,7 +196,7 @@ def pair_grid_counts(task):
     }
 
 
-def build_patterns(task, compare_fn=None):
+def build_patterns(task, compare_fn=None, intra_pair_receipts=None):
     """Assemble the Slice-1 `patterns` dict consumed by the condition matchers.
 
     Keys:
@@ -205,11 +205,21 @@ def build_patterns(task, compare_fn=None):
       intra_pair_grid_comparisons  -> intra_pair_grids_differ (GRID-level, Intra)
       pair_grid_count_comparisons  -> pair_grid_count_majority (PAIR-level, Inter)
       pair_grid_counts             -> test_output_missing     (PAIR-level trigger)
+
+    ``intra_pair_receipts``: when supplied (the Intra-Pair G0↔G1 receipts the
+    SOAR cycle's ``compare`` step already produced), they populate the
+    ``intra_pair_grid_comparisons`` key instead of being recomputed here — so the
+    select→compare→extract chain shares one receipt set rather than the extract
+    step silently redoing the cycle's comparison work (CLAUDE.md §5:
+    "extract_pattern reads comparisons"). ``None`` (library / standalone use)
+    keeps the original behaviour: the key is computed from the task here.
     """
+    intra = (intra_pair_receipts if intra_pair_receipts is not None
+             else intra_pair_grid_comparisons(task, compare_fn))
     return {
         "output_grid_comparisons": output_grid_comparisons(task, compare_fn),
         "input_grid_comparisons": input_grid_comparisons(task, compare_fn),
-        "intra_pair_grid_comparisons": intra_pair_grid_comparisons(task, compare_fn),
+        "intra_pair_grid_comparisons": intra,
         "pair_grid_count_comparisons": pair_grid_count_comparisons(task, compare_fn),
         "pair_grid_counts": pair_grid_counts(task),
     }
