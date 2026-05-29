@@ -27,6 +27,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from ARCKG.grid import Grid
 from ARCKG.pair import Pair
 from agent.active_operators import GeneralizeOperator, PredictOperator
+from agent.compare_scheduler import build_patterns
 
 
 # --- fixtures: Slice-1 target tasks, built from real ARCKG nodes ----------
@@ -88,9 +89,10 @@ class _WM:
 
 def _run_generalize_then_predict(task):
     wm = _WM(task)
-    # ExtractPatternOperator would normally fill this; a non-empty dict is all
-    # GeneralizeOperator.effect needs to not early-return.
-    wm.s1["patterns"] = {"pair_analyses": [], "grid_size_preserved": True}
+    # ExtractPatternOperator fills this slot with the real comparison receipts;
+    # simulate it here so GeneralizeOperator consumes the same patterns object
+    # the §3 flow produces (not a stand-in) — the extract→generalize wiring.
+    wm.s1["patterns"] = build_patterns(task)
     GeneralizeOperator().effect(wm)
     PredictOperator().effect(wm)
     return wm
@@ -101,7 +103,7 @@ def _run_generalize_then_predict(task):
 def test_generalize_emits_copy_common_output_for_fixed_output_task():
     task, _ = _fixed_output_task("easy000a", fill_color=2)
     wm = _WM(task)
-    wm.s1["patterns"] = {"pair_analyses": [], "grid_size_preserved": True}
+    wm.s1["patterns"] = build_patterns(task)
     GeneralizeOperator().effect(wm)
     rules = wm.s1.get("active-rules")
     assert rules and rules[0]["type"] == "copy_common_output"
@@ -111,7 +113,22 @@ def test_generalize_does_not_emit_for_varying_outputs():
     # Outputs differ across pairs -> all_outputs_comm fails -> fall through.
     task = _varying_output_task()
     wm = _WM(task)
-    wm.s1["patterns"] = {"pair_analyses": [], "grid_size_preserved": True}
+    wm.s1["patterns"] = build_patterns(task)
+    GeneralizeOperator().effect(wm)
+    rules = wm.s1.get("active-rules")
+    assert rules and rules[0]["type"] != "copy_common_output"
+
+
+def test_generalize_consumes_patterns_slot_not_task():
+    # Wiring guard (iter 28): generalize must recognise from the patterns slot
+    # ExtractPatternOperator produced, NOT by recomputing build_patterns(task).
+    # Here wm.task IS a fixed-output (copy) task, but the slot carries a
+    # non-empty dict WITHOUT the comparison-receipt keys. If generalize consumed
+    # the slot, the matchers fail-closed -> no copy_common_output. If it instead
+    # recomputed from wm.task (the old bug), it would wrongly emit one.
+    task, _ = _fixed_output_task("easy000a", fill_color=2)
+    wm = _WM(task)
+    wm.s1["patterns"] = {"unrelated_key": True}
     GeneralizeOperator().effect(wm)
     rules = wm.s1.get("active-rules")
     assert rules and rules[0]["type"] != "copy_common_output"

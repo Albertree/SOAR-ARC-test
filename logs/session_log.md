@@ -1936,3 +1936,61 @@ which hand-sets a minimal patterns dict). Deeper still: modules A/B
 (`DescendOperator` impasse-driven descent + GoalStack evolution) remain stubs —
 the centre of the raw-prose flow, large and F8-risky. Slice 1 stays functionally
 complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 01:18
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_011850.log
+
+---
+## Iter 28 — 2026-05-30T01:20 — branch test21
+
+**Diagnosis**: Acted on iter 27's flagged next gap (the *smaller* half of the
+§7-priority-3 integration gap). `ExtractPatternOperator` now writes the real
+Slice-1 comparison receipts into `wm.s1["patterns"]`, but `GeneralizeOperator`
+used that slot only for a truthiness early-return guard and then
+`_recognizes_copy_common_output` **recomputed** `build_patterns(task)` from
+scratch — so extract→generalize shared nothing but a presence check, violating
+CLAUDE.md §5 ("extract_pattern writes patterns; generalize reads patterns").
+Smallest defensible step: make generalize *consume* the slot extract produced.
+
+**Change**:
+- `agent/active_operators.py`: `GeneralizeOperator._recognizes_copy_common_output`
+  now takes the precomputed `patterns` dict (passed from `effect`, which already
+  reads `wm.s1["patterns"]`) instead of `wm` + recomputing `build_patterns(task)`.
+  Removes the duplicate compute; the two steps now share one patterns object.
+  Net 10/10 (behaviour-neutral refactor; docstring balanced to keep F8 net ≤ 0).
+- `tests/test_predict_copy_common_output.py`: the three setups that hand-set a
+  fake `{"pair_analyses": [], "grid_size_preserved": True}` patterns dict now set
+  `wm.s1["patterns"] = build_patterns(task)` — faithfully simulating
+  ExtractPatternOperator, so the test exercises the real extract→generalize flow.
+  Added `test_generalize_consumes_patterns_slot_not_task`: a fixed-output (copy)
+  task whose slot carries a non-receipt dict must NOT yield copy_common_output —
+  pins that generalize reads the slot, not `wm.task` (the old recompute path).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Fast path untouched, so probe identical. Slow path re-verified end-to-end via
+the SOAR cycle with stored rules disabled: easy000a → (5,5)=red(2),
+easy000a2 → (0,0)=green(3), 14 steps each, rule copy_common_output.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+P4 3105 → 3107 (+2, episodes from slow-path verification). P1 2.0, P2 2.0,
+P3 0.0, P5 5, P6 433 unchanged (Slice-1 saturated; AU is Slice-2/human-gated).
+F1 not tripped (active_operators.py not frozen); F2 none (no new `_try_`/
+`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved; F5 no `TF_` under
+semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError; F8
+satisfied (active_operators.py net 0 — balanced refactor, no companion needed).
+
+**Next gap (note for future iter)**: the fast-path `_reuse_copy_common_output`
+in `agent/active_agent.py` still recomputes `build_patterns(task)` for its
+recognition (no WM pipeline there, so no slot to consume — its own concern,
+not the same wiring). The *larger* integration half remains: modules A
+(`DescendOperator` impasse-driven descent) and B (GoalStack evolution) are still
+stubs — the centre of the raw-prose flow, large and F8-risky. Slice 1 stays
+functionally complete; Slice 2 is human-gated — do not start it.

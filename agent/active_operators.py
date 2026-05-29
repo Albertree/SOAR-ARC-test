@@ -211,7 +211,7 @@ class GeneralizeOperator(Operator):
         # is the *common* example output — copied, not computed. This dispatches
         # via the recognition registry (CLAUDE.md §6.3), not a hand-coded
         # detector, so no new _try_* is introduced.
-        if self._recognizes_copy_common_output(wm):
+        if self._recognizes_copy_common_output(patterns):
             rule = {"type": "copy_common_output", "confidence": 1.0}
 
         # No principled (comparison-grounded) rule recognised -> identity, the
@@ -231,24 +231,24 @@ class GeneralizeOperator(Operator):
     # ---- recognition: value-agnostic copy-common-output -----------------
 
     @staticmethod
-    def _recognizes_copy_common_output(wm) -> bool:
+    def _recognizes_copy_common_output(patterns) -> bool:
         """True iff the Slice-1 copy-common-output mechanism applies.
 
-        The intended §3 two-step (SLICE_1_LOOP.md §3), fed by module C
-        (compare_scheduler.build_patterns) and both value-agnostic — the matchers
-        read only COMM/DIFF verdicts and grid counts, never a colour/coordinate
-        value, so it fires identically for easy000a (red) and easy000a2 (green):
+        Consumes the precomputed ``patterns`` slot ExtractPatternOperator wrote
+        instead of recomputing build_patterns — the extract→generalize wiring
+        (CLAUDE.md §5: extract writes patterns, generalize reads them).
+        The intended §3 two-step (SLICE_1_LOOP.md §3), both value-agnostic — the
+        matchers read only COMM/DIFF verdicts and grid counts, never a
+        colour/coordinate value, so it fires identically for easy000a (red) and
+        easy000a2 (green):
           1. test_output_missing (PAIR): the test pair carries input only
              (grid_count 1 vs the examples' 2) — its output must be constructed.
-             Live now that ARCManager loads it with output_grid=None (P5).
           2. all_outputs_comm (GRID): role-aligned Inter-Grid over the example
              outputs is COMM on {size, color, contents}, so the test output is
              that common grid. min_evidence=1 needs >=2 outputs compared.
         """
-        task = getattr(wm, "task", None)
-        if task is None:
+        if not patterns:
             return False
-        patterns = build_patterns(task)
         if not conditions.match("test_output_missing", patterns,
                                 {"min_evidence": 1}):
             return False
