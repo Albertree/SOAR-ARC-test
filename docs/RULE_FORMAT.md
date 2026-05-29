@@ -59,14 +59,14 @@ apply a DSL primitive. Both halves are mandatory and validated on save.
 
     "covers": {
       "type": "array",
-      "items": { "type": "string", "pattern": "^[0-9a-f]{8}$" },
+      "items": { "type": "string", "pattern": "^([0-9a-f]{8}|easy[0-9a-z]+)$" },
       "minItems": 1,
       "uniqueItems": true
     },
 
     "source_task": {
       "type": "string",
-      "pattern": "^[0-9a-f]{8}$"
+      "pattern": "^([0-9a-f]{8}|easy[0-9a-z]+)$"
     },
 
     "anti_unification_trace": {
@@ -77,13 +77,45 @@ apply a DSL primitive. Both halves are mandatory and validated on save.
     },
 
     "created_at":   { "type": "string", "format": "date-time" },
-    "times_reused": { "type": "integer", "minimum": 0 }
+    "times_reused": { "type": "integer", "minimum": 0 },
+
+    "rule": {
+      "description": "Optional internal dispatch payload (e.g. {\"type\": \"copy_common_output\", \"confidence\": 1.0}). Carried *alongside* — never instead of — the canonical {condition, action} pair, and read by agent/memory.py:_rules_equivalent() / the PredictOperator fast path. It is NOT the legacy bug of §6.3: the dead-memory failure mode is a rule that has ONLY `rule` and lacks {condition, action}, not one that has both.",
+      "type": "object"
+    }
   }
 }
 ```
 
 The schema lives canonically here. A machine-readable copy belongs at
 `docs/rule_format.schema.json` once tooling is added.
+
+### 1.1 Live validator scope (reconciliation)
+
+§1 is the **aspirational, canonical** shape. The **enforced** in-process guard
+is `agent/memory.py:validate_rule()` (added iter 22), which checks the
+*retrievability subset* of §1 — exactly the part whose violation produces the
+dead-memory / 168-rule failure mode (§4 of `docs/INVARIANTS.md`, F4):
+
+1. `condition` and `action` are both present, non-empty, and carry a non-empty
+   string `condition.type` / `action.dsl`.
+2. `condition.type` resolves in `CONDITION_REGISTRY` and `action.dsl` resolves
+   in `DSL_REGISTRY` (an unresolvable name is dead memory → rejected).
+3. `source_task` (when present) appears in `covers` (V4).
+
+`validate_rule()` deliberately does **not** enforce §1's `additionalProperties:
+false`, the `covers`/`source_task` string pattern, or the full `required` key
+list. The live system stores two facts §1 must accommodate, not reject:
+
+- The optional internal `rule` dispatch payload (above) sits beside the
+  canonical `{condition, action}` pair on every live rule (e.g. `rule_003`).
+- Slice-1 uses synthetic task ids (`easy000a`, `easy000a2`) that are not
+  8-char ARC hex — hence the broadened `covers`/`source_task` pattern above.
+
+A validator "completed" to enforce §1 *literally* (hex-only ids, no `rule`
+key) would reject `rule_003` — the system's only live, working rule — and
+break the fast-path equivalence check. Tighten §1 only in lockstep with the
+stored representation, never ahead of it.
 
 ---
 
@@ -104,6 +136,7 @@ The schema lives canonically here. A machine-readable copy belongs at
 | `anti_unification_trace` | `null` for *source* rules (learned from a single task). Path to a trace JSON for *abstract* rules produced by `program/anti_unification.unify()`. Documents which input rules were combined. |
 | `created_at` | ISO 8601 timestamp at insertion time. |
 | `times_reused` | Counter incremented each time the rule's `condition` fires on a *new* (not-in-`covers`) task and the resulting `action` produces the correct output. |
+| `rule` | *Optional.* Internal dispatch payload (e.g. `{"type": "copy_common_output", "confidence": 1.0}`) carried beside — never instead of — `{condition, action}`. Read by `_rules_equivalent()` / the PredictOperator fast path. Its presence does **not** make a rule legacy/invalid; its *absence-of-{condition,action}* does (§6.3). |
 
 ### 2.1 Anti-unification trace contract
 
@@ -133,10 +166,15 @@ writing to disk. Failure raises `RuleSchemaError` and the write is aborted.
 | V4 | `source_task` ∈ `covers` | `RuleSchemaError("source_task must appear in covers")` |
 | V5 | If `anti_unification_trace` is non-null, the referenced file exists | `RuleSchemaError("trace file not found: <path>")` |
 | V6 | `id` does not collide with an existing file in `procedural_memory/` | `RuleSchemaError("id collision: rule_<NNN>.json exists")` |
-| V7 | No additional top-level keys beyond §1's `required` list | `RuleSchemaError("unexpected key: <key>")` |
+| V7 | No additional top-level keys beyond §1's `properties` (which includes the optional internal `rule` payload — see §1.1) | `RuleSchemaError("unexpected key: <key>")` |
 
 Validation runs **before** the equivalence check used for `covers` extension —
 an invalid candidate is never allowed to mutate an existing valid rule.
+
+The live `validate_rule()` enforces V2–V4 (the retrievability subset, §1.1); V1
+(full-schema), V5, V6, and V7 are aspirational until a jsonschema dependency is
+added. The `rule` payload is **permitted**, not "unexpected" — V7 forbids
+*undocumented* keys, not this one.
 
 ---
 
@@ -298,8 +336,12 @@ The form produced by SOAR-ARC-test's `test13-eval` branch (168 such files).
 ```
 
 Why invalid:
-- V1: top-level `rule` key not in schema; `condition` and `action` absent.
-- V7: legacy `rule` key is forbidden.
+- V1: `condition` and `action` are **absent** — this is the disqualifying
+  defect (a rule the fast path cannot look up = dead memory).
+- The top-level `rule` key is **not** itself the problem: a valid rule may
+  carry `rule` *alongside* `{condition, action}` (see §1.1 and `rule_003`).
+  This example is invalid because it has `rule` and *nothing else* to dispatch
+  on — not because `rule` is present.
 
 This format is the direct cause of the KCC2026 coverage observation
 (rule coverage < 1 across 168 rules) — there is no `condition` for the agent

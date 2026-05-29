@@ -1613,3 +1613,82 @@ stored entries (an extra `"rule"` key; synthetic task ids like `easy000a`), so a
 schema-vs-reality (or scoping `validate_rule` explicitly to the retrievability
 subset it enforces) is the next correctness gap. Slice 1 remains functionally
 complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-29 23:58
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_235849.log
+
+---
+## Iter 24 — 2026-05-30T00:?? — branch test21
+
+**Diagnosis**: Probe is a clean 2/2 (stored `copy_common_output`), so I used it as
+a microscope on the spec-vs-code contract — the recorded "Next gap" of iters 22
+*and* 23. `docs/RULE_FORMAT.md §1` (the *authoritative* schema) declares the
+system's only live, working rule **invalid**: `additionalProperties:false` +
+§6.3's "V7: legacy `rule` key is **forbidden**" reject `rule_003`'s load-bearing
+`"rule"` dispatch payload (read by `_rules_equivalent()`/the fast path), and the
+`covers`/`source_task` pattern `^[0-9a-f]{8}$` rejects its synthetic Slice-1 ids
+(`easy000a`, `easy000a2`). A future iter "completing" `validate_rule()` to
+enforce §1 literally would reject `rule_003` and break the fast-path equivalence
+check. Reconciling §1 with the live validator is the smallest defensible
+correctness step and closes the spec↔code convergence arc (iter 21 §4 → 22/23
+validator → 24 §1). The larger gap — modules A (HierarchicalDescent) / B
+(GoalStack) still being `NotImplementedError` stubs — is the heart of the user's
+intended descent flow but is large, touches `active_operators.py` (F8) and the
+working solve, and §8's relaxed criteria don't require it; deliberately deferred,
+as iter 20 flagged.
+
+**Change** (doc-only; zero code, zero forbidden-signal surface):
+- `docs/RULE_FORMAT.md`: (1) added the optional internal `rule` dispatch field
+  to the §1 `properties` (kept `additionalProperties:false`), so the strict
+  schema now *accepts* `rule` carried beside `{condition, action}` rather than
+  rejecting it; (2) broadened the `covers`/`source_task` patterns to
+  `^([0-9a-f]{8}|easy[0-9a-z]+)$` to admit the synthetic slice ids the system
+  actually stores; (3) added §1.1 "Live validator scope (reconciliation)"
+  documenting that `agent/memory.py:validate_rule()` enforces only the
+  retrievability subset (V2–V4) and *why* tightening §1 ahead of the stored
+  representation would break the system; (4) added a `rule` row to the §2 field
+  table; (5) corrected V7's wording (the `rule` key is permitted, not
+  "unexpected"); (6) corrected §6.3's "Why invalid" so the disqualifying defect
+  is the **absence** of `{condition, action}`, NOT the presence of `rule`.
+- Verified the doc now matches code: `validate_rule(rule_003)` passes (has `rule`
+  key + `easy000a*` covers); the §6.3 legacy form (`rule` but no
+  condition/action) is still correctly rejected.
+- Did NOT touch §7 "Implementation Status" — it carries the same foreign
+  (test20/iter37) lineage iter 21 found in §4, but that is a separate, larger
+  reconciliation; expanding into it would grow the blast radius, which prior
+  iters warned against.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (unchanged — this iter corrects documentation, not a solve path).
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — kept, not
+reverted; only exit 1 reverts). positives=all Δ0 (P1 2.0, P2 2.0, P3 0.0,
+P4 3095, P5 5, P6 522 — none moved). Honest NEUTRAL: spec-correctness is real
+work no P1–P6 metric measures, and Slice-1's in-scope positive headroom is
+exhausted (recognition vocab complete, `_try_*` retired iter 19,
+P3/anti-unification is Slice-2/human-gated, P1/P2 saturated at 1-rule/2-task).
+NEUTRAL correctness iters are explicitly legitimate per INVARIANTS §2/§3. No
+frozen edit (F1 — `docs/RULE_FORMAT.md` is not under `docs/arbor_context/`); no
+`active_operators.py` touch so F2/F8 inert; no DSL `def`/`register` (F3); no rule
+saved (F4 inert; the change *strengthens* the doc↔validator agreement); no `TF_`
+under semantic_memory (F5); no budget growth (F6); no swallowed RuleSchemaError
+(F7).
+
+**Next gap (note for future iter)**: the §1↔validator desync is reconciled, but
+the *foreign-lineage* desync persists in `docs/RULE_FORMAT.md §7`
+("Implementation Status", test20/iter37 — lists `grid_size_preserved`/
+`consistent_color_mapping`/`sequential_recoloring` matchers that don't exist
+here) and likely in `CLAUDE.md §3.2` (refers to `save_rule()`, aliased iter 22).
+Reconciling §7 to the live branch is the next correctness gap. Separately, the
+deepest *capability* gap remains modules A/B (impasse-driven descent + goal
+evolution) — the centre of the raw-prose flow — but that is large and Slice-2-ish
+in risk; weigh carefully. Slice 1 stays functionally complete; Slice 2 is
+human-gated — do not start it.
