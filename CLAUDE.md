@@ -202,10 +202,14 @@ State alternation:
 All pipeline state lives in `wm.s1` so it survives S2 pop/push.
 
 ### Frozen files (do not modify under any prompt)
-- `data/` — the ARC dataset
+- `data/` — the ARC dataset (incl. `data/ARC_easy/` slice targets)
 - `agent/cycle.py` — the cycle engine itself
 - `agent/wm.py` — WorkingMemory representation
 - `ARCKG/*.py` node classes — node-identity contract
+- `docs/arbor_context/` — bundled snapshots of the design originals (user's raw
+  prose, execution-trace, dsl-taxonomy, open-questions, modules). *Read-only
+  reference*: you MUST read these but MUST NOT edit them. They replace the
+  external wiki on machines that don't have it.
 
 Modifications to these constitute an architecture change, not a session task.
 

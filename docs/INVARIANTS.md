@@ -33,11 +33,15 @@ Any diff against `main` (or the prior commit, for non-`main` branches) touching:
 - `agent/cycle.py`
 - `agent/wm.py`
 - `ARCKG/task.py`, `ARCKG/pair.py`, `ARCKG/grid.py`, `ARCKG/object.py`, `ARCKG/pixel.py`
+- `docs/arbor_context/` — read-only design originals (raw prose, execution-trace,
+  dsl-taxonomy, open-questions, modules). MUST be read, MUST NOT be edited;
+  they stand in for the external wiki on machines without it.
 
-These define the SOAR cycle and the 5-level node identity contract. Changing
-them is an architecture change, not a session task.
+These define the SOAR cycle, the 5-level node identity contract, and the
+read-only design context. Changing them is an architecture change, not a
+session task.
 
-Check: `git diff <base> -- data/ agent/cycle.py agent/wm.py ARCKG/task.py ARCKG/pair.py ARCKG/grid.py ARCKG/object.py ARCKG/pixel.py | wc -l` must be `0`.
+Check: `git diff <base> -- data/ agent/cycle.py agent/wm.py ARCKG/task.py ARCKG/pair.py ARCKG/grid.py ARCKG/object.py ARCKG/pixel.py docs/arbor_context/ | wc -l` must be `0`.
 
 ### F2 — New `_try_*` or `_apply_*` method
 

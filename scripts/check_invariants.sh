@@ -170,6 +170,7 @@ F1_OUT=$(git diff "$BASE_HEAD" -- \
     agent/cycle.py \
     agent/wm.py \
     ARCKG/task.py ARCKG/pair.py ARCKG/grid.py ARCKG/object.py ARCKG/pixel.py \
+    docs/arbor_context/ \
     2>/dev/null)
 if [ -n "$F1_OUT" ]; then
     violations+=("F1: frozen file modified")
