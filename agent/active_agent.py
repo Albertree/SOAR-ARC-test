@@ -227,25 +227,27 @@ class ActiveSoarAgent:
         """Fast-path reuse of one stored rule on `task`. Returns predicted grids
         or None when the rule does not apply.
 
-        Two rule families need different reuse mechanisms:
+        The only stored rule family in Slice 1 is the **task-level recognition**
+        rule (``copy_common_output``): the answer is *constructed* from the whole
+        task, not produced by a per-grid transform, so it cannot be verified by
+        re-applying it to a single example input. It is verified through its
+        stored recognition condition (CLAUDE.md §5.2: the fast path matches
+        patterns against ``rule['condition']``) and constructed via the *same*
+        code the slow path uses — so reuse and discovery share one route, not two.
 
-        * **Task-level recognition rules** (e.g. ``copy_common_output``): the
-          answer is *constructed* from the whole task, not produced by a per-grid
-          transform, so it cannot be verified by re-applying it to a single
-          example input. It is verified through its stored recognition condition
-          (CLAUDE.md §5.2: the fast path matches patterns against
-          ``rule['condition']``) and constructed via the *same* code the slow
-          path uses — so reuse and discovery share one route, not two.
-        * **Grid-level transform rules** (``color_mapping`` / ``recolor_*``): a
-          per-grid transform verified by reproducing every example output and
-          then applied to the test inputs (the original fast-path mechanism).
+        There is deliberately no second, per-grid "apply a transform to every
+        test input" reuse branch. That branch belonged to the retired
+        ``color_mapping`` / ``recolor_*`` detector family (CLAUDE.md §5.1) and
+        dispatched through ``PredictOperator._apply_rule`` — the wrong mechanism
+        for *discovered* transform rules, which CLAUDE.md §6.2 routes through
+        ``apply_DSL`` resolving ``action.dsl`` via the rule's
+        ``anti_unification_trace`` (the data layer), not a hand-coded applier.
+        An unrecognised rule type therefore yields ``None`` (fall to the slow
+        path) rather than a guessed transform.
         """
         if rule.get("type") == "copy_common_output":
             return self._reuse_copy_common_output(entry, task)
-
-        if not self._rule_matches_examples(rule, task):
-            return None
-        return self._apply_rule_to_tests(rule, task)
+        return None
 
     def _reuse_copy_common_output(self, entry, task):
         """Reuse a stored copy-common-output rule (value-agnostic).
@@ -282,28 +284,6 @@ class ActiveSoarAgent:
             if test_pair.input_grid is None:
                 return None
             grids.append(reconstruct_via_dsl(common))
-        return grids
-
-    def _rule_matches_examples(self, rule, task) -> bool:
-        """Check if a rule produces correct output for ALL example pairs."""
-        for pair in task.example_pairs:
-            if pair.input_grid is None or pair.output_grid is None:
-                continue
-            predicted = self._predictor._apply_rule(rule, pair.input_grid)
-            if predicted is None or predicted != pair.output_grid.raw:
-                return False
-        return True
-
-    def _apply_rule_to_tests(self, rule, task) -> list:
-        """Apply a rule to all test inputs. Returns list of predicted grids."""
-        grids = []
-        for test_pair in task.test_pairs:
-            if test_pair.input_grid is None:
-                return None
-            predicted = self._predictor._apply_rule(rule, test_pair.input_grid)
-            if predicted is None:
-                return None
-            grids.append(predicted)
         return grids
 
     @staticmethod

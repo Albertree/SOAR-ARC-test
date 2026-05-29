@@ -3331,3 +3331,79 @@ That is behaviour-sensitive + F8 (net lines on active_operators.py, needs a
 companion under agent/conditions/ or memory.py), so it warrants a careful
 library-first split like module A got. Slice 1 stays functionally complete; Slice 2
 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 03:24
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_032439.log
+
+---
+## Learning Loop -- 2026-05-30 03:34
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_033419.log
+
+---
+## Iter 45 — 2026-05-30T03:34 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated (5× `SLICE 1
+COMPLETE`); positive signals are maxed within the 2-task slice (P1/P2=2.0, P3/P5
+out of scope). The one genuine criterion-2 (uniformity, SLICE_1_LOOP §8) defect
+left is a **dead second reuse mechanism** in `ActiveSoarAgent._reuse_rule`: a
+per-grid "match every example, apply to tests" branch (`_rule_matches_examples` /
+`_apply_rule_to_tests`) that is a vestige of the retired `color_mapping` /
+`recolor_*` detector family (CLAUDE.md §5.1). It is unreachable for the current
+rule vocabulary — the only stored rule type is `copy_common_output` (handled by
+the first branch) and `identity` is `continue`d before `_reuse_rule` is ever
+called — and it dispatches through `PredictOperator._apply_rule`, the *wrong*
+mechanism for discovered transform rules, which CLAUDE.md §6.2 routes through the
+data layer (`apply_DSL` resolving `action.dsl` via `anti_unification_trace`).
+Leaving it invites a future iter to extend the retired applier instead of building
+the §6.2 dispatch.
+
+**Change** (one atomic removal of superseded detector-family code — PROMPT.md §3
+"remove `_try_*`/`_apply_*` superseded by anti-unification"):
+- `agent/active_agent.py`: deleted `_rule_matches_examples` and
+  `_apply_rule_to_tests` (the dead per-grid reuse path), and simplified
+  `_reuse_rule` to the single task-level recognition branch (`copy_common_output`
+  -> `_reuse_copy_common_output`), returning `None` for any other type so an
+  unrecognised rule falls to the slow path rather than a guessed transform.
+  Docstring rewritten to state *why* there is no second reuse branch (§5.1
+  retirement + §6.2 data-layer dispatch is the correct home for discovered rules).
+  Net -20 lines (18 ins / 38 del). No frozen file, no `active_operators.py`,
+  no new `_try_*`/`_apply_*`.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Identical — removed code was unreachable for the only stored rule type. Full unit
+suite 23/23 files green before and after.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 no frozen
+edit; F2 no new `_try_`/`_apply_` [code *removed*]; F3 no DSL def/register; F4
+rule_003 unchanged, still validates; F5 no `TF_`; F6 no budget growth; F7 no
+swallowed RuleSchemaError; F8 N/A — `active_operators.py` untouched, 439->439).
+positives=P4 3163->3165 (+2, mechanical from the probe runs — disclaimed per the
+standing iter-8/9/10 note); P1/P2/P3/P5/P6 Δ0. **Metric-neutral by construction**:
+the change removes dead reuse surface (criterion-2 uniformity — one reuse
+mechanism, not a dead second on the retired applier), which no positive signal
+captures (P6 is `active_operators.py`-specific; this removal is in
+`active_agent.py`). Tolerated per INVARIANTS §3; genuine cleanup in the endorsed
+direction, not a metric bump in disguise.
+
+**Next gap (note for future iter)**: reuse is now a single self-describing
+recognition route. The remaining in-scope step stays module B's GoalStack moving
+from *passive episode-trace artifact* (`_slice1_goal_record`) to *participant* in
+the live solve — but per iter-43/44 that is behaviour-sensitive and F8-adjacent
+(net lines, needs a companion under `agent/conditions/` or `agent/memory.py`), so
+it warrants its own careful library-first split. Slice 1 stays functionally
+complete; Slice 2 (easy000b: G0 analysis, activation rules, anti-unification) is
+human-gated — do not start it.
