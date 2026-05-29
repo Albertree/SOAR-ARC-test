@@ -4025,3 +4025,85 @@ majority semantics) was rejected by iters 42–52 as a no-gain conservatism trad
 and remains so. Slice 1 stays functionally complete and human-gated — do not
 start Slice 2 (easy000b: G0 analysis, activation rules, anti-unification)
 autonomously; wait for `SLICE_2_LOOP.md`.
+
+---
+## Learning Loop -- 2026-05-30 05:05
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_050555.log
+
+---
+## Iter 54 — 2026-05-30T05:08 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete (iters 42–53), so the only
+honest gap left is a *spec↔code* one, not a code one. `docs/RULE_FORMAT.md §7.2`
+— the reconciliation table PROMPT Step 1 mandates re-reading **every iter** —
+still describes the iter-25 state and asserts two things that are now
+verifiably false: (a) "`DescendOperator` (module A) and goal-evolution (module
+B) remain stubs — the impasse-driven descent flow is not yet wired (the deepest
+remaining capability gap)", and (b) "`program/__init__.py` re-exports a
+non-existent `anti_unify`, so `import program` raises — a latent bug". Both were
+fixed by intervening iters. A doc that lies about the deepest-claimed gap
+actively misdirects future diagnosis (a future iter could "wire module A" that
+is already wired), so correcting it is the §7-established reconciliation work,
+and the smallest defensible step: documentation-only, value-agnostic, zero
+forbidden-signal risk.
+
+**Verification of the facts before editing** (so the correction is grounded, not
+asserted): a from-empty-memory slow-path solve of `easy000a2` sets
+`descent-complete=True`, `focus-level=grid`, terminal `grid` inside its 26-step
+cycle — module A's `DescendOperator` fires live, proposed by `DescendRule` on the
+`needs_descent` flag (`NeedsDescentRule`) and gating `NeedsTargetSelectionRule`.
+`import program` succeeds (`__all__` = the four names `anti_unification.py`
+defines). Module B (`agent/goal.py` `GoalStack` + Refinement/Decomposition) is
+implemented and exercised per-`solve()` in the episode trace. Confirming tests
+all pass: `test_live_descent_wiring` 7/7, `test_program_package_import` 12/12,
+`test_goal` 21/21, `test_active_agent_goal_trace` 6/6.
+
+**Change**:
+- `docs/RULE_FORMAT.md §7.2` only (non-frozen doc):
+  - `program/anti_unification.py` row: replaced the stale "`import program`
+    raises" NB with the corrected fact (import works; the re-export was fixed;
+    regression-guarded by `test_program_package_import`). Kept the still-accurate
+    "AU unwired on test21" statement.
+  - `agent/active_operators.py` row: replaced "module A and module B remain
+    stubs / descent not yet wired" with the actual wired state — module A live
+    via `DescendOperator`/`DescendRule`/`NeedsDescentRule` (answer-preserving,
+    terminates at GRID), module B implemented in `agent/goal.py` and exercised
+    per-solve in the episode trace but not gating operator selection (the one
+    genuinely-deferred capability).
+  - `tests/` row: corrected "13 modules" → "28 modules" with the current
+    inventory (the count was stale by 15 files, incl. the descent/goal/import
+    tests that verify the very facts the table called stubs).
+  - §7.2 header annotated: descent/goal/`import program` rows re-verified iter 54.
+- No production code touched: no `active_operators.py` (F8 N/A), no DSL (F3), no
+  new `_try_*`/`_apply_*` (F2), no frozen file (F1 — `docs/arbor_context/`
+  untouched; `RULE_FORMAT.md` is not frozen), no rule added (F4 N/A), no `TF_`
+  (F5), no budget growth (F6), no swallowed `RuleSchemaError` (F7).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+(unchanged — doc-only change; production behaviour byte-identical).
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — F1 frozen
+diff 0; F2/F3 no DSL/`_try_` diff; F4 no rule; F5 no `TF_`; F6 no budget growth;
+F7 no swallowed error; F8 N/A doc-only). positives=P1 2.0, P2 2.0, P3 0.0, P4
+3205, P5 10, P6 436 — all Δ0 (a documentation-accuracy fix legitimately moves no
+code/rule metric). The contribution is observation-criterion 2 (통일성 /
+spec-faithfulness): the canonical reconciliation doc no longer contradicts the
+live code on the deepest-claimed capability gap, so the diagnosis loop reads true
+state. Full unit suite green (28/28 files).
+
+**Next gap (note for future iter)**: with §7.2 reconciled, the live state is:
+module A descent wired, module B goal-stack implemented-but-not-cycle-gating, AU
+unwired (correctly — OUT until Slice 2). The lone genuinely-deferred in-slice
+capability is making module B's `GoalStack` *gate operator selection* on the live
+cycle (it currently only annotates the episode trace) — but that is not required
+by SLICE_1_LOOP.md §8's relaxed criteria and would add net lines to
+`active_operators.py` (F8 companion needed). Slice 1 stays functionally complete
+and human-gated; do not start Slice 2 (easy000b) autonomously — wait for
+`SLICE_2_LOOP.md`.
