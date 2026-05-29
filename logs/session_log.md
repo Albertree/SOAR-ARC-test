@@ -6868,3 +6868,74 @@ NOT start Slice 2 autonomously (§10). On the frozen 2-task slice there is no
 in-scope positive-signal mover left; the covers-merge fix (iter 96) will move
 P1/P2 correctly the moment Slice 2 introduces a fast-path-solved task not yet in
 any rule's `covers`.
+
+> STAGNATION at iter 97 — 15 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:55
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_075548.log
+
+---
+## Iter 98 — 2026-05-30T07:57 — branch test21
+
+**Iter 98: no defensible step found — analysis only (PROMPT.md §5).** 16th
+consecutive neutral iter. Non-redundant contribution: I pinned the one part of
+the *intended* solve prior iters had not verified at the source — that the
+declared `action` is actually *executed* bottom-up, not cosmetic.
+
+**Diagnosis**: Slice 1 remains complete and human-gated. Verified directly:
+`docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed); `data/ARC_easy/` =
+{easy000a, easy000a2} frozen (F6); exactly one valid rule (`rule_003.json` —
+{condition:`copy_common_output_applies`, action:`make_grid`}, value-agnostic,
+covers=[easy000a,easy000a2], au_trace=null, times_reused=334). Probe = 2/2
+CORRECT via stored(easy000a). No code/rule/memory drift since iter 96.
+
+**First-hand check (the contribution of this iter)**: SLICE_1 §8 criterion 3
+(does it solve the *intended* bottom-up way, not just produce the right value?)
+turns on whether the rule's declared `action` is real. I traced it end-to-end:
+`PredictOperator.effect` (active_operators.py:316–334) calls
+`reconstruct_via_dsl(common_output)` (memory.py:326–373), which materialises the
+answer as `make_grid(h,w,modal_colour)` + one `coloring(selection,colour)` per
+remaining colour-class — i.e. the two frozen primitives (CLAUDE.md §6.1), in
+ascending-colour order, bit-identical to the common output. So the action is
+genuinely *executed*, value-agnostically, never a wholesale copy and never a
+stored literal. Criterion 3 holds at the code level, not just behaviourally.
+One honest nuance noted for later: `rule_003.action.args` is `{}` — the
+make_grid/coloring arguments are *re-derived at predict time* from the task's
+own common output rather than stored on the rule. Correct for a value-agnostic
+Slice-1 copy, but it means the action is a *label* over a runtime decomposition,
+not yet a parameterised program; parameterising it is anti-unification's job
+(Slice 2+, explicitly OUT here per §4/§9), not a Slice-1 fix.
+
+**Why no commit**: every positive signal is structurally pinned on the frozen
+2-task slice (verified live, exit 0, verdict NEUTRAL): P1=2.0/P2=2.0 (2 tasks/1
+rule, both already covered, pool frozen F6 → no merge/absorb possible), P3=0.0
+(AU wiring OUT of Slice 1 §9), P4=3298 (grows only by re-running solves =
+metric-gaming), P5=10 (§3 GRID-level flow fully covered; an 11th matcher with no
+consumer = dead F4-class vocabulary, §5.1), P6=435 (active_operators.py all-live;
+detector family already gone, nothing removable). Any code change now would trip
+a forbidden signal, game a metric, or risk a wrong commit — which §5 states is
+worse than no commit.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Invariants**: forbidden=none (no code diff). Live `check_invariants.sh --check`
+= exit 0, verdict NEUTRAL, all six deltas Δ0
+(P1=2.0 P2=2.0 P3=0.0 P4=3298 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged structural unblock = **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ `data/ARC_easy/easy000b.json`). Do
+NOT start Slice 2 autonomously (§10). The action-parameterisation nuance pinned
+this iter (empty `action.args` over a runtime decomposition) becomes the natural
+first Slice-2 lever: anti-unifying two per-pair programs is exactly what turns a
+runtime-derived decomposition into a stored, parameterised action — but it is
+out of scope until the gate opens.
