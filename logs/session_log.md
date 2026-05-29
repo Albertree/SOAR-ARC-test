@@ -3879,3 +3879,63 @@ consolidation (let module B's majority goal subsume the strict `test_output_miss
 PAIR gate — 다수결, more faithful to raw prose but behaviour-sensitive on out-of-slice
 censuses). Slice 1 stays functionally complete; Slice 2 (easy000b: G0 analysis,
 activation rules, anti-unification) is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 04:55
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_045545.log
+
+---
+## Iter 52 — 2026-05-30T05:00 — branch test21
+
+**Iter 52: no defensible step found — analysis only.**
+
+**Diagnosis**: Slice 1 is functionally complete (SLICE 1 COMPLETE declared,
+session_log line 558) and human-gated. I re-verified rather than trusting the
+probe: the **slow path**, run on a fresh empty procedural memory, genuinely
+solves easy000a through the comparison pipeline (descend TASK→PAIR→GRID,
+recognise via `copy_common_output_applies`, predict (5,5)=2) in 26 bounded steps
+and discovers the rule from scratch; the **fast path** reuses the stored
+`copy_common_output` rule (probe 2/2). Both are value-agnostic. All four
+observation criteria pass (works / uniformity — no task-specific branch or
+literal in any module / approach — comparison-grounded, descent+goal+flow
+recorded / search sanity — 26 steps, no explosion).
+
+**Why no step**: every positive signal is saturated within the slice (P1/P2=2.0,
+one rule covering both tasks; P5=10, every `build_patterns` producer matched to a
+consumer; P6 — recognition already consolidated through the single
+`copy_common_output_applies` matcher since iter 47, so no code-removal remains).
+The only signal-moving paths are out-of-scope: anti-unification + modules E–J are
+forbidden until `SLICE_2_LOOP.md` (§9/§10), and Slice 2 is human-gated. The lone
+remaining in-scope candidate — swapping `test_output_missing`'s strict 2-and-1
+gate for module B's majority-vote semantics (deferred by iters 42–51) — is not a
+clean improvement: it loosens a deliberately fail-closed gate, making the
+copy-common-output rule fire on more out-of-slice censuses with **zero** in-slice
+behaviour change (easy000a/a2 byte-identical either way), trading conservatism for
+nothing. The user's "다수결" is already faithfully captured in module B's goal
+layer; the trigger gate staying strict matches the stated precision-over-recall
+bias. Another observability/efficiency micro-refactor (as iters 49–51) would be
+metric-neutral busywork risking baseline pollution — PROMPT §4/§5 warn against
+exactly this.
+
+**Change**: none (analysis only — commit no code, per PROMPT §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+(unchanged — no change made).
+
+**Invariants**: forbidden=none (no files touched outside this log); checker
+verdict NEUTRAL (P1 2.0, P2 2.0, P3 0.0, P4 3198, P5 10, P6 436 — all Δ0). Full
+unit suite green (all test files self-run, no failures).
+
+**Next gap (note for future iter)**: there is no in-scope signal-moving step until
+`SLICE_2_LOOP.md` lands — Slice 1 is complete and human-gated. The next genuine
+work (easy000b: G0 analysis contributing to the answer, module E activation rules,
+module H anti-unification wiring) begins only when the human swaps in the Slice 2
+doc. Iters that keep manufacturing in-slice micro-refactors should prefer a no-op
+(PROMPT §5) over polluting the baseline. Do not start Slice 2 autonomously.
