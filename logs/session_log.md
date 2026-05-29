@@ -4859,3 +4859,77 @@ autonomously (SLICE_1_LOOP.md §10). When it opens, the highest-value first step
 module B (`agent/goal.py` GoalStack) gating operator selection/preferences — split it
 (consult-only wiring first, then let satisfaction influence preferences) before
 attempting, as it carries live-trigger regression risk.
+
+> STAGNATION at iter 65 — 10 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:00
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_060006.log
+
+---
+## Iter 66 — 2026-05-30T06:03:13 — branch test21
+
+**Iter 66: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed from scratch (not inherited). Slice 1 is functionally
+complete and human-gated: `docs/SLICE_2_LOOP.md` is absent and `PROMPT.md` /
+`docs/SLICE_1_LOOP.md` are unchanged (f4296f20, 2026-05-29). No agent-side gap
+remains whose closure improves a positive signal without gaming a metric or
+starting the human-gated Slice 2.
+
+**Evidence gathered this iter (verified live, not inherited)**:
+- Read `agent/goal.py`, `agent/preferences.py`, and all 436 lines of
+  `agent/active_operators.py` end-to-end. Every operator (Solve/Select/Compare/
+  Extract/Generalize/Descend/Predict/Submit/Verify) is wired and reachable; the
+  `_try_*`/`_apply_*` family is retired; nothing is net-negative-removable for P6.
+- **Full suite re-run live (pytest absent → each module run as its own process):
+  28/28 PASS**, incl. `test_slow_path_value_agnostic` (easy000a→red, easy000a2→green
+  each discovered independently from empty memory; structurally identical recipe,
+  no baked-in literal) and `test_live_descent_wiring`.
+- Baseline snapshot unchanged: P1 2.0, P2 2.0, P3 0.0, P4 3229, P5 10, P6 435;
+  1 live rule (`rule_003`, `copy_common_output_applies`, covers both targets).
+
+**New clarification (sharpens iter 64/65's "Next gap")**: iters 64/65 framed
+module B as "does not gate operator selection" and named that the lone deferred
+capability. That undersells it — module B's *satisfaction logic* is already
+live-consumed: `agent/conditions/schema_goal_satisfied.py` calls
+`goal.build_goalstack_from_census` + `mark_schema_leaves_by_comparison`, and that
+matcher is one conjunct of `copy_common_output_applies` (rule_003's `condition.type`),
+fired by both the slow-path `GeneralizeOperator` and the fast path. So module B
+*does* participate in the live solve, through recognition. The genuinely-deferred
+piece is narrower than stated: the `GoalStack` as a live **WM object on S1 gating
+`preferences.select_operator`**. That is not required by §8's relaxed criteria,
+moves no positive signal, and adds net lines to `active_operators.py`/
+`elaboration_rules.py` with live-trigger regression risk — i.e. a risky NEUTRAL,
+which §5 deems worse than no commit.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (SLICE_1_LOOP.md §4/§9).
+- P4: auto-increments per solve regardless of code — moving it = running solves.
+- P5: the §3 flow is fully covered by 10 live matchers; a new one would be dead
+  vocabulary with no live consumer (the F4-class failure mode).
+- P6: `_try_*`/`_apply_*` retired; remaining operators all wired-live — nothing
+  safely removable (verified by reading the file).
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`**. Do not start Slice 2 autonomously
+(SLICE_1_LOOP.md §10). When it opens, the highest-value in-architecture first step
+is wiring `GoalStack` as a live S1 WM object that gates `preferences.select_operator`
+(module B's *only* remaining deferred half — its satisfaction logic is already
+live-consumed via `schema_goal_satisfied`); split it (consult-only first, then let
+satisfaction influence preferences) as it carries live-trigger regression risk.
