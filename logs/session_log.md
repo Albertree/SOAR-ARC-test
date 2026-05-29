@@ -604,3 +604,64 @@ anti-unification / module H, extra recognition matchers) rather than accrete it.
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260529_203419.log
+
+---
+## Learning Loop -- 2026-05-29 20:36
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_203646.log
+
+---
+## Iter 9 — 2026-05-29 — branch test21
+
+**Iter 9: no defensible step found — analysis only.**
+
+**Diagnosis**: Slice 1 was declared COMPLETE in iter 8 and its §8 pass criteria
+remain met. Re-verified this iter from scratch (not trusted from the log):
+probe is 2/2 CORRECT via `copy_common_output`; `procedural_memory/` holds exactly
+one rule (`rule_003`), value-agnostic (`action.args == {}`, `covers ==
+[easy000a, easy000a2]`, `condition.type == all_outputs_comm`), so no answer is
+hard-coded; all 51 unit assertions pass (8/8 + 14/14 + 7/7 + 22/22). No
+`SLICE_2_LOOP.md` has landed — Slice 1 is still the active slice and the Slice 2
+transition is human-gated (SLICE_1_LOOP §10.2). There is therefore no in-scope
+gap to fill.
+
+**Why no signal-moving change is defensible** (each positive signal examined, as
+iter 8 did, and unchanged):
+- **P1** (`solved/rules` = 2.0) and **P2** (mean covers = 2.0) are *maxed* for a
+  2-task one-rule slice. Lifting either needs a new task (F6 forbids auto-grow;
+  the probe owns the budget) or a denominator drop via anti-unification (module
+  H — Slice-1 OUT, §9).
+- **P3** requires anti-unification wiring — Slice-1 OUT (§9).
+- **P4** only ticks mechanically when the probe/tests run (episode writes); not
+  substantive progress, not claimed.
+- **P5**: the recognition vocabulary (`all_outputs_comm` + `test_output_missing`)
+  is complete for Slice 1. Adding an unused matcher purely to bump P5 is the
+  recognition-ahead-of-need accretion this branch exists to resist.
+- **P6**: CLAUDE.md §5.1 permits `_try_*`/`_apply_*` removal only when
+  *superseded by anti-unification-based generalization*. The legacy detectors are
+  bypassed by the recognition-first path, not superseded by AU, so removing them
+  is outside §5.1's allowed-modification list (meta-rule: the rule is right).
+
+Per PROMPT.md §5: append this entry, **commit nothing**, exit cleanly. A no-op
+iter on a passing, human-gated slice is correct behavior — a wrong commit would
+pollute the positive-signal baseline. Recommendation to the human stands: swap in
+`SLICE_2_LOOP.md` to unblock further work.
+
+**Change**: none to code. `logs/session_log.md` only (this entry).
+
+**Probe before**: 2/2 correct; rule_003 only; via=copy_common_output; P1=2.0, P2=2.0.
+**Probe after** : identical (no code change).
+
+**Invariants**: forbidden=none (no code touched). positives=all Δ0 (neutral; P4
+may tick mechanically from verification runs, disclaimed).
+
+**Next gap (note for future iter)**: Slice 1 remains complete; no defensible
+in-scope step exists until `SLICE_2_LOOP.md` lands. Future iters should
+re-confirm the §8 criteria and decline out-of-scope work (fast-path reuse /
+module J, anti-unification / module H, extra recognition matchers) rather than
+accrete it.
