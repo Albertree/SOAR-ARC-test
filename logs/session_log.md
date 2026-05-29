@@ -5760,3 +5760,71 @@ wiring module B's `GoalStack` as a live S1 WM object gating `preferences.select_
 first, then preference influence) for live-trigger regression safety.
 
 > STAGNATION at iter 79 — 24 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
+
+> STAGNATION at iter 79 — 24 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:56
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_065611.log
+
+---
+## Iter 80 — 2026-05-30T06:58 — branch test21
+
+**Iter 80: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed fresh this turn with live commands (gate state, rule
+inventory, invariant check) and a first-hand full read of `active_operators.py` —
+not inherited from prior logs. Slice 1 is complete by all four observation criteria;
+the Slice-2 human gate (`SLICE_1_LOOP.md §10`) remains CLOSED. No agent-side gap
+exists whose closure lifts a positive signal without gaming a metric or crossing
+that gate.
+
+**Fresh verification this turn**:
+- Gate CLOSED: `docs/SLICE_2_LOOP.md` ABSENT; `data/ARC_easy/` = {easy000a.json,
+  easy000a2.json} only (no easy000b*); `PROMPT.md` + `docs/SLICE_1_LOOP.md`
+  unchanged since f4296f20 (2026-05-29 14:48).
+- One rule on disk: `rule_003.json`, covers `['easy000a','easy000a2']`,
+  value-agnostic, `anti_unification_trace=null` (correct single-source initial
+  rule; AU is OUT of Slice 1 per §4/§9).
+- Invariant checker (`--check`, base d5b55884): exit 2, NEUTRAL —
+  P1=2.0 P2=2.0 P3=0.0 P4=3257 P5=10 P6=435 (all Δ0). Matches the probe in context
+  (easy000a + easy000a2 both CORRECT via stored(easy000a)).
+- P6 read first-hand this turn (all 435 lines): every operator (Solve/SelectTarget/
+  Compare/ExtractPattern/Generalize/Descend/Predict/Submit/Verify) is wired and
+  reachable; the lone `_apply_rule` is the generic value-agnostic dispatcher
+  (identity-only, unknown→None per P3), not a closed-family `_apply_<name>`. No dead
+  code → no net-negative target. (pytest is not installed on this interpreter, so the
+  test suite could not be re-run this turn; the probe's 2/2 solve is the live health
+  signal.)
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists).
+- P3: anti-unification is explicitly OUT of Slice 1.
+- P4: grows only by running more solves — metric-gaming, not a contribution.
+- P5: §3 flow fully covered by the 10 live matchers; a new one is dead F4-class
+  vocabulary the flow never exercises.
+- P6: nothing safely removable (confirmed by full re-read this turn).
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human action:
+provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data `easy000b.json`/`easy000b2.json`,
+currently absent). Do not start Slice 2 autonomously (§10). When it opens, the
+highest-value first step is wiring module B's `GoalStack` as a live S1 WM object
+gating `preferences.select_operator` (satisfaction logic already live via
+`schema_goal_satisfied`); split it (consult-only first, then preference influence)
+for live-trigger regression safety.
+
+> STAGNATION at iter 80 — 25 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
