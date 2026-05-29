@@ -1307,3 +1307,70 @@ copy-common-output) but means P3/P6 are now both at their Slice-1 ceiling.
 Remaining in-scope signal headroom is thin: Slice 1 may be ready for a clean §8
 self-assessment / §10 SLICE 1 COMPLETE declaration. Slice 2 (anti-unification,
 G0 analysis, activation rules) is human-gated — do not start it. Observe.
+
+---
+## Learning Loop -- 2026-05-29 23:10
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_231019.log
+
+---
+## Iter 20 — 2026-05-29T23:11 — branch test21
+
+**Diagnosis**: The probe solves easy000a + easy000a2 cleanly (2/2) via the
+value-agnostic copy-common-output path, which is gated on TWO load-bearing
+matchers — `test_output_missing` (PAIR) AND `all_outputs_comm` (GRID) — in
+`GeneralizeOperator._recognizes_copy_common_output`. Using the probe as a
+microscope: of the five registered matchers, `test_output_missing` was the only
+one with **no unit test**, even though it is one of the two that actually gate
+the decisive solve — while its GRID partner `all_outputs_comm` and the three
+*non-decisive* flow-step matchers (`inputs_vary`, `intra_pair_grids_differ`,
+`pair_grid_count_majority`) all have tests. That asymmetry is the smallest
+defensible gap: the slow path's regression surface on a gating matcher was
+uncovered. (Recognition vocabulary is otherwise complete — adding a 6th matcher
+would be unprincipled accretion, iter 18/19 — and the bigger P-signal levers are
+out of scope: P3/anti-unification is Slice-2, P6 was minimized iter 19, P1/P2 are
+saturated at 1-rule/2-task.)
+
+**Change** (new test only — zero production-code touch):
+- `tests/test_conditions_test_output_missing.py` (new): 12 cases mirroring the
+  sibling matcher tests. Positive + value-agnostic cases driven end-to-end
+  through the real module-C producer (`compare_scheduler.build_patterns`) over
+  real Pair/Grid nodes, so the matcher meets the actual census shape solve()
+  consumes (examples grid_count 2, test 1). Negatives cover: test pair carrying
+  an output (nothing to construct), no test pair (fail-closed on the vacuous
+  all()), an incomplete example, min_evidence guard/param, and malformed
+  censuses (missing / non-dict / bool / string counts). Value-agnosticism proven
+  by recolouring every grid and asserting the census + verdict are unchanged.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (unchanged — this iter adds verification coverage, not a new solve path).
+
+**Invariants**: forbidden=none (checker verdict NEUTRAL, exit 2 — kept, not
+reverted; only exit 1 reverts). positives=all Δ0 (P1 2.0, P2 2.0, P3 0.0,
+P4 3083, P5 5, P6 522 — none moved). This is an honest NEUTRAL: the change is
+test coverage, which no P1–P6 metric measures, and Slice-1's in-scope positive
+headroom is exhausted. NEUTRAL scaffolding/verification iters are explicitly
+legitimate per INVARIANTS §2/§3 (not a forbidden trip). No frozen edit (F1); no
+`active_operators.py` touch so F2/F8 inert; no DSL def/register (F3); no rule
+saved (F4 inert); no `TF_` under semantic_memory (F5); no budget growth (F6); no
+swallowed RuleSchemaError (F7). New + existing standalone tests all green
+(12/12 new; 8/10/10/9/30/7/11/14/22 sibling+dsl+predict+reconstruct+scheduler+
+episodic). `test_fast_path_reuse.py` still needs pytest (pre-existing).
+
+**Next gap (note for future iter)**: in-scope positive-signal headroom is now
+genuinely thin — recognition vocabulary is complete, the `_try_*` family is
+retired, P3 (anti-unification) is Slice-2 / human-gated, and P1/P2 are saturated.
+Slice 1's §8 pass criteria appear met (both tasks correct + the 4 observation
+criteria: works, module-uniformity, approaches-the-answer, search-sanity). The
+listed-IN modules A (HierarchicalDescent) and B (GoalStack) remain placeholders
+(`DescendOperator` raises NotImplementedError; the solve short-circuits to
+recognition without an explicit impasse-driven descent), but §8's relaxed
+criteria do not require them. Whether to declare §10 SLICE 1 COMPLETE — and the
+Slice-2 transition — is human-gated; surfacing it as an observation, not
+autonomously asserting it. Do not start Slice 2.
