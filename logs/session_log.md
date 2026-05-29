@@ -3500,3 +3500,118 @@ is the *single* thing recognition checks rather than recomputing the GRID-half
 F8-adjacent (touches active_operators.py with net lines), so it warrants the
 careful wiring step iter 41 modelled for module A. Slice 1 stays functionally
 complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 03:57
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_035710.log
+
+---
+## Learning Loop -- 2026-05-30 04:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_041440.log
+
+---
+## Learning Loop -- 2026-05-30 04:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_041442.log
+
+---
+## Learning Loop -- 2026-05-30 04:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_041443.log
+
+---
+## Learning Loop -- 2026-05-30 04:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_041444.log
+
+---
+## Iter 47 — 2026-05-30T04:18 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated. Iter 46
+extracted module B's goal walk into a reusable library (`agent/goal.py`:
+`build_goalstack_from_census` + `mark_schema_leaves_by_comparison`) but left it
+consumed *only* by the passive episode trace (`_slice1_goal_record`). The
+recognition path that actually decides the answer (`copy_common_output_applies`)
+still recomputed the GRID-half `all_outputs_comm` *independently of the goal* — so
+the schema goal was recorded but never *believed*. This is the criterion-2
+uniformity smell (SLICE_1_LOOP §8 — 같은 종류 작업이 같은 모듈로) iters 42–46 each
+flagged as the next step: the wiring half of module B, mirroring module A's
+iter 40 (effect) → iter 41 (wiring) split.
+
+**Change**:
+- `agent/conditions/schema_goal_satisfied.py` (new matcher): makes module B's
+  evolving schema goal a live recognition predicate — forms the PAIR value goal
+  from the grid-count census, evolves it to the schema goal {size, color,
+  contents}, marks each leaf solved iff the role-aligned Inter-Grid comparison is
+  COMM on that property, returns `stack.is_satisfied()`. Value-agnostic. P5 +1,
+  consumed immediately (below) — not ahead-of-need accretion.
+- `agent/conditions/copy_common_output_applies.py`: the GRID half now delegates
+  to `schema_goal_satisfied` instead of recomputing `all_outputs_comm` directly,
+  so "the test output is the common G1" is recognised *because the goal of
+  constructing Gx is satisfied property-by-property* (P3/P4 — 정답에는 근거가
+  있어야 하고, 근거는 비교의 결과에서 나온다). Both slow path (`GeneralizeOperator`)
+  and fast path (`_reuse_copy_common_output`) resolve through this composite, so
+  both now make module B participate in the live solve. Removed the vestigial
+  `grid_matcher` / `required_properties` params (iter 44 already declared
+  `grid_matcher` "no longer fast-path-driven"; the goal is now the single GRID
+  basis).
+- `tests/test_conditions_schema_goal_satisfied.py` (new, 6/6) and
+  `tests/test_conditions_copy_common_output_applies.py` (replaced the vestigial
+  grid_matcher test with `test_grid_half_is_the_schema_goal`). [tests/ is
+  gitignored runtime; the code + this log are the committed artifact.]
+- **Did NOT touch** `agent/active_operators.py` (F8 N/A — recognition is
+  consolidated in the matcher both paths already call), any frozen file, any DSL
+  primitive, any rule, or `agent/goal.py`. No `_try_*`/`_apply_*`.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+recognition's GRID half recomputed `all_outputs_comm` independently of module B.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Identical answer — recognition resolves to the same predicate on the slice, now
+*through* module B's schema goal. Full unit suite green incl. new 6/6
+schema_goal_satisfied + 7/7 copy_common_output_applies.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 no frozen
+edit [verified `git diff` empty]; F2 no new `_try_`/`_apply_`; F3 no DSL
+def/register; F4 rule_003 unchanged, still validates; F5 no `TF_`; F6 no budget
+growth; F7 no swallowed RuleSchemaError; F8 N/A — active_operators.py untouched,
+439→439). positives=P5 9→10 (+1, the `schema_goal_satisfied` matcher consumed
+immediately by the live `copy_common_output_applies` — not ahead-of-need); P4
+3171→3179 (+8, mechanical from probe/test runs — disclaimed per the standing
+iter-8/9/10 note); P1/P2/P3/P6 Δ0. Module B is now a *participant* in live
+recognition, not a passive episode artifact — the long-deferred wiring step.
+
+**Next gap (note for future iter)**: module B now grounds the GRID-level
+recognition, but its value goal (build_goalstack → None on no deficiency) and the
+standalone `test_output_missing` PAIR trigger encode the deficiency twice in
+`copy_common_output_applies`; a future iter could let the goal subsume the PAIR
+half too (recognition checks *only* the goal). Behaviour-sensitive (different
+majority/strictness semantics on out-of-slice censuses) so it warrants its own
+careful step. Slice 1 stays functionally complete; Slice 2 (easy000b: G0
+analysis, activation rules, anti-unification) is human-gated — do not start it.

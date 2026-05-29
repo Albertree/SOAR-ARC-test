@@ -13,9 +13,19 @@ through one routine:
 
   1. test_output_missing (PAIR level): the test pair carries input only, so its
      output must be *constructed* (arbor-flow easy000a paragraph; §3 PAIR step).
-  2. all_outputs_comm (GRID level): the role-aligned Inter-Grid comparison of the
-     example outputs is COMM on {size, color, contents}, so the test output is
-     that common G1 — copied, not computed (§3 ②, the deciding comparison).
+  2. schema_goal_satisfied (GRID level): module B's schema goal "construct Gx" is
+     satisfied property-by-property — each of {size, color, contents} has a
+     comparison basis (the role-aligned Inter-Grid comparison of the example
+     outputs is COMM on that property), so the test output is that common G1 —
+     copied, not computed (§3 ②, the deciding comparison).
+
+The GRID half used to recompute ``all_outputs_comm`` directly here, independently
+of the goal module B records each solve. Iter 47 routes it through
+``schema_goal_satisfied`` instead, so the answer is recognised *because the goal
+of constructing Gx is satisfied* (SLICE_1_LOOP.md §3 lines 121-126 — 정답에는
+근거가 있어야 하고, 근거는 비교의 결과에서 나온다), not by a standalone all-COMM check
+that never touched the goal. This is the wiring half of module B: a previously
+passive episode-trace artifact now participates in the live recognition.
 
 This matcher *is* the self-describing ``condition.type`` of the stored
 copy-common-output rule (``procedural_memory/rule_003.json``), so both routes
@@ -23,10 +33,8 @@ that recognise the mechanism resolve it the same way: the slow path
 (``GeneralizeOperator``) calls it by name, and the fast path
 (``ActiveSoarAgent._reuse_copy_common_output``) dispatches the rule's own
 ``condition.type`` — which now *is* this composite (CLAUDE.md §5.2: the fast
-path matches patterns against the rule's condition, no wrapping). The GRID-level
-sub-matcher defaults to ``all_outputs_comm``; the ``grid_matcher`` param keeps
-that composition point overridable for future GRID-deciders without changing the
-PAIR half.
+path matches patterns against the rule's condition, no wrapping). Both therefore
+make module B participate in the live solve through one route.
 
 Strictly **value-agnostic** (SLICE_1_LOOP.md §9 / P7): both sub-matchers read
 only COMM/DIFF verdicts and structural grid counts, never a colour or coordinate
@@ -37,40 +45,27 @@ easy000a2 (fixed green output) and can never hard-code an answer.
 from agent import conditions
 from agent.conditions import register
 
-# Module-D grid schema property keys the deciding Inter-Grid comparison must be
-# COMM on (ARCKG/grid.py:to_json). Property *names* only — value-agnostic.
-_GRID_PROPERTIES = ("size", "color", "contents")
-
 
 @register("copy_common_output_applies")
 def match(patterns: dict, params: dict) -> bool:
     """True iff the Slice-1 copy-common-output mechanism applies.
 
     patterns: must carry both ``pair_grid_counts`` (PAIR census, for
-      test_output_missing) and ``output_grid_comparisons`` (Inter-Grid receipts,
-      for the GRID matcher). Both ``compare_scheduler.build_patterns`` and
+      test_output_missing *and* module B's value goal) and
+      ``output_grid_comparisons`` (Inter-Grid receipts, for the GRID-level
+      schema-goal grounding). Both ``compare_scheduler.build_patterns`` and
       ``patterns_from_cycle_receipts`` supply these, so the matcher works on the
       fast-path and slow-path patterns alike.
     params:
-      min_evidence       : minimum evidence for *both* sub-matchers (default 1).
-      grid_matcher       : registered GRID-level recogniser name to compose with
-                           (default ``"all_outputs_comm"``); lets the fast path
-                           pass the stored rule's ``condition.type``.
-      required_properties: property names the GRID matcher must each find COMM
-                           (default {size, color, contents}).
+      min_evidence : minimum example evidence for the PAIR ``test_output_missing``
+                     trigger (default 1). The GRID half is grounded by module B
+                     at its own per-property evidence level.
     """
     if not patterns:
         return False
     min_evidence = params.get("min_evidence", 1)
-    grid_matcher = params.get("grid_matcher") or "all_outputs_comm"
-    required = list(params.get("required_properties") or _GRID_PROPERTIES)
 
     if not conditions.match("test_output_missing", patterns,
                             {"min_evidence": min_evidence}):
         return False
-    return bool(
-        conditions.match(
-            grid_matcher, patterns,
-            {"min_evidence": min_evidence, "required_properties": required},
-        )
-    )
+    return conditions.match("schema_goal_satisfied", patterns, {})
