@@ -121,3 +121,67 @@ module C's scope-scheduling — emit role-aligned Inter-Grid (role==G1) example
 comparisons into WM — so this matcher can gate a value-agnostic
 PredictByAllPairCommOp that copies the common G1, replacing the wrong
 `color_mapping` path.
+
+---
+## Learning Loop -- 2026-05-29 19:30
+
+- Split: None, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260529_193015.log
+
+---
+## Iter 3 — 2026-05-29 — branch test21
+
+**Diagnosis**: Iter 2 added the `all_outputs_comm` recognition matcher but left
+it dead — nothing produces its input (`output_grid_comparisons`) and nothing
+acts on its verdict (probe still emits the wrong `color_mapping` rule, 0/2).
+The smallest defensible step is module C's producer: build the value-agnostic
+scope selector + role-aligned Inter-Grid (role==G1) comparison so the matcher
+becomes live. This is the slice's P0 priority (C+D) and is exactly iter 2's own
+"Next gap" note. Building the *producer* (not the predict step) is the smaller
+half — PredictByAllPairCommOp / wiring into the SOAR pipeline is left for later.
+
+**Change**:
+- `agent/compare_scheduler.py` (new): module C, Slice-1 scope. Module-D util
+  wrappers (`pairs_of`/`grids_of`/`role_of`/`filter_scope`) that *expose* ARCKG
+  node structure without recomputing values; a `select(anchor, level, predicate?)`
+  scope selector; pairwise (P6) comparison scheduling reusing ARCKG.compare();
+  `output_grid_comparisons()` (the easy000a decider), `pair_grid_count_comparisons()`,
+  `pair_grid_counts()`, and `build_patterns()` that assembles the matcher input.
+  Strictly value-agnostic — only schedules/compares, never reads a colour or
+  coordinate value. This gives iter-2's `all_outputs_comm` matcher its producer.
+- `agent/conditions/test_output_missing.py` (new matcher): the PAIR-level §3
+  goal-B trigger — recognises (value-agnostically, on grid counts only) that
+  examples are complete and the test pair's output must be constructed. Distinct
+  from `all_outputs_comm` (GRID-level decider); together they name the two
+  recognition steps Slice 1 leans on. Fail-closed on malformed/bool counts.
+- `tests/test_compare_scheduler.py` (new): 14 tests on *real* ARCKG Pair/Grid
+  nodes and real compare(), driving the producer end-to-end into both matchers
+  (easy000a COMM-fires, easy000b-style DIFF-rejects, value-agnostic a/b agree).
+  Self-runs (pytest absent). 14/14 pass; existing 8/8 still pass.
+- No edit to `agent/active_operators.py`; F3 untouched (no DSL register/def —
+  module D util lives in `agent/`, not `procedural_memory/DSL/*.py`, which F3's
+  def-check would otherwise reject). No frozen-file edit.
+
+NOTE (rule↔invariant tension): SLICE_1_LOOP.md §4/§6 places module D under
+`procedural_memory/DSL/{property,util}/`, but INVARIANTS.md F3's def-check
+rejects ANY new `def` under `procedural_memory/DSL/*.py` except coloring/
+make_grid/apply_DSL. Per CLAUDE.md ("the rule is correct, the task is wrong"),
+the util wrappers were placed in `agent/compare_scheduler.py` instead. Flagging
+for the human; the slice doc's path for module D conflicts with F3 as written.
+
+**Probe before**: 0/2 correct; rules 2→2; covers mean 1.0; P5=1.
+**Probe after** : 0/2 correct (mechanism still not wired into the solve loop);
+rules 2→2; covers mean 1.0; P5=2.
+
+**Invariants**: forbidden=none; positives=P5 Δ+1 (1→2); others Δ0. Verdict CLEAN.
+
+**Next gap (note for future iter)**: The recognition chain is now live but the
+solve loop still ignores it. Next gap = the value-agnostic PredictByAllPairCommOp
+(module K): when `all_outputs_comm` fires, copy the common example G1 to the test
+output — replacing the wrong `color_mapping` path. Wiring it touches the SOAR
+pipeline (likely active_operators.py → mind F8: pair with a conditions/ or
+memory.py companion).
