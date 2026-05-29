@@ -250,9 +250,24 @@ class GeneralizeOperator(Operator):
 # ======================================================================
 
 class DescendOperator(Operator):
-    """
-    Placeholder: moves focus to a deeper KG level when current-level
-    analysis is insufficient. Not yet needed for the basic pipeline.
+    """Module A (HierarchicalDescentController): move focus to a deeper KG level
+    when the current level cannot resolve its goal (P1 — depth entered by
+    necessity). The §3 descent is TASK→PAIR→GRID; ``effect`` performs that whole
+    descent in one shot and records where it stopped (``focus-level``) plus the
+    path, so the level walk is observable on the live solve.
+
+    The descent *decision* is recognition vocabulary, delegated to
+    ``agent/conditions/descent_path.descent_itinerary`` (it composes the
+    ``descent_warranted`` matcher with per-level evidence staging) — the operator
+    only applies that itinerary, hand-coding no trigger logic. Value-agnostic:
+    the itinerary reads only COMM/DIFF verdicts and structural counts, so
+    easy000a (red) and easy000a2 (green) descend identically.
+
+    ``precondition`` keeps the sibling operators' NotImplementedError convention
+    (the cycle does not consult it). This iter implements the effect half (the
+    next step the ``descent_warranted`` / ``needs_descend`` docstrings name);
+    proposer registration that lets it drive the live cycle is a later iter's
+    step, kept separate so the working pipeline is unchanged.
     """
 
     def __init__(self):
@@ -262,7 +277,23 @@ class DescendOperator(Operator):
         raise NotImplementedError("DescendOperator.precondition() not implemented.")
 
     def effect(self, wm):
-        raise NotImplementedError("DescendOperator.effect() not implemented.")
+        task = getattr(wm, "task", None)
+        if task is None:
+            return
+        from agent.compare_scheduler import build_patterns, level_sibling_counts
+        from agent.conditions.descent_path import descent_itinerary
+
+        # Full Slice-1 pattern bundle + the structural sibling census the
+        # `nothing_to_compare` disjunct needs (build_patterns does not include
+        # it). `descent_itinerary` stages these per level, so the descent is
+        # progressive (PAIR cannot see GRID's resolving comparisons), matching §3.
+        patterns = dict(build_patterns(task))
+        patterns["level_sibling_counts"] = level_sibling_counts(task)
+
+        itinerary = descent_itinerary(patterns)
+        wm.s1["descent-path"] = itinerary
+        wm.s1["focus-level"] = itinerary["terminal"]
+        wm.s1["descent-complete"] = True
 
 
 # ======================================================================

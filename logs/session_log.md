@@ -2918,3 +2918,101 @@ complete; Slice 2 is human-gated — do not start it.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_024043.log
+
+---
+## Learning Loop -- 2026-05-30 02:42
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_024214.log
+
+---
+## Learning Loop -- 2026-05-30 02:52
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_025202.log
+
+---
+## Iter 40 — 2026-05-30T02:52 — branch test21
+
+**Diagnosis**: Module A's `DescendOperator` has been a `NotImplementedError`
+stub (both halves) since the start, even though its recognition pieces
+(`nothing_to_compare`, `needs_descend`, `descent_warranted`) were built library-
+first across iters 34–36. The `descent_warranted` and `needs_descend` module
+docstrings *name* the documented next step explicitly: implement
+`DescendOperator.effect` consuming `descent_warranted`. But that single matcher
+only answers "does *this* level warrant a descent?" — nothing yet composes it
+into the *full* §3 TASK→PAIR→GRID descent with the per-level evidence staging the
+descent depends on (PAIR must not see the GRID resolving comparisons, or it would
+resolve there and skip the descent). The smallest defensible step is the effect
+half: a `descent_path` recogniser that composes `descent_warranted` into the whole
+itinerary with staging, and `DescendOperator.effect` applying it — implemented
+library-first (NOT registered in the proposer), so the working cycle is unchanged.
+
+**Change**:
+- `agent/conditions/descent_path.py` (new, module A recognition vocabulary; F8
+  companion): `descent_itinerary(patterns, params)` composes the registered
+  `descent_warranted` matcher across TASK→PAIR→GRID, masking the pattern bundle to
+  the keys *observable at each level* (`_LEVEL_VISIBLE_KEYS`) so the descent is
+  progressive — PAIR cannot see GRID's role-aligned output comparisons, so it is
+  blocked and descends; GRID can, so descent self-terminates (P1). Returns
+  `{descend_from, terminal, itinerary}` (a dict, so **not** a registered boolean
+  matcher — P5 stays 8, no inflation). Value-agnostic (names keys / reads only
+  `descent_warranted`'s verdict, never colour/coord/count values).
+- `agent/active_operators.py` (`DescendOperator`): implemented `effect` (was a
+  `NotImplementedError` stub) — builds the Slice-1 pattern bundle + the
+  `level_sibling_counts` census the `nothing_to_compare` disjunct needs, computes
+  the itinerary via `descent_path`, and writes `descent-path` / `focus-level` /
+  `descent-complete` to `wm.s1`. `precondition` kept raising `NotImplementedError`
+  (the sibling-operator convention; the cycle never consults it). **Not** added to
+  `build_proposer` — the live-cycle wiring is a later iter's step — so the probe is
+  unchanged. No new `_try_*`/`_apply_*`; no frozen-file/DSL edit.
+- `tests/test_conditions_descent_path.py` (new, 11 tests, all pass): itinerary
+  follows the §3 descent (`descend_from=[task,pair]`, `terminal=grid`);
+  byte-identical for easy000a (red) / easy000a2 (green); the staging contract
+  (PAIR still descends even with the full bundle — GRID evidence is withheld at
+  PAIR focus); not registered as a matcher; `DescendOperator.effect` writes the
+  three slots, is value-agnostic, no-ops without a task, and produces a WM change.
+
+**Why smallest**: it is the *effect* half of "make module A drive the cycle",
+split from the larger *proposer-wiring* half (which would change live-cycle
+behaviour and risk an infinite descend↔identity loop on harder tasks without a
+focus-level-aware re-comparison — deferred). It converts a stub into real, tested,
+value-agnostic logic and is provably answer-preserving (the operator is not in the
+proposer, so the cycle is byte-identical).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Answer unchanged: easy000a→red(2), easy000a2→green(3). DescendOperator.effect on
+the live easy000a task yields `focus-level=grid`, `descent-path.itinerary=[task,
+pair,grid]` — verified by the new test against the real producer chain.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). F8 satisfied:
+`active_operators.py` net additions ride with the genuine `agent/conditions/`
+companion (`descent_path.py`) the operator consumes. positives: P4 3147→3149 (+2,
+mechanical probe re-write artifact — **not** the contribution, per the standing
+iter-8/9/10 disclaimer). P1 2.0, P2 2.0, P3 0.0, P5 8 unchanged. P6 grew +31
+(417→448) — a real operator implementation, not a hand-tuned generalizer; the
+substantive contribution is structural (module A's effect half is now real +
+tested). F1 no frozen edit; F2 no new `_try_`/`_apply_`; F3 no DSL def/register;
+F4 no rule saved; F5 no `TF_` under semantic_memory; F6 no budget growth; F7 no
+swallowed RuleSchemaError.
+
+**Next gap (note for future iter)**: `DescendOperator.effect` is real and tested
+but still not in `build_proposer`, so module A does not yet *drive* the live cycle
+— the slow path's `GeneralizeOperator` still reaches GRID-level recognition
+directly without an explicit descent. Wiring it live needs (a) a `DescendRule` +
+elaboration flag (`needs_descent`/`descent-complete`) gating `select_target` after
+descent, and (b) a focus-level-aware re-comparison so a descend that doesn't
+resolve re-runs comparison one level deeper (else a hard task loops
+descend↔identity). That is behaviour-changing and must stay answer-preserving for
+easy000a/a2 (which never need to descend past GRID). Separately,
+`test_fast_path_reuse.py` needs pytest (absent here) and is untriaged. Slice 1
+stays functionally complete; Slice 2 is human-gated — do not start it.
