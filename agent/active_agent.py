@@ -250,13 +250,14 @@ class ActiveSoarAgent:
     def _reuse_copy_common_output(self, entry, task):
         """Reuse a stored copy-common-output rule (value-agnostic).
 
-        Recognition reuses the *exact* recogniser the slow path's
-        ``GeneralizeOperator`` fires — the single ``copy_common_output_applies``
-        matcher (PAIR ``test_output_missing`` ∧ GRID recogniser), driving its
-        GRID half from the stored rule's own ``condition.type`` (CLAUDE.md §5.2:
-        the fast path matches patterns against the rule's condition) so reuse and
-        discovery share one routine instead of each hand-inlining the conjunction.
-        Construction reuses ``PredictOperator``'s common example output
+        Recognition is the plain CLAUDE.md §5.2 fast path: match the precomputed
+        patterns against the rule's *own* ``condition`` by dispatching its
+        ``condition.type`` (now the self-describing ``copy_common_output_applies``
+        composite — PAIR ``test_output_missing`` ∧ GRID ``all_outputs_comm``).
+        The rule's condition fully describes *when* it fires, so the fast path no
+        longer re-supplies the PAIR precondition the slow path's recogniser
+        already names — reuse and discovery resolve the identical matcher with no
+        wrapping. Construction reuses ``PredictOperator``'s common example output
         materialised bottom-up through the two frozen DSL primitives. No
         comparison route or literal is re-derived here.
         """
@@ -266,11 +267,9 @@ class ActiveSoarAgent:
             return None
 
         patterns = build_patterns(task)
-        if not conditions.match(
-            "copy_common_output_applies", patterns,
-            {"grid_matcher": ctype,
-             "min_evidence": condition.get("min_evidence", 1)},
-        ):
+        params = dict(condition.get("params") or {})
+        params.setdefault("min_evidence", condition.get("min_evidence", 1))
+        if not conditions.match(ctype, patterns, params):
             return None
 
         common = self._predictor._common_example_output(task)

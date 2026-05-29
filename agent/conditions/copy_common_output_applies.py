@@ -17,10 +17,16 @@ through one routine:
      example outputs is COMM on {size, color, contents}, so the test output is
      that common G1 — copied, not computed (§3 ②, the deciding comparison).
 
-The GRID-level sub-matcher defaults to ``all_outputs_comm`` but is overridable
-via the ``grid_matcher`` param, so the fast path can drive it from the stored
-rule's own ``condition.type`` (CLAUDE.md §5.2: the fast path matches patterns
-against the rule's condition) rather than a literal name.
+This matcher *is* the self-describing ``condition.type`` of the stored
+copy-common-output rule (``procedural_memory/rule_003.json``), so both routes
+that recognise the mechanism resolve it the same way: the slow path
+(``GeneralizeOperator``) calls it by name, and the fast path
+(``ActiveSoarAgent._reuse_copy_common_output``) dispatches the rule's own
+``condition.type`` — which now *is* this composite (CLAUDE.md §5.2: the fast
+path matches patterns against the rule's condition, no wrapping). The GRID-level
+sub-matcher defaults to ``all_outputs_comm``; the ``grid_matcher`` param keeps
+that composition point overridable for future GRID-deciders without changing the
+PAIR half.
 
 Strictly **value-agnostic** (SLICE_1_LOOP.md §9 / P7): both sub-matchers read
 only COMM/DIFF verdicts and structural grid counts, never a colour or coordinate

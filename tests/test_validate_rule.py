@@ -135,7 +135,7 @@ def test_save_rule_alias_is_same_function():
 
 
 def test_save_rule_to_ltm_writes_valid_rule(tmp_root=None):
-    # A copy_common_output rule (-> all_outputs_comm / make_grid) is valid and
+    # A copy_common_output rule (-> copy_common_output_applies / make_grid) is valid and
     # must be written; assert a rule_*.json appears.
     with tempfile.TemporaryDirectory() as d:
         path = save_rule_to_ltm(

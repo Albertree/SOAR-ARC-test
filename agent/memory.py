@@ -264,9 +264,13 @@ _CONDITION_TYPE_BY_RULE = {
     "color_mapping": "consistent_color_mapping",
     "recolor_sequential": "sequential_recoloring",
     "identity": "identity_transformation",
-    # Slice-1 value-agnostic copy-common-output: recognised when every example
-    # output grid is COMM under a role-aligned Inter-Grid comparison.
-    "copy_common_output": "all_outputs_comm",
+    # Slice-1 value-agnostic copy-common-output: the condition.type names the
+    # *complete* firing mechanism (CLAUDE.md §3.2 — condition describes *when*):
+    # PAIR test_output_missing ∧ GRID all_outputs_comm, composed by the single
+    # ``copy_common_output_applies`` matcher. Recording only the GRID half here
+    # would under-specify when the action applies and force the fast path to
+    # re-supply the PAIR precondition (the non-uniformity iter 44 removed).
+    "copy_common_output": "copy_common_output_applies",
 }
 
 

@@ -39,7 +39,7 @@ COPY_COMMON_RULE = {
     "id": 1,
     "concept": "copy_common_example_output",
     "category": "other",
-    "condition": {"type": "all_outputs_comm", "params": {}, "min_evidence": 1},
+    "condition": {"type": "copy_common_output_applies", "params": {}, "min_evidence": 1},
     "action": {"dsl": "make_grid", "args": {}},
     "rule": {"type": "copy_common_output", "confidence": 1.0},
     "covers": ["easy000a", "easy000a2"],

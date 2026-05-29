@@ -3247,3 +3247,87 @@ to `copy_common_output_applies` so the rule's condition is *fully* self-describi
 B's GoalStack still only *records* the goal; consuming it to gate recognition
 remains the larger deferred step. Slice 1 stays functionally complete; Slice 2 is
 human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 03:17
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_031729.log
+
+---
+## Learning Loop -- 2026-05-30 03:22
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_032243.log
+
+---
+## Iter 44 — 2026-05-30T03:23 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated, so the
+defensible work stays uniformity/contract-fidelity (SLICE_1_LOOP §8 criterion 2),
+exactly the gap iter 43 flagged: the stored copy-common-output rule's
+`condition.type` was only the **GRID half** (`all_outputs_comm`), while the
+mechanism actually also requires the PAIR-level `test_output_missing`. The rule's
+recorded condition therefore *under-specified when the action applies* (CLAUDE.md
+§3.2 — condition describes *when*), forcing the fast path to re-supply the PAIR
+precondition by wrapping the rule's `condition.type` as a `grid_matcher` — the
+exact non-uniformity (fast path needs extra knowledge the slow path already has).
+
+**Change** (one atomic "self-describing condition" migration):
+- `procedural_memory/rule_003.json` (gitignored runtime artifact): `condition.type`
+  `all_outputs_comm` → `copy_common_output_applies` (the composite that names
+  *both* levels). Hand-migrated on disk; regeneration produces the same (below).
+- `agent/memory.py`: `_CONDITION_TYPE_BY_RULE["copy_common_output"]` →
+  `copy_common_output_applies`, so newly-discovered/backfilled rules record the
+  *complete* firing condition, not just the GRID decider.
+- `agent/active_agent.py` (`_reuse_copy_common_output`): recognition is now the
+  plain CLAUDE.md §5.2 fast path — dispatch the rule's own `condition.type`
+  generically (`conditions.match(ctype, patterns, params)`) instead of hardwiring
+  `copy_common_output_applies` as outer + the rule's type as inner `grid_matcher`.
+  Required, not cosmetic: with the migrated type, the old wrapping would pass
+  `grid_matcher="copy_common_output_applies"` (self-recursion). Behaviour-identical
+  for the stored rule (resolves to `test_output_missing` ∧ `all_outputs_comm`,
+  min_evidence 1).
+- `agent/conditions/copy_common_output_applies.py`: docstring — it *is* the rule's
+  self-describing condition.type now; `grid_matcher` kept as an internal
+  composition default (no longer fast-path-driven).
+- `tests/{test_fast_path_reuse,test_validate_rule_reuse,test_validate_rule}.py`:
+  fixtures/assertions/comments updated to the new self-describing condition.type.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Identical — recognition resolves to the same predicate; only *where it is named*
+moved into the rule. `_build_condition({copy_common_output})` now returns
+`copy_common_output_applies`, confirming discovery and the on-disk file agree.
+Full unit suite 23/23 files green.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 no frozen
+edit; F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 rule_003 still
+validates [condition.type resolves in the registry, suite green]; F5 no `TF_`; F6
+no budget growth; F7 no swallowed RuleSchemaError; F8 N/A —
+`active_operators.py` untouched, 439→439). positives=P4 3159→3161 (+2, mechanical
+from the probe runs — disclaimed per the standing iter-8/9/10 note); P1/P2/P3/P5/P6
+Δ0. This iter is **architecturally real but metric-neutral by construction**: the
+six signals measure rule/operator *growth*, while this migration improves the
+*fidelity* of an existing rule's recorded basis (criterion 2 uniformity), which no
+metric captures. Per INVARIANTS §3 that is tolerated; the change is not a metric
+bump in disguise.
+
+**Next gap (note for future iter)**: the rule's condition is now fully
+self-describing and both paths resolve it through one §5.2 dispatch — the
+remaining in-scope step is module B's GoalStack *consuming* its recorded goal:
+make `GoalStack.is_satisfied()` (all three Gx props comparison-grounded) the
+*single* basis live recognition uses, replacing the per-property `all_outputs_comm`
+check `_build_goal_trace` computes separately from `copy_common_output_applies`.
+That is behaviour-sensitive + F8 (net lines on active_operators.py, needs a
+companion under agent/conditions/ or memory.py), so it warrants a careful
+library-first split like module A got. Slice 1 stays functionally complete; Slice 2
+is human-gated — do not start it.

@@ -50,7 +50,7 @@ def _valid_stored():
         "id": 1,
         "concept": "copy_common_example_output",
         "category": "other",
-        "condition": {"type": "all_outputs_comm", "params": {}, "min_evidence": 1},
+        "condition": {"type": "copy_common_output_applies", "params": {}, "min_evidence": 1},
         "action": {"dsl": "make_grid", "args": {}},
         "rule": {"type": "copy_common_output", "confidence": 1.0},
         "covers": ["easy000a"],
@@ -135,8 +135,8 @@ def test_reuse_dead_memory_rule_raises_and_does_not_mutate():
 def test_reuse_backfilled_rule_validated():
     # A legacy stored rule lacking the {condition, action} pair gets it
     # backfilled in the reuse branch. If the backfilled condition resolves
-    # (copy_common_output -> all_outputs_comm), the extend succeeds and the
-    # written entry carries a valid pair.
+    # (copy_common_output -> copy_common_output_applies), the extend succeeds and
+    # the written entry carries a valid pair.
     with tempfile.TemporaryDirectory() as d:
         legacy = {
             "id": 1,
@@ -154,7 +154,7 @@ def test_reuse_backfilled_rule_validated():
         )
         with open(path) as fh:
             stored = json.load(fh)
-        assert stored["condition"]["type"] == "all_outputs_comm", "condition backfilled"
+        assert stored["condition"]["type"] == "copy_common_output_applies", "condition backfilled"
         assert stored["action"]["dsl"] == "make_grid", "action backfilled"
         assert "easy000a2" in stored["covers"]
 
