@@ -7999,3 +7999,52 @@ wrong commit worse than none.
 autonomously (§10).
 
 > STAGNATION at iter 120 — 18 consecutive neutral iters.
+
+> STAGNATION at iter 120 — 18 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 08:56
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_085643.log
+
+---
+## Iter 121 — 2026-05-30T08:57 — branch test21
+
+**Iter 121: no defensible step found — analysis only (PROMPT.md §5).** Converged
+NEUTRAL (INVARIANTS §3) behind the human gate. Verified the gating facts
+first-hand rather than trusting the loop summary.
+
+**Diagnosis**: `docs/SLICE_2_LOOP.md` ABSENT (§10 human-gate closed; only
+`SLICE_1_LOOP.md` present); `data/ARC_easy/` frozen at {easy000a, easy000a2}
+(F6); single `rule_003.json` schema-valid — `condition`+`action` both present,
+`action.dsl=make_grid` (value-agnostic, no literal (5,5)/red), `covers`=
+[easy000a, easy000a2], AU trace null (correct for a single-source rule; AU is
+OUT of Slice 1 per §9). Probe = 2/2 CORRECT via stored(easy000a), +0 learned.
+State unchanged since iters 102-120.
+
+**Why no commit**: every positive signal is pinned by the frozen 2-task slice —
+P1/P2=2.0 (both tasks already in `covers`, pool frozen so no absorb/merge is
+possible), P3=0.0 (AU OUT of Slice 1; a single-source rule cannot be AU'd),
+P4 moves only as a side effect of re-running the two solves (metric-gaming),
+P5/P6 immovable (GRID-level recognition complete; nothing dead to delete from
+`active_operators.py`). Invariant check this iter: all P-deltas = 0, verdict
+NEUTRAL. Any code change trips a forbidden signal or games a metric; §5 holds a
+wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff: provide
+`docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start Slice 2
+autonomously (§10).
+
+> STAGNATION at iter 121 — 19 consecutive neutral iters.
