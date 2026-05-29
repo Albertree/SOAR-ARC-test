@@ -6093,3 +6093,56 @@ first step is wiring module B's `GoalStack` as a live S1 WM object gating
 for live-trigger regression safety.
 
 > STAGNATION at iter 84 — 29 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
+
+---
+## Learning Loop -- 2026-05-30 07:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_070822.log
+
+---
+## Iter 85 — 2026-05-30T07:09 — branch test21
+
+**Iter 85: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand, not inherited. Gate verified ABSENT
+(`docs/SLICE_2_LOOP.md` missing; `data/ARC_easy/` = {easy000a,easy000a2} only;
+one rule `rule_003.json` on disk). I exercised the *intended* solve flow directly
+(pytest absent on 3.10.9): the slow path discovers `copy_common_output` from empty
+memory for both targets and is value-agnostic (red≠green, no baked-in literal) —
+`test_slow_path_value_agnostic.py` 3/3 — and module-A descent (TASK→PAIR→GRID,
+self-terminating) is live — `test_live_descent_wiring.py` 7/7. All four observation
+criteria hold on fresh evidence. Slice 1 is complete; the only unblock is the
+human-gated Slice-2 transition (§10 forbids starting it autonomously).
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched). Slow path independently re-verified
+from empty memory + value-agnostic (3/3); descent live (7/7).
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks; pool frozen F6; only 1 rule → no merge).
+- P3: anti-unification explicitly OUT of Slice 1 (§4/§9).
+- P4: grows only by running more solves — metric-gaming, not a contribution.
+- P5: §3 flow fully covered by the 10 live matchers; an 11th = dead F4-class vocabulary.
+- P6: scanned `active_operators.py` first-hand this iter — 435 lines are the 9 live
+  pipeline operators; the only `_`-prefixed methods (`_recognizes_copy_common_output`,
+  `_common_example_output`, `_apply_rule`) are live helpers, not the retired `_try_*`
+  family. Nothing removable.
+
+**Invariants**: forbidden=none (no code diff). `--check` (base 39692d5a): exit 0,
+NEUTRAL — P1=2.0 P2=2.0 P3=0.0 P4=3272 P5=10 P6=435 (all Δ0).
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json/easy000b2.json,
+absent). Do NOT start Slice 2 autonomously (§10). When it opens, the highest-value
+first step is wiring module B's `GoalStack` as a live S1 WM object gating
+`preferences.select_operator` (satisfaction logic already live via
+`schema_goal_satisfied`); split it (consult-only first, then preference influence)
+for live-trigger regression safety. The slow path is re-confirmed working
+end-to-end this turn, so Slice-2 work builds on a verified pipeline.
