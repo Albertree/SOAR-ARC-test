@@ -4329,3 +4329,74 @@ by SLICE_1_LOOP §8's relaxed criteria — so it is not a defensible smallest st
 honest state to surface: **Slice 1 is complete; the loop has run dry on it. Await
 human-gated `SLICE_2_LOOP.md` (easy000b: G0 analysis, activation rules, anti-
 unification) before there is new defensible work.** Do not start Slice 2 autonomously.
+
+---
+## Learning Loop -- 2026-05-30 05:30
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_053056.log
+
+---
+## Iter 58 — 2026-05-30T05:33 — branch test21 — no defensible step found (analysis only)
+
+**Diagnosis**: Slice 1 is functionally complete, already declared (`SLICE 1
+COMPLETE`), and human-gated (`SLICE_1_LOOP.md §10`: do **not** start Slice 2
+autonomously — await `SLICE_2_LOOP.md`). Rather than trust iter 57's no-op
+conclusion, this iter re-derived it from empirical evidence and reached the same
+verdict: there is no smallest step that lifts a positive signal without either
+tripping a Slice-1 guardrail / F-signal or manufacturing a cosmetic metric.
+
+**What was independently verified this iter (evidence, not inherited claims)**:
+- Read in full from source (not the slice-doc summary): the easy000a paragraph of
+  `arbor-flow-three-task-description.md`, `SLICE_1_LOOP.md`, `INVARIANTS.md`,
+  `RULE_FORMAT.md`.
+- Ran **all 28 test modules standalone** (pytest absent in env) → 28/28 pass,
+  including `test_slow_path_value_agnostic.py`, which forces *both* targets through
+  the **intended SOAR slow path from empty memory** and asserts each produces its
+  *own different* fixed output (red vs green) with structurally identical
+  condition/action and no baked-in literal. So the "way the user intends" flow —
+  not just the stored-rule fast path the probe exercises — is live and guarded.
+- Read `agent/active_operators.py` + `agent/rules.py` + `agent/preferences.py` to
+  test the "nothing left to remove" (P6) claim against code. Finding: `VerifyOperator`
+  is imported in `rules.py` and listed in `preferences.py` but **not** wired into
+  `build_proposer()` — it is the verify step the user's prose describes
+  ("이 세 요소가 검증이 완료되면 풀었다고 결론"), scaffolded ahead of use, **not** a
+  `_try_*`/`_apply_*` accretion. Deleting it would shave lines for a P6 delta while
+  removing intended scaffolding — cosmetic churn, not architectural progress. Not
+  defensible.
+- Ran `scripts/check_invariants.sh --check` → verdict NEUTRAL, all six signals at
+  baseline (P1 2.0, P2 2.0, P3 0.0, P4 3213, P5 10, P6 435).
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 — 1 rule, 2 tasks; raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4 OUT, §9`).
+- P4: auto-increments per solve regardless of code — not a code contribution.
+- P5: would grow only by registering a matcher with no live consumer (dead
+  recognition vocabulary — the failure mode the invariants exist to prevent). The
+  Slice-1 recognition set is complete; no genuine pattern is unrepresented.
+- P6: the `_try_*`/`_apply_*` family is already gone; the only non-live remnant
+  (`VerifyOperator`) is intended scaffolding, not accretion (see above).
+
+**Change**: none committed (this log entry only, per PROMPT.md §5.1).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no diff to check). positives=all Δ0 by design — a
+no-op deliberately moves no metric rather than fabricating one.
+
+**Next gap (note for future iter)**: unchanged and now confirmed by a second
+independent pass — **Slice 1 is exhausted**. This is the 2nd consecutive no-op
+after iters 54–56's three doc-faithfulness NEUTRALs; the loop has genuinely run
+dry on this slice. The single unblock is **human action**: provide
+`SLICE_2_LOOP.md` (easy000b — G0 analysis, intra-pair relation-of-relations,
+DSL activation rules, anti-unification). The only ever-named in-slice integration
+(module B's GoalStack *gating operator selection*; routing descent through
+`descent_warranted` — already partially done) adds net lines + needs an F8
+companion and is **not** required by `SLICE_1_LOOP.md §8`'s relaxed criteria, so it
+is not a defensible smallest step. Do not start Slice 2 autonomously.
