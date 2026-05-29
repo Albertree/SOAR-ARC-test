@@ -196,7 +196,52 @@ def pair_grid_counts(task):
     }
 
 
-def build_patterns(task, compare_fn=None, intra_pair_receipts=None):
+def grid_comparison_specs(task):
+    """Grid-level comparison agenda for the SOAR cycle (Slice 1, module C).
+
+    Module C owns *scheduling* (SLICE_1_LOOP.md §5), so the specs the cycle's
+    ``compare`` step executes are produced here rather than inline in the
+    operator. Two analysis kinds (§5), both at GRID level, value-agnostic
+    (node ids only — never a colour/coord):
+
+      · Intra-Pair (role G0↔G1): one spec per complete example pair — the §3 ①
+        sibling comparison (DIFF for easy000a). ``type=="grid"``.
+      · Inter-Grid (role==G1): the *deciding* §3 ② comparison — example output
+        grids compared pairwise (P6: 2-at-a-time). ``type=="inter_grid_output"``.
+
+    Routing the deciding comparison through the agenda means the cycle's
+    select→compare→extract actually *executes* it (CLAUDE.md §5: compare writes
+    comparisons, extract reads them) instead of extract recomputing it. Each spec
+    carries a unique ``key`` so CompareOperator can store receipts without
+    collision.
+    """
+    specs = []
+    for idx, pair in enumerate(task.example_pairs):
+        if pair.input_grid is not None and pair.output_grid is not None:
+            specs.append({
+                "type": "grid",
+                "pair_idx": idx,
+                "pair_type": "example",
+                "key": f"grid_{idx}",
+                "id1": pair.input_grid.node_id,
+                "id2": pair.output_grid.node_id,
+            })
+    outputs = [
+        p.output_grid for p in task.example_pairs
+        if p.output_grid is not None and role_of(p.output_grid) == "G1"
+    ]
+    for j, (a, b) in enumerate(combinations(outputs, 2)):
+        specs.append({
+            "type": "inter_grid_output",
+            "key": f"inter_grid_output_{j}",
+            "id1": a.node_id,
+            "id2": b.node_id,
+        })
+    return specs
+
+
+def build_patterns(task, compare_fn=None, intra_pair_receipts=None,
+                   output_receipts=None):
     """Assemble the Slice-1 `patterns` dict consumed by the condition matchers.
 
     Keys:
@@ -206,18 +251,21 @@ def build_patterns(task, compare_fn=None, intra_pair_receipts=None):
       pair_grid_count_comparisons  -> pair_grid_count_majority (PAIR-level, Inter)
       pair_grid_counts             -> test_output_missing     (PAIR-level trigger)
 
-    ``intra_pair_receipts``: when supplied (the Intra-Pair G0↔G1 receipts the
-    SOAR cycle's ``compare`` step already produced), they populate the
-    ``intra_pair_grid_comparisons`` key instead of being recomputed here — so the
-    select→compare→extract chain shares one receipt set rather than the extract
-    step silently redoing the cycle's comparison work (CLAUDE.md §5:
-    "extract_pattern reads comparisons"). ``None`` (library / standalone use)
-    keeps the original behaviour: the key is computed from the task here.
+    ``intra_pair_receipts`` / ``output_receipts``: when supplied (the receipts
+    the SOAR cycle's ``compare`` step already produced for the Intra-Pair G0↔G1
+    and the deciding Inter-Grid role==G1 comparisons respectively), they populate
+    the matching key instead of being recomputed here — so select→compare→extract
+    share one receipt set rather than extract silently redoing the cycle's
+    comparison work (CLAUDE.md §5: "extract_pattern reads comparisons"). ``None``
+    (library / standalone use) keeps the original behaviour: that key is computed
+    from the task here.
     """
     intra = (intra_pair_receipts if intra_pair_receipts is not None
              else intra_pair_grid_comparisons(task, compare_fn))
+    outputs = (output_receipts if output_receipts is not None
+               else output_grid_comparisons(task, compare_fn))
     return {
-        "output_grid_comparisons": output_grid_comparisons(task, compare_fn),
+        "output_grid_comparisons": outputs,
         "input_grid_comparisons": input_grid_comparisons(task, compare_fn),
         "intra_pair_grid_comparisons": intra,
         "pair_grid_count_comparisons": pair_grid_count_comparisons(task, compare_fn),

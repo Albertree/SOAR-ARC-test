@@ -13,7 +13,7 @@ Pipeline operators (all fire in S2, read/write S1):
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
 from agent import conditions
-from agent.compare_scheduler import build_patterns
+from agent.compare_scheduler import build_patterns, grid_comparison_specs
 
 
 # ======================================================================
@@ -44,9 +44,12 @@ class SolveTaskOperator(Operator):
 
 class SelectTargetOperator(Operator):
     """
-    Reads wm.task to find example pairs and sets up comparison targets.
-    For each example pair: compare input grid (G0) vs output grid (G1).
-    Writes comparison-agenda, pending-comparisons, and empty comparisons to S1.
+    Schedules the Slice-1 GRID-level comparison agenda via module C
+    (``grid_comparison_specs``, SLICE_1_LOOP.md §5): the Intra-Pair G0↔G1
+    comparisons *and* the deciding Inter-Grid role==G1 comparison (§3 ②), so the
+    cycle's compare step executes the decider rather than extract recomputing it.
+    This operator only wires the specs into S1 and builds the node lookup
+    CompareOperator resolves ids against (comparison-agenda, pending, comparisons).
     """
 
     def __init__(self):
@@ -60,20 +63,7 @@ class SelectTargetOperator(Operator):
         if task is None:
             return
 
-        agenda = []
-        pending = []
-
-        for idx, pair in enumerate(task.example_pairs):
-            if pair.input_grid is not None and pair.output_grid is not None:
-                spec = {
-                    "type": "grid",
-                    "pair_idx": idx,
-                    "pair_type": "example",
-                    "id1": pair.input_grid.node_id,
-                    "id2": pair.output_grid.node_id,
-                }
-                agenda.append(spec)
-                pending.append(spec)
+        specs = grid_comparison_specs(task)
 
         # Build node lookup so CompareOperator can find ARCKG nodes by ID
         node_lookup = {}
@@ -84,8 +74,8 @@ class SelectTargetOperator(Operator):
                 node_lookup[pair.output_grid.node_id] = pair.output_grid
         wm.node_lookup = node_lookup
 
-        wm.s1["comparison-agenda"] = agenda
-        wm.s1["pending-comparisons"] = pending
+        wm.s1["comparison-agenda"] = list(specs)
+        wm.s1["pending-comparisons"] = list(specs)
         wm.s1["comparisons"] = {}
 
 
@@ -126,8 +116,9 @@ class CompareOperator(Operator):
         fn = self._compare_fn or arckg_compare
         result = fn(node_a, node_b)
 
-        # Store result keyed by type and pair index
-        key = f"{item['type']}_{item.get('pair_idx', 0)}"
+        # Store result under the spec's unique key (scheduler-assigned; falls
+        # back to type+pair_idx for legacy specs without one).
+        key = item.get("key") or f"{item['type']}_{item.get('pair_idx', 0)}"
         comparisons = dict(wm.s1.get("comparisons") or {})
         comparisons[key] = {"spec": item, "result": result}
 
@@ -149,12 +140,13 @@ class ExtractPatternOperator(Operator):
     (The retired hand-written cell-diff — ``_analyze_pair`` / ``_group_changes``
     of the ``_try_*`` / ``color_mapping`` lineage — was removed in iter 27.)
 
-    The Intra-Pair G0↔G1 receipts are *read from* ``wm.s1["comparisons"]`` — the
-    receipts the cycle's ``compare`` step already produced — rather than
-    recomputed, so select→compare→extract share one receipt set (CLAUDE.md §5:
-    "extract_pattern reads comparisons, writes patterns") instead of the compare
-    step's work being discarded. The other comparison kinds are not yet scheduled
-    into the cycle agenda, so build_patterns still computes those from the task.
+    Both scheduled GRID-level comparison kinds are *read from*
+    ``wm.s1["comparisons"]`` (CLAUDE.md §5: "extract_pattern reads comparisons,
+    writes patterns") rather than recomputed, so the compare step's work is not
+    discarded. Receipts are partitioned by spec ``type``: ``inter_grid_output``
+    feeds the deciding ``output_grid_comparisons`` key (§3 ②), every other type
+    feeds the Intra-Pair key (§3 ①). The unscheduled kinds (role==G0 / Inter-Pair
+    / grid-count census) are still computed from the task by build_patterns.
     Value-agnostic: nothing here reads a colour/coordinate value (P7).
     """
 
@@ -168,11 +160,14 @@ class ExtractPatternOperator(Operator):
         task = wm.task
         if task is None:
             return
-        # Reuse the Intra-Pair receipts the cycle's compare step already computed.
-        receipts = wm.s1.get("comparisons") or {}
-        intra = [c["result"] for c in receipts.values()
-                 if isinstance(c, dict) and "result" in c]
-        wm.s1["patterns"] = build_patterns(task, intra_pair_receipts=intra or None)
+        # Reuse the cycle's receipts, split by the comparison kind the spec records.
+        receipts = [c for c in (wm.s1.get("comparisons") or {}).values()
+                    if isinstance(c, dict) and "result" in c]
+        is_out = lambda c: (c.get("spec") or {}).get("type") == "inter_grid_output"
+        outputs = [c["result"] for c in receipts if is_out(c)]
+        intra = [c["result"] for c in receipts if not is_out(c)]
+        wm.s1["patterns"] = build_patterns(
+            task, intra_pair_receipts=intra or None, output_receipts=outputs or None)
 
 
 # ======================================================================

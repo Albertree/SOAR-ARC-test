@@ -148,6 +148,24 @@ def test_consumes_cycle_intra_pair_comparisons():
     assert wm.s1["patterns"]["intra_pair_grid_comparisons"] == [sentinel0, sentinel1]
 
 
+def test_consumes_cycle_output_grid_comparisons():
+    # The deciding Inter-Grid role==G1 receipt the cycle's compare step produces
+    # is stored under an inter_grid_output spec; extract must route it to the
+    # output_grid_comparisons key, not recompute it from the task.
+    task = _fixed_output_task("easy000a", fill_color=2)
+    wm = _WM(task)
+    decider = {"type": "COMM", "tag": "cycle-decider"}
+    intra0 = {"type": "DIFF", "tag": "cycle-intra-0"}
+    wm.s1["comparisons"] = {
+        "grid_0": {"spec": {"type": "grid", "pair_idx": 0}, "result": intra0},
+        "inter_grid_output_0": {
+            "spec": {"type": "inter_grid_output"}, "result": decider},
+    }
+    ExtractPatternOperator().effect(wm)
+    assert wm.s1["patterns"]["output_grid_comparisons"] == [decider]
+    assert wm.s1["patterns"]["intra_pair_grid_comparisons"] == [intra0]
+
+
 def test_falls_back_to_recompute_when_no_comparisons():
     # With no comparisons in the slot (e.g. operator invoked standalone), the
     # intra key is computed from the task — i.e. identical to build_patterns(task).

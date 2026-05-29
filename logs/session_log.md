@@ -2071,3 +2071,87 @@ Routing those through `select_target`→`compare` so the cycle visibly executes 
 half — larger, touches SelectTargetOperator's agenda structure. Deeper still:
 modules A (`DescendOperator` impasse-driven descent) and B (GoalStack) remain
 stubs. Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 01:34
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_013401.log
+
+---
+## Learning Loop -- 2026-05-30 01:40
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_014001.log
+
+---
+## Iter 30 — 2026-05-30T01:40 — branch test21
+
+**Diagnosis**: Iter 29 left the *deciding* §3 comparison (Inter-Grid, role==G1)
+un-scheduled: `SelectTargetOperator` only put the Intra-Pair G0↔G1 specs on the
+agenda, so the cycle's `compare` step never executed the decider — `extract`
+recomputed `output_grid_comparisons(task)` internally. That makes the SOAR
+cycle's visible work diverge from the §3 sequence and leaves the slice's central
+comparison decorative. Smallest defensible step: schedule the deciding
+comparison through the agenda so select→compare→extract actually executes it
+(CLAUDE.md §5: compare writes comparisons, extract reads them).
+
+**Change**:
+- `agent/compare_scheduler.py`: new `grid_comparison_specs(task)` — module C now
+  owns agenda construction (§5: C owns scheduling). Emits both GRID-level kinds:
+  Intra-Pair G0↔G1 (`type=="grid"`) and the deciding Inter-Grid role==G1
+  (`type=="inter_grid_output"`, pairwise/P6 over example outputs), each with a
+  unique `key`. `build_patterns` gains an `output_receipts` param mirroring the
+  iter-29 `intra_pair_receipts` path: when the cycle's decider receipts are
+  supplied they populate `output_grid_comparisons` instead of recomputing.
+- `agent/active_operators.py` (**net −5**): `SelectTargetOperator.effect` now
+  delegates to `grid_comparison_specs` (inline loop removed); `CompareOperator`
+  keys receipts by the spec's `key` (collision-free for the new inter specs);
+  `ExtractPatternOperator.effect` partitions the cycle's receipts by spec type
+  and feeds both Intra-Pair and Inter-Grid receipts to `build_patterns` — so the
+  decider flows through the cycle, not a recompute. Docstrings trimmed +
+  effect body compacted to keep the file net-negative (F8 refactor exemption + P6).
+- `tests/test_compare_scheduler.py` (+2): `grid_comparison_specs` includes the
+  two Intra specs and the one deciding Inter spec, all keys unique, test pair's
+  lone G0 never an operand. `tests/test_extract_pattern.py` (+1): an
+  `inter_grid_output` receipt in `wm.s1["comparisons"]` routes to the
+  `output_grid_comparisons` key while `grid` receipts route to the Intra key.
+
+**Why smallest**: behaviour-preserving — the scheduled decider receipt is the
+same node pair and same deterministic `arckg_compare` as the recompute, so
+`all_outputs_comm` fires identically. Only the cycle's step count changes (14→16:
+one extra compare + its elaboration for the decider). Both targets still solve
+value-agnostically via the pure slow path: easy000a → (5,5)=red(2),
+easy000a2 → (0,0)=green(3), 16 steps each.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Fast path untouched → probe identical. Slow path re-verified end-to-end with
+stored rules bypassed: both pipeline, 16 steps, value-agnostic outputs above.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P6 430 → 425 (Δ +5 lines removed)** and **P4 3111 → 3113 (+2 episodes)**.
+P1 2.0, P2 2.0, P3 0.0, P5 5 unchanged (Slice-1 vocabulary saturated; AU is
+Slice-2/human-gated). F1 not tripped (active_operators.py/compare_scheduler.py
+not frozen); F2 none (no new `_try_`/`_apply_`); F3 no DSL `def`/`register`; F4
+no rule saved; F5 no `TF_` under semantic_memory; F6 no budget growth; F7 no
+swallowed RuleSchemaError; F8 satisfied (active_operators.py net −5 →
+deletion/refactor exemption).
+
+**Next gap (note for future iter)**: extract still recomputes the three
+*non-deciding* comparison kinds (role==G0 / Inter-Pair grid-count / grid-count
+census) — they are not on the cycle agenda, so the cycle visibly executes only
+the two GRID-level kinds. Routing those through select→compare (so the §3
+PAIR-level evidence and the role==G0 contrast also run *in* the cycle) is the
+next wiring half. Deeper still: modules A (`DescendOperator` impasse-driven
+descent) and B (GoalStack) remain stubs — the centre of the raw-prose flow,
+large and F8-risky. Slice 1 stays functionally complete; Slice 2 is
+human-gated — do not start it.
