@@ -4175,3 +4175,81 @@ remains making module B's `GoalStack` *gate operator selection* on the live cycl
 `active_operators.py` (would need an F8 companion edit) and is not required by
 `SLICE_1_LOOP.md §8`'s relaxed criteria. Slice 1 stays functionally complete and
 human-gated; do not start Slice 2 (easy000b) autonomously — wait for `SLICE_2_LOOP.md`.
+
+---
+## Learning Loop -- 2026-05-30 05:19
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_051950.log
+
+---
+## Iter 56 — 2026-05-30T05:24 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete (2/2, value-agnostic, module A
+wired, module B implemented), so the honest gap is spec↔code. The canonical
+recognition-vocabulary registry — `RULE_FORMAT.md §4` — documents only **5** of
+the **10** matchers actually registered in `agent/conditions/CONDITION_REGISTRY`,
+and §7.2 line 477 asserts the quantified-false "(5 matchers; P5 = 5)" when the
+measured P5 is 10. Five wired, tested matchers (`schema_goal_satisfied`,
+`copy_common_output_applies`, `nothing_to_compare`, `needs_descend`,
+`descent_warranted`) were absent from the canonical table the diagnosis loop and
+PROMPT.md point to — a future iter reading §4 would believe half the recognition
+vocabulary does not exist. Correcting it is the smallest defensible step: doc-only,
+value-agnostic, zero forbidden risk.
+
+**Verification before editing**: confirmed via `CONDITION_REGISTRY` introspection
+that exactly 10 names register (`descent_path.py` defines `slice1_descent_record`
+and does *not* register, so it is not counted). Confirmed consumption:
+`copy_common_output_applies` is rule_003's `condition.type` AND is called by the
+slow-path `GeneralizeOperator` (`active_operators.py:235`) and the fast path —
+**live**; `schema_goal_satisfied` is its GRID half — **live**; the three descent
+matchers (`nothing_to_compare`/`needs_descend`/`descent_warranted`) are registered
+recognition libraries *not* consumed by the live descent trigger
+(`elaboration_rules.py:NeedsDescentRule` gates on `descent-complete`/
+`comparison-agenda` flags), so their own "wired later" docstrings remain accurate
+and §4 documents them as registered-but-not-yet-consumed. No contradiction with
+§7.2's "module A wired" (the wiring is flag-based, not matcher-routed).
+
+**Change**:
+- `docs/RULE_FORMAT.md §4` (non-frozen doc): added 5 table rows for the
+  previously-undocumented registered matchers, each with accurate params, status
+  (live vs registered-library), consumers, the pattern keys it reads, and its
+  value-agnostic / fail-closed behaviour.
+- `docs/RULE_FORMAT.md §7.2`: corrected the `agent/conditions/` row from the false
+  "(5 matchers; P5 = 5)" to "(10 matchers; P5 = 10)" and rewrote the inventory to
+  group the 10 as 5 comparison-receipt recognisers + 2 live composites + 3
+  registered-but-unconsumed descent libraries, noting `descent_path` does not
+  register.
+- No production code touched: no `active_operators.py` (F8 N/A), no DSL (F3), no
+  new `_try_*`/`_apply_*` (F2), no frozen file (F1 — `docs/arbor_context/`
+  untouched; `RULE_FORMAT.md` is not frozen), no rule added (F4 N/A), no `TF_`
+  (F5), no budget growth (F6), no swallowed `RuleSchemaError` (F7).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+(unchanged — doc-only change; production behaviour byte-identical).
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — F1 frozen
+diff 0; F2/F3 no DSL/`_try_` diff; F4 no rule; F5 no `TF_`; F6 no budget growth;
+F7 no swallowed error; F8 N/A doc-only). positives=P1 2.0, P2 2.0, P3 0.0, P4
+3209, P5 10, P6 435 — all Δ0 (a documentation-accuracy fix legitimately moves no
+code/rule metric). The contribution is observation-criterion 2 (통일성 /
+spec-faithfulness): the canonical recognition-vocabulary registry no longer
+under-reports the live matcher set by half, and the quantified P5 claim in §7.2
+is now true, so the diagnosis loop reads true state. Full unit suite green
+(28/28 files).
+
+**Next gap (note for future iter)**: with §4 and §7.2 now matching the live
+registry, the recognition-vocabulary spec is faithful. The remaining
+genuinely-deferred in-slice capability is unchanged: making module B's `GoalStack`
+*gate operator selection* on the live cycle (it currently only annotates the
+episode trace and is read transitively via `schema_goal_satisfied`), and routing
+module A's descent trigger through the `descent_warranted` matcher instead of the
+flag logic — both add net lines to `active_operators.py`/the cycle path (F8
+companion needed) and neither is required by `SLICE_1_LOOP.md §8`'s relaxed
+criteria. Slice 1 stays functionally complete and human-gated; do not start
+Slice 2 (easy000b) autonomously — wait for `SLICE_2_LOOP.md`.
