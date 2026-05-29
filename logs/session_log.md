@@ -4400,3 +4400,64 @@ DSL activation rules, anti-unification). The only ever-named in-slice integratio
 `descent_warranted` — already partially done) adds net lines + needs an F8
 companion and is **not** required by `SLICE_1_LOOP.md §8`'s relaxed criteria, so it
 is not a defensible smallest step. Do not start Slice 2 autonomously.
+
+> STAGNATION at iter 58 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 05:34
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_053434.log
+
+---
+## Iter 59 — 2026-05-30T05:36 — branch test21 — no defensible step found (analysis only)
+
+**Diagnosis**: Slice 1 remains functionally complete and human-gated
+(`SLICE_1_LOOP.md §10`; no `SLICE_2_LOOP.md` exists yet). Re-derived the
+exhaustion verdict from fresh empirical evidence this iter rather than
+inheriting iters 57–58's conclusion, and reached the same result: no smallest
+step lifts a positive signal without tripping a Slice-1 guardrail / F-signal or
+manufacturing a cosmetic metric.
+
+**Evidence gathered this iter (not inherited)**:
+- Ran `tests/test_slow_path_value_agnostic.py` → 3/3 PASS: both targets solve
+  via the **intended SOAR pipeline from empty memory**, discovered rules are
+  structurally identical, and the path is value-agnostic (red vs green). The
+  way-the-user-intends flow is live, not just the stored-rule fast path the
+  probe exercises.
+- Ran `scripts/check_invariants.sh --check` → verdict NEUTRAL, all six signals
+  at baseline (P1 2.0, P2 2.0, P3 0.0, P4 3215, P5 10, P6 435), exit 0 (no
+  forbidden trip).
+- Confirmed `docs/SLICE_2_LOOP.md` absent and `PROMPT.md` unchanged since
+  2026-05-29 — the human gate has not opened.
+- Inspected `agent/conditions/` (11 live matcher modules, 10 registered) and
+  `agent/active_operators.py` (8 live operators + `VerifyOperator` scaffold):
+  recognition set complete, nothing live to remove.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 — 1 rule, 2 tasks; raising needs a new solved task
+  (pool frozen, F6) or a rule merge (only 1 rule). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4 OUT, §9`).
+- P4: auto-increments per solve regardless of code — not a code contribution.
+- P5: would grow only by registering a matcher with no live consumer (dead
+  recognition vocabulary — the exact failure mode the invariants prevent).
+- P6: `_try_*`/`_apply_*` accretion already gone; the only non-wired remnant
+  (`VerifyOperator`) is intended scaffolding, deleting it is cosmetic churn.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5.1).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design — a
+no-op deliberately moves no metric rather than fabricating one.
+
+**Next gap (note for future iter)**: unchanged and now confirmed by a third
+independent pass — **Slice 1 is exhausted**. The single unblock is **human
+action**: provide `SLICE_2_LOOP.md` (easy000b — G0 analysis, intra-pair
+relation-of-relations, DSL activation rules, anti-unification). Do not start
+Slice 2 autonomously.
