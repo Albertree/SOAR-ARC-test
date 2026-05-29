@@ -5320,3 +5320,64 @@ for live-trigger regression safety. OBJECT-level work must ground in the real
 `ARCKG/object.py:Object.to_json()` 8-property contract and `procedural_memory/DSL/`.
 
 > STAGNATION at iter 72 — 17 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
+
+> STAGNATION at iter 72 — 17 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:42
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_064249.log
+
+---
+## Iter 73 — 2026-05-30T06:43 — branch test21
+
+**Iter 73: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed from scratch. The probe solved 2/2 but via the *fast*
+path (`via=stored(easy000a)`) — it never exercises the slow pipeline the four
+observation criteria actually judge. So this iter I ran the slow path live rather
+than trusting prior logs. It is intact, value-agnostic, and gated; no in-slice gap
+moves a positive signal without metric-gaming or crossing the human gate (§10).
+
+**Fresh verification this iter (live, not copied)**:
+- Gate CLOSED: `docs/SLICE_2_LOOP.md` ABSENT, `data/ARC_easy/easy000b*.json` ABSENT,
+  `PROMPT.md`/`SLICE_1_LOOP.md` unchanged since f4296f20 (2026-05-29 14:48).
+- Ran slow-path tests directly (pytest absent → standalone): `test_slow_path_value_agnostic`
+  3/3, `test_predict_copy_common_output` 8/8, `test_reconstruct_via_dsl` 11/11,
+  `test_flow_trace` 6/6 — all green. Both targets solve from empty memory through the
+  pipeline; red vs green outputs differ (value-agnostic, not a stored literal); the
+  answer is materialised bottom-up via the two frozen primitives (make_grid+coloring).
+- One rule on disk (`rule_003.json`, covers `['easy000a','easy000a2']`).
+- Invariant checker (`--check`): exit 0, NEUTRAL; P1=2.0 P2=2.0 P3=0.0 P4=3243 P5=10
+  P6=435 (all Δ0).
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool frozen
+  F6) or a merge (only 1 rule). P3: anti-unification is OUT of Slice 1 (§4/§9). P4: only
+  moves by running more solves — metric-gaming, not a code contribution. P5: §3 flow
+  fully covered by 10 live matchers; a new one is dead F4-class vocabulary. P6: nothing
+  safely removable (the generic value-agnostic dispatcher is not a closed-family special
+  case).
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human action:
+provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data `easy000b.json`/`easy000b2.json`,
+currently absent). Do not start Slice 2 autonomously (§10). When it opens, the
+highest-value in-architecture first step is wiring module B's `GoalStack` as a live S1
+WM object gating `preferences.select_operator` (satisfaction logic already live via
+`schema_goal_satisfied`); split it (consult-only first, then preference influence) for
+live-trigger regression safety. OBJECT-level work must ground in the real
+`ARCKG/object.py:Object.to_json()` contract and `procedural_memory/DSL/`.
+
+> STAGNATION at iter 73 — 18 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
