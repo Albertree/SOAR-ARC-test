@@ -2399,3 +2399,97 @@ to clear F8 — or be paired with a compensating deletion. Module A
 (`DescendOperator` impasse-driven descent) remains a `NotImplementedError` stub
 and is the other half of the goal-driven-descent flow. Slice 1 stays
 functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 02:01
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_020108.log
+
+---
+## Learning Loop -- 2026-05-30 02:06
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_020626.log
+
+---
+## Iter 34 — 2026-05-30T02:06 — branch test21
+
+**Diagnosis**: Iters 29–33 completed module C's scheduling side and built module
+B (`agent/goal.py`) as an unwired library. The remaining centre-of-flow gap from
+the raw prose (easy000a paragraph) is **module A
+(HierarchicalDescentController)**: its `DescendOperator` is a `NotImplementedError`
+stub and the *trigger* for descent — exec-trace's `NeedsDescendRule` condition —
+does not exist anywhere. The raw prose's "Pair 에서 막히니까 Grid 로" descent (a
+goal forms at PAIR level but no DSL changes a pair's grid_count, so the level is
+blocked) has no recogniser. Smallest defensible *half*: build module A's
+recognition half — a value-agnostic `needs_descend` condition matcher — and
+**not** wire `DescendOperator.effect` yet (the effect edits
+`active_operators.py`, an F8-risky net addition needing an AU-side companion;
+that is the next iter's step). This mirrors how module B's library was built
+without wiring in iter 33.
+
+**Change**:
+- `agent/conditions/needs_descend.py` (new): module A's `NeedsDescendRule`
+  condition as a registered matcher (P5 recognition vocabulary, CLAUDE.md §6.3).
+  Fires iff a **goal-bearing** condition holds at the current level
+  (default `test_output_missing`) AND the **resolving** condition does *not*
+  (default `all_outputs_comm` on {size,color,contents}) — i.e. a goal is present
+  but this level cannot answer it, so the resolving evidence lives a level
+  deeper → descend. Driven with PAIR-only patterns the resolver fails its
+  min_evidence guard → descend; with GRID-level comparisons in hand the resolver
+  fires → no further descent (descent self-terminates). Operationalises P1
+  (depth by necessity, never gratuitous). Goal/resolver names + params are
+  configurable so it generalises to other level transitions. Strictly
+  value-agnostic (delegates to two value-agnostic sub-matchers, reads no
+  colour/coord/count value); `conditions` imported lazily inside `match` to keep
+  the registry's decorator sweep clean.
+- `tests/test_conditions_needs_descend.py` (new, 8 tests, all pass): registry
+  population; PAIR-level-blocked → descend and GRID-level-resolvable → no-descend
+  against *real* ARCKG.compare() receipts via `compare_scheduler.build_patterns`;
+  no-goal → no gratuitous descend; **identical verdict for easy000a (red) and
+  easy000a2 (green)** at both levels (the value-agnostic guard); configurable
+  goal/resolver via params; fail-closed on empty patterns; JSON-serialisability
+  (P7).
+- Did **not** touch `agent/active_operators.py` (no F8 exposure), any frozen
+  file, or any DSL primitive; no rule written; no `_try_*`/`_apply_*`.
+
+**Why smallest**: module A is in Slice-1 scope (§4 IN) but its descent *trigger*
+was entirely absent — `DescendOperator` was a bare stub with no condition. The
+recogniser is the smaller half of module A (the larger half being
+`DescendOperator.effect` + its F8-companion wiring). It changes no solve
+behaviour — purely additive recognition vocabulary the next iter wires — so both
+targets still solve via the unchanged fast path.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Solve path untouched → probe identical; easy000a→red(2), easy000a2→green(3).)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P5 5 → 6 (+1 condition matcher: `needs_descend`)**. P1 2.0, P2 2.0, P3 0.0,
+P4 3127, P6 417 unchanged (no rule/AU/active_operators change — module A's
+recogniser is a new standalone matcher). F1 not tripped (no frozen file); F2
+none (no new `_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved; F5
+no `TF_` under semantic_memory; F6 no budget growth; F7 no swallowed
+RuleSchemaError; F8 not applicable (active_operators.py untouched, 0 net additions).
+
+**Next gap (note for future iter)**: module A now has its descent *recogniser*
+(`needs_descend`) and module B has its GoalStack library (`agent/goal.py`), both
+unwired. The cycle still forms no goal and never descends — both sit dormant
+until a pipeline operator consumes them. The next smallest step is the wiring
+that ties them: form the PAIR-level value goal from the grid-count census, test
+`needs_descend` to drive the level transition, and `advance()` the GoalStack as
+the flow reaches GRID. That edit adds net lines to `active_operators.py`, so it
+must ride with an anti-unification-side companion (memory.py /
+anti_unification.py / conditions/) to clear F8, or be paired with a compensating
+deletion. A second still-missing module-A recogniser is the TASK-level
+`n_at_level == 1` "nothing to compare" descent (distinct trigger shape — no goal
+yet). Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.
