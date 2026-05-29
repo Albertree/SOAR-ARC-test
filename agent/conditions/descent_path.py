@@ -117,7 +117,7 @@ def descent_itinerary(patterns, params=None):
     }
 
 
-def descent_itinerary_for_task(task, params=None):
+def descent_itinerary_for_task(task, params=None, patterns=None):
     """Assemble the Slice-1 pattern bundle for ``task`` and return its §3 descent.
 
     The task-level convenience over ``descent_itinerary``: builds the full pattern
@@ -129,16 +129,25 @@ def descent_itinerary_for_task(task, params=None):
     computed one way everywhere (criterion-2 uniformity, SLICE_1_LOOP.md §8) rather
     than re-assembled per call site.
 
+    ``patterns``: an already-built ``compare_scheduler.build_patterns`` bundle. When
+    supplied (the episode recorder builds the bundle once and threads it through
+    the module A+B+C records), it is reused instead of recomputed — the COMM/DIFF
+    comparison work is not redone per record (criterion-4 탐색 건전성). ``None``
+    (the live operator, or any standalone caller) builds the bundle here, keeping
+    the original behaviour. The shared bundle is never mutated: the
+    ``level_sibling_counts`` augmentation goes onto a shallow copy.
+
     Value-agnostic: the bundle's recognisers read only COMM/DIFF verdicts and
     structural counts, so easy000a (red) and easy000a2 (green) descend identically.
     """
     from agent.compare_scheduler import build_patterns, level_sibling_counts
-    patterns = dict(build_patterns(task))
-    patterns["level_sibling_counts"] = level_sibling_counts(task)
-    return descent_itinerary(patterns, params)
+    base = build_patterns(task) if patterns is None else patterns
+    staged = dict(base)
+    staged["level_sibling_counts"] = level_sibling_counts(task)
+    return descent_itinerary(staged, params)
 
 
-def slice1_descent_record(task):
+def slice1_descent_record(task, patterns=None):
     """Episode-trace record of module A's §3 hierarchical descent on ``task``.
 
     Module A (HierarchicalDescentController) is the spine of the raw-prose flow
@@ -156,8 +165,10 @@ def slice1_descent_record(task):
     the live operator does (one shared assembly, ``descent_itinerary_for_task``),
     so every solve — fast or slow path — shows its TASK→PAIR→GRID descent path
     alongside the goal walk and comparison form (the module A+B+C observability
-    triple). Records the form; does not touch the answer. Returns a plain
-    JSON-serialisable dict (P7).
+    triple). ``patterns`` (the bundle the episode recorder built once for all three
+    records) is threaded through so the comparison work is not redone per record.
+    Records the form; does not touch the answer. Returns a plain JSON-serialisable
+    dict (P7).
     """
-    itinerary = descent_itinerary_for_task(task)
+    itinerary = descent_itinerary_for_task(task, patterns=patterns)
     return {"phase": "hierarchical_descent", "module": "A", **itinerary}

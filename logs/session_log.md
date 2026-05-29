@@ -3794,3 +3794,88 @@ consolidation (let module B's majority goal subsume the strict `test_output_miss
 PAIR gate — 다수결, more faithful to raw prose but behaviour-sensitive) also remains.
 Slice 1 stays functionally complete; Slice 2 (easy000b: G0 analysis, activation
 rules, anti-unification) is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 04:49
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_044937.log
+
+---
+## Learning Loop -- 2026-05-30 04:54
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_045435.log
+
+---
+## Iter 51 — 2026-05-30T04:54 — branch test21
+
+**Diagnosis**: Iter 50 completed the module A+B+C observability triple on every
+episode but flagged that each leg recomputes the §3 comparison bundle
+(`compare_scheduler.build_patterns`) independently — `slice1_descent_record` (A),
+`_slice1_goal_record` (B), and the `slice1_flow_steps` call (C) each ran it, plus a
+redundant `pair_grid_counts(task)` — so `build_patterns` (which runs the
+ARCKG.compare receipts) executed 3× per episode for one identical result. That is
+a criterion-4 (탐색 건전성 / search-sanity, SLICE_1_LOOP.md §8) redundant-search
+smell: the observability spent triple the comparison work it needed.
+
+**Change** (assemble the §3 bundle once, thread it through the triple — efficiency
++ uniformity only, answer untouched, value-agnostic):
+- `agent/active_agent.py` (`_record_episode`): build `patterns = build_patterns(task)`
+  **once**, pass `patterns=` to `slice1_descent_record`, `_slice1_goal_record`, and
+  `slice1_flow_steps`. `_slice1_goal_record` gained an optional `patterns=` param and
+  now reads the census from `patterns["pair_grid_counts"]` (build_patterns already
+  stores exactly that key) instead of a second `pair_grid_counts(task)` call — so the
+  now-unused `pair_grid_counts` import was dropped. Standalone/test callers pass no
+  bundle → it rebuilds, preserving old behaviour. NOT `active_operators.py` (F8 N/A).
+- `agent/conditions/descent_path.py`: `descent_itinerary_for_task` / `slice1_descent_record`
+  gained an optional `patterns=` param; when supplied the bundle is reused (the
+  `level_sibling_counts` augmentation is applied to a shallow **copy**, so the shared
+  bundle is never mutated). `None` rebuilds — the live `DescendOperator` path is
+  unchanged.
+- `tests/test_episode_bundle_threading.py` (new, 6/6): threaded records byte-equal the
+  standalone (recompute-per-leg) records for A/B/C; shared bundle keys unchanged after
+  all three (no `level_sibling_counts` leak); `build_patterns` called **exactly once**
+  per `_record_episode` (both bindings patched with a counter); threaded triple
+  identical for red (easy000a) vs green (easy000a2) — value-agnostic.
+
+**Why smallest**: pure de-duplication of computation — the scheduled comparisons,
+the goal walk, the flow form, and the answer are all byte-identical (probe still
+2/2 via stored `copy_common_output`, same rule, same path). It is the lower-risk of
+iter 50's two flagged gaps (the other — the iter-47 deficiency-twice consolidation —
+is behaviour-sensitive on out-of-slice censuses). Adds no recognition vocabulary
+(P5 10→10), no rule, no DSL, no new matcher.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+`build_patterns` recomputed 3× per episode.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0;
+`build_patterns` computed once per episode, threaded through the A+B+C triple.
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 frozen diff 0;
+F2 no new `_try_`/`_apply_`; F3 no DSL def/register; F4 no rule changed; F5 no `TF_`;
+F6 no budget growth; F7 no swallowed RuleSchemaError; F8 N/A — active_operators.py
+untouched, 436→436). positives=**P4 3194→3196 (+2, mechanical from probe runs —
+disclaimed per the standing iter-8/9/10 note; NOT a real progress delta)**;
+P1/P2/P3/P5/P6 Δ0. The genuine contribution is criterion-4 (탐색 건전성) — removing
+redundant comparison recomputation in observability — which no positive signal
+captures; tolerated per INVARIANTS §3 (efficiency/uniformity work, not a metric bump
+in disguise). Full unit suite green (incl. new 6/6 bundle-threading; unchanged 6/6
+descent-record, 6/6 flow-trace, 6/6 goal-trace, 11/11 descent_path).
+
+**Next gap (note for future iter)**: with the bundle now threaded, the three records
+still each re-run their own recognisers over it (descent stages it per level, goal
+marks per property, flow re-matches all four steps) — but that is cheap matcher
+evaluation, not the expensive ARCKG.compare work, so it is not worth consolidating.
+The remaining substantive in-slice gap is the long-deferred iter-47 deficiency-twice
+consolidation (let module B's majority goal subsume the strict `test_output_missing`
+PAIR gate — 다수결, more faithful to raw prose but behaviour-sensitive on out-of-slice
+censuses). Slice 1 stays functionally complete; Slice 2 (easy000b: G0 analysis,
+activation rules, anti-unification) is human-gated — do not start it.

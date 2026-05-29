@@ -22,7 +22,7 @@ from agent import conditions
 from agent import goal as goal_module
 from agent.flow_trace import slice1_flow_steps
 from agent.conditions.descent_path import slice1_descent_record
-from agent.compare_scheduler import build_patterns, pair_grid_counts
+from agent.compare_scheduler import build_patterns
 
 
 class ActiveSoarAgent:
@@ -155,6 +155,14 @@ class ActiveSoarAgent:
         (``_slice1_goal_record``), and module C's comparison-flow form
         (``slice1_flow_steps``) — so every episode records *how* the solve
         approached its answer (criterion 3), not just the answer.
+
+        The §3 comparison bundle (``build_patterns``) is assembled **once** here
+        and threaded through all three records, rather than each leg recomputing it
+        (module A's descent, module B's goal grounding, module C's flow form all
+        read the same COMM/DIFF verdicts). Computing the comparisons a single time
+        per episode keeps the observability free of redundant search work
+        (criterion 4 — 탐색 건전성, SLICE_1_LOOP.md §8). The bundle is read-only to
+        each record; none mutates it.
         """
         grid_steps = []
         for pair in task.test_pairs:
@@ -163,19 +171,20 @@ class ActiveSoarAgent:
         if predicted:
             grid_steps.append(predicted)
         trace = list(trace or [])
+        patterns = build_patterns(task)
         # The §3 hierarchical descent *path* (module A), value-agnostic: the
         # TASK→PAIR→GRID walk depth-entered-by-necessity (P1), terminal level
         # flagged. The spine of the raw-prose flow — recorded first so the episode
         # reads top-down (descend → form goal → run comparisons).
-        trace.append(slice1_descent_record(task))
-        goal_record = self._slice1_goal_record(task, predicted)
+        trace.append(slice1_descent_record(task, patterns=patterns))
+        goal_record = self._slice1_goal_record(task, predicted, patterns=patterns)
         if goal_record is not None:
             trace.append(goal_record)
         # The §3 comparison-flow *form* (module C), value-agnostic: which of the
         # PAIR/Intra/Inter recognition steps the solve traversed, decisive one
         # flagged. Records criterion-3 (접근성) alongside the goal walk — both
         # observability, neither alters the answer.
-        trace.append(slice1_flow_steps(build_patterns(task)))
+        trace.append(slice1_flow_steps(patterns))
         write_episode(
             self.episodic_memory_root,
             task.task_hex,
@@ -185,7 +194,7 @@ class ActiveSoarAgent:
             grid_steps=grid_steps,
         )
 
-    def _slice1_goal_record(self, task, predicted):
+    def _slice1_goal_record(self, task, predicted, patterns=None):
         """Build the §3 module-B goal trace for this solve (value-agnostic).
 
         The raw prose easy000a flow (``docs/arbor_context/arbor-flow-three-task-
@@ -215,8 +224,17 @@ class ActiveSoarAgent:
         even when an answer was emitted, so the trace localises which properties
         actually have a comparison basis rather than blanket-solving them because
         an answer appeared. A failed solve (no prediction) leaves every leaf open.
+
+        ``patterns``: the shared ``build_patterns`` bundle the episode recorder
+        built once for the whole A+B+C triple. The grid-count census is read from
+        it (``build_patterns`` already stores ``pair_grid_counts`` under that key),
+        and the comparison grounding reuses it, so neither is recomputed here
+        (criterion 4). ``None`` (standalone/test use) rebuilds the bundle, keeping
+        the original behaviour.
         """
-        census = pair_grid_counts(task)
+        if patterns is None:
+            patterns = build_patterns(task)
+        census = patterns["pair_grid_counts"]
         stack = goal_module.build_goalstack_from_census(census)
         if stack is None:
             return None
@@ -226,7 +244,7 @@ class ActiveSoarAgent:
         # B (agent/goal.py) now; this method only decides *whether* to ground
         # (an episode-recording concern) and formats the trace record.
         if predicted:
-            goal_module.mark_schema_leaves_by_comparison(stack, build_patterns(task))
+            goal_module.mark_schema_leaves_by_comparison(stack, patterns)
         return {
             "phase": "goal_evolution",
             "module": "B",
