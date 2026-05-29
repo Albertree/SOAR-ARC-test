@@ -7003,3 +7003,82 @@ action: provide `docs/SLICE_2_LOOP.md`** (+ `data/ARC_easy/easy000b.json`). Do
 NOT start Slice 2 autonomously (§10). On the frozen 2-task slice there is no
 in-scope positive-signal mover left; the test suite is fully green, so the next
 real work is gated on the human handoff to Slice 2, not on any code in this repo.
+
+> STAGNATION at iter 99 — 17 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 08:01
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_080106.log
+
+---
+## Iter 100 — 2026-05-30T08:02 — branch test21
+
+**Iter 100: no defensible step found — analysis only (PROMPT.md §5).** 18th
+consecutive neutral iter; STAGNATION already flagged. Non-redundant contribution
+this iter: I located and confirmed the *automated guard for the probe's specific
+blind spot*, which prior neutral iters (98 traced reconstruct_via_dsl, 99 ran the
+suite) noted as a behavioural fact but did not pin to a dedicated test.
+
+**Diagnosis**: Slice 1 is complete and human-gated. Verified first-hand (not from
+the log): `docs/SLICE_2_LOOP.md` ABSENT (§10 gate closed); `data/ARC_easy/` =
+{easy000a, easy000a2} frozen (F6); exactly one valid rule (`rule_003.json` —
+condition `copy_common_output_applies`, action `make_grid`, value-agnostic,
+covers=[easy000a, easy000a2], au_trace=null — correct for a single-source rule).
+Probe = 2/2 CORRECT via stored(easy000a). Working tree clean apart from
+loop-managed logs.
+
+**First-hand checks (the contribution of this iter)**:
+- The probe's structural blind spot — easy000a2 *always* rides easy000a's stored
+  rule (`via=stored(easy000a)`), so easy000a2's *own* discovery pipeline is never
+  exercised by the probe — is already closed by `tests/test_slow_path_value_agnostic.py`.
+  It forces BOTH targets through `agent.solve()` from an *empty* procedural memory
+  (method=="pipeline") in isolated temp stores and asserts: (1) each reaches its
+  own correct output, (2) red != green (different fixed outputs ⇒ no baked-in
+  literal), (3) the two discovered rules are structurally identical in
+  condition/action with no `"color": 2/3`/`(5,5)` literal in the recipe. This is
+  the exact anti-hardcoding guarantee SLICE_1 §1/§7 says easy000a2 exists to
+  enforce, and it covers the *discovery* path, not just reuse.
+- Read `active_operators.py` (435 lines) end-to-end: 9 live operator classes
+  (SolveTask→SelectTarget→Compare→ExtractPattern→Generalize→Descend→Predict→
+  Submit→Verify). No `_try_*`/`_apply_*` detector family remains (`_apply_rule`
+  is PredictOperator's live identity helper, not a forbidden detector). Nothing
+  dead ⇒ P6 genuinely immovable.
+- `CONDITION_REGISTRY` = 10 registered matchers covering the full §3 GRID-level
+  flow (all_outputs_comm, test_output_missing, pair_grid_count_majority,
+  needs_descend, descent_warranted, nothing_to_compare, inputs_vary,
+  intra_pair_grids_differ, schema_goal_satisfied, copy_common_output_applies);
+  descent_path is a composer, not a matcher. An 11th matcher would have no
+  consumer ⇒ dead F4-class vocabulary (§5.1), not progress.
+- Full suite: ran each self-executing `tests/test_*.py` directly → **29/29 PASS**.
+- `scripts/check_invariants.sh --check` → exit 2 (NEUTRAL), all six deltas Δ0.
+
+**Why no commit**: every positive signal is structurally pinned on the frozen
+2-task slice. P1=2.0/P2=2.0 (2 tasks / 1 rule, both already in covers, pool
+frozen F6 → no merge or absorb possible); P3=0.0 (anti-unification wiring is
+explicitly OUT of Slice 1, §4/§9; one single-source rule cannot be AU'd anyway);
+P4 grows only by re-running solves (metric-gaming); P5=10 (recognition flow fully
+covered — an 11th matcher with no consumer is dead vocabulary); P6=435 (immovable,
+nothing dead to remove). Any code change now would trip a forbidden signal, game
+a metric, or risk a wrong commit — which §5 calls worse than no commit.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0
+(P1=2.0 P2=2.0 P3=0.0 P4=3302 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged structural unblock = **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ `data/ARC_easy/easy000b.json`). Do
+NOT start Slice 2 autonomously (§10). On the frozen 2-task slice there is no
+in-scope positive-signal mover left: tests are green, the anti-hardcoding guard
+covers the probe's blind spot, and every P1–P6 lever is either pinned by the
+frozen pool or out of slice scope. The next real work is gated on the human
+handoff to Slice 2.
