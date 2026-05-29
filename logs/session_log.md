@@ -4107,3 +4107,71 @@ by SLICE_1_LOOP.md §8's relaxed criteria and would add net lines to
 `active_operators.py` (F8 companion needed). Slice 1 stays functionally complete
 and human-gated; do not start Slice 2 (easy000b) autonomously — wait for
 `SLICE_2_LOOP.md`.
+
+---
+## Learning Loop -- 2026-05-30 05:13
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_051319.log
+
+---
+## Iter 55 — 2026-05-30T05:18 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete, so the honest gap is spec↔code,
+not code. Iter 54 reconciled `RULE_FORMAT.md §7.2` ("module A is a stub / descent
+not wired") with the live state, but the same stale claim still lived in the
+`DescendOperator` docstring inside `agent/active_operators.py` itself: it asserted
+"proposer registration that lets it drive the live cycle is a later iter's step,
+kept separate so the working pipeline is unchanged." That is false since iter 41 —
+`DescendRule` is registered in `build_proposer` (`agent/rules.py:222`) and fires on
+the real cycle (`test_live_descent_wiring` 7/7). A comment *inside production code*
+that denies module A is wired is the most misdirecting form of the §7 spec-drift:
+a future iter reading it could redo iter-41's already-done wiring. Correcting it is
+the smallest defensible step — comment-only, value-agnostic, zero forbidden risk.
+
+**Verification before editing**: confirmed `DescendRule` is in `build_proposer`
+(`agent/rules.py:218-230`), proposes `DescendOperator` when `NeedsDescentRule`
+(`agent/elaboration_rules.py:138,297`) derives `needs_descent`, gated by
+`NeedsTargetSelectionRule` on `descent-complete`. `test_live_descent_wiring.py`
+7/7 PASS (registered-in-proposer, live-cycle-descends-to-grid, value-agnostic,
+target-selection-gated, slow-path-still-solves-both). Full self-run suite green
+(28/28 files; e.g. test_dsl 30/30, test_episodic_writer 22/22,
+test_program_package_import 12/12).
+
+**Change**:
+- `agent/active_operators.py` `DescendOperator` docstring only (comment-only):
+  replaced the stale "proposer registration is a later iter's step / working
+  pipeline unchanged" paragraph with the actual wired state — both halves live
+  (`effect` iter 40 + the `DescendRule`/`NeedsDescentRule`/`NeedsTargetSelectionRule`
+  wiring iter 41), §3 order enforced on every live solve, answer-preserving, guarded
+  by `test_live_descent_wiring.py`. Rewrote concisely so the docstring is *shorter*
+  than the verbose stale text (net −1 line, 436→435).
+- No production *behaviour* touched: byte-identical at runtime (docstring only).
+  No DSL (F3), no new `_try_*`/`_apply_*` (F2), no frozen file (F1), no rule (F4),
+  no `TF_` (F5), no budget growth (F6), no swallowed `RuleSchemaError` (F7). F8:
+  `active_operators.py` net is −1 (lines removed), so the net-positive companion
+  requirement does not apply (it is also the doc/comment-only allowed exception).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+(unchanged — docstring-only; production behaviour byte-identical).
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives=**P6
+436→435 (−1 line, lines removed)**; P1 2.0, P2 2.0, P3 0.0, P4 3207, P5 10 all Δ0.
+The genuine contribution is observation-criterion 2 (통일성 / spec-faithfulness):
+the canonical operator docstring no longer contradicts the live code on module A's
+wiring, so the diagnosis loop reads true state from the source itself, not just
+from `RULE_FORMAT.md`.
+
+**Next gap (note for future iter)**: with both `RULE_FORMAT.md §7.2` (iter 54) and
+the `DescendOperator` docstring (this iter) reconciled, the in-code/in-spec story of
+module A is now self-consistent. The lone genuinely-deferred in-slice capability
+remains making module B's `GoalStack` *gate operator selection* on the live cycle
+(it currently only annotates the episode trace) — but that adds net lines to
+`active_operators.py` (would need an F8 companion edit) and is not required by
+`SLICE_1_LOOP.md §8`'s relaxed criteria. Slice 1 stays functionally complete and
+human-gated; do not start Slice 2 (easy000b) autonomously — wait for `SLICE_2_LOOP.md`.

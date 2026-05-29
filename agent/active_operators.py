@@ -242,23 +242,22 @@ class GeneralizeOperator(Operator):
 
 class DescendOperator(Operator):
     """Module A (HierarchicalDescentController): move focus to a deeper KG level
-    when the current level cannot resolve its goal (P1 — depth entered by
-    necessity). The §3 descent is TASK→PAIR→GRID; ``effect`` performs that whole
-    descent in one shot and records where it stopped (``focus-level``) plus the
-    path, so the level walk is observable on the live solve.
-
-    The descent *decision* is recognition vocabulary, delegated to
-    ``agent/conditions/descent_path.descent_itinerary`` (it composes the
-    ``descent_warranted`` matcher with per-level evidence staging) — the operator
-    only applies that itinerary, hand-coding no trigger logic. Value-agnostic:
-    the itinerary reads only COMM/DIFF verdicts and structural counts, so
+    when the current level cannot resolve its goal (P1 — depth by necessity).
+    ``effect`` performs the whole §3 descent (TASK→PAIR→GRID) in one shot and
+    records where it stopped (``focus-level``) + the path. The descent *decision*
+    is recognition vocabulary delegated to ``agent/conditions/descent_path``
+    (composing ``descent_warranted`` with per-level evidence) — no trigger logic
+    is hand-coded. Value-agnostic (reads only COMM/DIFF verdicts and counts), so
     easy000a (red) and easy000a2 (green) descend identically.
-
-    ``precondition`` keeps the sibling operators' NotImplementedError convention
-    (the cycle does not consult it). This iter implements the effect half (the
-    next step the ``descent_warranted`` / ``needs_descend`` docstrings name);
-    proposer registration that lets it drive the live cycle is a later iter's
-    step, kept separate so the working pipeline is unchanged.
+    Both halves are live (``precondition`` keeps the siblings' unused
+    NotImplementedError convention): ``effect`` (iter 40) *and* the proposer
+    wiring driving it on the real cycle (iter 41) — ``DescendRule``
+    (``agent/rules.py``, in ``build_proposer``) proposes this operator when
+    ``NeedsDescentRule`` (``agent/elaboration_rules.py``) derives
+    ``needs_descent`` in S2, and ``NeedsTargetSelectionRule`` gates on the
+    ``descent-complete`` flag written here — so the §3 order (descend, *then*
+    schedule comparisons) runs as an operator on every live solve, once and
+    answer-preserving. Guard: ``test_live_descent_wiring.py``.
     """
 
     def __init__(self):
