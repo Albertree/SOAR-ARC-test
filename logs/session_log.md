@@ -5127,3 +5127,72 @@ action: provide `docs/SLICE_2_LOOP.md`** (and the Slice-2 target tasks
 start Slice 2 autonomously (`SLICE_1_LOOP §10`). Any future OBJECT-level work must
 be grounded in the real `ARCKG/object.py:Object.to_json()` 8-property contract and
 the real DSL at `procedural_memory/DSL/` — not a guessed `agent/DSL`/`ObjectNode`.
+
+> STAGNATION at iter 69 — 14 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:34
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_063419.log
+
+---
+## Iter 70 — 2026-05-30T06:35 — branch test21
+
+**Iter 70: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed from scratch. Slice 1 is functionally complete and
+human-gated — verified live this iter with concrete commands (not inherited, and
+heeding the iter-69 fabricated-output lesson by preferring exit codes / parsed JSON
+over stdout prose): `docs/SLICE_2_LOOP.md` absent (only `SLICE_1_LOOP.md` present);
+`data/ARC_easy/easy000b.json` absent; `PROMPT.md` / `SLICE_1_LOOP.md` unchanged since
+f4296f20 (2026-05-29). `SLICE 1 COMPLETE` was already declared at session_log.md:558.
+No agent-side gap remains whose closure lifts a positive signal without gaming a
+metric (F4-class dead vocabulary) or starting the human-gated Slice 2 (§10).
+
+**Fresh verification this iter (concrete commands, parsed not eyeballed)**:
+- `rule_003.json`: `covers=['easy000a','easy000a2']`, `condition.type=copy_common_output_applies`,
+  `anti_unification_trace=None` — correct single-source initial rule (AU is OUT of Slice 1).
+- `CONDITION_REGISTRY` = exactly 10 matchers (all_outputs_comm, copy_common_output_applies,
+  descent_warranted, inputs_vary, intra_pair_grids_differ, needs_descend, nothing_to_compare,
+  pair_grid_count_majority, schema_goal_satisfied, test_output_missing) — all live-consumed; P5=10.
+- `agent/active_operators.py`: grep finds **one** `def _(try|apply)_` match — `_apply_rule`
+  (line 368). Checked the source: it is the *generic* rule dispatcher (handles only the
+  value-agnostic `identity`; unrecognised types → None per P3), **not** a closed-family
+  `_apply_<name>` special-case detector. It is correctly retained, not a P6 removal target;
+  the F2 check fires only on *newly added* `def _try_/_apply_` diff lines, which this is not.
+  This is the one nuance prior "family fully retired" notes glossed — recorded so a future
+  iter does not mistake `_apply_rule` for removable churn.
+- Probe (in context): easy000a + easy000a2 both CORRECT via stored(easy000a); 1 rule;
+  covers mean 2.0; value-agnostic (same recipe, two different fixed outputs).
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool frozen, F6)
+  or a rule merge (only 1 rule exists). Frozen.
+- P3: anti-unification explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4/§9`).
+- P4: episodic auto-increments per solve — moving it = running solves, not a code contribution.
+- P5: §3 flow fully covered by 10 live matchers; a new one is dead vocabulary (F4-class accretion).
+- P6: `_try_*`/`_apply_*` special-case family retired (iter 27); the lone generic `_apply_rule`
+  and the live pipeline/`VerifyOperator` operators are all consumed — nothing safely removable.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human action:
+provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 target data `easy000b.json`/`easy000b2.json`,
+currently absent). Do not start Slice 2 autonomously (`SLICE_1_LOOP.md §10`). When it opens,
+the highest-value in-architecture first step is wiring `GoalStack` as a live S1 WM object
+gating `preferences.select_operator` (module B's only deferred half; its satisfaction logic
+is already live via `schema_goal_satisfied`) — split it (consult-only first, then preference
+influence) for live-trigger regression safety. Any OBJECT-level work must ground in the real
+`ARCKG/object.py:Object.to_json()` contract and the real `procedural_memory/DSL/`.
+
+> STAGNATION at iter 70 — 15 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
