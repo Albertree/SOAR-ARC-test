@@ -6423,3 +6423,53 @@ is **human action: provide docs/SLICE_2_LOOP.md** (+ Slice-2 data easy000b.json)
 Do NOT start Slice 2 autonomously (SS10). The one in-scope-but-deferred item is
 making module B's GoalStack actually *gate* operator selection (currently
 recorded but inert); defensible only with a verified answer-preserving guard.
+
+> STAGNATION at iter 90 — 8 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:29
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_072904.log
+
+---
+## Iter 91 — 2026-05-30 — branch test21
+
+**Iter 91: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand, not inherited. Slice 1 is complete and
+human-gated: probe = easy000a + easy000a2 both CORRECT; one valid rule
+(`rule_003.json`, covers=[easy000a,easy000a2], value-agnostic, au_trace=null);
+`data/ARC_easy/` = {easy000a, easy000a2}; `docs/SLICE_2_LOOP.md` ABSENT (gate
+closed). I specifically re-checked the P6 claim the prior iters asserted: a grep
+for `_try_*`/`_apply_*` in `active_operators.py` returns only `_apply_rule` (a
+legitimate pipeline helper, not a hand-coded special-case detector) — the
+detector family is genuinely already gone, so P6 has nothing left to remove.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Positive-signal analysis (verified via `check_invariants.sh --check`, live)**:
+- P1=2.0, P2=2.0 — capped (1 rule, 2 tasks, pool frozen F6, single rule → no merge possible).
+- P3=0.0 — anti-unification is explicitly OUT of Slice 1 (§4/§9); wiring it trips a guardrail.
+- P4=3284 — grows only by re-running solves = metric-gaming, not a contribution.
+- P5=10 — §3 GRID-level flow fully covered by live matchers; an 11th = dead F4-class vocabulary (§9 forbids reverting C to an enumerated rule list).
+- P6=435 — `active_operators.py` is all-live (pipeline operators + helpers); detector family already removed, nothing safely removable.
+
+**Invariants**: forbidden=none (no code diff). Live `--check` verdict = NEUTRAL,
+all six deltas Δ0 (P1=2.0 P2=2.0 P3=0.0 P4=3284 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json /
+easy000b2.json). Do NOT start Slice 2 autonomously (§10). When it opens, the
+mechanism shift is property *value* COMM → property *relation* COMM
+(structure-mapping across pairs) + object-level descent + the first
+anti-unification of two per-pair programs; the first defensible step is likely
+module-C object-level scope (`select(grid, object, pred)`) wired but
+answer-neutral, split from the program anti-unification.
