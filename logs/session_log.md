@@ -2310,3 +2310,92 @@ complete. The remaining centre-of-flow gaps are modules A (`DescendOperator`
 impasse-driven descent — currently raises NotImplementedError) and B (GoalStack
 "make Pa's output" → "Gx.{size,color,contents}") — both large and F8-risky.
 Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 01:54
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_015434.log
+
+---
+## Learning Loop -- 2026-05-30 01:59
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_015948.log
+
+---
+## Iter 33 — 2026-05-30T01:59 — branch test21
+
+**Diagnosis**: Iters 29–32 routed every §3 *pairwise* comparison onto the cycle
+agenda, so module C's scheduling side of Slice 1 is complete. The remaining
+centre-of-flow gap from the raw prose (easy000a paragraph) is **module B
+(GoalStack with Evolution)**: the cycle's `goal` slot is written only at submit
+time, so the intended goal that *forms* at the PAIR level ("construct Pa's
+missing output") and *evolves* at the GRID level ("determine Gx.{size,color,
+contents}") is entirely absent. Smallest defensible *half*: build module B as a
+pure, tested, value-agnostic library (`agent/goal.py`) — the two evolution rules
++ GoalStack from `arbor-execution-trace` module B — and **not** wire it yet
+(wiring adds net lines to `active_operators.py`, which would require an
+anti-unification-side companion under F8; it is the next iter's step). Mirrors
+how `compare_scheduler.py` was built library-first then wired.
+
+**Change**:
+- `agent/goal.py` (new, 246 lines): module B. `value_goal_from_grid_count_census`
+  builds the PAIR-level *value* goal from the grid-count census (counts only →
+  derives the example majority + the deficient test pair(s); no colour/coord).
+  Two evolution rules grounded in exec-trace module B: `refine_value_to_action`
+  (Refinement, value→action: grid_count mismatch → "construct Gx") and
+  `decompose_action` (Decomposition, action→schema: "construct Gx" → per-property
+  children over `GRID_SCHEMA=(size,color,contents)`, the ARCKG grid `to_json`
+  keys). `evolve(goal, schema)` dispatches by kind (exec-trace
+  `evolve(new_node, schema)`). `GoalStack` holds the evolving goal + descent
+  history; `is_satisfied` reuses the cycle's "all subgoals solved" rule and the
+  schema goal's `subgoals` use the exact `{name:{"status":...}}` shape
+  `agent/cycle.py:_s1_goal_satisfied` reads, so a later iter can wire it without
+  reshaping. All symbolic dicts, JSON-serialisable (P7); value-agnostic (P7/§9).
+- `tests/test_goal.py` (new, 15 tests, all pass): both evolution rules + their
+  rejections, `evolve` dispatch, the full GoalStack chain
+  (census→value→action→schema) + satisfaction, terminal no-op, bad-input
+  guards, JSON-serialisability, a no-colour/coordinate assertion, and
+  **goal tree byte-identical for the easy000a and easy000a2 censuses** (the
+  value-agnostic guard — a future value leak fails here).
+- Did **not** touch `agent/active_operators.py` (no F8 exposure) or any frozen
+  file. No DSL primitive, no `_try_*`/`_apply_*`, no rule written.
+
+**Why smallest**: module B is in Slice-1 scope (§4 IN) but entirely unbuilt; the
+library is the smaller half of "module B" (the larger half being its wiring +
+module A descent, both F8-risky). It changes no solve behaviour — purely
+additive scaffolding the next iter wires — so both targets still solve via the
+unchanged fast path.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Solve path untouched → probe identical; easy000a→red(2), easy000a2→green(3).)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P4 3123 → 3125 (+2 episodes)**. P1 2.0, P2 2.0, P3 0.0, P5 5, P6 417
+unchanged (no rule/AU/matcher/active_operators change this iter — module B is a
+new standalone library). F1 not tripped (no frozen file); F2 none (no new
+`_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved; F5 no `TF_`
+under semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError; F8
+not applicable (active_operators.py untouched, 0 net additions).
+
+**Next gap (note for future iter)**: module B now exists as a tested library but
+is **not wired** — the cycle still forms no goal until submit. The next smallest
+step is wiring: have a pipeline operator build the PAIR-level value goal from the
+census `patterns["pair_grid_counts"]` and `advance()` it as the flow reaches the
+GRID level, writing `GoalStack.current["subgoals"]` into `wm.s1["goal"]`. That
+edit adds net lines to `active_operators.py`, so it must ride with an
+anti-unification-side companion (memory.py / anti_unification.py / conditions/)
+to clear F8 — or be paired with a compensating deletion. Module A
+(`DescendOperator` impasse-driven descent) remains a `NotImplementedError` stub
+and is the other half of the goal-driven-descent flow. Slice 1 stays
+functionally complete; Slice 2 is human-gated — do not start it.
