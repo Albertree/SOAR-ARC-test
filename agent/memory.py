@@ -145,6 +145,16 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
                     stored["anti_unification_trace"] = None
                     changed = True
                 if changed:
+                    # Re-validate the *mutated* entry before it touches disk:
+                    # the reuse/backfill write path must honour the same
+                    # dead-memory guard as the new-rule path (CLAUDE.md §3.2,
+                    # INVARIANTS §1 F4). Extending a stored rule whose
+                    # {condition, action} pair does not resolve would just grow
+                    # dead memory. RuleSchemaError is a ValueError (not a
+                    # json/IO error), so the surrounding except does not catch
+                    # it — it propagates, never swallowed (INVARIANTS §1 F7),
+                    # and disk is untouched because the write follows.
+                    validate_rule(stored)
                     with open(path, "w") as fh:
                         json.dump(stored, fh, indent=2)
                 return path

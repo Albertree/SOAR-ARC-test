@@ -1534,3 +1534,82 @@ false`; `covers` items `^[0-9a-f]{8}$`) contradicts the actual stored entries
 (extra `"rule"` key; synthetic ids like `easy000a`), so a full §1-faithful
 validator would reject the system's own rules — reconciling schema-vs-reality is
 larger than one step. Observe; do not start Slice 2 (human-gated).
+
+---
+## Learning Loop -- 2026-05-29 23:55
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_235509.log
+
+---
+## Learning Loop -- 2026-05-29 23:57
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_235719.log
+
+---
+## Iter 23 — 2026-05-29T23:57 — branch test21
+
+**Diagnosis**: The probe is a clean 2/2, so I used it as a microscope on the
+in-process rule-validation guard iter 22 added. That guard runs on the
+*new-rule* branch of `save_rule_to_ltm` (`validate_rule(entry)` before the
+file write), but the *equivalence/backfill* branch — which extends a matched
+rule's `covers` and backfills its `{condition, action}` pair, then re-writes
+the file — bypassed it entirely. A stored rule whose pair does not resolve
+(legacy / dead memory) could thus be extended and re-persisted *without* ever
+being validated, leaving a hole in exactly the F4 dead-memory guard iter 22
+built. This is iter 22's own recorded "Next gap" and the smallest defensible
+step: route the second write path through the same guard.
+
+**Change**:
+- `agent/memory.py` (`save_rule_to_ltm`): added `validate_rule(stored)` inside
+  the `if changed:` block of the equivalence branch, immediately *before* the
+  `json.dump` re-write. Both write paths now honour the same dead-memory guard
+  (CLAUDE.md §3.2, INVARIANTS §1 F4). `RuleSchemaError` is a `ValueError`, not a
+  `json`/`IO` error, so the surrounding `except (JSONDecodeError, IOError)` does
+  not catch it — it propagates, never swallowed (F7), and disk is left untouched
+  because the write follows the validate. The valid live rule (rule_003 shape)
+  passes, so reuse of `copy_common_output` is unaffected.
+- `tests/test_validate_rule_reuse.py` (new): 4 standalone cases — extending a
+  *valid* equivalent rule still extends `covers` (no false positive) and is
+  idempotent for a known task; extending a *dead-memory* equivalent rule
+  (condition.type `consistent_color_mapping`, unregistered on this branch)
+  raises `RuleSchemaError` and leaves the on-disk file byte-for-byte unchanged
+  (fail-closed); a legacy rule lacking the pair gets it backfilled and the
+  backfilled `all_outputs_comm`/`make_grid` pair validates. 4/4 pass; existing
+  `test_validate_rule.py` 17/17 still pass.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (unchanged — the probe tasks hit the fast-path reuse return in active_agent,
+  which never enters save_rule_to_ltm's equivalence branch; this guard protects
+  future slow-path covers-extension writes).
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+P4 episodic 3091→3093 (Δ+2) — the *mechanical* episode-write artifact of running
+the probe this iter, disclaimed as in prior iters, NOT claimed as the
+contribution. P1 2.0, P2 2.0, P3 0.0, P5 5, P6 522 unchanged. The substantive
+contribution (closing the unvalidated second write path) is structural and not
+measured by any P1–P6 metric. No frozen edit (F1 — `agent/memory.py` not
+frozen); no `active_operators.py` touch so F2/F8 inert; no DSL `def`/`register`
+(F3); the change *strengthens* F4 (no rule write escapes validation); no `TF_`
+under semantic_memory (F5); no budget growth (F6); the new `raise
+RuleSchemaError` is never paired with a swallowing `except` (F7 — verified).
+
+**Next gap (note for future iter)**: both write paths of `save_rule_to_ltm` are
+now validated. The deeper desync iter 22 flagged persists and is larger than one
+step: `docs/RULE_FORMAT.md §1`'s JSON Schema (`additionalProperties: false`;
+`covers` items `^[0-9a-f]{8}$`; required exact key set) contradicts the actual
+stored entries (an extra `"rule"` key; synthetic task ids like `easy000a`), so a
+§1-faithful validator would reject the system's own rules — reconciling
+schema-vs-reality (or scoping `validate_rule` explicitly to the retrievability
+subset it enforces) is the next correctness gap. Slice 1 remains functionally
+complete; Slice 2 is human-gated — do not start it.
