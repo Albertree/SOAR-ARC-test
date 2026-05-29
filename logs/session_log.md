@@ -6590,3 +6590,90 @@ object-level descent + the first anti-unification of two per-pair programs; the
 first defensible step is likely module-C object-level scope
 (`select(grid, object, pred)`) wired but answer-neutral, split from the program
 anti-unification itself.
+
+> STAGNATION at iter 93 — 11 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:36
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_073632.log
+
+---
+## Learning Loop -- 2026-05-30 07:39
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260530_073926.log
+
+---
+## Iter 94 — 2026-05-30 — branch test21
+
+**Iter 94: no defensible step found — analysis only (PROMPT.md §5).** But this
+iter extracts NEW diagnostic information instead of repeating iters 88–93's
+identical no-op boilerplate.
+
+**Diagnosis**: Re-verified firsthand: `docs/SLICE_2_LOOP.md` ABSENT (§10 gate
+closed); `data/ARC_easy/` = {easy000a, easy000a2} frozen (F6); exactly one rule
+(`rule_003.json` — valid {condition:`copy_common_output_applies`,
+action:`make_grid`}, value-agnostic, covers=[easy000a,easy000a2], au_trace=null,
+times_reused=324); registry = 10 matchers + 1 non-registered helper
+(`descent_path`). The probe solves BOTH tasks `via=stored(easy000a)`, which means
+the intended §3 slow-path solve (Inter-Pair/Inter-Grid COMM → copy) is *never
+exercised* by the probe — it is masked by the cache. The prior 11 no-op iters
+never checked whether that masked slow path is actually alive or silently dead.
+
+**New finding (the contribution of this iter)**: I tested it as pure,
+non-committed diagnosis — backed up `procedural_memory/` + `episodic_memory/`,
+moved `rule_003.json` aside, ran `run_learn.py --task easy000a easy000a2
+--log-wm`, then restored both dirs byte-for-byte (rule_003 times_reused=324
+intact, episodic count 8→8, working tree clean). Result: **the slow path is
+healthy** — easy000a solved `via=pipeline(steps=26)`, the WM log showed the
+intended Inter-Pair grid-count COMM comparisons, the pipeline re-derived
+`copy_common_output` and re-saved a valid, value-agnostic rule
+(condition+action present, covers=[easy000a], au_trace=null). easy000a2 then hit
+the freshly-saved rule. So §8 criteria 1 (works) and 3 (approaches answer in the
+right direction) hold for the *intended* solve, not merely for the cached
+replay. One minor observation: when task #2 hits the cache, its task id is not
+merged into the rule's `covers` — covers=[easy000a] only after a fresh
+two-task run; rule_003's covers=[easy000a,easy000a2] reflects an earlier run
+where both went slow-path. Not a Slice-1 defect (score still 2/2), noted for
+later.
+
+**Change**: none committed (this log entry only, per §5). Diagnosis was fully
+sandboxed and reverted; no code, rule, episodic, or semantic state changed.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (sandbox reverted).
+
+**Positive-signal analysis (verified live via `check_invariants.sh --check`,
+exit 0, verdict NEUTRAL)**:
+- P1=2.0, P2=2.0 — capped (2 tasks / 1 rule, pool frozen F6; no second rule to
+  merge, no third task to absorb).
+- P3=0.0 — needs anti-unification, explicitly OUT of Slice 1 (§4/§9). Blocked.
+- P4=3290 — increments only by re-running solves = metric-gaming; my sandbox
+  run was reverted so it did NOT bump (still 3290).
+- P5=10 — §3 GRID-level recognition fully covered; an 11th matcher with no
+  consuming need is dead vocabulary (§5.1/§9). Confirmed slow path uses the
+  existing matchers, so none is missing.
+- P6=435 — `active_operators.py` is all live pipeline operators; detector family
+  already removed; nothing safely removable.
+
+**Invariants**: forbidden=none (no code diff). Live `--check` verdict = NEUTRAL,
+all six deltas Δ0 (P1=2.0 P2=2.0 P3=0.0 P4=3290 P5=10 P6=435), exit 0.
+
+**Next gap (note for future iter)**: unchanged unblock = **human action:
+provide `docs/SLICE_2_LOOP.md`** (+ data easy000b.json). Do NOT start Slice 2
+autonomously (§10). New, smaller-than-Slice-2 observation surfaced this iter: the
+covers-merge gap (a second task that hits the stored rule does not add its id to
+that rule's `covers`) would DIRECTLY raise P2/P1 if fixed — but it sits in the
+fast-path reuse code (`_reuse_rule`/`increment_reuse_count`), is answer-neutral,
+and touching it risks the frozen reuse contract; flagging it as the most concrete
+in-scope P-mover for a future iter rather than acting on it blindly now.
