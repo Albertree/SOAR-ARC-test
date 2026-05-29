@@ -6260,3 +6260,65 @@ the slice-2 mechanism shift is property *value* COMM → property *relation* COM
 descent and the first anti-unification of two per-pair programs — so the first
 defensible step is likely module-C object-level scope (`select(grid,object,pred)`)
 wired but answer-neutral, split from the anti-unification of programs.
+
+> STAGNATION at iter 87 — 5 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:16
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_071607.log
+
+---
+## Iter 88 — 2026-05-30T07:18 — branch test21
+
+**Iter 88: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand (not inherited). Read
+`agent/active_operators.py` in full this iter and confirmed: the
+`_try_*`/`_apply_*` family is genuinely retired, the copy-common-output answer
+is materialised bottom-up via `reconstruct_via_dsl` (make_grid+coloring) rather
+than copied wholesale, and discovery dispatches through the single
+`copy_common_output_applies` matcher (criterion-2 uniformity). Ran the intended
+slow-path tests directly (pytest still absent on 3.10.9): 35/35 passed across
+`test_slow_path_value_agnostic` / `test_live_descent_wiring` /
+`test_predict_copy_common_output` / `test_validate_rule` — the from-empty-memory,
+value-agnostic discovery path (red≠green, live TASK→PAIR→GRID descent,
+self-terminating) still works, so the four §8 observation criteria hold. Gate
+verified ABSENT (`docs/SLICE_2_LOOP.md` missing; `data/ARC_easy/` =
+{easy000a, easy000a2}; one valid rule `rule_003.json`).
+
+**P6 audit (the one signal movable by deletion)**: `VerifyOperator` is NOT dead
+code — it is imported in `agent/rules.py` and listed in
+`agent/preferences.py:PREFERENCE_ORDER`. Removing it to shave lines would touch
+the live pipeline and risk breaking the cycle for a cosmetic count — P6-dimension
+metric-gaming. Declined.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched). Slow-path discovery independently
+re-verified value-agnostic + non-stub this iter (35/35 direct test run).
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks; pool frozen F6; 1 rule → no merge).
+- P3: anti-unification explicitly OUT of Slice 1 (§4/§9) — wiring it trips the guardrail.
+- P4: writer alive at 3278; inflating by re-running solves = metric-gaming, not a contribution.
+- P5: §3 flow fully covered by the 10 live matchers; an 11th = dead F4-class vocabulary (§9 forbids reverting C to an enumerated rule list).
+- P6: `active_operators.py` is all-live (9 pipeline operators + helpers; VerifyOperator wired via rules.py/preferences.py) — nothing safely removable.
+
+**Invariants**: forbidden=none (no code diff). Expected `--check`: NEUTRAL —
+P1=2.0 P2=2.0 P3=0.0 P5=10 P6=435 (all Δ0).
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json /
+easy000b2.json, absent). Do NOT start Slice 2 autonomously (§10). When it opens,
+the mechanism shift is property *value* COMM → property *relation* COMM
+(structure-mapping across pairs) + object-level descent + the first
+anti-unification of two per-pair programs; the first defensible step is likely
+module-C object-level scope (`select(grid, object, pred)`) wired but
+answer-neutral, split from the anti-unification of programs.
