@@ -3939,3 +3939,89 @@ work (easy000b: G0 analysis contributing to the answer, module E activation rule
 module H anti-unification wiring) begins only when the human swaps in the Slice 2
 doc. Iters that keep manufacturing in-slice micro-refactors should prefer a no-op
 (PROMPT §5) over polluting the baseline. Do not start Slice 2 autonomously.
+
+---
+## Learning Loop -- 2026-05-30 05:01
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_050102.log
+
+---
+## Learning Loop -- 2026-05-30 05:02
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260530_050203.log
+
+---
+## Learning Loop -- 2026-05-30 05:02
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260530_050236.log
+
+---
+## Iter 53 — 2026-05-30T05:03 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete, but I verified rather than
+trusting it and found a genuine *verification* hole, not a code gap. The fast
+path (stored-rule reuse) is value-agnostic-guarded (`test_fast_path_reuse`) and
+the Generalize/Predict operators are guarded in isolation on synthetic WM
+(`test_predict_copy_common_output`), but **nothing exercises the end-to-end slow
+path** (`agent.solve()` from empty procedural memory → `method=="pipeline"`) on
+the real loaded targets. Worse, the run_loop probe gives *false* confidence here:
+in its run order easy000a is solved first and stores the rule, so **easy000a2's
+own pipeline is never run** — it always rides `via=stored(easy000a)`. I confirmed
+manually that easy000a2 alone, from empty memory, does discover its *different*
+fixed output via `pipeline(steps=26)`; the only automated proof of that
+value-agnostic discovery was missing. SLICE_1_LOOP.md §1 says easy000a2 exists to
+catch a hard-coded answer — that guard must cover discovery, not only reuse.
+
+**Change**:
+- `tests/test_slow_path_value_agnostic.py` (new, 3/3): each target solved from an
+  **isolated empty** procedural+episodic memory (mirrors `test_fast_path_reuse`'s
+  isolation so the repo stores are never mutated). Asserts (1) both reach the
+  correct output via `method=="pipeline"` independently — closing the probe's
+  easy000a2-never-runs-its-pipeline blind spot; (2) red≠green output from the
+  same pipeline (value-agnostic); (3) the two discovered rule files are
+  structurally identical in `condition`+`action`, both pass `validate_rule` (F4),
+  and carry no colour/coordinate literal — the rule-level statement of
+  value-agnosticism (recipe = "copy whatever the common output is").
+- No production code touched: no `active_operators.py` (F8 N/A), no DSL (F3), no
+  new `_try_*`/`_apply_*` (F2), no frozen file (F1), no rule added to the repo
+  (F4 N/A — discovered rules live only in the test's temp dir), no `TF_` (F5),
+  no budget growth (F6), no swallowed `RuleSchemaError` (F7).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+(unchanged — pure test addition; production behaviour byte-identical).
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0 — F1 frozen
+diff 0; F2/F3 no DSL/`_try_` diff; F4 no repo rule changed; F5 no `TF_`; F6 no
+budget growth; F7 no swallowed error; F8 N/A). positives=**P4 3200→3203 (+3,
+mechanical from the probe + my from-empty-memory verification `run_learn` runs
+writing real attempt folders — disclaimed per the standing iter-8/9/10 note; NOT
+the real contribution)**; P1/P2/P3/P5/P6 Δ0. The genuine contribution is
+observation-criterion 1 (작동) + 2 (통일성): the most central Slice-1 invariant —
+value-agnosticism of the *discovery* path, with easy000a2's own pipeline never
+exercised by the probe — is now regression-guarded by an automated test. Full
+unit suite green (28 files; new 3/3 slow-path-value-agnostic).
+
+**Next gap (note for future iter)**: with both the reuse path and the discovery
+path now value-agnostic-guarded end-to-end, Slice 1's verification surface is
+closed; there is no remaining in-scope signal-moving step. The lone deferred
+in-slice candidate (loosen `test_output_missing`'s strict gate to module B's
+majority semantics) was rejected by iters 42–52 as a no-gain conservatism trade
+and remains so. Slice 1 stays functionally complete and human-gated — do not
+start Slice 2 (easy000b: G0 analysis, activation rules, anti-unification)
+autonomously; wait for `SLICE_2_LOOP.md`.
