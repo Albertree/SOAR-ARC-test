@@ -1374,3 +1374,76 @@ recognition without an explicit impasse-driven descent), but §8's relaxed
 criteria do not require them. Whether to declare §10 SLICE 1 COMPLETE — and the
 Slice-2 transition — is human-gated; surfacing it as an observation, not
 autonomously asserting it. Do not start Slice 2.
+
+---
+## Learning Loop -- 2026-05-29 23:42
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_234204.log
+
+---
+## Iter 21 — 2026-05-29T23:48 — branch test21
+
+**Diagnosis**: Using the probe (clean 2/2) as a microscope on the *spec*, not the
+solve: `docs/RULE_FORMAT.md §4` — the authoritative, present-tense "set of
+currently-registered `condition.type` values" — documented **24** matchers
+spanning "iter 8–41" (`grid_size_preserved`, `consistent_color_mapping`,
+`output_color_uniform`, `change_*_constant_across_pairs`, …), **none of which
+exist on this branch**, while omitting **all 5** that are actually registered
+(`all_outputs_comm`, `inputs_vary`, `intra_pair_grids_differ`,
+`pair_grid_count_majority`, `test_output_missing`). The §4 set is a foreign
+accretion lineage (it references `validate_rule`/`save_rule`/a `positions`
+field/`translate_to_schema` that this branch's `agent/memory.py` —
+`save_rule_to_ltm`, `_analyze_pair` emitting only `cell_count`/`num_groups`/
+`top_row`/`top_col` — does not have). This is the smallest defensible gap: an
+authoritative spec that is 100% wrong in §4 actively misleads a future emission
+iter into gating a rule on a documented-but-unregistered `condition.type` (→
+lookup/V-check failure), and it legitimizes precisely the hyper-granular
+recognition-vocabulary accretion the architecture forbids.
+
+**Change** (doc-only; zero code, zero forbidden-signal surface):
+- `docs/RULE_FORMAT.md §4`: replaced the 24 fictional matcher rows with the 5
+  rows that match the live `CONDITION_REGISTRY`, each documenting the real
+  `patterns` key consumed (`output_grid_comparisons` / `input_grid_comparisons`
+  / `intra_pair_grid_comparisons` / `pair_grid_count_comparisons` /
+  `pair_grid_counts`), the actual `params` (`min_evidence` default + optional
+  `required_properties`; `pair_grid_count_majority` default 2), the COMM/DIFF
+  semantics, value-agnosticism, and fail-closed posture — verbatim from the
+  matcher source. Header, intro, and the "Adding a new condition type" steps
+  left intact. This also retroactively documents `all_outputs_comm`, the
+  `condition.type` of the only live rule (`rule_003.json`), which §4 had never
+  listed.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (unchanged — this iter corrects documentation, not a solve path).
+
+**Invariants**: forbidden=none (checker verdict NEUTRAL, exit 2 — kept, not
+reverted; only exit 1 reverts). positives=all Δ0 (P1 2.0, P2 2.0, P3 0.0,
+P4 3085, P5 5, P6 522). Honest NEUTRAL: spec-correctness is real work that no
+P1–P6 metric measures, and Slice-1's in-scope positive headroom is exhausted
+(recognition vocab complete, `_try_*` retired iter 19, P3/anti-unification is
+Slice-2/human-gated, P1/P2 saturated at 1-rule/2-task). NEUTRAL scaffolding /
+correctness iters are explicitly legitimate per INVARIANTS §2/§3. No frozen edit
+(F1 — `docs/RULE_FORMAT.md` is not under `docs/arbor_context/`); no
+`active_operators.py` touch so F2/F8 inert; no DSL def/register (F3); no rule
+saved (F4 inert); no `TF_` under semantic_memory (F5); no budget growth (F6); no
+swallowed RuleSchemaError (F7). P5 deliberately held at 5 — I documented the
+real registry, did not grow it (growing would be the unprincipled accretion
+iter 18/19 named). Live `CONDITION_REGISTRY` re-introspected post-edit: the 5
+documented names match exactly.
+
+**Next gap (note for future iter)**: the same foreign-lineage desync persists
+in *other* authoritative docs and is larger than one doc edit: `CLAUDE.md §3.2`,
+`docs/RULE_FORMAT.md §3` (V-checks), and `docs/INVARIANTS.md §F4` all reference
+`agent/memory.py:save_rule()` / `validate_rule()`, but the live module exposes
+`save_rule_to_ltm` and the F4 checker validates `condition`/`action` keys
+directly (it does *not* import `validate_rule`, which does not exist). A future
+iter could reconcile the canonical function-name references with the actual
+`memory.py` surface (or add the missing `validate_rule`/`save_rule` aliases) so
+the spec and code agree on the rule-validation entry point. Observe; do not
+start Slice 2 (human-gated).
