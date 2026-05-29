@@ -6473,3 +6473,58 @@ mechanism shift is property *value* COMM → property *relation* COMM
 anti-unification of two per-pair programs; the first defensible step is likely
 module-C object-level scope (`select(grid, object, pred)`) wired but
 answer-neutral, split from the program anti-unification.
+
+> STAGNATION at iter 91 — 9 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 07:31
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_073114.log
+
+---
+## Iter 92 — 2026-05-30 — branch test21
+
+**Iter 92: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed first-hand this iter (not inherited). Slice 1 is
+complete and human-gated. Verified live: `data/ARC_easy/` = {easy000a,
+easy000a2} (frozen, F6); `docs/SLICE_2_LOOP.md` ABSENT → §10 gate closed;
+exactly one rule `rule_003.json` — valid {condition:`copy_common_output_applies`,
+action:`make_grid`}, value-agnostic, covers=[easy000a,easy000a2],
+au_trace=null, times_reused=320. Grepped `active_operators.py`: the only
+`_apply_*`/`_try_*` match is `_apply_rule` (a legitimate pipeline helper, not a
+hand-coded detector) — the detector family is genuinely already removed, so P6
+has nothing left to delete.
+
+**Change**: none committed (this log entry only, per §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code, rule, or memory modified).
+
+**Positive-signal analysis (verified live via `check_invariants.sh --check`)**:
+- P1=2.0, P2=2.0 — mathematically capped (1 rule, 2 tasks, pool frozen F6; a
+  single rule has no second rule to merge with).
+- P3=0.0 — anti-unification is explicitly OUT of Slice 1 (§4/§9); wiring it
+  trips a guardrail.
+- P4=3286 — grows only by re-running solves = metric-gaming, not a contribution.
+- P5=10 — §3 GRID-level flow fully covered by live matchers; an 11th would be
+  dead F4-class vocabulary (§9 forbids reverting C to an enumerated rule list).
+- P6=435 — `active_operators.py` is all-live; detector family already gone.
+
+**Invariants**: forbidden=none (no code diff). Live `--check` verdict =
+NEUTRAL, all six deltas Δ0 (P1=2.0 P2=2.0 P3=0.0 P4=3286 P5=10 P6=435).
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human
+action: provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data easy000b.json). Do NOT
+start Slice 2 autonomously (§10). The one in-scope-but-deferred Slice-1 item is
+making module B's GoalStack actually *gate* operator selection (currently
+recorded but inert per RULE_FORMAT §7.2) — but that moves no P-signal and risks
+answer preservation, so it is not a defensible positive-signal step on its own.
+When Slice 2 opens, the mechanism shift is property *value* COMM → property
+*relation* COMM + object-level descent + the first anti-unification of two
+per-pair programs.
