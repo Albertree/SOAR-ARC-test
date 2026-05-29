@@ -2155,3 +2155,78 @@ next wiring half. Deeper still: modules A (`DescendOperator` impasse-driven
 descent) and B (GoalStack) remain stubs — the centre of the raw-prose flow,
 large and F8-risky. Slice 1 stays functionally complete; Slice 2 is
 human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 01:42
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_014224.log
+
+---
+## Iter 31 — 2026-05-30T01:48 — branch test21
+
+**Diagnosis**: Iters 29–30 routed the §3 ① (Intra-Pair G0↔G1) and the deciding
+§3 ② (Inter-Grid role==G1) comparisons *through* the cycle so select→compare→
+extract executes them. The role==G0 *half* of §3 ② — the `input_grid_comparisons`
+contrast (inputs DIFF vs outputs COMM, the *reason* the answer is read off the
+invariant outputs) — was still recomputed inside `build_patterns`, never put on
+the agenda, so the cycle never visibly executed it. Smallest defensible step:
+schedule the role==G0 Inter-Grid comparison through the agenda, mirroring the
+role==G1 path already there, so extract reads it from the cycle's receipts.
+
+**Change**:
+- `agent/compare_scheduler.py`: `grid_comparison_specs` now emits both
+  role-aligned Inter-Grid kinds via a shared loop — the deciding
+  `inter_grid_output` (role==G1) *and* the contrast `inter_grid_input` (role==G0),
+  each pairwise (P6) with a unique `key`. `build_patterns` gains an
+  `input_receipts` param mirroring `output_receipts`. New helper
+  `patterns_from_cycle_receipts(task, comparisons)` partitions the cycle's
+  receipts by spec type (output→deciding key, input→contrast key, rest→Intra) and
+  delegates to `build_patterns` — module C now owns the partition logic (§5: C
+  owns scheduling).
+- `agent/active_operators.py` (**net −7**): `ExtractPatternOperator.effect`
+  collapses to a single `patterns_from_cycle_receipts(...)` call (the inline
+  partition block + the now-unused `build_patterns` import removed);
+  SelectTargetOperator/ExtractPatternOperator docstrings updated to name both
+  Inter-Grid roles. Net deletion → F8 refactor exemption.
+- `tests/test_compare_scheduler.py` (+1 assertion block): the agenda includes the
+  one `inter_grid_input` spec over the two example G0 grids, keys still unique.
+  `tests/test_extract_pattern.py` (+1 test): an `inter_grid_input` receipt routes
+  to `input_grid_comparisons`, kept distinct from the deciding `inter_grid_output`
+  and Intra receipts.
+
+**Why smallest**: behaviour-preserving — the scheduled role==G0 receipt is the
+same node pair + same deterministic `arckg_compare` as the recompute, and
+`inputs_vary` is not part of the copy-common-output decision, so the answer is
+unchanged. Only the cycle's step count moves (16→18: one extra compare + its
+elaboration). Both targets still solve value-agnostically via the pure slow path:
+easy000a → red(2), easy000a2 → green(3), 18 steps each; agenda keys now
+{grid_0, grid_1, inter_grid_input_0, inter_grid_output_0}.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+(Fast path untouched → probe identical. Slow path re-verified end-to-end with
+stored rules bypassed: both pipeline, 18 steps, value-agnostic outputs above.)
+
+**Invariants**: forbidden=none (checker verdict **CLEAN**, exit 0). positives:
+**P6 425 → 418 (Δ +7 lines removed)**. P1 2.0, P2 2.0, P3 0.0, P4 3115, P5 5
+unchanged (Slice-1 vocabulary saturated; AU is Slice-2/human-gated). F1 not
+tripped (active_operators.py/compare_scheduler.py not frozen); F2 none (no new
+`_try_`/`_apply_`); F3 no DSL `def`/`register`; F4 no rule saved; F5 no `TF_`
+under semantic_memory; F6 no budget growth; F7 no swallowed RuleSchemaError; F8
+satisfied (active_operators.py net −7 → deletion/refactor exemption).
+
+**Next gap (note for future iter)**: with §3 ① and both halves of §3 ② now on the
+cycle agenda, the remaining un-scheduled comparison is the PAIR-level evidence —
+Inter-Pair grid_count (`pair_grid_count_comparisons`) — plus the grid-count
+census (`pair_grid_counts`, a structural census, not a pairwise compare so it
+does not fit the agenda's compare(scope_A,scope_B) shape). Scheduling the
+Inter-Pair grid_count comparison would complete the §3 PAIR-level step in-cycle;
+the census likely stays a build_patterns recompute. Deeper still: modules A
+(`DescendOperator` impasse-driven descent) and B (GoalStack) remain stubs — the
+centre of the raw-prose flow, large and F8-risky. Slice 1 stays functionally
+complete; Slice 2 is human-gated — do not start it.

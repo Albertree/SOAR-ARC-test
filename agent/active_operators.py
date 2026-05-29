@@ -13,7 +13,7 @@ Pipeline operators (all fire in S2, read/write S1):
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
 from agent import conditions
-from agent.compare_scheduler import build_patterns, grid_comparison_specs
+from agent.compare_scheduler import grid_comparison_specs, patterns_from_cycle_receipts
 
 
 # ======================================================================
@@ -46,8 +46,9 @@ class SelectTargetOperator(Operator):
     """
     Schedules the Slice-1 GRID-level comparison agenda via module C
     (``grid_comparison_specs``, SLICE_1_LOOP.md §5): the Intra-Pair G0↔G1
-    comparisons *and* the deciding Inter-Grid role==G1 comparison (§3 ②), so the
-    cycle's compare step executes the decider rather than extract recomputing it.
+    comparisons *and* the role-aligned Inter-Grid comparisons across both roles
+    (§3 ②) — the deciding role==G1 and its role==G0 contrast — so the cycle's
+    compare step executes them rather than extract recomputing them.
     This operator only wires the specs into S1 and builds the node lookup
     CompareOperator resolves ids against (comparison-agenda, pending, comparisons).
     """
@@ -140,14 +141,13 @@ class ExtractPatternOperator(Operator):
     (The retired hand-written cell-diff — ``_analyze_pair`` / ``_group_changes``
     of the ``_try_*`` / ``color_mapping`` lineage — was removed in iter 27.)
 
-    Both scheduled GRID-level comparison kinds are *read from*
+    The scheduled GRID-level comparison kinds are *read from*
     ``wm.s1["comparisons"]`` (CLAUDE.md §5: "extract_pattern reads comparisons,
     writes patterns") rather than recomputed, so the compare step's work is not
-    discarded. Receipts are partitioned by spec ``type``: ``inter_grid_output``
-    feeds the deciding ``output_grid_comparisons`` key (§3 ②), every other type
-    feeds the Intra-Pair key (§3 ①). The unscheduled kinds (role==G0 / Inter-Pair
-    / grid-count census) are still computed from the task by build_patterns.
-    Value-agnostic: nothing here reads a colour/coordinate value (P7).
+    discarded. The partition-by-spec-kind that routes each receipt to its matching
+    pattern key lives in module C (``patterns_from_cycle_receipts``); the
+    unscheduled kinds (Inter-Pair / grid-count census) are still computed from the
+    task there. Value-agnostic: nothing here reads a colour/coordinate value (P7).
     """
 
     def __init__(self):
@@ -160,14 +160,7 @@ class ExtractPatternOperator(Operator):
         task = wm.task
         if task is None:
             return
-        # Reuse the cycle's receipts, split by the comparison kind the spec records.
-        receipts = [c for c in (wm.s1.get("comparisons") or {}).values()
-                    if isinstance(c, dict) and "result" in c]
-        is_out = lambda c: (c.get("spec") or {}).get("type") == "inter_grid_output"
-        outputs = [c["result"] for c in receipts if is_out(c)]
-        intra = [c["result"] for c in receipts if not is_out(c)]
-        wm.s1["patterns"] = build_patterns(
-            task, intra_pair_receipts=intra or None, output_receipts=outputs or None)
+        wm.s1["patterns"] = patterns_from_cycle_receipts(task, wm.s1.get("comparisons"))
 
 
 # ======================================================================

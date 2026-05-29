@@ -157,6 +157,11 @@ def test_grid_comparison_specs_includes_intra_and_deciding_inter():
     assert len(by_type["inter_grid_output"]) == 1
     dec = by_type["inter_grid_output"][0]
     assert {dec["id1"], dec["id2"]} == {"T.P0.G1", "T.P1.G1"}
+    # The contrast Inter-Grid role==G0 comparison: pairwise over example inputs
+    # (C(2,2) == 1), comparing the two example G0 grids.
+    assert len(by_type["inter_grid_input"]) == 1
+    con = by_type["inter_grid_input"][0]
+    assert {con["id1"], con["id2"]} == {"T.P0.G0", "T.P1.G0"}
     # Every spec carries a unique key so receipts never collide on storage.
     keys = [s["key"] for s in specs]
     assert len(keys) == len(set(keys))
