@@ -1775,3 +1775,73 @@ items now surfaced: (1) `program/__init__.py` imports a non-existent `anti_unify
 capability gap remains modules A/B (impasse-driven descent + goal evolution), the
 centre of the raw-prose flow, large and Slice-2-ish in risk. Slice 1 stays
 functionally complete; Slice 2 is human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 00:15
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_001549.log
+
+---
+## Iter 26 — 2026-05-30T00:?? — branch test21
+
+**Diagnosis**: Probe is a clean 2/2 (stored `copy_common_output`), so I used it
+as a microscope on a *code-level* defect rather than the solve path — the first
+of iter 25's two recorded next gaps and a genuine bug, not doc/spec drift.
+`program/__init__.py` re-exported `anti_unify`, a name that does **not** exist in
+`program/anti_unification.py` (whose real public functions are
+`anti_unify_pair_programs` / `anti_unify_terms` / `program_lines_to_terms` /
+`terms_to_program_lines`). Because Python runs a package's `__init__.py` before
+importing any of its submodules, that single broken re-export made **both**
+`import program` *and* `from program.anti_unification import <anything>` raise
+`ImportError` — the entire anti-unification package (CLAUDE.md §8, module H) was
+unreachable. Confirmed live: `python -c "import program"` → `ImportError: cannot
+import name 'anti_unify'`. Currently harmless only because no live code imports
+the package (AU is unwired on this branch, Slice-2 OUT), but it is a latent
+landmine for the first Slice-2 iter that tries to reach AU. Fixing the package
+init is the smallest defensible step; it touches **no** solve path and does
+**not** wire AU (the functions remain `pass` stubs).
+
+**Change**:
+- `program/__init__.py`: re-export the four functions that actually exist
+  (`anti_unify_pair_programs`, `anti_unify_terms`, `program_lines_to_terms`,
+  `terms_to_program_lines`) instead of the non-existent `anti_unify`; updated
+  `__all__` and the module docstring to match. The package now imports. No
+  behaviour change to AU (still stubs) — purely repairs the package surface.
+- `tests/test_program_package_import.py` (new): 12 standalone cases — `import
+  program` succeeds, submodule import succeeds, `__all__` matches the real public
+  set, every advertised name is callable and is the *same object* as the
+  submodule's (genuine re-export, not a shadowing stub), and the non-existent
+  `anti_unify` is no longer advertised. Self-runs (pytest absent). 12/12 pass;
+  sibling suites re-run green (test_dsl, test_reconstruct_via_dsl,
+  test_validate_rule, test_compare_scheduler).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (unchanged — this iter repairs a package import that no solve path touches).
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — kept, not
+reverted; only exit 1 reverts). positives=all Δ0 (P1 2.0, P2 2.0, P3 0.0,
+P4 3099, P5 5, P6 522 — none moved). Honest NEUTRAL: repairing a broken package
+`__init__` is real work no P1–P6 metric measures, and Slice-1's in-scope positive
+headroom is exhausted (recognition vocab complete, `_try_*` retired iter 19,
+P3/AU is Slice-2/human-gated, P1/P2 saturated at 1-rule/2-task). NEUTRAL
+correctness iters are explicitly legitimate per INVARIANTS §2/§3. No frozen edit
+(F1 — `program/__init__.py` is not frozen); no `active_operators.py` touch so
+F2/F8 inert; no DSL `def`/`register` (F3 — the AU stubs are unchanged, not new
+primitives); no rule saved (F4 inert); no `TF_` under semantic_memory (F5); no
+budget growth (F6); no swallowed RuleSchemaError (F7).
+
+**Next gap (note for future iter)**: the second of iter 25's items — the deepest
+*capability* gap — remains: modules A (`DescendOperator`, impasse-driven descent)
+and B (GoalStack / goal evolution) are still stubs, the centre of the raw-prose
+flow; large, F8-risky (net-positive `active_operators.py` edit), and not required
+by SLICE_1_LOOP §8's relaxed criteria. Separately, `CLAUDE.md §3.2`/§8 still
+describe `save_rule()` wiring `anti_unification.unify()`, which does not match
+`test21`'s `save_rule_to_ltm` (no AU call site, and the live AU entry point is
+now `anti_unify_pair_programs`, not `unify()`) — a remaining spec↔code desync.
+Slice 1 stays functionally complete; Slice 2 is human-gated — do not start it.
