@@ -4666,3 +4666,79 @@ is exhausted; the loop has run dry on it.** The single unblock is **human
 action**: provide `SLICE_2_LOOP.md` (easy000b — G0 analysis, intra-pair
 relation-of-relations, DSL activation rules, anti-unification). Do not start
 Slice 2 autonomously.
+
+> STAGNATION at iter 62 — 7 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 05:43
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_054359.log
+
+---
+## Iter 63 — 2026-05-30T05:46 — branch test21 — no defensible step found (analysis only)
+
+**Diagnosis**: Slice 1 is functionally complete and human-gated (`SLICE_1_LOOP.md
+§10` — await `SLICE_2_LOOP.md`, do not start Slice 2 autonomously). 8th
+consecutive no-op. Re-diagnosed from scratch, not inherited: I re-ran the
+intended-flow tests live and located the single remaining *real* in-slice
+candidate (descent-matcher wiring) — but it moves no positive signal, so under
+§3 step 3 it cannot count as a valid iter, and §5 makes the no-op correct.
+
+**Evidence gathered this iter (not inherited)**:
+- `docs/SLICE_2_LOOP.md` absent; `git log -1` on `PROMPT.md` and
+  `docs/SLICE_1_LOOP.md` → both 2026-05-29 14:48, unchanged. Gate not opened.
+- Sole rule `procedural_memory/rule_003.json` (`copy_common_output_applies`,
+  value-agnostic, covers both targets). `ls rule_*.json` → 1 file.
+- `scripts/check_invariants.sh --check` → NEUTRAL, exit 0, all six at baseline:
+  P1 2.0, P2 2.0, P3 0.0, P4 3223, P5 10, P6 435.
+- Ran the intended-flow tests directly (pytest absent): `test_slow_path_
+  value_agnostic.py` **3/3 PASS** (both targets solve via the SOAR pipeline from
+  empty memory; red-vs-green value-agnostic; discovered rules structurally
+  identical) and `test_live_descent_wiring.py` **7/7 PASS** (module-A descent is
+  wired live and terminates at GRID). The way-the-user-intends flow is live, not
+  merely the probe's stored-rule fast path.
+
+**The one real candidate I examined and rejected (recorded for future iters)**:
+The live descent decision is made by `agent/elaboration_rules.py:NeedsDescentRule`
+via an ad-hoc flag check (`current-task ^ !descent-complete ^ !agenda`), **not**
+through the registered, value-agnostic `descent_warranted` matcher (which ORs
+`nothing_to_compare` ∨ `needs_descend`). Routing the decision through the matcher
+would improve *uniformity* (§8 criterion 2 — same kind of work via the same
+module) and make those three registered-but-unconsumed matchers live. But: (a)
+it is **intentional library-first design** per CLAUDE.md §6.3, explicitly noted
+as "a future iter's step" in RULE_FORMAT.md §4 — not a defect; (b) it is **not
+required** by §8's relaxed pass criteria (the answer is already correct and
+faithful); and (c) decisively, it **moves no positive signal P1–P6** — so it is
+a NEUTRAL change carrying live-trigger regression risk. Per PROMPT.md §5 a wrong
+/ risk-bearing neutral commit is worse than a no commit. Deferred, not done.
+
+**Positive-signal analysis (why none is defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 — 1 rule, 2 tasks; raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists). Frozen.
+- P3: anti-unification is explicitly OUT of Slice 1 (`SLICE_1_LOOP.md §4 OUT, §9`).
+- P4: auto-increments per solve regardless of code — not a code contribution.
+- P5: recognition vocabulary already covers the whole §3 flow; a new matcher
+  would be dead vocabulary (no live consumer) — the F4-class failure mode.
+- P6: `_try_*`/`_apply_*` already retired; remaining operators are wired-live
+  (incl. `VerifyOperator`, per iter-62 correction) — nothing safely removable.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: Slice 1 is exhausted; the single unblock is
+**human action** — provide `SLICE_2_LOOP.md`. When it opens, the highest-value
+*in-architecture* first step already exists as built-but-unconsumed library:
+wire the descent decision through `descent_warranted` (above), then begin
+easy000b's G0 analysis / intra-pair relation-of-relations / DSL activation rules
+/ anti-unification. Do not start Slice 2 autonomously.
+
+> STAGNATION at iter 63 — 8 consecutive neutral iters.
