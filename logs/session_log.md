@@ -1231,3 +1231,79 @@ the most glaring remaining gaps are out-of-scope for Slice 1: anti-unification /
 module H (P3), fast-path-already-live, and `_try_*` removal (needs AU
 supersession). Slice 1 looks ready for a clean §8 self-assessment / §10 COMPLETE;
 Slice 2 remains human-gated. Observe; do not start it.
+
+---
+## Learning Loop -- 2026-05-29 23:03
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_230358.log
+
+---
+## Learning Loop -- 2026-05-29 23:09
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260529_230906.log
+
+---
+## Iter 19 — 2026-05-29T23:09 — branch test21
+
+**Diagnosis**: Recognition vocabulary is complete (iter 18: every §3 comparison
+family has a named matcher; the last two matchers are already "named but
+unconsumed"). Adding a 6th matcher would be unprincipled accretion in the
+recognition dimension. The most architecturally-aligned in-scope gap is the
+*other* direction: `GeneralizeOperator` still falls back to the hand-coded
+`_try_recolor_sequential` / `_try_color_mapping` detectors (and their
+`_apply_*` consumers) — the closed `_try_*`/`_apply_*` family that
+CLAUDE.md §5.1 and INVARIANTS P6 exist to retire. They are superseded for
+Slice 1 by the value-agnostic copy-common-output recognition path, no stored
+rule uses them (only rule_003 = copy_common_output), and they are exactly the
+"surface pattern-matching" the raw prose rejects (P3/P4: an answer must have a
+basis in COMM/DIFF comparison, not a guessed heuristic).
+
+**Change** (pure deletion — net negative, F8-exempt):
+- `agent/active_operators.py`: removed the producers `_try_recolor_sequential`,
+  `_check_sort_key`, `_try_color_mapping` from `GeneralizeOperator`, and their
+  consumers `_apply_recolor_sequential`, `_apply_color_mapping`, the helper
+  `_group_positions`, and their dispatch branches in `PredictOperator._apply_rule`.
+  `GeneralizeOperator.effect` now goes recognition → identity (the null
+  hypothesis: "no comparison-grounded rule found" rather than a surface guess).
+  `_apply_rule` keeps only the value-agnostic `identity`; unrecognised types
+  yield `None` ("no prediction"). 687 → 522 lines (−165).
+- No other file touched. `memory.py`'s color_mapping/recolor_sequential metadata
+  (condition-type map, equivalence, concept inference) is left intact and
+  coherent — it only describes such rules if any are *loaded*, none are produced
+  now; removing it would expand blast radius for no gain.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); Reused 2; 1 rule; P6=687 lines.
+**Probe after** : 2/2 correct; via=stored(easy000a); Reused 2; 1 rule; P6=522 lines.
+
+**Invariants**: forbidden=none (checker verdict CLEAN, exit 0). positives:
+P6 +165 (687→522 lines removed — the substantive contribution; the strongest
+single architectural-progress signal per INVARIANTS §2, the closed
+`_try_*`/`_apply_*` family shrinking as intended). P4 +2 is the mechanical
+artifact of running the probe this iter (each solve writes an episode),
+disclaimed as in prior iters, NOT claimed as the contribution. P1/P2 saturated
+for a 1-rule/2-task probe; P3 needs anti-unification (Slice-1 OUT); P5 held at 5
+(recognition vocab already complete — deliberately not grown). No frozen edit
+(F1); no new `_try_*`/`_apply_*` — only removals (F2); no DSL def/register (F3);
+no rule saved (F4 inert); no `TF_` write (F5); no budget growth (F6); no
+swallowed RuleSchemaError (F7); active_operators.py net-negative so F8 inert.
+All standalone tests pass (9/9; `test_fast_path_reuse.py` needs pytest —
+pre-existing, confirmed no dependency on removed code).
+
+**Next gap (note for future iter)**: with the surface-detector family retired,
+the slow path is now recognition-or-identity only — there is no avenue to
+*discover* a new transformation rule, because anti-unification (module H, P3)
+is OUT of Slice 1. That is correct for Slice 1 (its one mechanism is
+copy-common-output) but means P3/P6 are now both at their Slice-1 ceiling.
+Remaining in-scope signal headroom is thin: Slice 1 may be ready for a clean §8
+self-assessment / §10 SLICE 1 COMPLETE declaration. Slice 2 (anti-unification,
+G0 analysis, activation rules) is human-gated — do not start it. Observe.

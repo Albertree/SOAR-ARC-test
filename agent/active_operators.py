@@ -303,15 +303,15 @@ class GeneralizeOperator(Operator):
         if self._recognizes_copy_common_output(wm):
             rule = {"type": "copy_common_output", "confidence": 1.0}
 
-        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        if rule is None:
-            rule = self._try_recolor_sequential(patterns)
-
-        # Strategy 2: simple 1:1 color mapping
-        if rule is None:
-            rule = self._try_color_mapping(patterns)
-
-        # Fallback: identity (copy input as output)
+        # No principled (comparison-grounded) rule recognised -> identity, the
+        # null hypothesis. ARBOR deliberately does NOT fall back to hand-coded
+        # surface detectors here: an answer must have a basis in COMM/DIFF
+        # comparison (P3/P4), and a missing basis is reported as "no
+        # transformation found" (identity, confidence 0) rather than papered
+        # over with a pattern-matched heuristic. The mechanism that *discovers*
+        # new bases is anti-unification (CLAUDE.md §8), never a growing _try_*
+        # family (CLAUDE.md §5.1). The retired detectors (recolor_sequential /
+        # color_mapping) were that family; they are gone, not extended.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
 
@@ -348,99 +348,6 @@ class GeneralizeOperator(Operator):
                  "required_properties": ["size", "color", "contents"]},
             )
         )
-
-    # ---- strategy: sequential recoloring --------------------------------
-
-    def _try_recolor_sequential(self, patterns):
-        """
-        Detect pattern: all changed-cell groups have one source color,
-        output colors are sequential (1,2,3,...), ordered by position.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
-            return None
-
-        # All pairs must have the same number of change groups
-        group_counts = [a["num_groups"] for a in pair_analyses]
-        if len(set(group_counts)) != 1 or group_counts[0] == 0:
-            return None
-
-        all_source_colors = set()
-
-        for analysis in pair_analyses:
-            for g in analysis["groups"]:
-                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
-                    return None
-                all_source_colors.add(g["input_colors"][0])
-
-            out_colors = sorted(set(g["output_colors"][0] for g in analysis["groups"]))
-            expected = list(range(min(out_colors), min(out_colors) + len(out_colors)))
-            if out_colors != expected:
-                return None
-
-        # Try sorting by different position keys
-        for sort_key in ["top_row", "top_col"]:
-            if self._check_sort_key(pair_analyses, sort_key):
-                start_color = min(
-                    g["output_colors"][0]
-                    for g in pair_analyses[0]["groups"]
-                )
-                return {
-                    "type": "recolor_sequential",
-                    "sort_key": sort_key,
-                    "start_color": start_color,
-                    "source_colors": sorted(all_source_colors),
-                    "confidence": 1.0,
-                }
-
-        return None
-
-    @staticmethod
-    def _check_sort_key(pair_analyses, sort_key):
-        """Verify that sorting groups by sort_key produces sequential output colors."""
-        for analysis in pair_analyses:
-            groups = analysis["groups"]
-            sorted_groups = sorted(groups, key=lambda g: g[sort_key])
-            colors = [g["output_colors"][0] for g in sorted_groups]
-            if colors != list(range(colors[0], colors[0] + len(colors))):
-                return False
-        return True
-
-    # ---- strategy: simple color mapping ---------------------------------
-
-    def _try_color_mapping(self, patterns):
-        """
-        Detect pattern: each input color consistently maps to one output color.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
-            return None
-
-        # Collect all observed color transitions
-        color_map = {}
-        for analysis in pair_analyses:
-            for group in analysis["groups"]:
-                for ic in group["input_colors"]:
-                    for oc in group["output_colors"]:
-                        if ic not in color_map:
-                            color_map[ic] = set()
-                        color_map[ic].add(oc)
-
-        # Each input color must map to exactly one output color
-        simple_map = {}
-        for ic, ocs in color_map.items():
-            if len(ocs) != 1:
-                return None
-            simple_map[ic] = list(ocs)[0]
-
-        if simple_map:
-            return {
-                "type": "color_mapping",
-                "mapping": simple_map,
-                "confidence": 0.8,
-            }
-
-        return None
 
 
 # ======================================================================
@@ -546,92 +453,20 @@ class PredictOperator(Operator):
     # ---- rule application dispatchers ------------------------------------
 
     def _apply_rule(self, rule, input_grid):
+        """Apply a per-grid transform rule to one input grid.
+
+        Only the value-agnostic ``identity`` (null transform) survives here.
+        The hand-coded ``recolor_sequential`` / ``color_mapping`` appliers were
+        retired together with their producers (the closed _try_*/_apply_*
+        family, CLAUDE.md §5.1) — new transformational vocabulary is meant to be
+        *discovered* via anti-unification and dispatched from the data layer
+        (CLAUDE.md §6.2), not hand-written here. An unrecognised rule type
+        yields ``None`` ("no prediction") rather than a guessed transform (P3).
+        """
         rule_type = rule.get("type")
-        if rule_type == "recolor_sequential":
-            return self._apply_recolor_sequential(rule, input_grid)
-        if rule_type == "color_mapping":
-            return self._apply_color_mapping(rule, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
-
-    def _apply_recolor_sequential(self, rule, input_grid):
-        raw = input_grid.raw
-        height = len(raw)
-        width = len(raw[0]) if raw else 0
-        sort_key = rule["sort_key"]
-        start_color = rule["start_color"]
-        source_colors = set(rule.get("source_colors", []))
-
-        # Find target cells
-        target_cells = []
-        for r in range(height):
-            for c in range(width):
-                if raw[r][c] in source_colors:
-                    target_cells.append((r, c))
-
-        if not target_cells:
-            return [row[:] for row in raw]
-
-        # Group into connected components
-        groups = self._group_positions(target_cells)
-
-        # Sort groups by the rule's sort key
-        def _sort_val(group):
-            if sort_key == "top_row":
-                return min(r for r, c in group)
-            if sort_key == "top_col":
-                return min(c for r, c in group)
-            return 0
-
-        sorted_groups = sorted(groups, key=_sort_val)
-
-        # Build output grid
-        output = [row[:] for row in raw]
-        for idx, group in enumerate(sorted_groups):
-            new_color = start_color + idx
-            for r, c in group:
-                output[r][c] = new_color
-
-        return output
-
-    def _apply_color_mapping(self, rule, input_grid):
-        raw = input_grid.raw
-        mapping = rule.get("mapping", {})
-
-        output = []
-        for row in raw:
-            output.append([mapping.get(cell, cell) for cell in row])
-        return output
-
-    # ---- helpers ---------------------------------------------------------
-
-    @staticmethod
-    def _group_positions(positions):
-        """Group (row, col) positions into 4-connected components."""
-        pos_set = set(positions)
-        visited = set()
-        groups = []
-
-        for pos in positions:
-            if pos in visited:
-                continue
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_set:
-                    continue
-                visited.add(p)
-                group.append(p)
-                r, c = p
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (r + dr, c + dc)
-                    if nb in pos_set and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
 
 
 # ======================================================================
