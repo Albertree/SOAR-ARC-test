@@ -5828,3 +5828,62 @@ gating `preferences.select_operator` (satisfaction logic already live via
 for live-trigger regression safety.
 
 > STAGNATION at iter 80 — 25 consecutive neutral iters (human-gated; awaiting SLICE_2_LOOP.md).
+
+> STAGNATION at iter 80 — 25 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 06:58
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_065806.log
+
+---
+## Iter 81 — 2026-05-30T06:59 — branch test21
+
+**Iter 81: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-diagnosed fresh with live commands (gate state, data inventory,
+rule inventory, invariant `--check`). Slice 1 remains complete by all four
+observation criteria, and the Slice-2 human gate (`SLICE_1_LOOP.md §10`) is still
+CLOSED. No agent-side change lifts a positive signal without either gaming a metric
+or crossing that gate.
+
+**Fresh verification this turn**:
+- Gate CLOSED: `docs/SLICE_2_LOOP.md` ABSENT; `data/ARC_easy/` = {easy000a.json,
+  easy000a2.json} only (no easy000b*).
+- One rule on disk: `rule_003.json`, covers `['easy000a','easy000a2']`,
+  value-agnostic, `anti_unification_trace=null` (correct single-source initial rule;
+  AU is OUT of Slice 1 per §4/§9).
+- Invariant `--check` (base b92ea251): exit 2, NEUTRAL — P1=2.0 P2=2.0 P3=0.0
+  P4=3259 P5=10 P6=435 (all Δ0). Matches the probe: easy000a + easy000a2 both
+  CORRECT via stored(easy000a), value-agnostic (easy000a2's distinct fixed output
+  rules out a hardcoded literal).
+
+**Positive-signal analysis (none defensibly movable in-slice)**:
+- P1/P2: capped at 2.0 (1 rule, 2 tasks); raising needs a new solved task (pool
+  frozen, F6) or a rule merge (only 1 rule exists).
+- P3: anti-unification is explicitly OUT of Slice 1 (§4/§9).
+- P4: grows only by running more solves — metric-gaming, not a contribution.
+- P5: §3 flow is fully covered by the 10 live matchers; a new matcher would be dead
+  vocabulary the Slice-1 flow never exercises.
+- P6: the lone `_apply_rule` is the generic value-agnostic dispatcher, not a
+  closed-family special case — nothing safely removable.
+
+**Change**: none committed (this log entry only, per PROMPT.md §5).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 by design.
+
+**Next gap (note for future iter)**: unchanged — the single unblock is **human action:
+provide `docs/SLICE_2_LOOP.md`** (+ Slice-2 data `easy000b.json`/`easy000b2.json`).
+Do not start Slice 2 autonomously (§10). When it opens, the highest-value first step
+is wiring module B's `GoalStack` as a live S1 WM object gating
+`preferences.select_operator` (satisfaction logic already live via
+`schema_goal_satisfied`); split it (consult-only first, then preference influence)
+for live-trigger regression safety.
