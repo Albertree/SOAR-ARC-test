@@ -23,10 +23,18 @@ same goal.
 ## 2. What this iter is for
 
 One iter = one **smallest concrete step** toward the goal above. You are not
-asked to "improve ARC score." You are asked to:
+asked to "improve ARC score." Each iter you:
 
-1. **Diagnose** what is missing right now between the current code and the
-   intended system.
+0. **Solve the current slice's target task(s)** — the active slice doc
+   (`docs/SLICE_<N>_LOOP.md`, currently `docs/SLICE_1_LOOP.md`) names them and
+   gives the exact select/compare sequence the solve should resemble. Run them
+   and **observe whether the system solves them *the way the user intends*** —
+   judged by the **four observation criteria** (1: works, 2: uniformity of
+   *modules* [the produced program may be overfit], 3: approaches the answer,
+   4: search sanity), **NOT by score**. The probe output in your context is a
+   microscope for this, not a target to maximize.
+1. **Diagnose** the smallest gap between *how it solves now* and *how the user
+   intends it to solve* (per the slice doc's sequence + criteria).
 2. **Fill** the smallest such gap with the smallest defensible change.
 3. **Verify** that the change did not trip any forbidden signal in
    `docs/INVARIANTS.md §1`, and improved at least one positive signal in §2.
@@ -42,13 +50,23 @@ loop will keep running — there is always a next iter.
 
 Read these, in this order, every iter:
 
-1. `CLAUDE.md` — architecture invariants (frozen files, operator pipeline,
+1. **`docs/SLICE_<N>_LOOP.md`** — the **active slice** (currently
+   `docs/SLICE_1_LOOP.md`). THIS IS YOUR CONCRETE TARGET FOR THIS ITER: which
+   task(s) the slice must solve, the module scope (IN/OUT), the 7 design
+   principles, the exact select/compare sequence, and the (relaxed) pass
+   criteria. **It also lists original sources you MUST read in full** (the
+   user's raw prose at `~/Desktop/wiki/raw/notion-idea-arbor-flow-three-task-description-2026-05-21.md`
+   and `~/Desktop/wiki/wiki/arbor-execution-trace.md`) — do not work from the
+   slice doc's summary alone; read those originals so detail is not lost.
+2. `CLAUDE.md` — architecture invariants (frozen files, operator pipeline,
    memory schema).
-2. `docs/INVARIANTS.md` — what is forbidden / what counts as progress.
-3. `docs/RULE_FORMAT.md` — current rule schema.
-4. The output of the probe run that `run_loop.sh` just executed (it is in
-   the prompt context as `${PROBE_OUTPUT}` — see Step 2).
-5. The wiki module map at `~/Desktop/wiki/wiki/arbor-modules.md` if it
+3. `docs/INVARIANTS.md` — what is forbidden / what counts as progress.
+4. `docs/RULE_FORMAT.md` — current rule schema.
+5. The output of the probe run that `run_loop.sh` just executed (it is in
+   the prompt context as `${PROBE_OUTPUT}` — see Step 2). Note: until the probe
+   targets the slice's tasks (see §below), treat it as a *secondary* signal and
+   run the slice's own target task(s) per `docs/SLICE_1_LOOP.md` directly.
+6. The wiki module map at `~/Desktop/wiki/wiki/arbor-modules.md` if it
    exists — its **Gap** column is the canonical list of unfilled holes.
 
 ### Step 2 — Diagnose one gap
