@@ -1692,3 +1692,86 @@ deepest *capability* gap remains modules A/B (impasse-driven descent + goal
 evolution) — the centre of the raw-prose flow — but that is large and Slice-2-ish
 in risk; weigh carefully. Slice 1 stays functionally complete; Slice 2 is
 human-gated — do not start it.
+
+---
+## Learning Loop -- 2026-05-30 00:04
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_000456.log
+
+---
+## Iter 25 — 2026-05-30T00:15 — branch test21
+
+**Diagnosis**: Probe is a clean 2/2 (stored `copy_common_output`); I confirmed the
+*slow path* also solves both slice tasks the intended way (manual `run_cycle` →
+goal satisfied, `copy_common_output` discovered via comparison+conditions, not a
+stored hit), so Slice-1's functional + 4-observation criteria hold. Used the
+probe as a microscope on the spec↔code contract — the recorded next gap of iters
+22/23/24. `docs/RULE_FORMAT.md §7 "Implementation Status"` was wholesale
+**foreign lineage** (branch `test20`/iter37): it tabulated ~15 condition matchers
+(`grid_size_preserved`, `consistent_color_mapping`, `sequential_recoloring`,
+`output_color_uniform`, the dimension/group-count quadrant, …), `memory.py`
+functions (`translate_to_schema`/`next_rule_id`/`_persist_pipeline_rule`/
+`migrate_legacy_rules`), `active_agent.py` helpers, and ~20 test modules **none
+of which exist on `test21`**. Anyone reading the authoritative rule-format spec
+would badly misjudge what is implemented. Reconciling §7 to the live branch is
+the smallest defensible correctness step and continues the spec-convergence arc
+(§4→iter21, validator→iter22/23, §1→iter24, §7→iter25). The deeper *capability*
+gap (modules A `DescendOperator` / B goal-evolution — impasse-driven descent) is
+the heart of the raw-prose flow but is large, F8-risky (net-positive
+`active_operators.py` edit), and not required by SLICE_1_LOOP.md §8's relaxed
+criteria; deferred as in prior iters.
+
+**Change** (doc-only; zero code, zero forbidden-signal surface):
+- `docs/RULE_FORMAT.md §7`: replaced the foreign `test20`/iter37 status block
+  with an accurate `test21` inventory. Added a reconciliation note (mirroring
+  §1.1) stating the prior content described a non-existent lineage recoverable
+  from git history. Split into §7.1 (cross-branch facts still true: `main`
+  empty, `test13-eval` 168-rule failure, DSL frozen at two) and §7.2 (`test21`
+  live components: the single live `rule_003`, the 5 real matchers = P5, the
+  real `memory.py`/`active_agent.py`/`compare_scheduler.py`/`episodic.py` APIs,
+  AU present-but-unwired, `_try_*` retired, A/B stubs, the 13 real test modules).
+- Recorded two true facts the old §7 hid: (a) anti-unification is **not** wired
+  into `save_rule_to_ltm` on this branch (the live fn names are
+  `anti_unify_pair_programs`/`anti_unify_terms`, not §8's generic `unify()`);
+  (b) `program/__init__.py` re-exports a non-existent `anti_unify`, so
+  `import program` raises — a latent bug, currently harmless (no live importer).
+- §8 cross-refs: dropped the stale "(to be written)" on `docs/ANTI_UNIFICATION.md`
+  (it exists); kept the note that `docs/SESSION_LOG_FORMAT.md` does not.
+- **Verification**: a script asserted every §7.2 claim against the live code
+  (14 required `memory.py` names present + 4 foreign names absent; `save_rule`
+  alias; no `unify` in the writer source; 7 `active_agent` helpers present + 3
+  foreign absent; exactly the 5 matchers; 11 scheduler fns; `write_episode`;
+  AU submodule loaded directly past the broken `__init__` exposing the two real
+  fns and lacking `anti_unify`; both doc-existence facts; 13 test files;
+  `rule_003` condition/action). Result: ALL CLAIMS OK.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0
+  (unchanged — this iter corrects documentation, not a solve path).
+
+**Invariants**: forbidden=none (checker verdict **NEUTRAL**, exit 2 — kept, not
+reverted; only exit 1 reverts). positives=all Δ0 (P1 2.0, P2 2.0, P3 0.0,
+P4 3097, P5 5, P6 522 — none moved). Honest NEUTRAL: documentation correctness on
+the authoritative spec is real work no P1–P6 metric measures, and Slice-1's
+in-scope positive headroom is exhausted (recognition vocab complete, `_try_*`
+retired iter 19, P3/AU is Slice-2/human-gated, P1/P2 saturated at 1-rule/2-task).
+NEUTRAL correctness iters are explicitly legitimate per INVARIANTS §2/§3. No
+frozen edit (F1 — `docs/RULE_FORMAT.md` is not under `docs/arbor_context/`); no
+`active_operators.py` touch so F2/F8 inert; no DSL `def`/`register` (F3); no rule
+saved (F4 inert); no `TF_` under semantic_memory (F5); no budget growth (F6); no
+swallowed RuleSchemaError (F7). Diff is net-negative on the file (39+/45−).
+
+**Next gap (note for future iter)**: the largest remaining spec↔code desync is
+likely `CLAUDE.md §3.2` / §8, which still describe `save_rule()` wiring
+`anti_unification.unify()` (true of the spec, false of `test21`'s
+`save_rule_to_ltm`, which has no AU call site). Separately, two real code-level
+items now surfaced: (1) `program/__init__.py` imports a non-existent `anti_unify`
+(`import program` raises) — a one-line fix but a genuine bug; (2) the deepest
+capability gap remains modules A/B (impasse-driven descent + goal evolution), the
+centre of the raw-prose flow, large and Slice-2-ish in risk. Slice 1 stays
+functionally complete; Slice 2 is human-gated — do not start it.
