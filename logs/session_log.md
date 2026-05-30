@@ -9937,3 +9937,46 @@ positive-signal baseline; a no-op is the correct output here.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until
 the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue
 emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+---
+## Learning Loop -- 2026-05-30 12:16
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_121640.log
+
+---
+## Iter 179 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice 1 remains converged — probe shows easy000a + easy000a2 both
+CORRECT (2/2, 100%) via the *same* value-agnostic `copy_common_output` stored rule
+(rule_003.json), reused twice, +0 learned (P1=2.0, P2=2.0). Re-verified the two
+Slice-2 gate artifacts are still ABSENT: `docs/SLICE_2_LOOP.md` and
+`data/ARC_easy/easy000b.json` (ARC_easy holds only easy000a/a2; procedural_memory
+holds only rule_003.json). The sole remaining frontier (easy000b: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification)
+is an explicitly **human-gated** transition (SLICE_1_LOOP §10 step 2).
+
+**Change**: none (no code change committed). Iters 177–178 already exhausted the
+in-scope robustness surface in `agent/memory.py` (id-gap clobber fixed + its test;
+F7 swallow audited clear). No genuine new latent bug; fabricating another micro-fix
+would be the churn [[slice1_converged]] warns against.
+
+**Probe before**: 2/2 correct; rules 1->1 (+0 learned); covers mean 2.0.
+**Probe after** : 2/2 correct; rules 1->1 (+0 learned); covers mean 2.0.
+
+**Invariants**: forbidden=none (F1–F8 clear). positives=all Δ0 (intentional no-op).
+P1/P2 pinned for this 2-task slice (adding a task = F6 pool-growth); P3=0 correct
+(anti-unification OUT of Slice 1 §9); P4 alive (episodic writer wired); P5/P6
+hand-bumps would be metric-gaming (PROMPT §4).
+
+**Iter 179: no defensible step found — analysis only** (PROMPT.md §5). No honest
+positive-signal step exists while Slice 2 is gated; a wrong commit pollutes the
+baseline, a no-op is correct.
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until
+the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue
+emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
