@@ -13143,3 +13143,50 @@ provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.jso
 Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
 
 > STAGNATION at iter 252 — 75 consecutive neutral iters.
+
+> STAGNATION at iter 252 — 75 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:00
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_150024.log
+
+---
+## Iter 253 — 2026-05-30T15:01 — branch test21
+
+**Iter 253: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
+converged behind a closed human gate. Recalled [[slice1_converged]].
+
+**Diagnosis**: Re-verified the three gating facts first-hand (not from memory):
+`docs/SLICE_2_LOOP.md` is **ABSENT** (§10 human gate still closed);
+`data/ARC_easy/` = {easy000a, easy000a2} only — no `easy000b.json` (F6 pool
+frozen); procedural memory = a single `rule_003.json`. Probe = 2/2 CORRECT via
+stored(easy000a) rule=copy_common_output, +0 learned. `check_invariants --check`
+reports NEUTRAL, all P1–P6 Δ0 (P4 episodic=3618 flat). State identical to
+iters 102–252.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice.
+P1/P2 — both tasks already in `covers`; F6 freezes the pool so no honest
+merge/absorb exists. P3=0 — anti-unification is OUT of Slice 1 (§9); a
+single-source rule cannot be AU'd. P4 moves only as a side effect of re-running
+solves (metric-gaming). P5/P6 immovable — recognition vocabulary is complete and
+nothing dead remains to delete. Any code change either trips a forbidden signal
+or games a metric; §5 holds a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
+Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
+
+> STAGNATION at iter 253 — 76 consecutive neutral iters.
