@@ -19057,3 +19057,48 @@ intra-pair relation contributing to the answer, activation rules, anti-unificati
 wiring) is human-gated, blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json`
 land (§10 step 2). Autonomous iters should no-op, not churn. Continued STAGNATION here
 is the loop correctly surfacing the human gate, not a defect to code around.
+
+> STAGNATION at iter 397 — 5 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 20:30
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_203049.log
+
+---
+## Iter 398 — 2026-05-30 — branch test21
+
+**Iter 398: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-verified first-hand (not from memory): `procedural_memory/rule_*.json`
+→ single `rule_003.json`; `data/ARC_easy/` → only `easy000a.json`/`easy000a2.json`
+(pool frozen by F6); `docs/SLICE_*.md` → only `SLICE_1_LOOP.md` (Slice-2 human gate
+still closed). `SLICE 1 COMPLETE` already declared at session_log.md:1452 (+10
+re-affirmations). Probe = 2/2 CORRECT, both via stored rule_003 (`copy_common_output`,
+value-agnostic), +0 learned — no §7 hardcoding trap.
+
+**Why no commit**: every positive signal P1–P6 is gated by the fixed 2-task slice, not
+by laziness. Both tasks already in `covers` (P1/P2 saturated under a frozen pool);
+anti-unification wiring is explicitly OUT of Slice-1 scope and human-gated (P3, §9/§10);
+re-triggering the live episodic writer is a probe side effect = metric-gaming (P4); a
+matcher recognizing nothing new is a hand-bump (P5, PROMPT §4); no AU is online to
+supersede a `_try_*`, so deletion would break the converged solve path (P6). A wrong
+commit pollutes the positive-signal baseline worse than no commit (§5).
+
+**Change**: none toward the goal. This log entry only.
+
+**Probe before**: 2/2 correct; via stored rule_003 (copy_common_output); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — Slice 2 (`easy000b`: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification wiring)
+is human-gated, blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` land
+(§10 step 2). Autonomous iters should no-op, not churn. Continued STAGNATION here is the
+loop correctly surfacing the human gate, not a defect to code around.
