@@ -16055,3 +16055,28 @@ A wrong commit pollutes the baseline worse than no commit (§5), so the correct 
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
 blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
 Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 319 — 142 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:21
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_172119.log
+
+## Iter 320 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice-1 convergence re-confirmed for iter 320. Probe shows 2/2 correct via the single stored rule (file `rule_003.json`, concept `copy_common_example_output`, value-agnostic `condition.type=copy_common_output_applies`, `action.dsl=make_grid`, covers=[easy000a, easy000a2]); exactly one rule file in `procedural_memory/`, episode traces exist for both tasks, and `check_invariants.sh --check` reports verdict NEUTRAL with no forbidden-signal trip (P1=2.0, all positives Δ0). Per `slice1_converged.md` memory and SLICE_1 §10, Slice 1 is human-gated for promotion, so the correct iter behavior is a no-op (observe and confirm, do not churn).
+
+**Change**: none (analysis-only iter).
+
+**Probe before**: 2/2 correct, 1 rule, covers mean = 2.0
+**Probe after** : 2/2 correct, 1 rule, covers mean = 2.0 (unchanged — no code touched)
+
+**Invariants**: forbidden=none, positives=P1..P6 all unchanged (no-op iter, baseline preserved)
+
+**Next gap (note for future iter)**: Slice 2 (anti-unification across ≥3 tasks) is the next frontier, but it is human-gated and OUT of scope until the slice pointer is bumped — do not start it autonomously.
