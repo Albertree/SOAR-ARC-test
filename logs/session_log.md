@@ -13418,3 +13418,50 @@ a metric; §5 holds a wrong commit worse than none.
 **Next gap (note for future iter)**: unchanged — gated on **human handoff**:
 provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
 Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
+
+> STAGNATION at iter 258 — 81 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_150852.log
+
+---
+## Iter 259 — 2026-05-30T15:10 — branch test21
+
+**Iter 259: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
+converged behind a closed human gate. Re-verified the gate first-hand this iter
+(`git ls-files` / `ls` / `grep`) rather than trusting [[slice1_converged]] memory.
+
+**Diagnosis**: Gating facts re-checked directly: `git ls-files docs/SLICE_2_LOOP.md`
+empty — **§10 human gate closed**; `data/ARC_easy/` = {easy000a, easy000a2} only,
+no `easy000b.json` (F6 freezes the pool); procedural memory = single
+`rule_003.json` carrying a `"condition"` key (grep count=1). Probe = 2/2 CORRECT
+via stored(easy000a) rule=copy_common_output, +0 learned, reused 2×. State
+identical to iters 102–258.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice.
+P1/P2 — both tasks already in `covers`; no honest merge/absorb without growing
+the pool (F6). P3=0 is correct — anti-unification is OUT of Slice 1 (§9) and a
+single-source rule cannot be AU'd. P4 moves only as a side effect of re-running
+solves (metric-gaming). P5/P6 immovable — recognition vocabulary complete,
+nothing dead to delete. Any code change either trips a forbidden signal or games
+a metric; §5 holds a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
+Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
+
+> STAGNATION at iter 259 — 82 consecutive neutral iters.
