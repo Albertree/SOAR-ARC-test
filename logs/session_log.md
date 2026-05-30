@@ -10015,3 +10015,42 @@ of Slice 1 §9). No honest positive-signal step exists while Slice 2 is gated.
 **Next gap (note for future iter)**: Unchanged — gated. No autonomous step is honest
 until a human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`).
 Keep emitting no-op analysis entries; do not churn docs or fabricate Slice-2 work.
+
+> STAGNATION at iter 180 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 12:19
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_121932.log
+
+---
+## Iter 181 — 2026-05-30 — branch test21
+
+**Diagnosis**: Verified from files (not memory): only `SLICE_1_LOOP.md` exists and
+`data/ARC_easy/` holds only `easy000a.json` + `easy000a2.json` — no `SLICE_2_LOOP.md`,
+no `easy000b.json`. Probe is 2/2 via the single value-agnostic `rule_003.json`
+(`action.dsl=make_grid`, empty args, no literal `(5,5)`/red; `condition` present F4✓;
+covers both tasks; `trace=null` correct as a single-source reused rule, not AU-generalized).
+Slice 1 is converged ([[slice1_converged]]); Slice 2 is human-gated (§10 step 2) with
+no data to act on.
+
+**Change**: none (analysis only).
+
+**Probe before**: 2/2 correct; rules 1→1 (+0 learned); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (F1–F8 clear). positives=all Δ0 (intentional no-op).
+Growing the pool for P1 = F6; AU for P3 is OUT of Slice 1 (§9); hand-bumping P5/P6 =
+metric-gaming (PROMPT §4). No honest positive-signal step exists while Slice 2 is gated.
+
+**Iter 181: no defensible step found — analysis only** (PROMPT.md §5). A wrong commit
+pollutes the positive-signal baseline; a no-op is the correct output.
+
+**Next gap (note for future iter)**: Unchanged — gated. No autonomous step is honest
+until a human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Keep
+emitting no-op analysis entries; do not churn docs or fabricate Slice-2 work.
