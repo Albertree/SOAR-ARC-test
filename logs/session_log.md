@@ -18874,3 +18874,50 @@ PROMPT.md §5: a wrong commit pollutes the baseline worse than no commit.
 relation that contributes to the answer, activation rules, anti-unification wiring) is
 human-gated, blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided
 (SLICE_1_LOOP.md §10). Until then autonomous iters should no-op, not churn.
+
+---
+## Learning Loop -- 2026-05-30 20:26
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_202601.log
+
+---
+## Iter 394 — 2026-05-30 — branch test21
+
+**Iter 394: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 remains converged behind the human gate on Slice 2. Verified
+first-hand this iter (not from memory, per [[slice1_converged]]): `ls data/ARC_easy/` →
+only `easy000a.json`/`easy000a2.json` (pool frozen by F6); `ls docs/SLICE_*.md` → only
+`SLICE_1_LOOP.md` (no `SLICE_2_LOOP.md`); one `rule_003.json` parsed via `json.load` →
+`concept=copy_common_example_output`, `condition.type=copy_common_output_applies`,
+`action.dsl=make_grid`, `covers=[easy000a, easy000a2]`, `anti_unification_trace=None` —
+valid and value-agnostic (AU is OUT of Slice-1 scope §9). Probe = 2/2 CORRECT, both via
+stored rule_003 (`copy_common_output`), +0 learned — §7's hardcoding trap is absent.
+
+**Why no commit**: every positive signal is gated by the fixed 2-task slice, not lazy.
+- P1 (solved/total_rules) & P2 (mean covers): both tasks already in `covers`; F6 freezes
+  the pool so no honest absorb exists.
+- P3 (AU-trace fraction): AU wiring is explicitly OUT of Slice-1 scope (§9), human-gated (§10).
+- P4 (episodic entries): episodic writer already alive (`agent/episodic.py`); moving it is
+  only a probe-rerun side effect = metric-gaming.
+- P5 (condition matchers): a matcher with nothing new to recognize = hand-bump (PROMPT.md §4).
+- P6 (delete a live `_try_*`): no AU online in Slice 1 to supersede one; deletion would
+  break the converged solve path = destabilizing churn.
+A wrong commit pollutes the positive-signal baseline worse than no commit (§5).
+
+**Change**: none toward the goal. This log entry only.
+
+**Probe before**: 2/2 correct; via stored rule_003 (copy_common_output); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — Slice 2 (`easy000b`: G0 analysis, intra-pair
+relation contributing to the answer, activation rules, anti-unification wiring) is human-gated,
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
+Until then autonomous iters should no-op, not churn.
