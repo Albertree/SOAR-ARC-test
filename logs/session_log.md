@@ -1,6 +1,36 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 225 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand (not from memory): `git ls-files
+docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `data/ARC_easy/` = easy000a +
+easy000a2 only; only `docs/SLICE_1_LOOP.md` and on-disk `procedural_memory/rule_003.json` present.
+Probe = 2/2 CORRECT via the single value-agnostic `copy_common_output` rule; invariant check =
+NEUTRAL across P1–P6 (P1=2.0, P2=2.0, P3=0.0, P4=3562, P5=10, P6=435). Slice 1 complete (§8
+criteria met); Slice 2 is human-gated (§10 step 2: STOP, wait for SLICE_2_LOOP.md).
+
+**Change**: none (analysis only). No code/rule/frozen file/memory touched.
+
+**Why no code step**: identical to iters 199–224. Every positive lever inside the fixed 2-task
+slice is F6 (pool growth → P1/P2), OUT-of-scope per §9 (P3/anti-unification + modules E–J),
+already-alive (P4 episodic writer, 3562 entries), or metric-gaming (P5 unused matcher / P6
+deleting the live `_apply_rule`). No honest step exists until a human supplies SLICE_2_LOOP.md.
+
+**Probe before**: 2/2 correct; rules 1->1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 225: no defensible step found — analysis only** (PROMPT.md §5). 48 consecutive neutral
+iters: the gate, not the code, is the blocker — a human must supply `docs/SLICE_2_LOOP.md` +
+an input-dependent `data/ARC_easy/easy000b.json` ([[slice1_converged]]).
+
+**Next gap (note for future iter)**: Still gated. Re-verify the gate first-hand each iter with
+`git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` (NOT from memory or a half-
+rendered ls); the answer is no-op, not churn, until those files exist.
+
+---
 ## Iter 224 — 2026-05-30 — branch test21
 
 **Diagnosis**: Converged-and-gated, re-verified first-hand (not from memory): `git ls-files
@@ -11979,3 +12009,15 @@ supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_141451.log
+
+> STAGNATION at iter 224 — 47 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 14:15
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_141558.log
