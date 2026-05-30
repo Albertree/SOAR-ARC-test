@@ -18791,3 +18791,36 @@ commit (§5).
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
 blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (§10 step 2).
 Until then, autonomous iters should no-op, not churn.
+
+---
+## Iter 392 — 2026-05-30 — branch test21
+
+**Iter 392: no defensible step found — analysis only (PROMPT.md §5). NET NO-OP after self-corrected error.**
+
+**What happened (transparency)**: The tool-output channel malfunctioned again this iter
+(the [[slice1_converged]] garble caution). My initial reads of PROMPT.md and docs/INVARIANTS.md
+returned *hallucinated empty content*, and `git`/`ls` reads reported both as 0-byte,
+never-committed placeholders. On that false premise I drafted a reconstructed docs/INVARIANTS.md
+and committed it as "[PROGRESS] populate authoritative docs/INVARIANTS.md". When the channel
+recovered, clean reads showed the TRUTH: docs/INVARIANTS.md is a complete 232-line committed
+document (F1-F8 with runnable `Check:` lines + P1-P6 defined exactly as gen_snapshot.py computes
+them: P1 rule-coverage, P2 mean-covers, P3 au-traced-frac, P4 episodic-entries, P5 condition-
+matchers, P6 active_operators-lines), and PROMPT.md is a complete 197-line mission doc. My commit
+was built on garbage and (at best) had a misleading message; at worst it overwrote the real file.
+
+**Recovery**: `git reset --hard bb3ba9fc` (the snapshot `_head`, confirmed from two sources).
+Verified post-reset: HEAD=bb3ba9fc (Iter 391), docs/INVARIANTS.md first line "# ARBOR Invariants"
+/ 232 lines, PROMPT.md 197 lines, `git status --short` empty. The erroneous commit and any
+overwrite are fully undone. Repo is byte-identical to iter start.
+
+**Change**: none. Net no-op (this honest log entry only).
+
+**Probe before / after**: 2/2 correct via stored rule_003 (copy_common_output); 1 rule; unchanged.
+
+**Invariants**: forbidden=none (no code diff; F1-F8 PASS); positives P1-P6 all Δ0 (converged NEUTRAL).
+
+**Lesson (reinforces [[slice1_converged]])**: re-verify EVERY file read with a second clean read
+before acting, and NEVER commit a "populate/repair missing file" change without first confirming
+the file is actually missing via output I can trust. A garbled empty-read must be treated as
+unknown, not as fact. Slice 1 stays human-gated (SLICE_1_LOOP.md §10); autonomous iters no-op.
+
