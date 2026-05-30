@@ -9980,3 +9980,38 @@ baseline, a no-op is correct.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until
 the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue
 emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+---
+## Learning Loop -- 2026-05-30 12:17
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_121741.log
+
+---
+## Iter 180 — 2026-05-30 — branch test21
+
+**Diagnosis**: Verified-from-files, not from memory: probe is 2/2 correct via the
+single value-agnostic `rule_003.json` (`copy_common_output`); snapshot is healthy
+(P1=2.0 coverage, P2=2.0 mean covers, P4=3472 episodic entries growing — writer live,
+P5=10 matchers, P6=435 lines). `docs/` contains only `SLICE_1_LOOP.md`; no
+`SLICE_2_LOOP.md` exists, so the Slice-2 transition remains human-gated (§10 step 2).
+Slice 1 is converged ([[slice1_converged]]).
+
+**Change**: none (analysis only).
+
+**Probe before**: 2/2 correct; rules 1→1; covers mean 2.0; P1=2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none. positives=all Δ0. Any hand-bump of P5/P6 or
+pool-growth for P1 would be metric-gaming/F6 (PROMPT §4); P3=0 is correct (AU is OUT
+of Slice 1 §9). No honest positive-signal step exists while Slice 2 is gated.
+
+**Iter 180: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Unchanged — gated. No autonomous step is honest
+until a human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`).
+Keep emitting no-op analysis entries; do not churn docs or fabricate Slice-2 work.
