@@ -2,6 +2,40 @@
 
 ---
 
+## Iter 293 — 2026-05-30 — branch test21
+
+**Iter 293: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
+converged behind a closed human gate. Recalled [[slice1_converged]].
+
+**Diagnosis**: Re-verified the gate first-hand (not from memory):
+`git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty (neither
+tracked); `data/ARC_easy/` = {easy000a, easy000a2} only; only `SLICE_1_LOOP.md`
+tracked among slice docs; single rule `rule_003.json` carries its `condition`
+key. Probe = 2/2 CORRECT via stored(easy000a) rule=copy_common_output, +0
+learned, reused 2×. Identical to iters 102–292.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice.
+P1/P2 — both tasks already in `covers`; F6 freezes the pool so no honest absorb
+is possible. P3=0 — anti-unification is OUT of Slice 1 scope; a single-source
+rule cannot be AU'd. P4 moves only as a side effect of re-running solves
+(metric-gaming). P5/P6 immovable — recognition vocabulary is complete for the
+slice and nothing dead remains to delete. §5: a wrong commit is worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (F1–F8 all PASS); positives all Δ0 (P1=2.0 P2=2.0
+P3=0.0 P4=3698 P5=10 P6=435 — converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
+Do NOT start Slice 2 autonomously. Re-verify the gate first-hand each iter;
+until those files land, no-op is correct, not churn.
+
+---
+
 ## Iter 290 — 2026-05-30 — branch test21
 
 **Iter 290: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
@@ -14894,3 +14928,15 @@ A wrong commit is worse than no commit (§5).
 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification
 wiring), blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided
 (§10 step 2). Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 292 — 115 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 16:33
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_163306.log
