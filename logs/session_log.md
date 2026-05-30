@@ -12830,3 +12830,47 @@ or games a metric; §5 holds a wrong commit worse than none.
 **Next gap (note for future iter)**: unchanged — gated on **human handoff**:
 provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
 Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
+
+> STAGNATION at iter 245 — 68 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 14:52
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_145232.log
+
+---
+## Iter 246 — 2026-05-30T14:57 — branch test21
+
+**Iter 246: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
+converged behind a closed human gate. Recalled [[slice1_converged]].
+
+**Diagnosis**: Re-verified the two gating facts first-hand via `git ls-files`:
+`docs/SLICE_2_LOOP.md` is **ABSENT** (§10 human gate still closed) and
+`data/ARC_easy/` = {easy000a, easy000a2} only — no `easy000b.json` (F6 pool
+frozen). Procedural memory on disk = a single untracked `rule_003.json`. Probe =
+2/2 CORRECT via stored(easy000a) rule=copy_common_output, +0 learned. State
+identical to iters 102–245.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice.
+P1/P2 — both tasks already in `covers`; F6 freezes the pool so no honest
+merge/absorb is possible. P3=0 — anti-unification is OUT of Slice 1 scope (§9);
+a single-source rule cannot be AU'd. P4 moves only as a side effect of re-running
+solves (metric-gaming). P5/P6 immovable — recognition vocabulary is complete for
+the slice and nothing dead remains to delete. Any code change either trips a
+forbidden signal or games a metric; §5 holds a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
+Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
