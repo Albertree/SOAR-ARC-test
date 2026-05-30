@@ -1,6 +1,37 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 218 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand (not from log): `git ls-files
+docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `data/ARC_easy/` = easy000a +
+easy000a2 only; sole stored rule rule_003.json is value-agnostic (dsl=make_grid, args={}, no
+literal (5,5)/red, has `condition`, covers=[easy000a, easy000a2], reused 586×); only
+_try_/_apply method is the live `_apply_rule` (no accretion). Probe = 2/2 CORRECT via that one
+rule; invariant check = NEUTRAL across P1–P6. Slice 1 complete (§8 criteria met); Slice 2 is
+human-gated (§10 step 2: STOP, wait for SLICE_2_LOOP.md).
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Why no code step**: identical to iters 199–217. Every positive lever inside the fixed 2-task
+slice is F6 (pool growth → P1/P2), OUT-of-scope per §9 (P3/anti-unification + modules E–J),
+already-alive (P4 episodic writer, 3548 entries), or metric-gaming (P5 unused matcher / P6
+deleting the live `_apply_rule`). No honest step exists until a human supplies SLICE_2_LOOP.md.
+
+**Probe before**: 2/2 correct; rules 1->1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 218: no defensible step found — analysis only** (PROMPT.md §5). 41 consecutive neutral
+iters: the gate, not the code, is the blocker — a human must supply `docs/SLICE_2_LOOP.md` +
+an input-dependent `data/ARC_easy/easy000b.json` ([[slice1_converged]]).
+
+**Next gap (note for future iter)**: Still gated. Re-verify the gate first-hand each iter
+(`git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json`); the answer is no-op, not
+churn, until those exist.
+
+---
 ## Iter 199 — 2026-05-30 — branch test21
 
 **Diagnosis**: Verified from real files (not memory): `docs/SLICE_2_LOOP.md` does not exist,
@@ -11680,3 +11711,15 @@ worse than no commit; the converged slice must not be churned ([[slice1_converge
 
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until a human
 supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
+
+> STAGNATION at iter 217 — 40 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 14:03
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_140339.log
