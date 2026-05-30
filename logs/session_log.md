@@ -10404,3 +10404,56 @@ alive; P5 hand-bumping = metric-gaming (PROMPT §4); P6 has nothing dead to remo
 human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
 Verify with clean single-shot `git ls-files` / `ls`, NOT batched Reads (those can return
 confabulated content — cf. iters 183/186/187).
+
+> STAGNATION at iter 188 — 11 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 13:09
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_130949.log
+
+---
+## Iter 189 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand with clean single-shot
+commands (not batched Reads): `ls docs/` = only `SLICE_1_LOOP.md` (no `SLICE_2_LOOP.md`);
+`ls data/ARC_easy/` = only `easy000a.json` + `easy000a2.json`; `git ls-files
+docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `procedural_memory/` = only
+`rule_003.json`. Probe is 2/2 CORRECT via the single value-agnostic `copy_common_output`
+rule. Slice 2 remains explicitly **human-gated** (SLICE_1_LOOP §10 step 2).
+
+**This iter verified system health concretely** (state, not prior-iter summary):
+- `rule_003.json` schema re-read field-by-field: `condition.type=copy_common_output_applies`
+  present (F4 OK), `action.dsl=make_grid` with `args={}` (no baked literal → value-agnostic),
+  `covers=[easy000a,easy000a2]`, `anti_unification_trace=null` correct for a single-source
+  reused rule, `times_reused`=528.
+- `agent/conditions/` enumerated: 12 registered matchers (P5 vocabulary intact).
+- `episodic_memory/` holds **3490** `attempt_*` folders → P4 writer demonstrably alive
+  (counted, not assumed).
+- Working tree clean except the loop's own pre-iter log/snapshot edits.
+
+**Why no code step**: P1/P2 need new tasks = F6; P3 (AU) is OUT of Slice 1 (§9); P4 already
+alive (3490 entries); P6 has nothing dead to remove (only `_apply_rule`, load-bearing).
+P5 *is* an allowed lever, but adding a matcher with no rule referencing it and no task
+exercising it (Slice 2 gated) would be dead recognition vocabulary — same spirit as the
+168-rule failure mode, and exactly the metric-gaming PROMPT §4 forbids. No honest
+positive-signal step exists while Slice 2 is gated.
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Probe before**: 2/2 correct; rules 1→1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 189: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
+human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
+Verify with clean single-shot `git ls-files` / `ls`, NOT batched Reads (those can return
+confabulated content — cf. iters 183/186/187).
