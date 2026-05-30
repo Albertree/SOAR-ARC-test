@@ -1,5 +1,38 @@
 # SOAR-ARC Session Log
 
+## Iter 313 — 2026-05-30 — branch test21
+
+**Iter 313: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
+converged behind a closed human gate. Recalled [[slice1_converged]].
+
+**Diagnosis**: Re-verified the gate first-hand: `docs/SLICE_2_LOOP.md` absent,
+`data/ARC_easy/` = {easy000a, easy000a2} only, single `rule_003.json` carries its
+`condition` key. Probe = 2/2 CORRECT via stored(easy000a) rule=copy_common_output,
++0 learned, reused 2× — value-agnostic (easy000a2's distinct fixed output solves
+through the same module, so §7's hardcoding trap is absent). Identical to iters
+102–312.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice. P1/P2
+— both tasks already in `covers`, and F6 freezes the pool so no honest absorb is
+possible. P3=0 — anti-unification is OUT of Slice-1 scope (§9). P4 moves only as a
+re-run side effect (metric-gaming). P5/P6 immovable — recognition vocabulary is
+complete for the slice and nothing dead remains to delete. §5: a wrong commit is
+worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (F1–F8 all PASS); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0
+analysis, intra-pair relation contributing to the answer, activation rules,
+anti-unification wiring), blocked until `docs/SLICE_2_LOOP.md` +
+`data/ARC_easy/easy000b.json` are provided (§10 step 2). Until then, no-op, not churn.
+
+---
+
 ## Iter 312 — 2026-05-30 — branch test21
 
 **Iter 312: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
@@ -15755,3 +15788,15 @@ Until then, autonomous iters should no-op, not churn.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_170727.log
+
+> STAGNATION at iter 312 — 135 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_170830.log
