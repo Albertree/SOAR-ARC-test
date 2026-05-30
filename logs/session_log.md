@@ -12107,3 +12107,43 @@ supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_141759.log
+
+> STAGNATION at iter 227 — 50 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 14:19
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_141907.log
+
+---
+## Iter 228 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand: `git ls-files
+docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `data/ARC_easy/` =
+easy000a.json + easy000a2.json only; `grep "def _(try|apply)_" agent/active_operators.py`
+= one pre-existing hit (`_apply_rule`, line 368). Probe = 2/2 CORRECT via the single
+value-agnostic stored rule (copy_common_output, has `condition`, no literal (5,5)/red).
+Slice 1 complete (SLICE_1_LOOP §8); Slice 2 is human-gated (§10 step 2: STOP).
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Why no code step**: identical to iters 207–227 — every positive-signal lever inside the
+fixed 2-task slice is either F6 (pool growth for P1/P2), off-slice scaffolding (P3 / modules
+E–J are OUT per §9), already-alive (P4 episodic writer), or metric-gaming (P5 dead matcher /
+P6 nothing dead to delete). No honest step exists until a human supplies SLICE_2_LOOP.md.
+
+**Probe before**: 2/2 correct; rules 1->1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 228: no defensible step found — analysis only** (PROMPT.md §5). A wrong commit is
+worse than no commit; the converged slice must not be churned ([[slice1_converged]]).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a human
+supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
