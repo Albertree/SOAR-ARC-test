@@ -9595,3 +9595,33 @@ No honest positive-signal step exists while gated.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest
 until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`).
 Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+> STAGNATION at iter 170 — 68 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:33
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_113321.log
+
+## Iter 171 — 2026-05-30 — branch test21
+
+**Diagnosis**: Probe shows easy000a + easy000a2 both CORRECT (2/2, 100%) via the
+single value-agnostic rule `copy_common_output`, reused for both tasks. Slice 1
+pass criteria are met (both solved, value-agnostic, uniform module). Confirmed
+`docs/SLICE_2_LOOP.md` does not exist — Slice 2 remains human-gated per
+SLICE_1_LOOP.md §10. No defensible Slice-1 gap remains.
+
+**Change**: none (no-op iter — Slice 1 converged, Slice 2 human-gated).
+
+**Probe before**: 2/2 correct, 1 rule, copy_common_output reused 2×
+**Probe after** : 2/2 correct, 1 rule (unchanged — no commit)
+
+**Invariants**: forbidden=none, positives=none (intentional no-op)
+
+**Next gap (note for future iter)**: Slice 2 (easy000b) is human-gated; await
+`docs/SLICE_2_LOOP.md`. No Slice-1 step remains.
