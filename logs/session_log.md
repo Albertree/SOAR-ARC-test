@@ -10585,3 +10585,44 @@ positive-signal step exists while Slice 2 is gated.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
 human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
 Verify with single-shot `git ls-files` / `ls`, not batched Reads.
+
+> STAGNATION at iter 192 — 15 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 13:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_131438.log
+
+---
+## Iter 193 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand single-shot:
+`git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `ls docs/`
+= only SLICE_1_LOOP; `ls data/ARC_easy/` = only easy000a + easy000a2;
+`procedural_memory/` = only rule_003.json. Probe is 2/2 CORRECT via that one
+value-agnostic rule (condition=copy_common_output_applies, action.dsl=make_grid
+args={}, covers=[easy000a, easy000a2]). Slice 2 is human-gated (SLICE_1_LOOP §10 step 2).
+
+**Why no code step**: P1/P2 need new tasks = F6 (auto-grown pool forbidden); P3 (AU)
+is OUT of Slice 1 scope (§9); P4 episodic writer already alive; P5 adding a matcher no
+rule references / no task exercises = dead recognition vocabulary (metric-gaming,
+PROMPT §4); P6 has nothing dead to remove (only `_apply_rule`, load-bearing). No honest
+positive-signal step exists while Slice 2 is gated.
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Probe before**: 2/2 correct; rules 1→1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 193: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
+human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
+Verify with single-shot `git ls-files` / `ls`, not batched Reads.
