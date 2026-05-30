@@ -8244,3 +8244,31 @@ autonomously (§10).
 **Invariants**: forbidden=none (no code diff); positives P1–P6 all Δ0 (converged NEUTRAL). No honest lever remains while Slice 2 is gated: growing the pool = F6, hand-bumping P5/P6 = metric-gaming (PROMPT.md §4), P3 must stay 0 (AU OUT per §9). A wrong commit is worse than no commit (§5).
 
 **Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
+
+> STAGNATION at iter 128 — 26 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 09:08
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_090815.log
+
+---
+## Iter 129 — 2026-05-30 — branch test21
+
+**Iter 129: no defensible step found — analysis only (PROMPT.md §5).** Converged NEUTRAL behind the human gate; gating facts re-verified first-hand this iter (`ls docs/SLICE_*.md` → only `SLICE_1_LOOP.md`; `ls data/ARC_easy/` → {easy000a, easy000a2}; re-read `rule_003.json`).
+
+**Diagnosis**: `docs/SLICE_2_LOOP.md` still ABSENT → §10 step 2 forbids starting Slice 2 autonomously. `data/ARC_easy/` frozen at the two Slice-1 targets (growing it = F6). `rule_003.json` re-read: schema-valid, value-agnostic (`condition.type=copy_common_output_applies`, `action.dsl=make_grid`, `args={}` — no literal (5,5)/red), `covers=[easy000a, easy000a2]`, `anti_unification_trace=null` (correct for a single-source rule; AU OUT of Slice 1 per §9). Probe = 2/2 CORRECT via stored(easy000a), +0 learned — Slice 1 remains complete with one rule covering both targets, no per-task hardcoding.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives P1–P6 all Δ0 (converged NEUTRAL). No honest lever remains while Slice 2 is gated: growing the pool = F6, hand-bumping P5/P6 = metric-gaming (PROMPT.md §4), P3 must stay 0 (AU OUT per §9). A wrong commit is worse than no commit (§5).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
