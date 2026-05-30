@@ -18663,3 +18663,43 @@ autonomous iters should no-op, not churn.
 **Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0 (P1=2.0, P2=2.0, P3=0.0, P4=3888, P5=10, P6=435). Each lever is gated, not lazy: P1/P2 need a new solved/mergeable task (pool growth = F6); P3 needs an AU source (OUT per §9, human-gated §10); P4 moves only as a probe-rerun side effect (metric-gaming); P5 a matcher with no in-slice task to recognize = hand-bump (PROMPT.md §4); P6 deleting from the converged solve path with no task demanding it = destabilizing churn. A wrong commit pollutes the positive-signal baseline worse than no commit (§5).
 
 **Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (§10 step 2). Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 388 — 211 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 19:55
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_195509.log
+
+## Iter 389 — 2026-05-30 — branch test21
+
+**Iter 389: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 stays converged behind the closed human gate on Slice 2. Verified
+first-hand: `procedural_memory/rule_003.json` is **valid** (`concept=copy_common_example_output`,
+`condition.type=copy_common_output_applies`, `action.dsl=make_grid`, `covers=[easy000a,
+easy000a2]`, `anti_unification_trace=null`, `times_reused≈928`); it parses cleanly
+(`json.load` OK). Probe = 2/2 CORRECT, both via=stored(easy000a), +0 learned. No
+`docs/SLICE_2_LOOP.md`, no `data/ARC_easy/easy000b.json` — gate still closed.
+
+**Tooling note (transparency)**: the tool-output channel malfunctioned for much of this iter,
+intermittently returning *garbled/hallucinated file contents* and dropping outputs. It rendered
+`rule_003.json` as corrupt JSON, prompting a false "repair" attempt. The erroneous edits did
+NOT land (the tool layer was non-functional during that window) and the repo is clean — only
+loop-owned `logs/` files modified, no stray untracked files, `rule_003.json` valid and untouched.
+Recorded as an [[slice1_converged]] caution.
+
+**Change**: none to the repo. (User-memory files updated with the iter-389 tool-corruption caution.)
+
+**Probe before / after**: 2/2 correct; via=stored(easy000a); 1 rule file; unchanged.
+
+**Invariants**: forbidden=none (F1–F8 PASS; no code diff); positives P1–P6 all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b), blocked until
+`docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided. Until then, autonomous iters
+should no-op, not churn — and always re-verify any "defect" with a clean second read before acting.
