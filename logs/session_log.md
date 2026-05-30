@@ -11353,3 +11353,38 @@ attempting any change.
 **Iter 209: no defensible step found — analysis only** (PROMPT.md §5). A wrong commit is worse than no commit; the converged slice must not be churned.
 
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until a human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`. Verify with `Test-Path data/ARC_easy/easy000b.json` and one clean `git ls-files docs/SLICE_2_LOOP.md`; re-check `_try_*/_apply_*` defs first-hand before any change.
+
+> STAGNATION at iter 209 — 32 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 13:54
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_135441.log
+
+---
+## Iter 210 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand this iter. `git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `git ls-files data/ARC_easy/` = easy000a.json + easy000a2.json only; `ls procedural_memory/rule_*.json` = rule_003.json only; `grep -nE "def _(try|apply)_" agent/active_operators.py` = one hit, `_apply_rule` (line 368). rule_003 re-read: value-agnostic (action.dsl=make_grid, args={}, no literal (5,5)/red), has `condition` key, covers=[easy000a, easy000a2], times_reused=570. Probe = 2/2 CORRECT via that single stored rule. Slice 1 complete (SLICE_1_LOOP §8); Slice 2 human-gated (§10 step 2: STOP, wait for SLICE_2_LOOP.md).
+
+**Why no code step** (each positive signal re-checked first-hand):
+- P1/P2 (coverage / mean covers): only lever is absorbing a new task -> F6 (auto-grown pool forbidden). No honest move inside the fixed 2-task slice.
+- P3 (anti-unif trace fraction): modules E-J + anti-unification wiring are OUT of Slice 1 scope (SLICE_1_LOOP §4 OUT, §9 guardrail). Off-slice scaffolding.
+- P4 (episodic entries): writer already alive; not the gap.
+- P5 (condition.type count): a matcher no rule references / no task exercises = dead recognition vocab = metric-gaming (PROMPT §4). Not honest.
+- P6 (net code removed from active_operators.py): only the load-bearing `_apply_rule` exists; nothing dead/superseded to delete.
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Probe before**: 2/2 correct; rules 1->1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all delta 0 (intentional no-op).
+
+**Iter 210: no defensible step found — analysis only** (PROMPT.md §5). A wrong commit is worse than no commit; the converged slice must not be churned ([[slice1_converged]]).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`. Verify with `git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` and re-check `_try_*/_apply_*` defs first-hand before any change.
