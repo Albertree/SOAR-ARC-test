@@ -9833,3 +9833,60 @@ until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`
 Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
 
 > STAGNATION at iter 176 — 74 consecutive neutral iters.
+
+> STAGNATION at iter 176 — 74 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:46
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_114657.log
+
+---
+## Iter 177 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice 1 remains converged (probe 2/2 CORRECT via the single value-agnostic `copy_common_output` stored rule; P1=2.0, P2=2.0, rule_count=1). Per [[slice1_converged]] no rule churn / no budget growth is in scope. Auditing for in-scope *robustness* surfaced a real latent data-loss bug in `agent/memory.py:save_rule_to_ltm()`: the new-rule id was `next_id = len(existing) + 1`. The id set on disk is already non-contiguous (the sole rule is `rule_003.json`), so once two new rules are saved, `len()`-based numbering lands on an id still in use and `save_rule_to_ltm` rewrites that `rule_NNN.json` — silently destroying a rule (P1 regression, no error raised).
+
+**Change**:
+- `agent/memory.py`: compute `next_id` as `max(existing filename index) + 1` instead of `len(existing) + 1`, so the chosen id is always free regardless of gaps (ids stay 1-based; an empty dir still yields `rule_001.json`). Allowed surface per PROMPT.md §3 (function-internal fix in memory.py); no frozen file, no `_try_*`/`_apply_*`, no DSL primitive, `active_operators.py` untouched (F8 inert).
+- `tests/test_next_rule_id_no_clobber.py` (new, standalone runner): asserts a non-contiguous {rule_001, rule_003} set saves to `rule_004.json` and leaves `rule_003.json` intact, and that an empty dir still starts at `rule_001.json`. The old code fails the first assertion.
+
+**Probe before/after**: 2/2 correct, unchanged — the probe reuses the stored rule via the fast path (`+0 learned`), so the patched new-rule branch is not on the solve path; metrics stay P1=2.0, P2=2.0.
+
+**Invariants**: forbidden=none (F1–F8 clear). positives=all Δ0 (neutral — robustness fix, removes a future P1-regressing data loss).
+
+**Next gap (note for future iter)**: still Slice-2 human-gated (`docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` absent). Decline out-of-scope accretion; only honest robustness/correctness fixes remain until the gate opens.
+
+---
+## Learning Loop -- 2026-05-30 11:59
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_115920.log
+
+---
+## Learning Loop -- 2026-05-30 11:59
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_115924.log
+
+---
+## Learning Loop -- 2026-05-30 12:00
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_120018.log

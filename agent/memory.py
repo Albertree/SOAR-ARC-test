@@ -161,8 +161,20 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
         except (json.JSONDecodeError, IOError):
             continue
 
-    # New rule — assign next ID and build full entry
-    next_id = len(existing) + 1
+    # New rule — assign the next free id as max(existing index) + 1.
+    # Using len(existing)+1 was a latent data-loss bug: with a non-contiguous
+    # id set (e.g. the sole rule on disk is rule_003.json) len-based numbering
+    # can collide with an id still in use and silently overwrite that
+    # rule_NNN.json — losing a rule and regressing P1 (coverage) with no error.
+    # Deriving from the maximum existing filename index keeps the chosen id
+    # free regardless of gaps (ids stay 1-based: first rule -> rule_001).
+    max_idx = 0
+    for _f in existing:
+        try:
+            max_idx = max(max_idx, int(_f[len('rule_'):-len('.json')]))
+        except ValueError:
+            continue
+    next_id = max_idx + 1
     entry = {
         "id": next_id,
         "concept": _infer_concept(rule),
