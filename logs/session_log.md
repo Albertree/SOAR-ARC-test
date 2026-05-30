@@ -14664,3 +14664,15 @@ are provided (§10 step 2). Until then, autonomous iters should no-op, not churn
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_155240.log
+
+> STAGNATION at iter 286 — 109 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:56
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_155627.log
