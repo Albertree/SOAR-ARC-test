@@ -18824,3 +18824,53 @@ before acting, and NEVER commit a "populate/repair missing file" change without 
 the file is actually missing via output I can trust. A garbled empty-read must be treated as
 unknown, not as fact. Slice 1 stays human-gated (SLICE_1_LOOP.md §10); autonomous iters no-op.
 
+
+---
+## Learning Loop -- 2026-05-30 20:24
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_202404.log
+
+---
+
+## Iter 393 — 2026-05-30 — branch test21
+
+**Iter 393: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 remains converged behind the human gate on Slice 2. Verified
+first-hand this iter (not from memory, per [[slice1_converged]]): `ls docs/SLICE_*.md` →
+only `SLICE_1_LOOP.md`; `ls data/ARC_easy/` → only `easy000a.json`/`easy000a2.json` (pool
+frozen by F6); one `rule_003.json` (`condition.type=copy_common_output_applies`,
+`action.dsl=make_grid`, `covers=[easy000a, easy000a2]`, `au_trace=null` — correct, AU is OUT
+of Slice-1 scope §9). Probe = 2/2 CORRECT, both via stored rule_003 (`copy_common_output`),
++0 learned — value-agnostic, so §7's hardcoding trap is absent.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice.
+- P1 (solved/total_rules) & P2 (mean covers): both tasks already in `covers`; F6 freezes the
+  pool so no honest absorb is possible.
+- P3 (AU-trace fraction): AU wiring is explicitly OUT of Slice-1 scope (SLICE_1_LOOP.md §9).
+- P4 (episodic entries): **checked directly** — `agent/episodic.py` is alive and writing;
+  9569 files under `episodic_memory/`, with `easy000a/`+`easy000a2/` attempt folders stamped
+  at today's 20:24 probe. The episodic writer is NOT an unfilled gap; wiring it would be a
+  no-op.
+- P5 (condition matchers): adding a matcher with nothing new to recognize is metric-gaming.
+- P6 (delete a live `_try_*`): no AU is online in Slice 1 to supersede one, so deletion would
+  break behaviour, not advance architecture.
+There is no positive step that doesn't require a new task (F6-blocked) or AU (§9-blocked).
+PROMPT.md §5: a wrong commit pollutes the baseline worse than no commit.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via stored rule_003 (copy_common_output); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — Slice 2 (`easy000b`: G0 analysis, intra-pair
+relation that contributes to the answer, activation rules, anti-unification wiring) is
+human-gated, blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided
+(SLICE_1_LOOP.md §10). Until then autonomous iters should no-op, not churn.
