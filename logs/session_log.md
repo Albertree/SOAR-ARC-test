@@ -9552,3 +9552,46 @@ P5/P6 would be metric-gaming (PROMPT §4); the episodic writer is already wired
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest
 until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`).
 Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+> STAGNATION at iter 169 — 67 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:32
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_113227.log
+
+---
+## Iter 170 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice 1 still converged — probe shows easy000a + easy000a2 both
+CORRECT (2/2) via the *same* value-agnostic `copy_common_output` stored rule
+(reused twice, +0 learned). The sole remaining frontier is Slice 2 (easy000b: G0
+analysis, intra-pair relation contributing to the answer, activation rules,
+anti-unification), a **human-gated** transition (SLICE_1_LOOP §10 step 2). This
+iter re-verified both gate artifacts are absent: `docs/SLICE_2_LOOP.md` ABSENT,
+`data/ARC_easy/easy000b.json` ABSENT.
+
+**Change**: none (no code change committed).
+
+**Probe before**: 2/2 correct; rules 1->1 (+0 learned); covers mean 2.0.
+**Probe after** : 2/2 correct; rules 1->1 (+0 learned); covers mean 2.0.
+
+**Invariants**: forbidden=none; positives unchanged (P1=2.0 P2=2.0 P3=0.0 P4 alive,
+P5=10 P6=435; all Δ0 vs snapshot) → checker verdict NEUTRAL. Tests NOT run (pytest
+not installed in this env — `No module named pytest`); verification rests on the
+probe + invariant checker.
+
+**Iter 170: no defensible step found — analysis only** (PROMPT.md §5). P1/P2 are
+pinned at 2.0 for this 2-task slice (adding a task = F6 pool-growth, forbidden);
+P3=0 is correct (anti-unification is OUT of Slice 1 scope per §9); P5/P6 hand-bumps
+would be metric-gaming (PROMPT §4); the episodic writer is already wired (P4 alive).
+No honest positive-signal step exists while gated.
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest
+until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`).
+Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
