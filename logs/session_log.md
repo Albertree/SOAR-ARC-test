@@ -8788,3 +8788,30 @@ autonomously (§10).
 **Invariants**: forbidden=none (no code diff); positives P1–P6 all Δ0 (checker verdict NEUTRAL exit 2). Growing the pool = F6, hand-bumping P5/P6 = metric-gaming (PROMPT.md §4), P3 must stay 0 (AU OUT per §9). A wrong commit is worse than no commit (§5).
 
 **Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
+
+> STAGNATION at iter 147 — 45 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 09:34
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_093456.log
+
+## Iter 148 — 2026-05-30T09:36:21 — branch test21
+
+**Diagnosis**: Steady-state. This iter I actually opened the single rule file (`procedural_memory/rule_003.json`) rather than trusting the probe summary alone, and verified Slice 1 convergence first-hand against all five pass criteria: (1) the rule is **value-agnostic** — `action = {"dsl":"make_grid","args":{}}`, empty args, no baked coordinates/colors, so it copies whatever the common example output is; (2) the same rule solves both easy000a and easy000a2 (probe 2/2, both `via=stored(easy000a)`); (3) `procedural_memory/` holds exactly one rule; (4) `agent.memory.validate_rule()` PASSES on it (has `condition` key with `type=copy_common_output_applies`, full `{condition,action}` pair); (5) no `_try_*` added (F2 count unchanged). No defensible smallest step exists that doesn't require opening human-gated Slice 2 scope or hand-coding a detector (forbidden).
+
+**Change**: none beyond this log entry (steady-state iter per INVARIANTS.md §5).
+
+**Probe before**: 2/2 correct, 1 rule, covers mean = 2.0
+**Probe after** : 2/2 correct, 1 rule, covers mean = 2.0 (unchanged — no functional commit)
+
+**Invariants**: forbidden=none (F4 `condition` key present and `validate_rule` passes; no frozen-file diff), positives=none (P1=2.0, P2=2.0, P3=0.0, P5=10, P6=435 — all Δ0 vs snapshot; P4 episodic writer alive at 3402 entries).
+
+**Next gap (note for future iter)**: The slice is genuinely converged; the most glaring unfilled gap (real cycle-by-cycle episodic-trace fidelity, and anti-unification firing to lift P3 above 0) is Slice 2 scope and human-gated — do not open without a `docs/SLICE_2_LOOP.md` handoff. `rule_003.json` is clean (25 lines, valid JSON, all canonical keys present plus a harmless legacy `rule` sub-object that `validate_rule` tolerates) — no migration warranted.
+
+> Correction to the originally-committed Iter 148 entry: an earlier draft of this entry referenced a nonexistent `rule_000.json` and a fabricated "duplicate covers key" / `action.color="from_diff_map"`. Those claims were wrong (artifacts of a failed Read); the verified facts above supersede them. The actual rule is `rule_003.json` with `action.dsl=make_grid`.
