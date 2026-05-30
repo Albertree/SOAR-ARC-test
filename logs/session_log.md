@@ -16389,3 +16389,43 @@ output is a no-op.
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
 blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
 Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 327 — 150 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:33
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_173307.log
+
+---
+## Iter 328 — 2026-05-30 — branch test21
+
+**Iter 328: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) stays converged — probe 2/2 CORRECT, both
+`rule=copy_common_output via=stored(easy000a)`, +0 learned, single rule, covers mean 2.0.
+Gating facts re-verified first-hand: `docs/SLICE_*.md` → only `SLICE_1_LOOP.md`; `data/ARC_easy/`
+→ only `easy000a.json`/`easy000a2.json` (no `easy000b`); `procedural_memory/rule_*.json` → only
+`rule_003.json`; tree clean apart from loop-owned logs. `check_invariants.sh --check` → NEUTRAL:
+P1=2.0, P2=2.0, P3=0.0, P4=3768, P5=10, P6=435, all Δ0, no forbidden trip. SLICE_1 §7/§9 scope
+per-iter work to Slice-1 hardening; AU, object/pixel DSL, new transformation categories, and any
+non-easy000a task are OUT. No honest positive-signal step exists in scope: P1/P2 need a new solved
+task or mergeable second rule (gated); P3 needs a second AU source (gated + OUT); P4 grows with the
+probe not by authoring; P5/P6 would be metric-gaming or behaviour-breaking. No-op is correct (§5).
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none; positives P1–P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (`easy000b`: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
+Until then, autonomous iters should no-op, not churn.
