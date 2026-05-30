@@ -18209,3 +18209,33 @@ autonomous iters should no-op, not churn.
 **Invariants**: forbidden=none (no code diff); positives P1–P6 all Δ0. No honest positive-signal step exists within Slice 1: P1/P2 need a new solved/mergeable task (gated; F6 freezes the pool); P3 needs a second AU source (gated + OUT §9); P4 moves only as a probe-rerun side effect (metric-gaming); P5/P6 hand-bumps would be metric-gaming. A wrong commit pollutes the baseline worse than none (§5).
 
 **Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (§10 step 2). Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 372 — 195 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 18:36
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_183615.log
+
+---
+## Iter 373 - 2026-05-30 - branch test21
+
+**Iter 373: no defensible step found - analysis only (PROMPT.md section 5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) stays converged behind the closed, human-gated Slice 2 transition (SLICE_1_LOOP.md section 10). Probe = 2/2 CORRECT, both rule=copy_common_output via=stored(easy000a), +0 learned - one value-agnostic rule (rule_003.json: make_grid, no literal coords/colors, covers both, valid condition+action). Re-verified first-hand this iter: docs/ has only SLICE_1_LOOP.md (no SLICE_2_LOOP.md); data/ARC_easy/ has only easy000a.json/easy000a2.json; procedural_memory/ has only rule_003.json; git clean apart from the two loop-owned log files.
+
+**Engine audit (recorded so a future iter does not repeat a misstep I caught myself making this iter)**: program/anti_unification.py is an *intentional stub* (all bodies pass) - anti-unification is OUT of Slice-1 scope per section 9 and human-gated per section 10. agent/memory.py has NO unify() call site; the live writer is save_rule_to_ltm(rule, task_hex) (save_rule is its alias), NOT the save_rule(new_rule, related_rules=...) shape CLAUDE.md section 8 sketches for a later slice. Wiring AU or adding an AU trace-writer now would VIOLATE section 9, not fill a gap. Do NOT "fix" the stub in Slice 1.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; F1-F8 PASS); positives P1-P6 all delta 0. No honest positive step exists in Slice 1: P1/P2 need a new solved/mergeable task (gated; F6 freezes the pool); P3 needs AU (OUT section 9 + gated); P4 moves only as a probe-rerun side effect (metric-gaming); P5/P6 hand-bumps would be metric-gaming. A wrong commit pollutes the baseline worse than none (section 5).
+
+**Next gap (note for future iter)**: unchanged - human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (section 10). Until then, autonomous iters should no-op, not churn.
