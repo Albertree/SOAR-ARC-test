@@ -8048,3 +8048,31 @@ wrong commit worse than none.
 autonomously (§10).
 
 > STAGNATION at iter 121 — 19 consecutive neutral iters.
+
+> STAGNATION at iter 121 — 19 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 08:57
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_085748.log
+
+---
+## Iter 122 — 2026-05-30 — branch test21
+
+**Iter 122: no defensible step found — analysis only.**
+
+**Diagnosis**: Re-confirmed the slice state. Slice 1 (`easy000a` + `easy000a2`) is complete and verified — the probe solves both 2/2 via the *same* value-agnostic `rule_003` (`copy_common_output`, `condition.type=copy_common_output_applies`, `action.dsl=make_grid`), so no per-task hardcoding. The human gate `docs/SLICE_2_LOOP.md` still does not exist (only `SLICE_1_LOOP.md`), so per SLICE_1_LOOP §10 step 2 Slice 2 must not be started autonomously.
+
+**Change**: none (no code/rule/doc change). This entry only.
+
+**Probe before**: easy000a + easy000a2 = 2/2 correct; rules 1→1 (+0); rule_003 covers=[easy000a, easy000a2].
+**Probe after** : identical — 2/2 correct; 1 rule; covers unchanged.
+
+**Invariants**: forbidden=none. positives=P1–P6 all Δ0 (correctly neutral). No honest positive lever remains while Slice 2 is gated: growing the task pool = F6, hand-bumping P5/P6 = metric-gaming (PROMPT.md §4), P3 must stay 0 (AU is OUT per SLICE_1_LOOP §9).
+
+**Next gap (note for future iter)**: unchanged — Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification) is human-gated and waits for `docs/SLICE_2_LOOP.md`. Until that file appears, the correct iter output is re-confirm-and-exit (PROMPT.md §5), not manufactured churn.
