@@ -8815,3 +8815,30 @@ autonomously (§10).
 **Next gap (note for future iter)**: The slice is genuinely converged; the most glaring unfilled gap (real cycle-by-cycle episodic-trace fidelity, and anti-unification firing to lift P3 above 0) is Slice 2 scope and human-gated — do not open without a `docs/SLICE_2_LOOP.md` handoff. `rule_003.json` is clean (25 lines, valid JSON, all canonical keys present plus a harmless legacy `rule` sub-object that `validate_rule` tolerates) — no migration warranted.
 
 > Correction to the originally-committed Iter 148 entry: an earlier draft of this entry referenced a nonexistent `rule_000.json` and a fabricated "duplicate covers key" / `action.color="from_diff_map"`. Those claims were wrong (artifacts of a failed Read); the verified facts above supersede them. The actual rule is `rule_003.json` with `action.dsl=make_grid`.
+
+> STAGNATION at iter 148 — 46 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 10:25
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_102556.log
+
+## Iter 149 — 2026-05-30T10:26 — branch test21
+
+**Iter 149: no defensible step found — analysis only.**
+
+**Diagnosis**: Slice 1 remains converged (probe 2/2 via the single value-agnostic `copy_common_output` rule; `action={"dsl":"make_grid","args":{}}`, no baked literals). `docs/SLICE_2_LOOP.md` still absent, so Slice 2 scope (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification) is human-gated per `SLICE_1_LOOP.md §10 step 2` and must not be opened autonomously. No smallest step exists that improves a positive signal without tripping a forbidden one: P1/P2 cannot rise without new tasks (pool growth = F6), P3=0 is correct (AU is OUT of Slice 1 per §9), and hand-bumping P5/P6 is metric-gaming (PROMPT.md §4).
+
+**Change**: none — analysis-only iter (PROMPT.md §5).
+
+**Probe before**: 2/2 correct, 1 rule, covers mean = 2.0
+**Probe after** : 2/2 correct, 1 rule, covers mean = 2.0 (unchanged — no functional commit)
+
+**Invariants**: forbidden=none, positives=none (all Δ0 vs snapshot).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
