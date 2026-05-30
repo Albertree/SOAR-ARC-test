@@ -14544,3 +14544,28 @@ nothing dead to delete. Any code edit trips a forbidden signal or games a metric
 **Next gap (note for future iter)**: gated on **human handoff** — provide
 `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
 Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
+
+> STAGNATION at iter 282 — 105 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:43
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_154315.log
+
+## Iter 283 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) remains converged — probe shows 2/2 correct via the single value-agnostic `copy_common_output` rule (rule_003), reused from stored memory (`via=stored`), 0 new rules discovered. `docs/SLICE_2_LOOP.md` is absent and Slice 2 is human-gated, so per the `slice1_converged` memory + PROMPT.md §5 there is no honest positive-signal step available: P1/P2 are pinned without new tasks (growing the pool = F6), P3=0 is correct (anti-unification is OUT until Slice 2 per SLICE_1_LOOP.md §9), and bumping P5/P6 by hand is metric-gaming (PROMPT.md §4).
+
+**Change**: none — no source/doc files touched. (Created then removed a transient `logs/_tooltest.txt` while diagnosing a shell output-buffering lag this iter; net zero.)
+
+**Probe before**: 2/2 correct, 1 rule, covers mean = 2.0
+**Probe after** : 2/2 correct, 1 rule, covers mean = 2.0 (unchanged — intentional no-op)
+
+**Invariants**: forbidden=none, positives=no deltas (intentional no-op per PROMPT.md §5)
+
+**Next gap (note for future iter)**: The only remaining real gap is the human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until `docs/SLICE_2_LOOP.md` is provided. Until then, autonomous iters should no-op, not churn.
