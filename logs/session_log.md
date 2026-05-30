@@ -9459,3 +9459,31 @@ re-confirm-and-exit is the correct output (§5), not manufactured churn.
 **Iter 166: no defensible step found — analysis only** (PROMPT.md §5).
 
 **Next gap (note for future iter)**: Still gated. No honest autonomous step exists until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+> STAGNATION at iter 166 — 64 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:17
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_111731.log
+
+---
+## Iter 167 — 2026-05-30 — branch test21
+
+**Diagnosis**: Identical converged-and-gated state, re-verified first-hand this iter (not from memory): `ls docs/SLICE_*_LOOP.md` → only `SLICE_1_LOOP.md` (no `SLICE_2_LOOP.md`); `ls procedural_memory/rule_*.json` → only `rule_003.json`; `ls data/ARC_easy/` → {easy000a, easy000a2} only; `git status` → only loop-managed `logs/`. Probe 2/2, both `via=stored(easy000a)`, through the single value-agnostic `copy_common_output` rule (`condition.type=copy_common_output_applies`, `action.dsl=make_grid` with empty args so no literal coord/color baked in, `covers={easy000a,easy000a2}`, `anti_unification_trace=null` correct for a single-source rule). Slice 1 is complete; the next real gap (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification) is human-gated on a not-yet-present `docs/SLICE_2_LOOP.md` (§10 step 2).
+
+**Change**: none (analysis only).
+
+**Probe before**: 2/2 correct, 1 rule, covers={easy000a,easy000a2}.
+**Probe after** : unchanged — no code touched.
+
+**Invariants**: forbidden=none (no code diff; `condition` key present, schema valid); positives=none (NEUTRAL, P1–P6 all Δ0 vs snapshot). P1/P2 are maxed at 2.0 for this 2-task slice (a new task = F6 pool-growth, forbidden); P3=0 is correct (anti-unification is OUT of Slice 1 scope per §9, and needs ≥2 rules); hand-bumping P5/P6 = metric-gaming (PROMPT §4); P4 episodic writer already wired/alive.
+
+**Iter 167: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No honest autonomous step exists until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
