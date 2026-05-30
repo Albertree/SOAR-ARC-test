@@ -12732,6 +12732,57 @@ no commit; the converged slice must not be churned ([[slice1_converged]]).
 - Time: 1s
 - Log: logs/learn_20260530_143448.log
 
+---
+## Iter 244 — 2026-05-30T14:45 — branch test21
+
+**Iter 244: no defensible step found — analysis only (PROMPT.md §5).** Converged
+NEUTRAL behind a human gate, not an unfilled gap. Recalled `slice1_converged.md`.
+
+**Diagnosis**: Re-confirmed the two gating facts first-hand this iter: `docs/`
+holds only `SLICE_1_LOOP.md` — `docs/SLICE_2_LOOP.md` is **ABSENT** (§10 human
+gate closed) — and `data/ARC_easy/` = {easy000a, easy000a2} is frozen (F6).
+Probe = 2/2 CORRECT via stored(easy000a), +0 learned. State matches iters 102–243.
+
+**Process note (honesty)**: Early in this iter I misread a *batched* tool-result
+delivery as a stale-replay malfunction and briefly over-diagnosed (a phantom
+`save_rule` NameError, "polluted" docs). On re-reading the actual outputs, all
+tools executed correctly: `agent/memory.py` (459 lines) is sound — `save_rule_to_ltm`
+defines and returns `path` (L199–203); `docs/INVARIANTS.md` (233 lines) and the
+memory files are clean. No code was touched. `program/anti_unification.py` is
+still all-stubs, but that is **out of Slice 1 scope** (§9; P3=0 is correct), not
+a gap to fill autonomously. Lesson reinforced: diagnose from the real files,
+and do not infer a tooling failure from one confusing render.
+
+**Why no commit**: every positive signal is pinned by the frozen 2-task slice —
+P1/P2 (both tasks already in `covers`; F6 freezes the pool → no merge/absorb),
+P3=0 (AU is OUT of Slice 1; single-source rule can't be AU'd), P4 moves only as
+a side effect of re-running solves (metric-gaming), P5/P6 immovable (recognition
+complete; nothing dead to remove). Any code change trips a forbidden signal or
+games a metric; §5 calls a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Do NOT start
+Slice 2 autonomously (§10). Until that lands, no-op is the correct output.
+
 Iter 243: no defensible step found — analysis only. Slice 1 converged (probe 2/2, 1 rule, covers 1.0); flip case human-gated per SLICE_1_LOOP.md §7–8; no non-churn gap exists. Commit nothing.
 
 ---
+
+> STAGNATION at iter 243 — 66 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 14:45
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_144513.log
