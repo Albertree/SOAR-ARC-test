@@ -18023,3 +18023,33 @@ autonomous iters should no-op, not churn.
 **Next gap (note for future iter)**: unchanged - human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (section 10 step 2). Until then, autonomous iters should no-op, not churn.
 
 > STAGNATION at iter 365 - 188 consecutive neutral iters.
+
+> STAGNATION at iter 365 — 188 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 18:24
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_182416.log
+
+---
+## Iter 366 - 2026-05-30T18:25 - branch test21
+
+**Iter 366: no defensible step found - analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) stays converged behind a closed human gate. Probe = 2/2 CORRECT, both rule=copy_common_output via=stored(easy000a), +0 learned - a single value-agnostic rule. Gate re-verified first-hand this iter (not from memory): docs/SLICE_*.md -> only SLICE_1_LOOP.md; data/ARC_easy/ -> only easy000a.json/easy000a2.json (no easy000b); procedural_memory/rule_*.json -> only rule_003.json; git status clean apart from the two loop-owned log files. Per SLICE_1 §10 the Slice-2 transition is human-gated; per §2/§9 every remaining mechanism (AU wiring, object/pixel DSL, new transformation categories, any non-easy000a task) is OUT of Slice 1 scope.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged - intentional no-op).
+
+**Invariants**: forbidden=none (no code diff); positives P1-P6 all delta 0. No honest positive-signal step exists within Slice 1: P1/P2 need a new solved task or a mergeable second rule (gated); P3 needs a second AU source (gated + OUT); P4 grows mechanically with the probe, not by authoring; P5 (a dead matcher unused by easy000a/a2) would be metric-gaming; P6 has nothing to delete with no AU online. A wrong commit pollutes the baseline worse than none (§5).
+
+**Next gap (note for future iter)**: unchanged - human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (§10 step 2). Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 366 - 189 consecutive neutral iters.
