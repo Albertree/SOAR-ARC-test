@@ -15839,3 +15839,53 @@ the baseline worse than no commit (§5), so the correct output is a no-op.
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
 blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
 Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 314 — 137 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:10
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_171025.log
+
+---
+## Iter 315 — 2026-05-30 — branch test21
+
+**Iter 315: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) remains converged — probe = 2/2 CORRECT,
+both `rule=copy_common_output via=stored(easy000a)`, +0 learned, reused 2×, single rule.
+Gating facts re-verified first-hand this iter (not from memory): `ls docs/SLICE_*.md` →
+only `SLICE_1_LOOP.md`; `ls data/ARC_easy/` → only `easy000a.json`, `easy000a2.json`
+(no `easy000b`); `ls procedural_memory/rule_*.json` → only `rule_003.json`; `git status
+--short` → clean apart from the two loop-owned log files. Read `SLICE_1_LOOP.md` in full:
+the functional goal is met (§5) and per-iter work is *hardening only* (§7), with
+anti-unification, object/pixel DSL, new transformation categories, and any non-`easy000a`
+task all explicitly **OUT** of scope (§2, §7). Within that scope no honest positive-signal
+(P1–P6) step exists: P1/P2 need a new solved task or a second rule to merge (both gated);
+P3 needs a second source rule for AU to generalize across (gated + out of scope); P5
+(add matcher) and P6 (remove live `_try_*`) would be metric-gaming or behaviour-breaking
+since AU is not online to supersede anything. A wrong commit pollutes the baseline worse
+than no commit (§5), so the correct output is a no-op.
+
+**Verification performed**: ran the full suite — `python -m pytest tests/ -q` → rc=0 (all
+pass), confirming the machinery the next slice depends on is sound (§7.1 verify). Ran
+`scripts/check_invariants.sh --check` → exit 2 (neutral: no forbidden signal, no positive
+delta). The 30-test suite already pins principles 1/2/3 (value-agnostic, one-rule/covers-merge,
+condition/action separation) and the goal trace; adding redundant tests would be churn.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; all F-checks pass; checker exit 2); positives P1–P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (`easy000b`: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided. Until then,
+autonomous iters should no-op, not churn.
