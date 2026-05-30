@@ -9319,3 +9319,31 @@ re-confirm-and-exit is the correct output (§5), not manufactured churn.
 **Iter 161: no defensible step found — analysis only** (PROMPT.md §5).
 
 **Next gap (note for future iter)**: Still gated — there is no honest autonomous step until `docs/SLICE_2_LOOP.md` is provided by the human. Keep emitting no-op analysis entries rather than churn until then.
+
+> STAGNATION at iter 161 — 59 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:09
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_110931.log
+
+---
+## Iter 162 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice 1 is functionally complete and verified again this iter — probe is 2/2 with the single value-agnostic `rule_003` (`copy_common_output`, has `condition`, `action.dsl=make_grid` with no literal coord/color, covers={easy000a,easy000a2}, source not hardcoded). `docs/SLICE_2_LOOP.md` is still absent, so the next real gap (easy000b: G0 analysis, intra-pair relation contributing to the answer, anti-unification) remains human-gated and unreleased.
+
+**Change**: none (analysis only).
+
+**Probe before**: 2/2 correct, 1 rule, covers={easy000a,easy000a2}.
+**Probe after** : unchanged — no code touched.
+
+**Invariants**: forbidden=none; positives=no deltas. Bumping P1/P2 needs new tasks (= F6 pool-growth, forbidden); P3=0 is correct since anti-unification is OUT of Slice 1 scope per SLICE_1_LOOP §9; hand-bumping P5/P6 would be metric-gaming per PROMPT §4.
+
+**Iter 162: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No honest autonomous step exists until the human provides `docs/SLICE_2_LOOP.md`. Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
