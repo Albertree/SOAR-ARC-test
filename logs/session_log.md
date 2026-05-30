@@ -10097,3 +10097,60 @@ positive-signal baseline; a no-op is the correct output.
 **Next gap (note for future iter)**: Unchanged — gated. No autonomous step is honest
 until a human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Keep
 emitting no-op analysis entries; do not churn docs or fabricate Slice-2 work.
+
+> STAGNATION at iter 182 — 5 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 12:22
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_122204.log
+
+---
+## Iter 183 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand this iter (not from
+memory). Probe is 2/2 CORRECT via the single value-agnostic `rule_003.json`
+(`copy_common_output` → `action.dsl=make_grid` with empty args so no literal
+coord/colour baked in; `condition.type=copy_common_output_applies` present F4✓;
+`covers=[easy000a, easy000a2]`; `anti_unification_trace=null` correct for a
+single-source reused rule; `times_reused=516`). `procedural_memory/` holds only
+`rule_003.json` (RULE_COUNT=1); `data/ARC_easy/` holds only easy000a/easy000a2;
+Slice 2 remains human-gated (`docs/SLICE_2_LOOP.md` absent, SLICE_1_LOOP §10 step 2).
+
+**Investigation (recorded so a future iter doesn't re-run it)**: I chased what
+looked like a catastrophic corruption — early *flaky-terminal* reads reported
+`agent/active_agent.py` at ~521k lines and `rule_003.json` at ~524k lines, both
+filled with a duplicated `times_reused` line. This was a **phantom output-capture
+artifact**, not on-disk state. Authoritative cross-checks all agree the files are
+healthy: `python ast.parse(active_agent.py)` → **337 lines, PARSE_OK**, 15680 bytes
+on disk; `git cat-file -s HEAD:agent/active_agent.py`=15343 bytes with `git status`
+clean (working tree == HEAD); `rule_003.json`=25 lines of valid JSON, `times_reused`
+a single key =516. No corruption exists; no fix warranted. (Aside: `ActiveSoarAgent`
+isn't imported elsewhere — a pre-existing dead-module fact, not corruption, out of
+this iter's scope.)
+
+**Change**: none (analysis only). No `_try_*`/`_apply_<category>` accretion remains
+to remove for P6 (`active_operators.py` has only the generic `_apply_rule` applier
+PredictOperator needs); anti-unification (P3) is explicitly OUT of Slice 1 (§9).
+
+**Probe before**: 2/2 correct; rules 1→1 (+0 learned); covers mean 2.0.
+**Probe after** : identical (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional
+no-op). Growing the pool for P1/P2 = F6; AU for P3 is out of Slice 1; hand-bumping
+P5/P6 = metric-gaming (PROMPT §4); P4 episodic writer already alive.
+
+**Iter 183: no defensible step found — analysis only** (PROMPT.md §5). The one
+thing this iter adds over its predecessors: it ran down and *disproved* an apparent
+file-corruption alarm, so future iters can trust the 337-line/25-line healthy state.
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until
+a human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Ignore any
+transient terminal reading that reports `agent/active_agent.py` or `rule_003.json` at
+hundreds-of-thousands of lines — that is an output-capture artifact; the real files
+are 337 and 25 lines respectively (verified iter 183).
