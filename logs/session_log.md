@@ -13555,3 +13555,49 @@ forbidden signal or game a metric; §5 holds a wrong commit worse than none.
 **Next gap (note for future iter)**: unchanged — gated on **human handoff**:
 provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
 Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
+
+> STAGNATION at iter 261 — 84 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:12
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_151209.log
+
+---
+## Iter 262 — 2026-05-30T15:12 — branch test21
+
+**Iter 262: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
+remains converged behind the closed §10 human gate. Re-verified the gate
+first-hand this iter (`git ls-files docs/SLICE_2_LOOP.md` empty; `data/ARC_easy/`
+= {easy000a, easy000a2} only, no `easy000b.json`; `rule_003.json` sole rule,
+carries a `"condition"` key) rather than trusting [[slice1_converged]] memory.
+
+**Diagnosis**: State identical to iters 102–261. Probe = 2/2 CORRECT via
+stored(easy000a) rule=copy_common_output, +0 learned, reused 2×. The single
+value-agnostic COMM-copy rule covers both targets; all four observation criteria
+(works / module-uniformity / approaches answer / search sanity) hold. No gap
+exists between how the system solves and how the user intends to solve.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice and
+the closed gate. P1/P2 — both tasks already in `covers`; no honest absorb/merge
+without growing the pool (F6). P3=0 is correct — anti-unification is OUT of
+Slice 1 (§9) and a single-source rule cannot be AU'd. P4 only moves as a
+side-effect of re-running solves (metric-gaming). P5/P6 immovable — recognition
+vocabulary complete, nothing dead to delete. Any code edit would either trip a
+forbidden signal or game a metric; §5 holds a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — gated on **human handoff**:
+provide `docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
+Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
