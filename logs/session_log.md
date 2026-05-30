@@ -1,5 +1,36 @@
 # SOAR-ARC Session Log
 
+## Iter 317 — 2026-05-30 — branch test21
+
+**Iter 317: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 stays converged and the gating state is unchanged from iters 315–316.
+Re-verified first-hand this iter (not from memory): `ls data/ARC_easy/` → only
+`easy000a.json`/`easy000a2.json` (no `easy000b`); `ls docs/SLICE_*.md` → only
+`SLICE_1_LOOP.md` (Slice 2 still human-gated, §10); `procedural_memory/` holds the single
+`rule_003.json` with both `condition` and `action` present, `covers=[easy000a, easy000a2]`,
+`anti_unification_trace=null` (correct — AU is OUT per §9). Probe = 2/2 CORRECT, both via
+the value-agnostic stored rule (`copy_common_output`), +0 learned. `git status` clean apart
+from the two loop-owned log files. No honest positive-signal step exists in Slice 1 scope:
+P1/P2 need a new solved task or a second rule to merge (pool growth = F6, both gated); P3
+needs a second source rule for AU (gated + OUT); P5/P6 by hand would be metric-gaming
+(PROMPT.md §4). Full standing analysis is in the iter 315 entry below.
+
+**Change**: none. This log entry only.
+
+**Verification**: `scripts/check_invariants.sh --check` → exit 2 (NEUTRAL: no forbidden
+signal; P1–P6 all Δ0). rule_003 schema confirmed valid (condition+action keys present).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none; positives P1–P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (`easy000b`),
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided.
+Autonomous iters should no-op, not churn.
+
+---
 ## Iter 316 — 2026-05-30 — branch test21
 
 **Iter 316: no defensible step found — analysis only (PROMPT.md §5).**
@@ -15926,3 +15957,15 @@ autonomous iters should no-op, not churn.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_171622.log
+
+> STAGNATION at iter 316 — 139 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:17
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_171729.log
