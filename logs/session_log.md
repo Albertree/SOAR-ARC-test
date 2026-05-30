@@ -15800,3 +15800,42 @@ Until then, autonomous iters should no-op, not churn.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_170830.log
+
+> STAGNATION at iter 313 — 136 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:09
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_170939.log
+
+---
+## Iter 314 — 2026-05-30 — branch test21
+
+**Iter 314: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) stays converged — probe = 2/2 CORRECT, both
+`rule=copy_common_output via=stored(easy000a)`, +0 learned, reused 2×, single rule. Gating
+facts re-verified first-hand this iter (not from memory): `ls docs/SLICE_*.md` → only SLICE_1;
+`ls data/ARC_easy/easy000b.json` → ABSENT; `ls procedural_memory/rule_*.json` → only
+`rule_003.json`; `git status --short` → clean apart from the two loop-owned log files. The
+Slice-2 human gate (§10) remains closed, so no honest positive-signal step exists inside
+Slice-1 scope: object/pixel DSL, modules E–J, and anti-unification are OUT per §9; hand-bumping
+P5/P6 is metric-gaming (PROMPT.md §4); adding a task is F6 pool growth. A wrong commit pollutes
+the baseline worse than no commit (§5), so the correct output is a no-op.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; all F-checks pass); positives P1–P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
+Until then, autonomous iters should no-op, not churn.
