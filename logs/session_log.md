@@ -8588,3 +8588,31 @@ autonomously (§10).
 **Invariants**: forbidden=none (no code diff); positives P1–P6 all Δ0 (checker run this iter: verdict NEUTRAL exit 0). Growing the pool = F6, hand-bumping P5/P6 = metric-gaming (PROMPT.md §4), P3 must stay 0 (AU OUT per §9). A wrong commit is worse than no commit (§5).
 
 **Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
+
+> STAGNATION at iter 140 — 38 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 09:21
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_092126.log
+
+---
+## Iter 141 — 2026-05-30 — branch test21
+
+**Iter 141: no defensible step found — analysis only (PROMPT.md §5).** Converged NEUTRAL behind the human gate. This iter did not merely re-assert prior conclusions — it re-checked each positive lever first-hand: P4 episodic liveness and P6 dead-code removal, which prior iters named but had not always inspected.
+
+**Diagnosis**: `docs/SLICE_2_LOOP.md` still ABSENT → SLICE_1_LOOP §10 forbids autonomously starting Slice 2. `data/ARC_easy/` frozen at {easy000a, easy000a2} (growing it = F6). Every positive signal is either gated or has nothing to act on: P1/P2 need a new task or a second rule to merge (none available); P3 = AU, OUT of Slice 1 (§9); **P4 episodic writer is alive** (checker reports 3388 entries; `easy000a`/`easy000a2` attempt folders written this run) — not a gap; P5 = 10 matchers, both targets already recognized so a new one is churn; **P6 = `active_operators.py` `_try_*`/`_apply_*` family already fully removed** (grep shows only the generic `_apply_rule`), so nothing is superseded to delete. `rule_003` re-read: value-agnostic (`action.dsl=make_grid`, `args={}`), schema-valid, `covers=[easy000a, easy000a2]`, `anti_unification_trace=null` (correct for single-source).
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives P1–P6 all Δ0 (checker run this iter: verdict NEUTRAL exit 0). No honest lever remains while Slice 2 is gated. A wrong commit is worse than no commit (§5).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
