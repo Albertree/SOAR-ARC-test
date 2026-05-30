@@ -9347,3 +9347,31 @@ re-confirm-and-exit is the correct output (§5), not manufactured churn.
 **Iter 162: no defensible step found — analysis only** (PROMPT.md §5).
 
 **Next gap (note for future iter)**: Still gated. No honest autonomous step exists until the human provides `docs/SLICE_2_LOOP.md`. Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+> STAGNATION at iter 162 — 60 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:10
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_111037.log
+
+---
+## Iter 163 — 2026-05-30 — branch test21
+
+**Diagnosis**: Slice 1 remains functionally complete and verified — probe 2/2 with the single value-agnostic `rule_003` (`copy_common_output`: `condition.type=copy_common_output_applies`, `action.dsl=make_grid` args empty so no literal coord/color baked in, `covers={easy000a,easy000a2}`, `anti_unification_trace=null` correct for a single-source rule). Verified first-hand this iter (not from memory): `ls docs/SLICE_*_LOOP.md` → only `SLICE_1_LOOP.md`; `data/ARC_easy/` → {easy000a, easy000a2} only; `procedural_memory/rule_*.json` → only `rule_003.json`; `git status` → only loop-managed `logs/`. The next real gap (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification) stays human-gated until `docs/SLICE_2_LOOP.md` exists (§10 step 2).
+
+**Change**: none (analysis only).
+
+**Probe before**: 2/2 correct, 1 rule, covers={easy000a,easy000a2}.
+**Probe after** : unchanged — no code touched.
+
+**Invariants**: forbidden=none (no code diff; `condition` key present, schema valid); positives=none (NEUTRAL, P1–P6 all Δ0). Bumping P1/P2 needs a new task (= F6 pool-growth, forbidden); P3=0 is correct since anti-unification is OUT of Slice 1 scope per SLICE_1_LOOP §9; hand-bumping P5/P6 = metric-gaming per PROMPT §4; P4 episodic writer already wired and alive.
+
+**Iter 163: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No honest autonomous step exists until the human provides `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
