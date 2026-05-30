@@ -1,5 +1,30 @@
 # SOAR-ARC Session Log
 
+## Iter 316 — 2026-05-30 — branch test21
+
+**Iter 316: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 is converged — probe shows `easy000a`/`easy000a2` both CORRECT
+via the single value-agnostic `copy_common_output` rule (`rule_003.json`), all four
+`SLICE_1_LOOP.md §8` criteria met. `docs/SLICE_2_LOOP.md` is absent, so Slice 2
+(`easy000b`: G0 analysis, intra-pair relation, activation rules, anti-unification) is
+still human-gated (§10). No honest positive-signal step exists in scope: P1/P2 are pinned
+without a new task or second rule to merge (pool growth = F6), P3=0 is correct (AU is OUT
+per §9), and bumping P5/P6 by hand is metric-gaming (PROMPT.md §4). A wrong commit pollutes
+the baseline worse than no commit (§5).
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none; positives P1–P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2, blocked until
+`docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` exist. Until then, no-op, not churn.
+
+---
+
 ## Iter 313 — 2026-05-30 — branch test21
 
 **Iter 313: no defensible step found — analysis only (PROMPT.md §5).** Slice 1
@@ -15889,3 +15914,15 @@ condition/action separation) and the goal trace; adding redundant tests would be
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
 blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided. Until then,
 autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 315 — 138 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:16
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_171622.log
