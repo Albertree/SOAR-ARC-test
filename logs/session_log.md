@@ -1,5 +1,42 @@
 # SOAR-ARC Session Log
 
+## Iter 360 — 2026-05-30 18:14:21 — branch test21
+
+**Iter 360: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 stays converged behind a closed human gate on Slice 2. Re-verified
+first-hand this iter (not from memory): `ls docs/SLICE_*.md` → only `SLICE_1_LOOP.md` (no
+`SLICE_2_LOOP.md`); `ls data/ARC_easy/` → only `easy000a.json`/`easy000a2.json` (no
+`easy000b`); one `rule_003.json` carrying both `condition` and `action`,
+`covers=[easy000a, easy000a2]`, `anti_unification_trace=null` (correct — AU is OUT of
+Slice-1 scope §9). Probe = 2/2 CORRECT, both via `copy_common_output` stored(easy000a),
++0 learned, reused 2× (value-agnostic — two distinct fixed outputs solve through one
+module, so §7's hardcoding trap is absent).
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice. P1/P2 — both
+tasks already in `covers`, and F6 freezes the pool so no honest absorb is possible. P3=0 is
+correct (AU is OUT §9). P4 moves only as a re-run side effect (metric-gaming). P5 (add a
+matcher with nothing to recognize) and P6 (delete a live `_try_*` with no AU online to
+supersede it) would game metrics or break behaviour. §5: a wrong commit pollutes the
+baseline worse than no commit.
+
+**Change**: none. This log entry only.
+
+**Verification**: `scripts/check_invariants.sh --check` → NEUTRAL (no forbidden signal;
+P1–P6 all Δ0). rule_003 schema confirmed valid (condition+action keys present).
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (F1–F8 PASS); positives P1–P6 all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (`easy000b`: G0
+analysis, intra-pair relation contributing to the answer, activation rules, anti-unification
+wiring), blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided
+(§10 step 2). Until then, autonomous iters should no-op, not churn.
+
+---
+
 ## Iter 353 — 2026-05-30 18:01:20 — branch test21
 
 **Iter 353: no defensible step found — analysis only (PROMPT.md §5).**
@@ -17764,3 +17801,15 @@ AU online. A wrong commit pollutes the baseline worse than none (§5).
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked
 until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2). Until then,
 autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 359 — 182 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 18:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_181421.log
