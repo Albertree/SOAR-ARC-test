@@ -1,5 +1,37 @@
 # SOAR-ARC Session Log
 
+## Iter 325 — 2026-05-30 — branch test21
+
+**Iter 325: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) remains converged — probe = 2/2 CORRECT,
+both `rule=copy_common_output via=stored(easy000a)`, +0 learned, reused 2×, single rule.
+Gating facts re-verified first-hand this iter: `ls docs/SLICE_*.md` → only `SLICE_1_LOOP.md`
+(no `SLICE_2_LOOP.md`); `ls data/ARC_easy/` → only `easy000a.json`, `easy000a2.json` (no
+`easy000b`); `ls procedural_memory/rule_*.json` → only `rule_003.json`; `git status --short`
+→ clean apart from the two loop-owned log files. Per SLICE_1 §7/§9 the in-scope work is
+hardening only; anti-unification, object/pixel DSL, new transformation categories, and any
+non-`easy000a` task are explicitly OUT. Within that scope no honest positive-signal step
+exists: P1/P2 need a new solved task or a mergeable second rule (gated); P3 needs a second
+source rule for AU (gated + OUT); P4 grows mechanically with the probe, not by authoring; P5
+(add a matcher with nothing to recognize) and P6 (remove a live `_try_*` with no AU online to
+supersede it) would be metric-gaming or behaviour-breaking. A wrong commit pollutes the
+baseline worse than no commit (§5), so the correct output is a no-op.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; all F-checks pass); positives P1–P6 all Δ0.
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (`easy000b`: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
+Until then, autonomous iters should no-op, not churn.
+
+---
+
 ## Iter 317 — 2026-05-30 — branch test21
 
 **Iter 317: no defensible step found — analysis only (PROMPT.md §5).**
@@ -16258,3 +16290,15 @@ the baseline worse than no commit (§5), so the correct output is a no-op.
 intra-pair relation contributing to the answer, activation rules, anti-unification wiring),
 blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` are provided (§10 step 2).
 Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 324 — 147 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 17:29
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_172942.log
