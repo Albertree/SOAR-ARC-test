@@ -9487,3 +9487,26 @@ re-confirm-and-exit is the correct output (§5), not manufactured churn.
 **Iter 167: no defensible step found — analysis only** (PROMPT.md §5).
 
 **Next gap (note for future iter)**: Still gated. No honest autonomous step exists until the human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Continue emitting no-op analysis entries rather than churn or fabricate Slice-2 work.
+
+> STAGNATION at iter 167 — 65 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 11:18
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_111833.log
+=== Iter 168 [NEUTRAL] 20260530_111833 ===
+Probe: 2/2 correct (copy_common_output, stored rule reused twice).
+Invariants: checker ran → NEUTRAL, no forbidden signal (P1=2.0, P2=2.0,
+P3=0.0, P4=3442, P5=10, P6=435; all Δ0 vs snapshot).
+Tests: NOT run — pytest is not installed in this env (`No module named
+pytest`). 28 test files present but unverified this iter; verification
+this iter rests on the probe + invariant checker only.
+Gap scan: priorities 1-3 clean (no invariant break, no regression, only
+open frontier is Slice 2 which is human-gated per memory/SLICE docs).
+Priority 4: no dead code worth a >0-risk edit.
+Picked: no code change. Slice 1 converged; declining to manufacture churn.
