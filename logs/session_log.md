@@ -18579,3 +18579,31 @@ autonomous iters should no-op, not churn.
 **Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0. Each lever is gated, not lazy: P1/P2 need a new solved/mergeable task (pool growth = F6); P3 needs an AU source (OUT per §9, human-gated §10); P4 moves only as a probe-rerun side effect (metric-gaming); P5 a matcher with no in-slice task to recognize = hand-bump (PROMPT.md §4); P6 deleting from the converged solve path with no task demanding it = destabilizing churn. A wrong commit pollutes the positive-signal baseline worse than no commit (§5).
 
 **Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (§10 step 2). Until then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 385 — 208 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 19:40
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_194011.log
+
+---
+## Iter 386 — 2026-05-30 — branch test21
+
+**Iter 386: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) remains converged behind the closed, human-gated Slice 2 transition (SLICE_1_LOOP.md §10). Probe = 2/2 CORRECT, both rule=copy_common_output via=stored(easy000a), +0 learned — one value-agnostic rule (rule_003.json: action.args={}, no literal color/coord, covers easy000a+easy000a2). Re-verified first-hand this iter (ls/cat/invariant check, not from memory): the only procedural rule is rule_003.json; invariant checker = NEUTRAL with no forbidden trip; working tree clean apart from the two loop-owned log files.
+
+**Change**: none toward the goal. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0 (P1=2.0, P2=2.0, P3=0.0, P4=3884, P5=10, P6=435). Each lever is gated, not lazy: P1/P2 need a new solved/mergeable task (pool growth = F6); P3 needs an AU source (OUT per §9, human-gated §10); P4 moves only as a probe-rerun side effect (metric-gaming); P5 a matcher with no in-slice task to recognize = hand-bump (PROMPT.md §4); P6 deleting from the converged solve path with no task demanding it = destabilizing churn. A wrong commit pollutes the positive-signal baseline worse than no commit (§5).
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation rules, anti-unification wiring), blocked until docs/SLICE_2_LOOP.md + data/ARC_easy/easy000b.json are provided (§10 step 2). Until then, autonomous iters should no-op, not churn.
