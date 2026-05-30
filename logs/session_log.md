@@ -1,6 +1,30 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 199 — 2026-05-30 — branch test21
+
+**Diagnosis**: Verified from real files (not memory): `docs/SLICE_2_LOOP.md` does not exist,
+`data/ARC_easy/` holds only `easy000a`/`easy000a2`, and `procedural_memory/` holds only
+`rule_003.json`. The probe solves both targets via the same value-agnostic `copy_common_output`
+rule. Slice 1 is complete; Slice 2 is human-gated (§10 step 2). No honest positive-signal step
+exists: pool growth = F6, AU is OUT-of-scope per Slice-1 §9 (so P3=0 is correct), and bumping
+P5/P6 by hand is metric-gaming (PROMPT.md §4).
+
+**Change**: none (no code diff).
+
+**Probe before**: 2/2 correct, 1 rule (rule_003), covers mean = 2 (easy000a + easy000a2).
+**Probe after** : identical — no change made.
+
+**Invariants**: forbidden=none, positives=all Δ0 (intentional no-op).
+
+**Iter 199: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Unchanged and still gated — the next real step requires a
+human to supply `docs/SLICE_2_LOOP.md` + an input-dependent `data/ARC_easy/easy000b.json`. Until
+then re-verify the gate first-hand (`ls docs/SLICE_*_LOOP.md`, `ls data/ARC_easy/`) before
+attempting any change; the answer is no-op, not churn.
+
+---
 ## Learning Loop -- 2026-05-29 18:51
 
 - Split: None, Tasks: 2
@@ -10838,3 +10862,15 @@ No honest positive-signal step exists while Slice 2 is gated.
 supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`. Verify
 with single-shot `git ls-files` / `ls` and re-check `_try_*/_apply_*` defs first-hand before
 attempting any change.
+
+> STAGNATION at iter 198 — 21 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 13:21
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_132155.log
