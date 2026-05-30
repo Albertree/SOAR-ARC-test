@@ -10710,3 +10710,47 @@ exists while Slice 2 is gated.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
 human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
 Verify with single-shot `git ls-files` / `ls` and re-check `_try_*/_apply_*` defs first-hand.
+
+> STAGNATION at iter 195 — 18 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 13:18
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_131824.log
+
+---
+## Iter 196 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand this iter (single-shot,
+not assumed): `git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty;
+`ls docs/*.md` = ANTI_UNIFICATION, INVARIANTS, RULE_FORMAT, SLICE_1 only (no SLICE_2);
+`ls data/ARC_easy/` = easy000a + easy000a2 only; `procedural_memory/*.json` = rule_003.json
+only. Probe is 2/2 CORRECT via that one value-agnostic rule
+(condition=copy_common_output_applies, action.dsl=make_grid, covers=[easy000a, easy000a2]).
+Slice 2 is human-gated (SLICE_1_LOOP §10 step 2).
+
+**Why no code step**: P1/P2 need new tasks = F6 (auto-grown pool forbidden); P3 (AU) is
+OUT of Slice 1 scope (§9 guardrail); P4 episodic writer already alive (runs each probe);
+P5 adding a matcher no rule references / no task exercises = dead recognition vocabulary
+(metric-gaming, PROMPT §4). P6 re-checked *this* iter, not assumed: `grep -nE
+"def _(try|apply)_" agent/active_operators.py` = exactly one hit, `_apply_rule` (line 368),
+the load-bearing rule-application path — nothing dead/superseded to remove. No honest
+positive-signal step exists while Slice 2 is gated.
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Probe before**: 2/2 correct; rules 1→1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 196: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
+human supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`.
+Verify with single-shot `git ls-files` / `ls` and re-check `_try_*/_apply_*` defs first-hand.
