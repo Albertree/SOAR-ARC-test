@@ -8842,3 +8842,31 @@ autonomously (§10).
 **Invariants**: forbidden=none, positives=none (all Δ0 vs snapshot).
 
 **Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
+
+> STAGNATION at iter 149 — 47 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 10:26
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_102648.log
+
+---
+## Iter 150 — 2026-05-30T10:27 — branch test21
+
+**Iter 150: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 remains converged. Verified first-hand this iter: `ls docs/SLICE_*.md` → only `SLICE_1_LOOP.md` (Slice 2 still human-gated per §10 step 2); `ls procedural_memory/rule_*.json` → only `rule_003.json`; `ls data/ARC_easy/` → {easy000a, easy000a2}; opened `rule_003.json` → value-agnostic (`action={"dsl":"make_grid","args":{}}`, no baked coordinates/colors, `condition.type=copy_common_output_applies`, covers both targets). Probe = 2/2 CORRECT via `stored(easy000a)`, +0 learned. No smallest step improves a positive signal without tripping a forbidden one: P1/P2 are maxed at 2.0 for this 2-task slice (a new task = F6 pool growth); P3 must stay 0 (anti-unification is OUT of Slice 1 per §9); P5/P6 hand-bumps are metric-gaming (PROMPT.md §4); P4 episodic writer is alive (3406 entries).
+
+**Change**: none — this log entry only.
+
+**Probe before**: 2/2 correct, 1 rule, covers mean = 2.0
+**Probe after** : 2/2 correct, 1 rule, covers mean = 2.0 (unchanged — no functional commit)
+
+**Invariants**: forbidden=none (no code diff; `validate_rule` passes, `condition` key present); positives=none (checker verdict NEUTRAL, P1–P6 all Δ0 vs snapshot).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
