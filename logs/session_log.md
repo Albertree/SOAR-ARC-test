@@ -14498,3 +14498,49 @@ Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_154122.log
+
+> STAGNATION at iter 281 — 104 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:42
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_154218.log
+
+---
+## Iter 282 — 2026-05-30 — branch test21
+
+**Iter 282: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Identical converged state to iters 102–281. Probe = 2/2 CORRECT,
+both via stored(easy000a) rule=copy_common_output, +0 learned, reused 2×. The
+single value-agnostic COMM-copy rule (rule_003.json) covers both Slice-1 targets;
+all four §8 observation criteria (works / module-uniformity / approaches answer /
+search sanity) hold. No gap between how the system solves and how the user intends.
+
+**Verified first-hand** (ls, not memory): `docs/SLICE_2_LOOP.md` absent;
+`data/ARC_easy/` = {easy000a, easy000a2} only; `procedural_memory/` holds only
+`rule_003.json`. The Slice-2 human gate (§10) remains closed.
+
+**Why no commit**: every positive signal is pinned by the fixed 2-task slice and
+the closed Slice-2 gate. P1/P2 — both tasks already in `covers`; no honest
+absorb/merge without growing the pool (F6). P3=0 is correct — AU is OUT of
+Slice 1 (§9) and a single-source rule cannot be AU'd. P4 moves only as a re-run
+side-effect (metric-gaming). P5/P6 immovable — recognition vocabulary complete,
+nothing dead to delete. Any code edit trips a forbidden signal or games a metric;
+§5 holds a wrong commit worse than none.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : unchanged.
+
+**Invariants**: forbidden=none (no code diff); positives all Δ0 (converged NEUTRAL).
+
+**Next gap (note for future iter)**: gated on **human handoff** — provide
+`docs/SLICE_2_LOOP.md` (+ an input-dependent `data/ARC_easy/easy000b.json`).
+Do NOT start Slice 2 autonomously (§10). Until that lands, no-op is correct.
