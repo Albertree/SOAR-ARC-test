@@ -10245,3 +10245,56 @@ pollutes the positive-signal baseline; a no-op is the correct output here.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
 human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Keep emitting
 no-op analysis entries; do not churn docs or fabricate Slice-2 work.
+
+> STAGNATION at iter 185 — 8 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 12:46
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_124619.log
+
+---
+## Iter 186 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand from disk (not memory):
+`docs/` holds only `SLICE_1_LOOP.md` (no `SLICE_2_LOOP.md`); `data/ARC_easy/` holds only
+`easy000a.json` + `easy000a2.json` (no `easy000b.json`, no wider pool); `procedural_memory/`
+holds only `rule_003.json`. Probe is 2/2 CORRECT via that single value-agnostic
+`copy_common_output` rule (`action.dsl=make_grid`, empty args, no baked-in literal;
+`condition.type=copy_common_output_applies` F4 OK; `covers=[easy000a,easy000a2]`;
+`anti_unification_trace=null` correct for a single-source reused rule; `times_reused`~522).
+Slice 2 (easy000b: G0 analysis, intra-pair relation contributing to the answer, activation
+rules, anti-unification) remains an explicitly **human-gated** transition
+(SLICE_1_LOOP §10 step 2) with no data to act on.
+
+**Phantom-output note (recorded so a future iter trusts the real state)**: mid-iter the
+terminal capture handed back garbled/confabulated output — a fictitious "~200 task pool"
+with `easy000a3..100` / `easy000b*` files and spurious CORRECT results — the exact
+output-capture artifact iter 183 warned about. Authoritative single-shot commands
+disproved it: `ls data/ARC_easy/` = exactly two files, `easy000a3.json` does not exist,
+`run_learn.py` has no `--no-store` flag (so no wider probe ever ran), and `rule_003.json`
+is unchanged. No pool expansion happened; the gate is unchanged.
+
+**Change**: none (analysis only). No code/rule/frozen file touched; `rule_003.json`
+untouched; working tree clean except this log.
+
+**Probe before**: 2/2 correct; rules 1; covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+Growing the pool for P1/P2 = F6; AU for P3 is OUT of Slice 1 (§9); hand-bumping P5/P6 =
+metric-gaming (PROMPT §4); P4 episodic writer already alive. No honest positive-signal
+step exists while Slice 2 is gated.
+
+**Iter 186: no defensible step found — analysis only** (PROMPT.md §5).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
+human supplies `docs/SLICE_2_LOOP.md` (+ real input-dependent `easy000b` data). Ignore any
+transient terminal reading that reports a large `data/ARC_easy/` pool or `easy000b*` files
+— verified iter 186 that only `easy000a` + `easy000a2` exist; such readings are
+output-capture artifacts (cf. iter 183).
