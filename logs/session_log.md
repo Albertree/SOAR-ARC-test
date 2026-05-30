@@ -19102,3 +19102,50 @@ intra-pair relation contributing to the answer, activation rules, anti-unificati
 is human-gated, blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` land
 (§10 step 2). Autonomous iters should no-op, not churn. Continued STAGNATION here is the
 loop correctly surfacing the human gate, not a defect to code around.
+
+> STAGNATION at iter 398 — 6 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 20:31
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_203155.log
+
+---
+## Iter 399 — 2026-05-30 — branch test21
+
+**Iter 399: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 remains converged behind the closed, human-gated Slice 2
+transition (SLICE_1_LOOP.md §10). This iter I chased the iter-388 "dead field"
+candidate (times_reused never incremented) directly in code rather than from
+memory — it is **already resolved**: `agent/active_agent.py:78` calls
+`increment_reuse_count(entry, task.task_hex)` on every fast-path hit, which both
+bumps `times_reused` and extends `covers` (mirroring the slow-path equivalence
+branch in `agent/memory.py`). So the supposed observability gap does not exist;
+there is nothing to wire. Probe = 2/2 CORRECT, both via stored rule_003
+(`copy_common_output`, value-agnostic, action.args={}), +0 learned — no §7
+hardcoding trap.
+
+**Change**: none toward the goal. This log entry only.
+
+**Probe before**: 2/2 correct; via stored rule_003 (copy_common_output); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0
+(converged NEUTRAL). Each lever is gated, not lazy: P1/P2 both tasks already in
+covers under an F6-frozen pool; P3 AU wiring is OUT of Slice-1 scope (§9) and
+human-gated (§10); P4 episodic writer already live (re-firing = metric-gaming);
+P5 a matcher recognizing nothing new = hand-bump (PROMPT §4); P6 no AU online to
+supersede a `_try_*`, so deletion breaks the converged path. A wrong commit
+pollutes the baseline worse than no commit (§5).
+
+**Next gap (note for future iter)**: unchanged — Slice 2 (`easy000b`: G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification
+wiring) is human-gated, blocked until `docs/SLICE_2_LOOP.md` +
+`data/ARC_easy/easy000b.json` land (§10 step 2). The iter-388 "dead field" lead is
+now closed (already wired), so future iters should not re-chase it.
