@@ -19149,3 +19149,49 @@ intra-pair relation contributing to the answer, activation rules, anti-unificati
 wiring) is human-gated, blocked until `docs/SLICE_2_LOOP.md` +
 `data/ARC_easy/easy000b.json` land (§10 step 2). The iter-388 "dead field" lead is
 now closed (already wired), so future iters should not re-chase it.
+
+> STAGNATION at iter 399 — 7 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 20:55
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_205548.log
+
+---
+## Iter 400 — 2026-05-30 — branch test21
+
+**Iter 400: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Re-verified the gate first-hand (not from memory/log): `procedural_memory/rule_*.json`
+→ single `rule_003.json`; `data/ARC_easy/` → only `easy000a.json`/`easy000a2.json` (F6-frozen
+pool, no `easy000b.json`); `docs/SLICE_*.md` → only `SLICE_1_LOOP.md` (Slice-2 doc absent). The
+Slice-2 human gate (§10 step 2) is therefore still closed. Probe = 2/2 CORRECT, both via stored
+rule_003 (`copy_common_output`, value-agnostic, action.args={}), +0 learned — no §7 hardcoding
+trap. Ran `scripts/check_invariants.sh --check`: P1–P6 all Δ0, verdict NEUTRAL, confirming the
+converged state is healthy (not silently broken), so there is no latent bug to fix either.
+
+**Why no commit**: every positive signal is gated by the fixed 2-task slice, not by laziness.
+P1/P2 — both tasks already in `covers` under the F6-frozen pool (saturated). P3 — anti-unification
+wiring is explicitly OUT of Slice-1 scope (§9) and human-gated (§10). P4 — episodic writer already
+live (3912 entries); re-firing it is metric-gaming. P5 — a matcher recognizing nothing new is a
+hand-bump (PROMPT §4). P6 — no AU online to supersede a `_try_*`, and the family is already retired,
+so deletion would break the converged path. A wrong commit pollutes the positive-signal baseline
+worse than no commit (§5).
+
+**Change**: none toward the goal. This log entry only.
+
+**Probe before**: 2/2 correct; via stored rule_003 (copy_common_output); 1 rule; covers mean 2.0.
+**Probe after** : unchanged (intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; F1–F8 PASS); positives P1–P6 all Δ0 (converged NEUTRAL,
+confirmed by the live checker against base a3a589b6).
+
+**Next gap (note for future iter)**: unchanged — Slice 2 (`easy000b`: G0 analysis, intra-pair
+relation contributing to the answer, activation rules, anti-unification wiring) is human-gated,
+blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json` land (§10 step 2). Continued
+STAGNATION here is the loop correctly surfacing the human gate, not a defect to code around.
