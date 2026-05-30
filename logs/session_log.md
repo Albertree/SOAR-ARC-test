@@ -14608,3 +14608,47 @@ is worse than none.
 intra-pair relation contributing to the answer, activation rules, anti-unification
 wiring), blocked until `docs/SLICE_2_LOOP.md` + `easy000b.json` are provided. Until
 then, autonomous iters should no-op, not churn.
+
+> STAGNATION at iter 284 — 107 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 15:49
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_154908.log
+
+---
+## Iter 285 — 2026-05-30 — branch test21
+
+**Iter 285: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 (easy000a/easy000a2) remains converged — probe = 2/2 CORRECT,
+both `via=stored(easy000a)` rule=`copy_common_output`, +0 learned, reused 2×. Gating
+facts re-verified first-hand this iter (not from memory): `ls docs/SLICE_*.md` → only
+`SLICE_1_LOOP.md`; `ls data/ARC_easy/` → {easy000a, easy000a2}; `ls procedural_memory/`
+→ only `rule_003.json`; `git status` → only loop-managed `logs/` touched. I also opened
+`agent/memory.py` and confirmed the once-suspected "covers under-count on reuse" gap is
+already closed: `increment_reuse_count(entry, task_hex)` idempotently appends the reused
+task to `covers` (lines 262-269), mirroring the slow-path equivalence branch — so reuse
+and discovery share one coverage contract. No live gap remains in Slice-1 scope.
+
+**Change**: none. This log entry only.
+
+**Probe before**: 2/2 correct; via=stored(easy000a); 1 rule; covers mean 2.0.
+**Probe after** : 2/2 correct; 1 rule; covers mean 2.0 (unchanged — intentional no-op).
+
+**Invariants**: forbidden=none (no code diff; `check_invariants.sh --check` → exit 0,
+NEUTRAL); positives P1–P6 all Δ0. No honest lever exists: P1/P2 pinned at 2.0 for this
+2-task slice (a new task = F6 pool growth); P3 must stay 0 (anti-unification is OUT of
+Slice 1 per §9, and a single-source rule cannot be AU'd); P5/P6 hand-bumps are
+metric-gaming (PROMPT.md §4); P4 episodic writer alive. A wrong commit is worse than no
+commit (§5).
+
+**Next gap (note for future iter)**: unchanged — human-gated Slice 2 (easy000b: G0
+analysis, intra-pair relation contributing to the answer, activation rules,
+anti-unification wiring), blocked until `docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json`
+are provided (§10 step 2). Until then, autonomous iters should no-op, not churn.
