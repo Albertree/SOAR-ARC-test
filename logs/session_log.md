@@ -10198,3 +10198,50 @@ pollutes the positive-signal baseline; a no-op is the correct output here.
 **Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
 human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Keep emitting
 no-op analysis entries; do not churn docs or fabricate Slice-2 work.
+
+> STAGNATION at iter 184 — 7 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 12:45
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_124500.log
+
+---
+## Iter 185 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand this iter (file listing
++ rule read, not memory): `docs/` holds only `SLICE_1_LOOP.md` (no `SLICE_2_LOOP.md`);
+`data/ARC_easy/` holds only `easy000a.json` + `easy000a2.json` (no `easy000b.json`);
+`procedural_memory/` holds only `rule_003.json`. Probe is 2/2 CORRECT via that single
+value-agnostic `copy_common_output` rule (`action.dsl=make_grid` with empty args so no
+literal coord/colour baked in; `condition.type=copy_common_output_applies` present F4✓;
+`covers=[easy000a, easy000a2]`; `anti_unification_trace=null` correct for a single-source
+reused rule; `times_reused=520`), reused twice, +0 learned (P1=2.0, P2=2.0). The sole
+remaining frontier (easy000b: G0 analysis, intra-pair relation contributing to the
+answer, activation rules, anti-unification) is an explicitly **human-gated** transition
+(SLICE_1_LOOP §10 step 2) with no data to act on.
+
+**Change**: none (analysis only). Iters 177–184 already exhausted the in-scope
+robustness surface (id-gap clobber fixed + test, F7 swallow audited clear, phantom
+corruption alarm disproved). No genuine new latent bug surfaced this iter; fabricating
+another micro-fix would be the churn [[slice1_converged]] warns against.
+
+**Probe before**: 2/2 correct; rules 1→1 (+0 learned); covers mean 2.0.
+**Probe after** : identical (no code touched).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+Growing the pool for P1/P2 = F6; AU for P3 is OUT of Slice 1 (§9); hand-bumping P5/P6 =
+metric-gaming (PROMPT §4); P4 episodic writer already alive. No honest positive-signal
+step exists while Slice 2 is gated.
+
+**Iter 185: no defensible step found — analysis only** (PROMPT.md §5). A wrong commit
+pollutes the positive-signal baseline; a no-op is the correct output here.
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a
+human supplies `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Keep emitting
+no-op analysis entries; do not churn docs or fabricate Slice-2 work.
