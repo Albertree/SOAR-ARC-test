@@ -8975,3 +8975,47 @@ wired and alive. A wrong commit is worse than no commit (§5).
 **Next gap (note for future iter)**: unchanged — gated on human handoff: provide
 `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears,
 re-confirm-and-exit is the correct output (§5), not manufactured churn.
+
+> STAGNATION at iter 153 — 51 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 10:59
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_105944.log
+
+---
+## Iter 154 — 2026-05-30 — branch test21
+
+**Iter 154: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 remains converged; Slice 2 still human-gated. Verified
+first-hand against the real tree this iter: `ls docs/SLICE_*.md` → only
+`SLICE_1_LOOP.md` (no `SLICE_2_LOOP.md`, so Slice 2 scope — easy000b G0 analysis,
+intra-pair relation contributing to the answer, activation rules, anti-unification
+— stays gated per §10 step 2); `ls data/ARC_easy/` → {easy000a, easy000a2} (no
+easy000b); `ls procedural_memory/rule_*.json` → only `rule_003.json`; `git status`
+→ only loop-managed `logs/` touched. Opened `rule_003.json`: value-agnostic
+(`action={"dsl":"make_grid","args":{}}`, no baked coordinates/colors,
+`condition.type=copy_common_output_applies`, `covers=[easy000a,easy000a2]`). Probe
+= 2/2 CORRECT, both `via=stored(easy000a)`, +0 learned.
+
+**Change**: none — this log entry only.
+
+**Probe before**: 2/2 correct, 1 rule, covers mean = 2.0
+**Probe after** : 2/2 correct, 1 rule, covers mean = 2.0 (unchanged — no functional commit)
+
+**Invariants**: forbidden=none (no code diff; `validate_rule` passes, `condition`
+key present); positives=none (NEUTRAL, P1–P6 all Δ0 vs snapshot). No honest lever
+exists: P1/P2 are maxed at 2.0 for this 2-task slice (a new task = F6 pool growth);
+P3 must stay 0 (anti-unification is OUT of Slice 1 per §9, and needs ≥2 rules);
+P5/P6 hand-bumps are metric-gaming (PROMPT.md §4); P4 episodic writer is already
+wired and alive. A wrong commit is worse than no commit (§5).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff: provide
+`docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears,
+re-confirm-and-exit is the correct output (§5), not manufactured churn.
