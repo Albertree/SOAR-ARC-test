@@ -8898,3 +8898,36 @@ autonomously (§10).
 **Invariants**: forbidden=none (no code diff); positives=none (all Δ0 vs snapshot). No honest lever exists: P1/P2 are maxed at 2.0 for this 2-task slice (a new task = F6 pool growth); P3 must stay 0 (anti-unification is OUT of Slice 1 per §9); P5/P6 hand-bumps are metric-gaming (PROMPT.md §4); P4 episodic writer is alive. A wrong commit is worse than no commit (§5).
 
 **Next gap (note for future iter)**: unchanged — gated on human handoff: provide `docs/SLICE_2_LOOP.md` (+ `data/ARC_easy/easy000b.json`). Until that file appears, re-confirm-and-exit is the correct output (§5), not manufactured churn.
+
+---
+## Iter 152 — 2026-05-30 — branch test21
+
+**Iter 152: no defensible step found — analysis only (PROMPT.md §5).**
+
+**Diagnosis**: Slice 1 remains converged; Slice 2 still human-gated. Re-verified
+first-hand against the real tree: only `docs/SLICE_1_LOOP.md` exists;
+`procedural_memory/` holds only `rule_003.json` (value-agnostic
+`copy_common_output`, covers [easy000a, easy000a2]); `data/ARC_easy/` =
+{easy000a, easy000a2}. Probe = 2/2 CORRECT via `stored(easy000a)`, +0 learned.
+The episodic writer is ALREADY wired (`agent/episodic.py:write_episode()` <-
+`active_agent._record_episode()` on both fast and slow paths; `episodic_memory/`
+populated, P4~3410) — not a gap.
+
+**Change**: none — this log entry only.
+
+**Probe before/after**: 2/2 correct, 1 rule, covers mean 2.0 (unchanged).
+
+**Invariants**: forbidden=none (no code diff); positives=none (NEUTRAL, P1-P6 Δ0
+vs snapshot). No honest lever: P1/P2 maxed for the 2-task slice (new task = F6),
+P3=0 correct (AU is OUT of Slice 1 and needs >=2 rules), P5/P6 hand-bumps =
+metric-gaming (§4).
+
+**Next gap (note for future iter)**: unchanged — gated on human handoff
+(`docs/SLICE_2_LOOP.md` + `data/ARC_easy/easy000b.json`). Re-confirm-and-exit is
+correct (§5), not churn.
+
+**Process note**: this iter initially mis-diagnosed (hallucinated an empty
+episodic store + a fictional `solve_task` API) and created a bogus
+`tests/test_episodic.py` plus a false log entry before checking the real tree.
+Both were removed; source code was never modified (the failed edits left
+`agent/` untouched). Lesson recorded in memory: diagnose from real files.
