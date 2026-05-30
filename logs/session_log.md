@@ -10874,3 +10874,53 @@ attempting any change.
 - Stored rule hits: 2
 - Time: 1s
 - Log: logs/learn_20260530_132155.log
+
+> STAGNATION at iter 199 — 22 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-05-30 13:23
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 2
+- Time: 1s
+- Log: logs/learn_20260530_132319.log
+
+---
+## Iter 200 — 2026-05-30 — branch test21
+
+**Diagnosis**: Converged-and-gated, re-verified first-hand this iter (not from memory):
+`git ls-files docs/SLICE_2_LOOP.md data/ARC_easy/easy000b.json` = empty; `ls data/ARC_easy/`
+= easy000a + easy000a2 only; `procedural_memory/rule_*.json` = rule_003.json only; probe =
+2/2 CORRECT via the single value-agnostic `copy_common_output` rule. Slice 1 is complete;
+Slice 2 is human-gated (SLICE_1_LOOP §10 step 2).
+
+**Why no code step** (each positive signal checked, not assumed):
+- P1/P2 (coverage, mean covers): only move is a new task to absorb → F6 (auto-grown pool
+  forbidden). No honest lever inside the 2-task slice.
+- P3 (anti-unif trace fraction): modules E–J + anti-unification are OUT of Slice 1 scope
+  (SLICE_1_LOOP §9 guardrail). Wiring it now would be off-slice scaffolding.
+- P4 (episodic entries): already alive — `episodic_memory/` holds 8 attempt dirs including
+  `easy000a` and `easy000a2`. Writer is not the gap.
+- P5 (condition.type count): registry already has 12 matchers (agent/conditions/). Adding a
+  13th that no rule references and no task exercises = dead recognition vocabulary
+  (metric-gaming, PROMPT §4). Not honest.
+- P6 (net code removed from active_operators.py): `grep -nE "def _(try|apply)_"` = exactly
+  one hit, `_apply_rule` (line 368) of 435 lines — the load-bearing apply path. Nothing
+  dead or superseded to delete.
+
+**Change**: none (analysis only). No code/rule/frozen file touched.
+
+**Probe before**: 2/2 correct; rules 1→1 (+0); covers mean 2.0.
+**Probe after** : identical (no change made).
+
+**Invariants**: forbidden=none (no code diff). positives=all Δ0 (intentional no-op).
+
+**Iter 200: no defensible step found — analysis only** (PROMPT.md §5). A *wrong* commit is
+worse than *no* commit (PROMPT §5); the converged slice must not be churned ([[slice1_converged]]).
+
+**Next gap (note for future iter)**: Still gated. No autonomous step is honest until a human
+supplies `docs/SLICE_2_LOOP.md` + a real input-dependent `data/ARC_easy/easy000b.json`. Verify
+with single-shot `git ls-files` / `ls` and re-check `_try_*/_apply_*` defs first-hand before
+attempting any change.
