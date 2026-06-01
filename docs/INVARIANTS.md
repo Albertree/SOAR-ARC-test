@@ -101,14 +101,26 @@ defines ARBOR.
 Check: no path under `semantic_memory/` may contain `TF_` or `tf_grid` in its
 basename.
 
-### F6 — Auto-grown `--limit` or task pool
+### F6 — *Silent* auto-grown `--limit` or task pool
 
 `run_loop.sh` already had `*** 100% score! Growing task pool ***`. That
 broke reproducibility by silently changing the evaluation condition mid-run.
-No script may *automatically* increase its task budget. The user controls the
-budget via CLI flags only.
+No script may *silently* increase its task budget — a budget that creeps up
+inside a run with no record is forbidden.
 
-Check: `git diff <base> -- run_loop.sh run_pipeline.sh run_learn.py run_1ktasks.py | grep -E "TASKS_PER_SESSION\s*=\s*\(.*\*"` and similar auto-growth patterns must print nothing.
+**Allowed exception — the easy→training phase graduation.** The loop may move
+from the `easy` phase to the `training` phase *deterministically and
+auditably*: the switch must be (a) **criteria-gated** (the easy probe solved
+cleanly for K consecutive iters, K fixed in the script), (b) **logged** to
+`logs/session_log.md` *and* recorded in the phase state file
+`logs/_phase_state.json`, and (c) **monotonic and reproducible** — same seed +
+same history ⇒ same phase. This is a *named, recorded change of evaluation
+condition*, not a silent creep, so it does not break reproducibility. See
+`PROMPT.md §2.1` and `CLAUDE.md` "Loop phases". A graduation that is not
+logged, not gated on a fixed criterion, or that grows the *probe size* itself
+unboundedly is still an F6 violation.
+
+Check: `git diff <base> -- run_loop.sh run_pipeline.sh run_learn.py run_1ktasks.py | grep -E "TASKS_PER_SESSION\s*=\s*\(.*\*"` and similar unbounded auto-growth patterns must print nothing. The phase graduation writes `logs/_phase_state.json` and a `PHASE GRADUATION` line to `logs/session_log.md`; absence of that audit trail when the phase changed is the violation.
 
 ### F7 — `RuleSchemaError` swallowed
 

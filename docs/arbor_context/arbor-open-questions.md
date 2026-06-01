@@ -58,8 +58,8 @@ sources:
 > "비교를 선택적으로 하게된다면 계층 상관없이 비교의 근거가 통일된 모습이 나올 수 있는지 생각하고 있어"
 
 - **모듈**: C 전체
-- **답 (2026-05-29 정정)**: 구 6+1 규칙(C1-C7) → **2종 (Intra/Inter) + scope predicate** 로 통일. 모든 비교가 `compare(select(anchor,level,pred), select(anchor,level,pred))` 의 동일 형식 → 계층 무관 통일. [[arbor-execution-trace]] §모듈 C 절
-- **상태**: 답 있음, 구현 대기
+- **답 (2026-05-29 정정 → 2026-05-31 재정정)**: 모든 비교가 `compare(scope_A, scope_B)` 동일 형식 → 계층 무관 통일 (이 부분 유효). 단 "2종(Intra/Inter)" 은 오해였음 — **비교는 전부 Inter-[level]** (같은 레벨 property 비교), **Intra 는 비교가 아니라 descent**(모듈 A). [[arbor-execution-trace]] §모듈 C 의 2026-05-31 재정정 참조.
+- **상태**: 정의 확정, 구현 진행 중 (Slice 1 단계 2 `relation` 모듈)
 
 ### Q-B1 / Q-C1. 표현식 합성의 깊이 제한
 

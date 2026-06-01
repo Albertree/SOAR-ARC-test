@@ -49,11 +49,26 @@ LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SNAPSHOT_PATH="${LOG_DIR}/_invariant_snapshot.json"
 
+# ── Phase graduation (easy → training) ──────────────────────
+# The loop starts in the `easy` phase (probe = controlled slice tasks under
+# data/ARC_easy*/). When the easy probe is solved 100% for GRADUATION_K
+# consecutive iters, the loop graduates to the `training` phase (probe samples
+# real ARC tasks under data/ARC_AGI/training/). The switch is criteria-gated,
+# logged, and recorded in PHASE_STATE — the F6-allowed exception, NOT a silent
+# budget creep. See docs/INVARIANTS.md F6, PROMPT.md §2.1, CLAUDE.md "Loop phases".
+GRADUATION_K=5            # consecutive 100% easy probes required to graduate
+TRAIN_PROBE_SIZE=3       # tasks sampled from training in the training phase
+GRADUATION_ENABLED=1     # --no-graduation pins the loop to the easy phase
+PHASE_STATE="${LOG_DIR}/_phase_state.json"
+
 while [[ "$#" -gt 0 ]]; do
     case $1 in
-        --max-sessions) MAX_SESSIONS="$2"; shift ;;
-        --probe-size)   PROBE_SIZE="$2";   shift ;;
-        --probe-seed)   PROBE_SEED="$2";   shift ;;
+        --max-sessions)     MAX_SESSIONS="$2"; shift ;;
+        --probe-size)       PROBE_SIZE="$2";   shift ;;
+        --probe-seed)       PROBE_SEED="$2";   shift ;;
+        --graduation-k)     GRADUATION_K="$2"; shift ;;
+        --train-probe-size) TRAIN_PROBE_SIZE="$2"; shift ;;
+        --no-graduation)    GRADUATION_ENABLED=0 ;;
         *) echo "Unknown: $1"; exit 1 ;;
     esac
     shift
@@ -78,9 +93,46 @@ get_last_iter() {
 ITER=$(get_last_iter)
 NEUTRAL_STREAK=0
 
+# ── Phase state helpers (JSON via python for cross-platform portability) ──
+# State shape: {"phase": "easy"|"training", "easy_clean_streak": int,
+#               "graduated_at_iter": int|null}
+phase_read() {  # $1 = key  → prints value (empty if missing/unreadable)
+    python - "$PHASE_STATE" "$1" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    with open(sys.argv[1]) as f:
+        d = json.load(f)
+    v = d.get(sys.argv[2])
+    print("" if v is None else v)
+except Exception:
+    print("")
+PY
+}
+
+phase_write() {  # $1 = phase  $2 = streak  $3 = graduated_at_iter (or "null")
+    python - "$PHASE_STATE" "$1" "$2" "$3" <<'PY' 2>/dev/null || true
+import json, sys
+path, phase, streak, grad = sys.argv[1:5]
+grad_v = None if grad in ("", "null") else int(grad)
+with open(path, "w") as f:
+    json.dump({"phase": phase,
+               "easy_clean_streak": int(streak),
+               "graduated_at_iter": grad_v}, f, indent=2)
+PY
+}
+
+# Initialize phase state on first run.
+if [ ! -f "$PHASE_STATE" ]; then
+    phase_write "easy" 0 "null"
+fi
+PHASE=$(phase_read phase);            [ -z "$PHASE" ] && PHASE="easy"
+EASY_STREAK=$(phase_read easy_clean_streak); [ -z "$EASY_STREAK" ] && EASY_STREAK=0
+GRAD_ITER=$(phase_read graduated_at_iter);   [ -z "$GRAD_ITER" ] && GRAD_ITER="null"
+
 log "=========================================="
 log "ARBOR Infinite Loop"
 log "Branch: $BRANCH | probe-size: $PROBE_SIZE | probe-seed: $PROBE_SEED"
+log "Phase: $PHASE | easy-streak: $EASY_STREAK/$GRADUATION_K | graduation: $([ "$GRADUATION_ENABLED" = 1 ] && echo on || echo off)"
 log "Reward function: docs/INVARIANTS.md"
 log "=========================================="
 
@@ -104,12 +156,61 @@ while true; do
     log ""
     log "========== ITER $ITER =========="
 
-    # ── 1. PROBE ────────────────────────────────────────────
-    log "Probe: run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED"
-    PROBE_OUTPUT=$(python run_learn.py --limit "$PROBE_SIZE" --seed "$PROBE_SEED" 2>&1 || true)
-    echo "$PROBE_OUTPUT" >> "$PIPELINE_LOG"
-    PROBE_SCORE=$(echo "$PROBE_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $PROBE_SIZE")
-    log "Probe score (microscope, NOT reward): $PROBE_SCORE"
+    # ── 1. PROBE (phase-aware) ──────────────────────────────
+    # Always run the easy probe: in `easy` phase it IS the probe; in `training`
+    # phase it is the one-line regression guard (PROMPT.md §2.1).
+    log "Easy probe: run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED"
+    EASY_OUTPUT=$(python run_learn.py --limit "$PROBE_SIZE" --seed "$PROBE_SEED" 2>&1 || true)
+    echo "$EASY_OUTPUT" >> "$PIPELINE_LOG"
+    EASY_SCORE=$(echo "$EASY_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $PROBE_SIZE")
+    EASY_PCT=$(echo "$EASY_SCORE" | grep -oE '[0-9.]+%' | tr -d '%' | tail -1)
+    [ -z "$EASY_PCT" ] && EASY_PCT="0"
+    EASY_CLEAN=$(awk -v p="$EASY_PCT" 'BEGIN{print (p+0>=100)?1:0}')
+
+    if [ "$PHASE" = "training" ]; then
+        # Probe samples real ARC training tasks (deterministic via fixed seed).
+        PROBE_CMD="run_learn.py --split training --limit $TRAIN_PROBE_SIZE --shuffle --seed $PROBE_SEED"
+        log "Training probe: $PROBE_CMD"
+        TRAIN_OUTPUT=$(python run_learn.py --split training --limit "$TRAIN_PROBE_SIZE" --shuffle --seed "$PROBE_SEED" 2>&1 || true)
+        echo "$TRAIN_OUTPUT" >> "$PIPELINE_LOG"
+        TRAIN_SCORE=$(echo "$TRAIN_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $TRAIN_PROBE_SIZE")
+        PROBE_OUTPUT="[PHASE: training]
+===== TRAINING PROBE ($PROBE_CMD) — primary microscope =====
+$TRAIN_OUTPUT
+===== EASY REGRESSION GUARD (run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED) =====
+$EASY_SCORE
+(easy slice must not regress; if it dropped below 100%, fixing it IS this iter's gap.)"
+        PROBE_SCORE="$TRAIN_SCORE"
+        log "Training probe score (microscope, NOT reward): $TRAIN_SCORE | easy guard: $EASY_SCORE"
+    else
+        # easy phase — graduation accounting.
+        if [ "$EASY_CLEAN" = "1" ]; then
+            EASY_STREAK=$((EASY_STREAK + 1))
+        else
+            EASY_STREAK=0
+        fi
+        PROBE_OUTPUT="[PHASE: easy | clean-streak: $EASY_STREAK/$GRADUATION_K]
+===== EASY PROBE (run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED) =====
+$EASY_OUTPUT"
+        PROBE_SCORE="$EASY_SCORE"
+        log "Easy probe score (microscope, NOT reward): $EASY_SCORE | clean-streak: $EASY_STREAK/$GRADUATION_K"
+
+        # Graduate if the criterion is met.
+        if [ "$GRADUATION_ENABLED" = "1" ] && [ "$EASY_STREAK" -ge "$GRADUATION_K" ]; then
+            PHASE="training"
+            GRAD_ITER="$ITER"
+            phase_write "training" "$EASY_STREAK" "$ITER"
+            log "*** PHASE GRADUATION: easy → training at iter $ITER ($EASY_STREAK consecutive 100% easy probes) ***"
+            {
+                echo ""
+                echo "> **PHASE GRADUATION** at iter $ITER — easy → training."
+                echo "> Easy slice solved 100% for $EASY_STREAK consecutive iters (K=$GRADUATION_K)."
+                echo "> Probe now samples data/ARC_AGI/training/. Easy slice kept as regression guard."
+            } >> "${LOG_DIR}/session_log.md"
+        else
+            phase_write "easy" "$EASY_STREAK" "null"
+        fi
+    fi
 
     # ── 2. SNAPSHOT ─────────────────────────────────────────
     ./scripts/check_invariants.sh --snapshot "$SNAPSHOT_PATH" \
@@ -125,8 +226,10 @@ Your authoritative input is PROMPT.md. Read it now and execute it.
 
 CONTEXT FROM THE LOOP (not part of PROMPT.md, just situational):
 
-  - The probe (run_learn.py --limit ${PROBE_SIZE} --seed ${PROBE_SEED}) has
-    already been run for you. Its output:
+  - The loop is in the **${PHASE}** phase (see PROMPT.md §2.1). The probe has
+    already been run for you; its output below states the phase and the exact
+    command. In the training phase it samples real ARC tasks and also carries a
+    one-line easy regression guard. The probe is a microscope, not a target.
 
     ===== PROBE OUTPUT =====
 ${PROBE_OUTPUT}
@@ -180,6 +283,9 @@ PROMPT
         if git log -1 --format=%s | grep -q "^Iter $ITER"; then
             git revert --no-edit HEAD 2>&1 | tee -a "$PIPELINE_LOG" || true
         fi
+        # The hard reset also discarded this iter's phase-state write; restore it
+        # from the in-memory phase so the file stays in sync across a restart.
+        phase_write "$PHASE" "$EASY_STREAK" "$GRAD_ITER"
     else
         # CLEAN or NEUTRAL — accept the work.
         git add -A

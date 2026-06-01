@@ -42,32 +42,100 @@ asked to "improve ARC score." Each iter you:
 "Smallest" means: if the gap can be split into two, do the smaller half. The
 loop will keep running — there is always a next iter.
 
+### 2.1 Two phases: `easy` → `training`
+
+The loop runs in one of two phases; the probe header in your context tells you
+which. The phase is managed by `run_loop.sh` (state file
+`logs/_phase_state.json`), **not** by you — never edit that file to skip ahead.
+
+- **`easy` phase** (default). The probe and your target are the controlled
+  slice tasks (`data/ARC_easy/`, `data/ARC_easy_a/`). Goal: make the agent
+  solve them *the way the user intends* (the four observation criteria above).
+  The loop graduates to `training` automatically once the easy probe is solved
+  cleanly for several consecutive iters.
+
+- **`training` phase**. The probe now samples real ARC tasks
+  (`data/ARC_AGI/training/`, `--split training`). The agent has shown it can do
+  the easy slice; now the job is to **make its competence *grow* onto harder,
+  unseen tasks by extending the system, not by hand-coding per-task detectors**.
+  In this phase, prioritize gaps whose fix is *general* — a new `compare`
+  capability, a new condition matcher, a property/relation/util primitive, or
+  (the prize) getting `anti_unification.unify()` to fire and lift two
+  task-specific programs into one rule with `covers` > 1. A training task you
+  solve by a mechanism that also helps the *next* unseen task is real progress;
+  one you solve by a bespoke `_try_*`-style special case is the documented
+  failure mode (see `arbor.md` 진단 #1/#2/#5) and trips the forbidden signals.
+
+Regression rule: a `training`-phase iter must not break the easy slice. The
+loop keeps a one-line easy regression check in the probe; if you see it drop,
+fixing that regression *is* this iter's gap.
+
 ---
 
 ## 3. Procedure (do in order)
 
 ### Step 1 — Read the situation
 
-Read these, in this order, every iter:
+Read these, in this order, every iter. **Do not skim and do not work from
+summaries** — the design intent lives in the *detail* of the user's own prose.
+If an iter is short on time, read *less code*, not less of this context.
+
+**A. The active target**
 
 1. **`docs/SLICE_<N>_LOOP.md`** — the **active slice** (currently
    `docs/SLICE_1_LOOP.md`). THIS IS YOUR CONCRETE TARGET FOR THIS ITER: which
    task(s) the slice must solve, the module scope (IN/OUT), the 7 design
    principles, the exact select/compare sequence, and the (relaxed) pass
-   criteria. **It also lists original sources you MUST read in full** (the
-   user's raw prose at `docs/arbor_context/arbor-flow-three-task-description.md`
-   and `docs/arbor_context/arbor-execution-trace.md`) — do not work from the
-   slice doc's summary alone; read those originals so detail is not lost.
-2. `CLAUDE.md` — architecture invariants (frozen files, operator pipeline,
-   memory schema).
-3. `docs/INVARIANTS.md` — what is forbidden / what counts as progress.
-4. `docs/RULE_FORMAT.md` — current rule schema.
-5. The output of the probe run that `run_loop.sh` just executed (it is in
-   the prompt context as `${PROBE_OUTPUT}` — see Step 2). Note: until the probe
-   targets the slice's tasks (see §below), treat it as a *secondary* signal and
-   run the slice's own target task(s) per `docs/SLICE_1_LOOP.md` directly.
-6. The wiki module map at `docs/arbor_context/arbor-modules.md` if it
-   exists — its **Gap** column is the canonical list of unfilled holes.
+   criteria.
+
+**B. The ARBOR design originals — `docs/arbor_context/` (the mirrored wiki).**
+This directory is the user's full-detail specification of how ARBOR is meant to
+*work*, copied verbatim from the design wiki. It is **frozen / read-only**
+(editing it trips F1) — you read it every iter so progress bends toward the
+intended system, not toward a convenient local optimum. Read **all** of it:
+
+2. `docs/arbor_context/arbor.md` — the **canonical project page**: the single
+   ultimate goal, the architecture table, Fast/Slow path, the 6 diagnosed
+   failures (why 400+ iters produced little), and the "next tasks" backlog.
+   *Start here — it frames everything else.*
+3. `docs/arbor_context/arbor-flow-three-task-description.md` — the user's **raw
+   prose** walking through easy000a / easy000b / 08ed6ac7 step by step. This is
+   the most important document: it is *how the user intends the agent to solve*.
+   Read it in full; do not compress it.
+4. `docs/arbor_context/arbor-execution-trace.md` — the 11 modules + spec-gap
+   table derived from that prose. The **Gap** notes are unfilled holes.
+5. `docs/arbor_context/arbor-modules.md` — module inventory (intent ↔ code
+   state). Its **Gap** column is the canonical list of what is missing.
+6. `docs/arbor_context/arbor-soar-memory-mapping.md` and
+   `docs/arbor_context/arbor-memory-contents.md` — the **2026-05-31 inflection**:
+   ARBOR's "semantic memory" is a misnomer for *persisted Working Memory*;
+   these define *what actually goes in each of the four memories*. If anything
+   here conflicts with an older statement in `CLAUDE.md §3`, **these pages are
+   the newer intent** — note the conflict in your log rather than regressing.
+7. `docs/arbor_context/arbor-dsl-taxonomy.md` — the DSL 4-way split
+   (transformation frozen at 2; property/relation/util hand-coding *allowed*).
+8. `docs/arbor_context/arbor-open-questions.md` — the 11 unresolved questions
+   (the user's explicit "(아직 모르겠어)" — do not silently invent answers; if
+   your gap touches one, surface it).
+9. `docs/arbor_context/arbor-signals.md` and
+   `docs/arbor_context/arbor-prompt-spec.md` — the reward-signal rationale and
+   the prompt blueprint behind this very file.
+10. `docs/arbor_context/arckg-wm-design.md` — WM region design.
+
+**C. The operating rules**
+
+11. `CLAUDE.md` — architecture invariants (frozen files, operator pipeline,
+    memory schema). Authoritative for *unchangeable* facts; where §B's newer
+    pages refine it, §B wins on *intent* but CLAUDE.md's frozen contracts still
+    bind the code.
+12. `docs/INVARIANTS.md` — what is forbidden / what counts as progress.
+13. `docs/RULE_FORMAT.md` — current rule schema.
+14. The output of the probe run that `run_loop.sh` just executed (in the
+    prompt context as `${PROBE_OUTPUT}` — see Step 2). The loop may be in the
+    **easy** phase (slice tasks) or the **training** phase (ARC_AGI training);
+    the probe header states which. Treat the probe as a *microscope*, not a
+    target. Until it targets the slice's tasks, also run the slice's own
+    target task(s) per `docs/SLICE_1_LOOP.md` directly.
 
 ### Step 2 — Diagnose one gap
 

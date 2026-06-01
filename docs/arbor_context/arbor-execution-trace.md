@@ -61,15 +61,18 @@ sources:
 ### C. RecursiveComparisonController (구 ComparisonScheduler)
 
 > **2026-05-29 정정**: 구 7규칙(C1-C7)은 *4개의 다른 관심사* 가 섞인 것이었음. 비교는 **2종 (Intra / Inter) + scope predicate** 로 단순화. (대화 출처: [[raw/claude-arbor-dsl-4종-설계-결정-2026-05-18]] 후속 세션)
+>
+> **2026-05-31 재정정 (중요)**: "Intra/Inter 2종 비교" 는 오해였음. **Intra 는 비교가 아니라 descent** — 현재 레벨 정보로 목적 달성이 불가능해 *더 깊은 레벨로 내려가는 것* (= "intra-[component] analysis", 모듈 A 소관). **비교는 전부 Inter-[level]** — 같은 레벨 노드들의 property 비교이며, 어느 scope 를 넘기냐로만 갈린다. 오해의 출처: 내려가자마자(intra) 하위 property 를 확인·비교하므로 intra 가 비교처럼 보였던 것. (→ [[arbor-memory-contents]] 의 DSL 두 얼굴; 구현: ARC-solver `procedural_memory/DSL/relation`)
 
-- **역할**: 비교를 schedule. 비교 단위 = `compare(scope_A, scope_B)`, **N:N 이 기본** (1:1 = N=1 특수 케이스, cardinality 는 변수 아님)
-- **두 분석 종류** (재귀적으로 중첩됨):
-  - **Intra-[Level]**: 한 component 안 형제끼리 (예: 한 grid 의 object 들)
-  - **Inter-[Level]**: role-aligned 다른 부모끼리 (예: P0.G1 ↔ P1.G1)
+- **역할**: 비교를 schedule. 비교 단위 = `compare(scope_A, scope_B)`, **N:N 이 기본** (1:1 = N=1 특수 케이스, cardinality 는 변수 아님). score = COMM property 개수 / 전체 property 개수.
+- **비교는 한 종류 — Inter-[level]** (같은 레벨 노드 property 비교). 모듈은 level-agnostic, 어느 scope 를 넘기냐로 갈림:
+  - **Inter-Pair**: pair 끼리 (pair property, 예: grid-count)
+  - **Inter-Pair-Grid**: 다른 pair 에 속한 grid 끼리 (P0.G1 ↔ P1.G1, role-aligned)
+  - 구현: `compare(a,b)` + `compare_set(scope)` (같은 레벨 pairwise). *Intra(descent) 는 여기 없음 → 모듈 A.*
 - **scope** = `select(anchor, level, predicate?)` = `filter( elements-at(anchor, level), pred )` — 모듈 D 의 util(`objects-of`/`grids-of`/`filter`) + property(`color-of`...) 를 사용. 예: `select(P0.G0, object, color-of(o)==5)` (회색 object 만)
 - **구 7규칙의 행방**:
   - C1(같은 레벨)·C6(2개씩) → 비교의 *정의* 로 흡수 (규칙 아님)
-  - **C2 → Intra-[Level]**, **C3 → Inter-[Level]** (role-aligned)
+  - **C2·C3 → Inter-[level] 비교** (scope 만 다름: 한 부모 내 형제 vs role-aligned 다른 부모. Intra=descent 와 무관)
   - C4(score top-k) → 비교 *후* ranking (폭증 시 옵션, scope 아님)
   - C5(coordinate filter) → **scope predicate** 로 흡수 (`coord-of(a)==coord-of(b)`)
   - C7(var 실패 추가비교) → 모듈 **I** 의 제어 흐름 (C 가 아님)
@@ -196,13 +199,13 @@ sources:
 각 slice 는 *1 task 가 input→output 완주하는 최소 vertical*:
 
 ### Slice 1 — easy000a + easy000a2 (변주)
-- 모듈: A + B + C(Intra/Inter + scope predicate) + D(property + util) + K + PredictByAllPairCommOp
+- 모듈: A(descent=intra) + B + C(Inter 비교 + scope) + D(property + util) + K + PredictByAllPairCommOp
 - 제외: E, F, G, H, I, J, object/pixel property, 후처리 top-k
 - **task 2개** (둘 다 G1-COMM 메커니즘으로 풀림 = output 고정, input 무관):
   - `easy000a` — 고정 출력 `(5,5)빨강(2)`
   - `easy000a2` — 같은 메커니즘, *다른* 고정 출력 (예 `(0,0)초록(3)`). **PredictByAllPairCommOp 가 답을 하드코딩 안 했는지** 검증 (값-agnostic)
 - **검증 (완화)**: `easy000a` + `easy000a2` 둘 다 정답 + **4 관찰 기준** (작동 / 통일성[모듈만, 산물은 overfit OK] / 접근성 / 탐색 건전성). **§2 의 "14 단계 정확 일치" 는 요구하지 않음** — 초기 ARBOR 는 이상적 흐름을 1:1 재현 못함, 의미있는 brute-force 허용
-- **결정적 비교**: Inter-Grid, role==G1, {size·color·contents} 전부 COMM → test G1 = 공통값. (G0 는 Slice 1 에서 미사용 — output 고정이라)
+- **결정적 비교**: Inter-Pair-Grid, role==G1, {size·color·contents} 전부 COMM → test G1 = 공통값. (G0 는 Slice 1 에서 미사용 — output 고정이라)
 - **개발 프롬프트**: SOAR-ARC-test `docs/SLICE_1_LOOP.md` (무인 ralph) / ARC-solver `SLICE_1_DEV.md` (손수 협업)
 
 ### Slice 2 (1-2주) — easy000b

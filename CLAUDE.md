@@ -88,6 +88,22 @@ ARBOR repo (SOAR-ARC-test)
 ARBOR has three long-term memory stores, matching SOAR's standard LTM trichotomy.
 Each store has a *fixed* format. Violations are architecture errors, not bugs.
 
+> **Intent note (2026-05-31 inflection — read the originals).** The on-disk
+> formats below are *frozen contracts* and still bind the code exactly as
+> written. But the **conceptual** model has since been refined in the design
+> wiki, now mirrored at `docs/arbor_context/`:
+> `arbor-soar-memory-mapping.md` and `arbor-memory-contents.md` establish that
+> what this repo calls "semantic memory" (`semantic_memory/`, the ARCKG disk
+> graph) is, by the standard SOAR definition, **not** semantic memory but a
+> *persisted projection of Working Memory* — contextual, single-rooted,
+> perception-derived. Nodes are born in WM and *flushed* to disk, not
+> "promoted." A true cross-task SOAR-semantic slot (color↔name, the pixel/object
+> concept, learned property definitions) is a separate, near-empty store. When
+> these pages and the schema below disagree, **the pages carry the newer
+> intent**; the schema carries the binding format. Do not pour per-task grids
+> into a cross-task semantic store — that category error is exactly what the
+> inflection note corrects.
+
 ### 3.1 Semantic memory (`semantic_memory/`)
 
 5-level node hierarchy. Each node is a *folder*; each edge is a JSON file.
@@ -444,14 +460,42 @@ and coverage stays below 1.
 
 ## Reference
 
+The ARBOR design wiki is **mirrored, full-detail and verbatim**, under
+`docs/arbor_context/`. `PROMPT.md §3 Step 1` requires reading the whole
+cluster every iter. The pages below now resolve to local files (the `[[…]]`
+wiki names are kept for cross-reference with the external wiki).
+
+| Page (`docs/arbor_context/…`) | Use |
+|-----------|-----|
+| `arbor.md` (`[[arbor]]`) | **canonical project page** — single goal, architecture, Fast/Slow path, 6 diagnosed failures, backlog |
+| `arbor-flow-three-task-description.md` | user's **raw prose** — how the agent is intended to solve easy000a/b + 08ed6ac7 (read in full) |
+| `arbor-execution-trace.md` | 11 modules + spec-gap table derived from the prose |
+| `arbor-modules.md` (`[[arbor-modules]]`) | module inventory, **Gap** column = unfilled holes |
+| `arbor-soar-memory-mapping.md` | **2026-05-31 inflection** — "semantic memory" = persisted WM (refines §3) |
+| `arbor-memory-contents.md` | what actually goes in each of the four memories |
+| `arbor-dsl-taxonomy.md` | DSL 4-way split (transformation frozen at 2; property/relation/util allowed) |
+| `arbor-open-questions.md` | 11 unresolved questions — do not silently invent answers |
+| `arbor-signals.md` | F1–F8 / P1–P6 reward-signal rationale |
+| `arbor-prompt-spec.md` (`[[arbor-prompt-spec]]`) | blueprint behind this file + PROMPT.md |
+| `arckg-wm-design.md` (`[[arckg-wm-design]]`) | §7 WM region design |
+
+External-wiki-only (not mirrored; consult the wiki if present):
+
 | Wiki page | Use |
 |-----------|-----|
-| `[[arbor]]` | system intent, diagnosis, open questions |
-| `[[arbor-modules]]` | module inventory, gap analysis |
-| `[[arbor-prompt-spec]]` | how this file relates to PROMPT.md |
 | `[[arckg-3repository]]` | §3 storage rationale |
 | `[[arckg-node-edge]]` | §3.1 1st/2nd-order edge design |
-| `[[arckg-wm-design]]` | §7 WM region design |
 | `[[anti-unification]]` | §8 algorithmic background |
 | `[[object-level-lifting]]` | §8 lifting rationale |
 | `[[impasse]]` | §4 substate semantics |
+
+### Loop phases (easy → training)
+
+`run_loop.sh` runs in an **`easy`** phase (probe = controlled slice tasks in
+`data/ARC_easy*/`) and graduates to a **`training`** phase (probe samples
+`data/ARC_AGI/training/`) once the easy probe is solved cleanly for several
+consecutive iters. Graduation is **criteria-gated and logged** (state file
+`logs/_phase_state.json`), never a silent auto-grow of the budget — see
+`docs/INVARIANTS.md F6` and `PROMPT.md §2.1`. The reward is unchanged across
+phases: extend the *system* so competence generalizes; do not hand-code
+per-task detectors.
