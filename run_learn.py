@@ -41,6 +41,11 @@ def parse_args():
     p.add_argument("--split", default=None,
                    help="Force ARC_AGI split: 'training' (1000 tasks) or 'evaluation' (120 tasks). "
                         "Omit to use data/ARC_easy/ when present.")
+    p.add_argument("--task-dir", default=None,
+                   help="Load tasks from an arbitrary directory of *.json ARC tasks "
+                        "(e.g. data/ARC_easy_a or challenges/). Overrides --split. "
+                        "Used by the loop's easy_a milestone probe and by self-authored "
+                        "challenges (PROMPT.md §2.2).")
     p.add_argument("--limit", type=int, default=None, help="max tasks to run")
     p.add_argument("--shuffle", action="store_true", help="randomize task order")
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
@@ -121,7 +126,22 @@ def main():
 
     split = args.split or "training"
     force_split = args.split is not None
-    task_hexes = get_task_list(split, force_split=force_split)
+    if args.task_dir is not None:
+        if not os.path.isdir(args.task_dir):
+            print(f"[!] --task-dir not found: {args.task_dir}")
+            sys.exit(1)
+        # Refer to each task relative to the manager's data_root ("data") so
+        # ARCManager.load_task resolves it via its first path candidate. Works
+        # for dirs under data/ (ARC_easy_a → "ARC_easy_a/x.json") and for
+        # repo-root dirs (challenges → "../challenges/x.json").
+        task_hexes = sorted(
+            os.path.relpath(os.path.join(args.task_dir, f), "data")
+            for f in os.listdir(args.task_dir) if f.endswith(".json")
+        )
+        split = os.path.basename(os.path.normpath(args.task_dir))
+        force_split = True
+    else:
+        task_hexes = get_task_list(split, force_split=force_split)
     if args.shuffle:
         random.seed(args.seed)
         random.shuffle(task_hexes)

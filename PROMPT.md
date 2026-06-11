@@ -51,8 +51,10 @@ which. The phase is managed by `run_loop.sh` (state file
 - **`easy` phase** (default). The probe and your target are the controlled
   slice tasks (`data/ARC_easy/`, `data/ARC_easy_a/`). Goal: make the agent
   solve them *the way the user intends* (the four observation criteria above).
-  The loop graduates to `training` automatically once the easy probe is solved
-  cleanly for several consecutive iters.
+  The graduation milestone is **the easy slice AND *all* of `data/ARC_easy_a/`
+  solved 100%** for several consecutive iters; the loop then switches to
+  `training` automatically. (The loop probes both each iter; the `easy_a`
+  milestone probe runs every task in that folder, no limit.)
 
 - **`training` phase**. The probe now samples real ARC tasks
   (`data/ARC_AGI/training/`, `--split training`). The agent has shown it can do
@@ -66,9 +68,67 @@ which. The phase is managed by `run_loop.sh` (state file
   one you solve by a bespoke `_try_*`-style special case is the documented
   failure mode (see `arbor.md` 진단 #1/#2/#5) and trips the forbidden signals.
 
-Regression rule: a `training`-phase iter must not break the easy slice. The
-loop keeps a one-line easy regression check in the probe; if you see it drop,
-fixing that regression *is* this iter's gap.
+Regression rule: a `training`-phase iter must not break the easy slice or
+`easy_a`. The loop keeps both as a regression guard in the probe; if either
+drops below 100%, fixing that regression *is* this iter's gap.
+
+### 2.2 Challenge escalation & honest termination
+
+This loop has run for hundreds of iters. The failure to avoid is **spinning** —
+emitting near-duplicate, cosmetic, or trivially-reshuffling commits that look
+like progress but move the system nowhere. That is worse than doing nothing.
+The rule for this project: **every commit must close a real gap, or the iter
+makes no commit at all** (§5 already blesses the no-op iter).
+
+So, once `easy_a` is mastered and the generalization machinery looks sound, do
+**not** keep polishing the easy slice. **Go looking for harder work, on
+purpose.** In rough order of preference:
+
+1. **Take on ARC-AGI-2 training tasks the agent currently fails.** `data/ARC_AGI/`
+   is ARC-AGI-2 (1000 training / 120 evaluation). The probe samples it in the
+   `training` phase; you may also run any slice yourself:
+   `python run_learn.py --split training --limit N --shuffle --seed 42`.
+   Pick one the agent fails *for a reason you can name*, and close that
+   underlying capability gap so the fix generalizes.
+
+2. **Author your own challenge tasks.** When no supplied task surfaces a fresh,
+   nameable gap, *invent one*. Write a minimal ARC-style task under
+   `challenges/` (standard `{"train":[…],"test":[…]}` JSON — see
+   `challenges/README.md`) that isolates a specific capability you suspect is
+   missing, then make the agent solve it by **extending the system**:
+   `python run_learn.py --task-dir challenges/`. Author the smallest task you
+   expect to *fail* — a challenge you can already solve teaches nothing. Build a
+   small ladder of these (easy variant → harder variant) and climb it. `data/`
+   is frozen; `challenges/` is yours to write in freely.
+
+3. **Generalize across what is already solved.** Two task-specific programs that
+   share a skeleton are an invitation for `anti_unification.unify()` to lift
+   them into one rule with `covers` > 1. Driving rule coverage up is always real
+   work.
+
+You are **not** required to solve every task — ARC is not fully solvable by this
+early agent, and that is expected. The bar is *honest motion*: each iter either
+closes a nameable gap or sets up a sharper test of one. Manufacturing busywork
+(authoring a challenge you can already pass, or re-touching solved tasks) is the
+same spinning failure in disguise — don't.
+
+**Honest termination.** If you assess that the system is **sufficiently
+developed** — i.e. there is no longer a nameable gap you can close *and* you
+cannot author a defensible new challenge that exposes one — then the right move
+is to **stop the loop**, not to spin. Signal this by writing
+`logs/_LOOP_COMPLETE.md` containing:
+
+- a dated, evidence-backed argument that development has converged (what the
+  agent can now do the intended way; which positive signals plateaued; what you
+  tried to challenge it with and why nothing surfaced a real gap),
+- the rule-coverage figure and the easy / easy_a / training standings,
+- the honest remaining limitations (so the user can decide whether to lift the
+  bar).
+
+`run_loop.sh` checks for that file at the top of each iter and ends the loop
+cleanly when it is present (the user resumes by deleting it). Write it only when
+it is *true*; a premature completion file is itself a meaningless artifact.
+Reserve it for genuine convergence — when in doubt, escalate (1–3) instead.
 
 ---
 
@@ -247,6 +307,14 @@ commitment. Each iter re-diagnoses from scratch.
 - Hide validation failures behind broad `try/except` blocks.
 - Plan multi-iter missions in this PROMPT.md. There are no future-session
   promises here; just the current iter's smallest step.
+- **Spin.** Do not emit a near-duplicate, cosmetic, or trivially-reshuffling
+  commit just to have committed something this iter. If the easy slice is
+  mastered and no nameable gap surfaces, you must either *escalate* the
+  challenge (§2.2: a failing ARC-AGI-2 training task, or a new `challenges/`
+  task you author to expose a gap), make a real no-op iter (§5), or — when
+  development has genuinely converged — end the loop honestly (§2.2,
+  `logs/_LOOP_COMPLETE.md`). Repeating the same low-value change is the single
+  behavior this project most wants gone.
 
 ---
 
@@ -255,11 +323,15 @@ commitment. Each iter re-diagnoses from scratch.
 If you cannot find a smallest-step gap that satisfies §3 without tripping a
 forbidden signal, the correct iter output is:
 
-1. Append a `Iter <N>: no defensible step found — analysis only` entry to
-   `logs/session_log.md` with your reasoning.
-2. Commit nothing.
-3. Exit cleanly.
+1. **First try to escalate, not idle** (§2.2). If `easy_a` is mastered, look for
+   a failing ARC-AGI-2 training task or author a `challenges/` task that exposes
+   a real gap — that is usually where the next defensible step actually is.
+2. If escalation also yields no defensible step *and* you judge development has
+   converged, write `logs/_LOOP_COMPLETE.md` per §2.2 to end the loop honestly.
+3. Otherwise, append a `Iter <N>: no defensible step found — analysis only`
+   entry to `logs/session_log.md` with your reasoning, commit nothing, and exit
+   cleanly.
 
 A no-op iter is correct behavior, not failure. The loop will continue. A
 *wrong* commit is worse than a *no* commit, because it pollutes the
-positive-signal baseline.
+positive-signal baseline. A *repeated* commit (spinning) is worse still.

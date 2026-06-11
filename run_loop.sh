@@ -60,6 +60,10 @@ GRADUATION_K=5            # consecutive 100% easy probes required to graduate
 TRAIN_PROBE_SIZE=3       # tasks sampled from training in the training phase
 GRADUATION_ENABLED=1     # --no-graduation pins the loop to the easy phase
 PHASE_STATE="${LOG_DIR}/_phase_state.json"
+# Honest self-termination: when Claude judges the system sufficiently developed
+# it writes this sentinel (PROMPT.md §2.2). The loop finishes the current iter,
+# then stops. Delete the file to resume a stopped loop.
+DONE_SENTINEL="${LOG_DIR}/_LOOP_COMPLETE.md"
 
 while [[ "$#" -gt 0 ]]; do
     case $1 in
@@ -138,6 +142,18 @@ log "=========================================="
 
 while true; do
 
+    # Honest self-termination — a previous iter judged the system done (§2.2).
+    if [ -f "$DONE_SENTINEL" ]; then
+        log "*** LOOP COMPLETE — $DONE_SENTINEL present. ARBOR judged sufficiently developed. ***"
+        log "    (delete $DONE_SENTINEL to resume the loop.)"
+        {
+            echo ""
+            echo "> **LOOP COMPLETE** after iter $ITER — sentinel $DONE_SENTINEL present."
+            echo "> The loop stopped itself; see that file for the justification."
+        } >> "${LOG_DIR}/session_log.md"
+        break
+    fi
+
     ELAPSED=$(( $(date +%s) - START_TIME ))
     if [ "$ELAPSED" -ge "$MAX_DURATION" ]; then
         log "Time limit reached."
@@ -157,8 +173,9 @@ while true; do
     log "========== ITER $ITER =========="
 
     # ── 1. PROBE (phase-aware) ──────────────────────────────
-    # Always run the easy probe: in `easy` phase it IS the probe; in `training`
-    # phase it is the one-line regression guard (PROMPT.md §2.1).
+    # Always run the easy probe (ARC_easy) + the easy_a milestone probe (all of
+    # data/ARC_easy_a). In `easy` phase they ARE the probe and gate graduation;
+    # in `training` phase they are the regression guard (PROMPT.md §2.1/§2.2).
     log "Easy probe: run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED"
     EASY_OUTPUT=$(python run_learn.py --limit "$PROBE_SIZE" --seed "$PROBE_SEED" 2>&1 || true)
     echo "$EASY_OUTPUT" >> "$PIPELINE_LOG"
@@ -166,6 +183,26 @@ while true; do
     EASY_PCT=$(echo "$EASY_SCORE" | grep -oE '[0-9.]+%' | tr -d '%' | tail -1)
     [ -z "$EASY_PCT" ] && EASY_PCT="0"
     EASY_CLEAN=$(awk -v p="$EASY_PCT" 'BEGIN{print (p+0>=100)?1:0}')
+
+    # easy_a milestone probe — ALL of data/ARC_easy_a (no --limit). The user's
+    # gating milestone is "solve all of easy_a" before moving on (§2.2).
+    EASYA_SCORE="Correct: (no easy_a dir)"
+    EASYA_CLEAN=1
+    if [ -d "data/ARC_easy_a" ]; then
+        EASYA_OUTPUT=$(python run_learn.py --task-dir data/ARC_easy_a --seed "$PROBE_SEED" 2>&1 || true)
+        echo "$EASYA_OUTPUT" >> "$PIPELINE_LOG"
+        EASYA_SCORE=$(echo "$EASYA_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / ?")
+        EASYA_PCT=$(echo "$EASYA_SCORE" | grep -oE '[0-9.]+%' | tr -d '%' | tail -1)
+        [ -z "$EASYA_PCT" ] && EASYA_PCT="0"
+        EASYA_CLEAN=$(awk -v p="$EASYA_PCT" 'BEGIN{print (p+0>=100)?1:0}')
+    fi
+
+    # easy mastery = ARC_easy clean AND all of easy_a clean.
+    if [ "$EASY_CLEAN" = "1" ] && [ "$EASYA_CLEAN" = "1" ]; then
+        MASTERY_CLEAN=1
+    else
+        MASTERY_CLEAN=0
+    fi
 
     if [ "$PHASE" = "training" ]; then
         # Probe samples real ARC training tasks (deterministic via fixed seed).
@@ -177,35 +214,47 @@ while true; do
         PROBE_OUTPUT="[PHASE: training]
 ===== TRAINING PROBE ($PROBE_CMD) — primary microscope =====
 $TRAIN_OUTPUT
-===== EASY REGRESSION GUARD (run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED) =====
-$EASY_SCORE
-(easy slice must not regress; if it dropped below 100%, fixing it IS this iter's gap.)"
+===== REGRESSION GUARD (easy + easy_a must stay 100%) =====
+ARC_easy : $EASY_SCORE
+ARC_easy_a: $EASYA_SCORE
+(if either dropped below 100%, fixing that regression IS this iter's gap.)
+===== ESCALATION (PROMPT.md §2.2) =====
+Do not emit a near-duplicate / cosmetic commit. If no real gap surfaces from the
+sampled training tasks, ESCALATE: pick a training task the agent fails and close
+the underlying capability gap, or author a new minimal task under challenges/
+(run it with: python run_learn.py --task-dir challenges/). When you judge the
+system sufficiently developed, end the loop honestly per §2.2 (write
+logs/_LOOP_COMPLETE.md)."
         PROBE_SCORE="$TRAIN_SCORE"
-        log "Training probe score (microscope, NOT reward): $TRAIN_SCORE | easy guard: $EASY_SCORE"
+        log "Training probe: $TRAIN_SCORE | guard easy=$EASY_SCORE easy_a=$EASYA_SCORE"
     else
-        # easy phase — graduation accounting.
-        if [ "$EASY_CLEAN" = "1" ]; then
+        # easy phase — graduation accounting on the easy_a mastery milestone.
+        if [ "$MASTERY_CLEAN" = "1" ]; then
             EASY_STREAK=$((EASY_STREAK + 1))
         else
             EASY_STREAK=0
         fi
-        PROBE_OUTPUT="[PHASE: easy | clean-streak: $EASY_STREAK/$GRADUATION_K]
+        PROBE_OUTPUT="[PHASE: easy | mastery-streak: $EASY_STREAK/$GRADUATION_K]
+Mastery milestone = solve the easy slice AND all of easy_a (§2.2).
 ===== EASY PROBE (run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED) =====
-$EASY_OUTPUT"
-        PROBE_SCORE="$EASY_SCORE"
-        log "Easy probe score (microscope, NOT reward): $EASY_SCORE | clean-streak: $EASY_STREAK/$GRADUATION_K"
+$EASY_OUTPUT
+===== EASY_A MILESTONE PROBE (run_learn.py --task-dir data/ARC_easy_a) =====
+$EASYA_SCORE"
+        PROBE_SCORE="$EASY_SCORE | easy_a: $EASYA_SCORE"
+        log "Easy probe: $EASY_SCORE | easy_a: $EASYA_SCORE | mastery-streak: $EASY_STREAK/$GRADUATION_K"
 
-        # Graduate if the criterion is met.
+        # Graduate once the easy_a mastery milestone holds for K consecutive iters.
         if [ "$GRADUATION_ENABLED" = "1" ] && [ "$EASY_STREAK" -ge "$GRADUATION_K" ]; then
             PHASE="training"
             GRAD_ITER="$ITER"
             phase_write "training" "$EASY_STREAK" "$ITER"
-            log "*** PHASE GRADUATION: easy → training at iter $ITER ($EASY_STREAK consecutive 100% easy probes) ***"
+            log "*** PHASE GRADUATION: easy → training at iter $ITER ($EASY_STREAK consecutive mastery iters) ***"
             {
                 echo ""
                 echo "> **PHASE GRADUATION** at iter $ITER — easy → training."
-                echo "> Easy slice solved 100% for $EASY_STREAK consecutive iters (K=$GRADUATION_K)."
-                echo "> Probe now samples data/ARC_AGI/training/. Easy slice kept as regression guard."
+                echo "> Easy slice + all of easy_a solved 100% for $EASY_STREAK consecutive iters (K=$GRADUATION_K)."
+                echo "> Probe now samples data/ARC_AGI/training/ (ARC-AGI-2). easy + easy_a kept as regression guard."
+                echo "> Per PROMPT.md §2.2 the loop may now also author challenges/ and will end itself when sufficiently developed."
             } >> "${LOG_DIR}/session_log.md"
         else
             phase_write "easy" "$EASY_STREAK" "null"

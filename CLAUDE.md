@@ -489,13 +489,25 @@ External-wiki-only (not mirrored; consult the wiki if present):
 | `[[object-level-lifting]]` | §8 lifting rationale |
 | `[[impasse]]` | §4 substate semantics |
 
-### Loop phases (easy → training)
+### Loop phases (easy → training → challenge → done)
 
 `run_loop.sh` runs in an **`easy`** phase (probe = controlled slice tasks in
-`data/ARC_easy*/`) and graduates to a **`training`** phase (probe samples
-`data/ARC_AGI/training/`) once the easy probe is solved cleanly for several
-consecutive iters. Graduation is **criteria-gated and logged** (state file
-`logs/_phase_state.json`), never a silent auto-grow of the budget — see
-`docs/INVARIANTS.md F6` and `PROMPT.md §2.1`. The reward is unchanged across
-phases: extend the *system* so competence generalizes; do not hand-code
-per-task detectors.
+`data/ARC_easy*/`) and graduates to a **`training`** phase once the **easy slice
+AND *all* of `data/ARC_easy_a/`** are solved 100% for K consecutive iters
+(K=`GRADUATION_K`, default 5). The `training` phase probes `data/ARC_AGI/`, which
+is **ARC-AGI-2** (1000 training / 120 evaluation), via `--split training`, while
+keeping easy + easy_a as a regression guard. Graduation is **criteria-gated and
+logged** (state file `logs/_phase_state.json`), never a silent auto-grow of the
+budget — see `docs/INVARIANTS.md F6`, `PROMPT.md §2.1`.
+
+Beyond the supplied data, the loop is expected to **escalate**: take on
+ARC-AGI-2 training tasks it fails, or **author its own probe tasks** under the
+non-frozen `challenges/` directory (run via `run_learn.py --task-dir
+challenges/`), rather than emit meaningless near-duplicate commits
+(`PROMPT.md §2.2`). When development has genuinely converged, an iter may **end
+the loop honestly** by writing `logs/_LOOP_COMPLETE.md` (justification +
+standings); `run_loop.sh` detects it at the top of the next iter and stops (the
+user resumes by deleting it).
+
+The reward is unchanged across all phases: extend the *system* so competence
+generalizes; do not hand-code per-task detectors.
