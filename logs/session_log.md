@@ -1,6 +1,63 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 5 — 2026-06-11 — branch test30
+
+**Diagnosis**: The DSL *transformation substrate* CLAUDE.md §6 mandates
+(`coloring`/`make_grid` + the `apply_DSL` dispatcher) is **absent** —
+`procedural_memory/DSL/` holds only `__pycache__`. Iter 4 built exactly this but
+the loop auto-reverted it: the F3 checker's `def`-heuristic whitelist
+(`coloring|make_grid|apply_DSL|register|_`) does **not** include the
+introspection helper `def static_primitives()`, so a legal commit was
+false-flagged as "hand-coded DSL primitive added." This substrate is the single
+item both iter-3 and iter-4 next-gap notes cite as blocking the intended
+easy0001 solve (the `make_grid`+`coloring` materialisation of the common G1 that
+will consume iter-3's `constant_output` recognition). Rebuilding it while fixing
+the *root cause* of the false revert is the smallest defensible step — strictly
+smaller than wiring predict to consume it (the next, separate half, which would
+touch `active_operators.py` under F2/F8 constraints).
+
+**Change**:
+- `procedural_memory/DSL/{make_grid,coloring}.py` (new): the two — and only two
+  — frozen hand-coded primitives (F3). Pure, deterministic, non-mutating;
+  `coloring` clamps OOB and treats colour 13 as a transparent no-op (OPEN-Q
+  flagged, not invented).
+- `procedural_memory/DSL/apply.py` (new): `apply_DSL` dispatcher + a `register`
+  decorator used *only* to declare the two primitives. Exposes the closed set as
+  the module constant `STATIC_PRIMITIVES` — **a constant, not the
+  `static_primitives()` function iter 4 used** — so the F3 `def`-heuristic can
+  never again mistake an introspection helper for a third primitive. This is the
+  one substantive difference from the reverted iter-4 version; it fixes the
+  false-revert at its source.
+- `procedural_memory/DSL/__init__.py` (new): package surface
+  (`make_grid`, `coloring`, `apply_DSL`, `STATIC_PRIMITIVES`).
+- `tests/test_dsl.py` (new): 6 tests — canvas independence, dim validation,
+  paint purity/OOB/transparent, dispatch + frozen-at-two closure, and a
+  composition test rebuilding easy0001's constant output. All pass; the
+  `constant_output` (3), `rule_schema` (8), and `episodic` (3) suites still pass.
+
+**Probe before**: 0/3 easy, 0/9 easy_a; 3 rules; P1 cov 1.33; P4=61; P5=3; P6=652.
+**Probe after** : unchanged (score is not the target; no rule churn). The DSL
+substrate now exists and composes the easy0001 output grid in a unit test
+(value-agnostic — the 6×6/(5,5)/colour come from data, no literals baked in).
+
+**Invariants**: forbidden=**none** (checker verdict: no F-signal tripped; F3
+`def`- and `register`-heuristics both verified empty against the snapshot base).
+positives=**NEUTRAL** — no P1–P6 metric measures transformation-DSL existence
+(P1 cov, P2 covers, P3 au-frac, P4 episodic, P5 matchers, P6 op-lines all
+unchanged). This is the `INVARIANTS.md §3` "scaffolding whose payoff lands in a
+later iter" case, not a forbidden hit; a NEUTRAL verdict is not auto-reverted.
+
+**Next gap (note for future iter)**: the substrate now exists but nothing
+*consumes* it. The intended easy0001 solve needs predict to, when `constant_output`
+holds, emit the common G1 via `apply_DSL("make_grid", …)` + `apply_DSL("coloring", …)`.
+That must NOT be a new `_try_constant_output`/`_apply_*` in `GeneralizeOperator`
+(F2); the design is the §5.2 fast-path — match `wm.s1["patterns"]` against a
+saved rule's `condition.type` (the registered `constant_output` matcher) and
+activate a rule whose `action.dsl` resolves to the make_grid+coloring recipe.
+Anti-unification (P3=0) remains unbuilt beyond that.
+
+---
 ## Iter 3 — 2026-06-11 — branch test30
 
 **Diagnosis**: The comparison scheduler (module C) only schedules **Intra-Pair**
@@ -269,3 +326,23 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260611_205218.log
+
+---
+## Learning Loop -- 2026-06-11 21:02
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260611_210204.log
+
+---
+## Learning Loop -- 2026-06-11 21:02
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260611_210206.log
