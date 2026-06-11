@@ -1,6 +1,80 @@
 # SOAR-ARC Session Log
 
 ---
+## SLICE 1 COMPLETE — 2026-06-11 — branch test30
+
+Per `SLICE_1_LOOP.md §10`. Slice 1's vertical slice (easy000a constant-output
+path) is complete and **stops here** — Slice 2 (object/G0 analysis,
+anti-unification) is human-gated; awaiting `docs/SLICE_2_LOOP.md`.
+
+**Two-task probe (§10.1):**
+- `easy000a` (all outputs `(5,5)=red`) → CORRECT, `rule=constant_output`,
+  `via=stored(easy000a)`.
+- `easy000b` (all outputs `(0,0)=green`) → CORRECT, `rule=constant_output`,
+  `via=stored(easy000b)`. This *is* the slice's hypothetical **easy000a2**: a
+  different fixed output (different cell *and* colour) solved by the **same**
+  value-agnostic module — the §1/§9 hardcoding guard holds.
+
+**4 observation criteria self-assessment (§8):**
+1. **Works** — both solve error-free; 28/28 tests pass; invariants CLEAN.
+2. **Module uniformity** — one `constant_output` matcher + one value-agnostic
+   `build_constant_output_program` (`agent/dsl_compose.py`) → `make_grid`+
+   `coloring`. The two rules differ only in their materialised program (overfit
+   program OK; module is uniform — no per-task branch).
+3. **Approaches answer** — emits the exact common G1 from the Inter-Grid `COMM`
+   over example outputs, not a brute-forced literal.
+4. **Search sanity** — bounded pipeline, no blow-up.
+
+Standings: easy 4/16, easy_a 2/9 (the two constant-output tasks; c–i are
+object-level = Slice 2). P1 3.0, P2 3.0, P3 0.0, P4 222, P5 3, P6 710.
+
+---
+## Iter 8 — 2026-06-11 — branch test30
+
+**Diagnosis**: Slice 1 is functionally complete — `easy000a` and its
+value-agnostic counterpart `easy000b` (the spec's hypothetical easy000a2, a
+*different* fixed output) both solve via the **same** `constant_output` module,
+meeting all four §8 observation criteria; 28 tests pass; invariant check CLEAN
+(no false-coverage rules remain after iter 7). Every remaining nameable gap —
+the other easy_a tasks (`easy000c–i` need object/G0 analysis) and the
+`rule_004`+`rule_005` anti-unification merge — is **explicitly out of Slice-1
+scope and human-gated** (`SLICE_1_LOOP.md §4 OUT / §9 / §10`). No `SLICE_2_LOOP.md`
+exists yet, so there is no defensible in-scope step.
+
+**Change**:
+- `logs/_LOOP_COMPLETE.md` (new): honest-termination signal per `PROMPT.md §2.2/§5`
+  — dated convergence argument (what the agent now does the intended way, which
+  positive signals plateaued, all three escalation paths tried and why each is
+  blocked by the Slice-1/Slice-2 boundary), the rule-coverage figure and
+  easy/easy_a standings, and the honest remaining limitations. `run_loop.sh`
+  halts on it at the top of iter 9; the user resumes by handing over
+  `docs/SLICE_2_LOOP.md` and deleting the file.
+- `logs/session_log.md`: this entry + the `SLICE 1 COMPLETE` block (§10).
+- **No code, no rule churn.** I verified escalation is genuinely exhausted: a
+  failing ARC-AGI-2 task needs Slice-2 object/transformation mechanisms (§9
+  forbids building them); a new `ARC_madeup` constant-output task only re-tests
+  the module already proven value-agnostic (busywork §2.2 forbids); the
+  rule_004+rule_005 anti-unification lift is the textbook P1/P3 win but is
+  explicitly OUT for Slice 1 and human-gated.
+
+**Probe before**: easy 4/16, easy_a 2/9; 2 rules; P1 3.0, P2 3.0, P3 0.0, P4 211, P5 3, P6 710.
+**Probe after** : identical (no code/rule change; P4 222 from the probe's own
+episodic writes). Both Slice-1 targets still CORRECT via `constant_output`.
+
+**Invariants**: forbidden=**none** (no frozen file touched, no `active_operators.py`
+edit, no DSL/rule change; checker CLEAN). positives=**none changed by design** —
+this is an honest-termination iter, not a feature iter; the plateau *is* the
+finding (`INVARIANTS.md §3` stagnation is informational, and §2.2 blesses stopping
+over spinning).
+
+**Next gap (note for future iter)**: blocked on the human gate. The first
+Slice-2 step is `anti_unification.unify()` merging `rule_004`+`rule_005`
+(identical skeleton, differing only in target grid) into one `copy_common_output`
+rule with `covers`>1 — collapsing the P1 denominator and lifting P3 off zero —
+followed by the object/G0 path for `easy000c–i`. Both require
+`docs/SLICE_2_LOOP.md` to be opened.
+
+---
 ## Iter 7 — 2026-06-11 — branch test30
 
 **Diagnosis**: Procedural memory held three `color_mapping` rules
@@ -601,3 +675,33 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 2
 - Time: 4s
 - Log: logs/learn_20260611_213145.log
+
+---
+## Learning Loop -- 2026-06-11 21:34
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260611_213444.log
+
+---
+## Learning Loop -- 2026-06-11 21:34
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 2
+- Time: 4s
+- Log: logs/learn_20260611_213445.log
+
+---
+## Learning Loop -- 2026-06-11 21:36
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 2
+- Time: 3s
+- Log: logs/learn_20260611_213639.log

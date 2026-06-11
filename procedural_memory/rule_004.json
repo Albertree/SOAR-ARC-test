@@ -46,5 +46,5 @@
   "source_task": "easy000a",
   "anti_unification_trace": null,
   "created_at": "2026-06-11T21:20:22.393591",
-  "times_reused": 18
+  "times_reused": 21
 }
