@@ -1,0 +1,50 @@
+{
+  "id": 4,
+  "concept": "copy_constant_output",
+  "category": "constant_transform",
+  "condition": {
+    "type": "constant_output",
+    "params": {},
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "make_grid",
+    "args": {
+      "type": "constant_output",
+      "dsl_program": [
+        {
+          "dsl": "make_grid",
+          "args": {
+            "height": 6,
+            "width": 6,
+            "color": 0
+          }
+        },
+        {
+          "dsl": "coloring",
+          "args": {
+            "selection": [
+              [
+                5,
+                5
+              ]
+            ],
+            "color": 2
+          }
+        }
+      ],
+      "confidence": 1.0
+    }
+  },
+  "covers": [
+    "easy000a",
+    "easy0001",
+    "easy0005",
+    "easy0009",
+    "easy0013"
+  ],
+  "source_task": "easy000a",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-11T21:20:22.393591",
+  "times_reused": 4
+}

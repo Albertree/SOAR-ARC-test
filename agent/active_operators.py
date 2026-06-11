@@ -12,6 +12,8 @@ Pipeline operators (all fire in S2, read/write S1):
 
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
+from agent.conditions import recognized_conditions
+from agent.dsl_compose import build_constant_output_program
 
 
 # ======================================================================
@@ -343,8 +345,22 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
+        # Schema-aware fast path (CLAUDE.md §5.2): consult the registered
+        # condition matchers against the comparison-derived patterns, rather
+        # than a hand-coded detector. When `constant_output` fires — every
+        # example output is COMM (slice doc §3) — activate the value-agnostic
+        # materialisation of the common output as a make_grid+coloring program.
+        # This is ARBOR's `PredictByAllPairCommOp`: the recognition comes from a
+        # comparison receipt (P4), the answer is a composition of the two frozen
+        # primitives (CLAUDE.md §6), and the module is general (the *program* it
+        # emits is grid-specific, which observation criterion 2 explicitly
+        # permits; the module is not).
+        if "constant_output" in recognized_conditions(patterns):
+            rule = self._constant_output_rule(wm)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
 
         # Strategy 2: simple 1:1 color mapping
         if rule is None:
@@ -355,6 +371,32 @@ class GeneralizeOperator(Operator):
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- recognition-driven materialisation -----------------------------
+
+    def _constant_output_rule(self, wm):
+        """Build the constant-output rule: a make_grid+coloring program that
+        reconstructs the common example output (slice doc §3 prediction step:
+        contents COMM → Pa.G1.contents = P0.G1.contents).
+
+        Value-agnostic: the grid is read from the first example's output, never
+        hard-coded. Returns None if the output grid is unavailable, in which
+        case the legacy strategies still run.
+        """
+        task = getattr(wm, "task", None)
+        if task is None or not task.example_pairs:
+            return None
+        g1 = task.example_pairs[0].output_grid
+        if g1 is None or getattr(g1, "raw", None) is None:
+            return None
+        program = build_constant_output_program(g1.raw)
+        if not program:
+            return None
+        return {
+            "type": "constant_output",
+            "dsl_program": program,
+            "confidence": 1.0,
+        }
 
     # ---- strategy: sequential recoloring --------------------------------
 
@@ -512,6 +554,10 @@ class PredictOperator(Operator):
 
     def _apply_rule(self, rule, input_grid):
         rule_type = rule.get("type")
+        if rule_type == "constant_output":
+            # The answer is independent of the input: run the stored
+            # make_grid+coloring program to materialise the common output.
+            return self._run_dsl_program(rule.get("dsl_program") or [])
         if rule_type == "recolor_sequential":
             return self._apply_recolor_sequential(rule, input_grid)
         if rule_type == "color_mapping":
@@ -519,6 +565,18 @@ class PredictOperator(Operator):
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
+
+    @staticmethod
+    def _run_dsl_program(program):
+        """Execute a list of ``{dsl, args}`` steps via the frozen DSL dispatcher
+        (CLAUDE.md §6). `make_grid` seeds a fresh canvas (its `grid` arg is
+        ignored); each subsequent `coloring` paints onto the running grid.
+        Returns the final grid, or None for an empty program."""
+        from procedural_memory.DSL.apply import apply_DSL
+        grid = None
+        for step in program:
+            grid = apply_DSL(step["dsl"], grid, **(step.get("args") or {}))
+        return grid
 
     def _apply_recolor_sequential(self, rule, input_grid):
         raw = input_grid.raw

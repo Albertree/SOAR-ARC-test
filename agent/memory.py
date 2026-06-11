@@ -163,6 +163,38 @@ def increment_reuse_count(entry: dict) -> None:
         pass
 
 
+def add_task_to_covers(entry: dict, task_hex: str) -> bool:
+    """Record that the stored rule behind `entry` has now handled `task_hex`.
+
+    Called from the fast path when a stored rule reproduces a *new* task's
+    examples and yields a prediction — i.e. the rule generalised to a task it
+    was not created from. Realises P1's stated intent ("a task solved via a rule
+    already in memory → numerator up"): without this, fast-path reuse only bumps
+    `times_reused` and the genuine generalisation stays invisible to coverage.
+
+    Idempotent: a task already in `covers` is a no-op. The mutated rule is
+    re-validated (RuleSchemaError propagates — never swallowed, F4/F7) and
+    persisted. Returns True iff `covers` grew.
+    """
+    path = entry.get("_path")
+    if not path or not os.path.exists(path):
+        return False
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            data = json.load(fh)
+    except (OSError, json.JSONDecodeError):
+        return False
+    covers = data.get("covers") or []
+    if task_hex in covers:
+        return False
+    data["covers"] = covers + [task_hex]
+    data = _ensure_schema(data)   # keep schema shape if a legacy file slipped in
+    validate_rule(data)           # the grown rule must stay valid
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(data, fh, indent=2)
+    return True
+
+
 def load_rules_from_ltm(task_hex: str,
                         semantic_memory_root: str = "semantic_memory") -> list:
     """Legacy interface — task_hex unused, loads all rules."""
@@ -390,6 +422,11 @@ def _condition_params(payload: dict) -> dict:
             "source_colors": sorted(payload.get("source_colors") or []),
             "start_color": payload.get("start_color"),
         }
+    if ptype == "constant_output":
+        # Recognition is purely the *shape* of the comparison evidence (all
+        # example outputs COMM); it carries no parameters. The make_grid+coloring
+        # recipe is the action, not the condition, so it stays out of params.
+        return {}
     return {k: v for k, v in payload.items() if k != "type"}
 
 
@@ -399,7 +436,9 @@ def _dsl_for(ptype: str) -> str:
     Every transformation the legacy pipeline emits is a recolouring (a
     composition of `coloring`); canvas-producing types map to `make_grid`.
     """
-    if any(k in ptype for k in ("make_grid", "canvas", "blank_canvas")):
+    if any(k in ptype for k in ("make_grid", "canvas", "blank_canvas", "constant_output")):
+        # constant_output materialises a *fresh* canvas (make_grid) then paints
+        # it; its primary primitive is make_grid.
         return "make_grid"
     return "coloring"
 
@@ -455,6 +494,8 @@ def _infer_concept(rule: dict) -> str:
         return "color_remap"
     if t == "recolor_sequential":
         return "recolor_objects_sequentially"
+    if t == "constant_output":
+        return "copy_constant_output"
     if t == "identity":
         return "identity"
     # For custom types added by Claude, use the type name directly
@@ -472,4 +513,6 @@ def _infer_category(rule: dict) -> str:
         return "geometric_transform"
     if any(k in t for k in ("fill", "border", "enclosed", "flood")):
         return "fill_transform"
+    if "constant" in t or "copy" in t:
+        return "constant_transform"
     return "other"

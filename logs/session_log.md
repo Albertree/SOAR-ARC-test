@@ -1,6 +1,66 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 6 — 2026-06-11 — branch test30
+
+**Diagnosis**: Iters 3+5 built both halves of the easy000a path but left them
+unconnected: the `constant_output` matcher (iter 3) recognises "all example
+outputs COMM" and the make_grid/coloring DSL substrate (iter 5) can materialise
+a grid, but **nothing consumed the recognition** — `GeneralizeOperator` never
+consulted the condition registry, so every constant-output task fell through to
+a *coincidental* `color_mapping` misfit and was scored INCORRECT. The single
+smallest gap is the missing bridge — ARBOR's `PredictByAllPairCommOp` (slice doc
+§3/§4): when `constant_output` fires, emit the common output as a make_grid+
+coloring composition and execute it. A second, tightly-coupled half: fast-path
+reuse bumped `times_reused` but never grew `covers`, so genuine generalisation
+(one rule solving many tasks) stayed invisible to P1 — its own documented intent.
+
+**Change**:
+- `agent/dsl_compose.py` (new): `build_constant_output_program(grid)` — a
+  general, value-agnostic grid→(make_grid + one coloring-per-colour) decomposer.
+  Reads every dimension/colour/coord from the grid; no literal answer baked in
+  (slice §9). Rebuilds *any* grid, so it is a module, not a per-task case.
+- `agent/active_operators.py` `GeneralizeOperator`: schema-aware fast path
+  (CLAUDE.md §5.2) — `recognized_conditions(patterns)`; when `constant_output`
+  is among them, activate a `constant_output` rule carrying the DSL program
+  (helper `_constant_output_rule`, **not** a `_try_*`). `PredictOperator`:
+  `_run_dsl_program` executes a `{dsl,args}` recipe via `apply_DSL` (the §6.2
+  dispatch). Neither helper is `_try_*`/`_apply_*` (F2 verified empty).
+- `agent/memory.py`: schema fidelity for the new type — `_condition_params`
+  `constant_output`→`{}` (recognition is param-free; the recipe is *action*),
+  `_dsl_for`→`make_grid`, concept `copy_constant_output`, category
+  `constant_transform`. **New `add_task_to_covers()`** (revalidates, never
+  swallows RuleSchemaError) wired into `active_agent.py`'s fast path so verified
+  reuse grows `covers` (P1). This is also the F8 companion edit.
+- `tests/test_constant_output_solve.py` (new): 6 tests — decomposition exactness,
+  value-agnosticism, multi-colour, empty/ragged guard, predictor end-to-end, and
+  real easy000a. All pass; the four prior suites (constant_output, dsl, episodic,
+  rule_schema) still pass.
+
+**Probe before**: 0/3 easy, 0/9 easy_a; 3 rules; P1 1.33, P2 1.33, P4 73, P5 3, P6 652.
+**Probe after** : easy000a **and** easy000b now CORRECT via `rule=constant_output`
+(the intended Inter-Grid-COMM → make_grid+coloring path, *not* a hand-coded
+detector); easy slice 4/16 — the four constant tasks (easy0001/0005/0009/0013)
+solved by **reusing** rule_004 (one rule, 5 covered tasks). 5 rules; P1 1.40,
+P2 2.00, P4 123, P5 3, P6 710. Value-agnosticism is demonstrated by rule_004
+((5,5)=2) vs rule_005 (easy000b's *different* grid) coming from the **same**
+module — exactly what the slice's hypothetical easy000a2 was meant to verify.
+
+**Invariants**: forbidden=**none** (checker verdict CLEAN; F2 diff empty, F8
+companion = agent/memory.py, F3 untouched). positives=**P1 +0.067, P2 +0.667,
+P4 +50** (3 deltas). P3 0 (anti-unification still unbuilt); P5 unchanged; P6
+−58 lines (net additions to active_operators.py, permitted under F8 via the
+memory.py co-touch).
+
+**Next gap (note for future iter)**: two distinct constant_output rules
+(rule_004, rule_005) now share an identical skeleton differing only in the
+target grid — this is the textbook invitation for `anti_unification.unify()`
+(P3=0, still unwired) to lift them into one `copy_common_output` rule with
+`covers`>1, collapsing the denominator. Separately, the stale `color_mapping`
+rules (rule_001/002/003) still hold *false* coverage of constant-output tasks
+they never actually solve; retiring or superseding them would further lift P1.
+
+---
 ## Iter 5 — 2026-06-11 — branch test30
 
 **Diagnosis**: The DSL *transformation substrate* CLAUDE.md §6 mandates
@@ -346,3 +406,63 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 0
 - Time: 4s
 - Log: logs/learn_20260611_210206.log
+
+---
+## Learning Loop -- 2026-06-11 21:09
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260611_210908.log
+
+---
+## Learning Loop -- 2026-06-11 21:09
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260611_210910.log
+
+---
+## Learning Loop -- 2026-06-11 21:16
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 3 -> 5 (+2 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260611_211609.log
+
+---
+## Learning Loop -- 2026-06-11 21:16
+
+- Split: None, Tasks: 16
+- Correct: 4 / 16 (25.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 4
+- Time: 9s
+- Log: logs/learn_20260611_211621.log
+
+---
+## Learning Loop -- 2026-06-11 21:20
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 3 -> 5 (+2 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260611_212021.log
+
+---
+## Learning Loop -- 2026-06-11 21:20
+
+- Split: None, Tasks: 16
+- Correct: 4 / 16 (25.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 4
+- Time: 7s
+- Log: logs/learn_20260611_212025.log
