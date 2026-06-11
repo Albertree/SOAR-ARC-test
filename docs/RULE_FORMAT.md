@@ -495,19 +495,19 @@ Existing `_try_*` / `_apply_*` members (the **closed** family — do not add to 
 
 | Component | State | Notes |
 |-----------|-------|-------|
-| `agent/memory.py:save_rule_to_ltm()` | LEGACY | The only rule *writer* present. Emits the **old** rule shape (top-level `rule` key), **not** the `{condition, action}` schema of §1. |
-| `agent/memory.py:load_all_rules()` / `load_rules_from_ltm()` | RUNS | Read side; backs the Fast path. Loads whatever JSON is under `procedural_memory/` without schema validation. |
+| `agent/memory.py:save_rule_to_ltm()` | RUNS (schema) | The rule *writer*. Now lifts the pipeline's operational payload into the `{condition, action}` schema (§1) via `translate_to_schema()` and `validate_rule()` before writing; raises `RuleSchemaError` on violation (never swallowed). Anti-unification wiring (the sanctioned `save_rule()` call site, CLAUDE.md §8) is still future work. |
+| `agent/memory.py:load_all_rules()` / `load_rules_from_ltm()` | RUNS | Read side; backs the Fast path. Re-exposes the operational payload as `entry["rule"]` (`_operational_view`) so the predictor/equivalence check work with both schema and legacy files. |
 | `agent/memory.py:increment_reuse_count()` | RUNS | Bumps `times_reused`. |
 | `agent/memory.py:chunk_from_substate()` | STUB | Placeholder for SOAR-style chunking. |
 | `agent/memory.py:_rules_equivalent()`, `_norm_mapping()`, `_norm_dict()`, `_infer_concept()`, `_infer_category()` | RUNS | Helpers used by the legacy writer/loader. |
-| `agent/memory.py:save_rule()` | MISSING | The schema-validated writer + the **only** sanctioned `anti_unification` call site (`CLAUDE.md §8`). Not yet written. |
-| `agent/memory.py:validate_rule()` | MISSING | Enforcement of V1–V7 (§3). Not yet written → no rule is validated on save (F4 currently unenforced in code). |
-| `agent/memory.py:RuleSchemaError` | MISSING | The validation error class (`CLAUDE.md` / F7). Not yet defined. |
-| `agent/memory.py:translate_to_schema()` | MISSING | Pipeline-output → §1-shape translator. Not yet written. |
-| `agent/memory.py:load_related()` | MISSING | Read-side helper for `save_rule(..., related_rules=...)`. Not yet written. |
-| `agent/memory.py:next_rule_id()` | MISSING | Next-unused-id helper. Not yet written. |
-| `agent/memory.py:migrate_legacy_rules()` | MISSING | Legacy→v1 migration. Not yet written. |
-| `procedural_memory/rule_001.json`, `rule_002.json` | LEGACY, present, **git-ignored** | Two stored rules exist **locally only** (`procedural_memory/*` is git-ignored except `.gitkeep`, so they are not on GitHub). Both are the legacy shape — keys `{id, concept, category, rule, covers, source_task, created_at, times_reused}`, **no `condition` / `action`** (exactly the Example 6.3 / F4-invalid shape). `load_all_rules` picks them up (`Stored rules: 2`). A migration or deletion is owed once `validate_rule` exists. |
+| `agent/memory.py:save_rule()` | MISSING | The anti-unification-integrated writer (`CLAUDE.md §8`). Still future — `save_rule_to_ltm()` is the current validated writer; the only remaining gap here is the `anti_unification.unify()` call site. |
+| `agent/memory.py:validate_rule()` | RUNS | Enforces V1–V7 (§3): required keys / no extras (V7), `condition.type` registered (V2), `action.dsl` ∈ frozen primitives (V3), `source_task` ∈ `covers` (V4), trace file exists (V5). Raises `RuleSchemaError`. |
+| `agent/memory.py:RuleSchemaError` | RUNS | The validation error class (`CLAUDE.md` / F7). Defined; propagated (never swallowed) from `save_rule_to_ltm`/`migrate_legacy_rules`. |
+| `agent/memory.py:translate_to_schema()` | RUNS | Lifts a flat operational payload (`{type, mapping, …}`) into the §1 `{condition, action}` shape, preserving the payload verbatim under `action.args`. |
+| `agent/memory.py:load_related()` | MISSING | Read-side helper for `save_rule(..., related_rules=...)`. Not yet written (lands with anti-unification). |
+| `agent/memory.py:next_rule_id()` | RUNS | Next-unused-id helper (max existing id + 1). |
+| `agent/memory.py:migrate_legacy_rules()` | RUNS | Legacy→schema in-place migration; raises on any rule it cannot make valid (no silent skip). |
+| `procedural_memory/rule_001.json`–`rule_003.json` | MIGRATED, tracked | Three stored rules (`procedural_memory/` is now tracked — recent commit). Migrated to the `{condition, action}` schema this iter (operational payload preserved under `action.args`); all pass `validate_rule`. |
 | `procedural_memory/DSL/` (`apply.py`, `coloring`, `make_grid`, …) | MISSING | The DSL layer does not exist. There is **no `apply_DSL`, no `coloring`, no `make_grid`** in code yet — the "two frozen primitives" (§5/§6, `CLAUDE.md §6`) are still unwritten. The legacy `_apply_*` operators mutate grids directly instead of composing DSL primitives. |
 
 ### 7.4 Anti-unification — STUB, and the API does not match the spec
@@ -530,8 +530,8 @@ Existing `_try_*` / `_apply_*` members (the **closed** family — do not add to 
 
 | Component | State | Notes |
 |-----------|-------|-------|
-| `agent/conditions/` (`__init__.py`, `CONDITION_REGISTRY`, `@register`, matchers) | MISSING | Directory exists but holds only a stale `__pycache__/` — **no `__init__.py`, no registry, zero matchers**. The recognition vocabulary (§4 condition registry, signal P5) is empty. |
-| `agent/conditions/recognized_conditions()` | MISSING | Runtime applier — not present (the directory is empty). |
+| `agent/conditions/` (`__init__.py`, `CONDITION_REGISTRY`, `register`, matchers) | RUNS | Registry + `register()` decorator + `is_registered()`/`get_matcher()`. Two matchers registered: `color_mapping`, `recolor_sequential` (signal P5 = 2). Consulted by `validate_rule` V2. Fast-path wiring of the matchers is later work. |
+| `agent/conditions/recognized_conditions()` | RUNS | Read-side applier returning every matcher that fires on a `patterns` dict (deterministic, side-effect-free). Not yet consulted by the proposer. |
 | `agent/episodic.py:write_attempt()` | MISSING | No episodic writer. `episodic_memory/` stays empty every solve (signal P4 = 0). `CLAUDE.md §3.3` requires one `attempt_NNN/` per `solve()`; currently none is written. |
 | `tests/` (entire suite) | MISSING | No `tests/` directory. The 30+ `test_*.py` files the previous revision of this table listed (`test_save_rule`, `test_dsl`, `test_unify`, `test_episodic`, …) were `test20`/`test21` artifacts and **do not exist on `test22`**. `pytest tests/ -q` currently collects nothing. |
 | `agent/active_agent.py` fast-path schema dispatch (`_predict_with_entry`, `_is_identity_rule`, `_entry_*`) / `_persist_pipeline_rule()` | MISSING/PARTIAL | The schema-aware fast path described by the old table is not present in this form; the current Fast path is the legacy `load_all_rules` lookup. |
@@ -543,13 +543,23 @@ Slow-path operator pipeline that reaches a prediction through **two legacy
 hand-coded detectors** (`_try_color_mapping`, `_try_recolor_sequential`) — which
 currently solve **0** of the easy_a slice the intended way.
 
-What is **stub or missing** (the redesign's actual to-build list): the
-depth-descent `DescendOperator`; the `{condition, action}` rule writer/validator
-(`save_rule`, `validate_rule`, `RuleSchemaError`, `translate_to_schema`); the
-DSL layer (`apply_DSL` + the two frozen primitives); anti-unification (and its
-API/spec reconciliation); the `agent/conditions/` matcher registry; the
-`agent/episodic.py` writer; and the test suite. The two local `rule_00N.json`
-files are legacy-shape and owe a migration.
+Built since: the `{condition, action}` rule writer/validator (`validate_rule`,
+`RuleSchemaError`, `translate_to_schema`, `migrate_legacy_rules`, schema-aware
+`save_rule_to_ltm`); the `agent/conditions/` matcher registry (two matchers, P5
+= 2); the three stored rules migrated to schema; a `tests/test_rule_schema.py`.
+
+What is **still stub or missing** (the redesign's remaining to-build list): the
+depth-descent `DescendOperator`; the DSL layer (`apply_DSL` + the two frozen
+primitives `coloring`/`make_grid` as *code* — only their names are reserved so
+far); anti-unification (and its API/spec reconciliation) plus the sanctioned
+`save_rule()` call site; the `agent/episodic.py` writer (P4 still 0); and
+wiring the condition matchers into the fast-path proposer.
+
+> **Task-id pattern reconciliation (2026-06-11).** §1's schema uses
+> `^[0-9a-f]{8}$` for `covers`/`source_task`, valid for real ARC ids
+> (`08ed6ac7`) but not the easy slice's readable ids (`easy000a`, `easy0001`).
+> `validate_rule` accepts `^[0-9a-z_]{3,16}$` so slice rules validate; tighten
+> to the 8-hex form once the slice ids are retired.
 
 ## 8. Cross-references
 

@@ -1,0 +1,35 @@
+{
+  "id": 2,
+  "concept": "color_remap",
+  "category": "color_transform",
+  "condition": {
+    "type": "color_mapping",
+    "params": {
+      "mapping": {
+        "2": 0,
+        "0": 2,
+        "1": 0
+      }
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "coloring",
+    "args": {
+      "type": "color_mapping",
+      "mapping": {
+        "2": 0,
+        "0": 2,
+        "1": 0
+      },
+      "confidence": 0.8
+    }
+  },
+  "covers": [
+    "easy000a"
+  ],
+  "source_task": "easy000a",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-11T20:28:29.811202",
+  "times_reused": 0
+}
