@@ -43,9 +43,9 @@ def parse_args():
                         "Omit to use data/ARC_easy/ when present.")
     p.add_argument("--task-dir", default=None,
                    help="Load tasks from an arbitrary directory of *.json ARC tasks "
-                        "(e.g. data/ARC_easy_a or challenges/). Overrides --split. "
+                        "(e.g. data/ARC_easy_a or data/ARC_madeup/). Overrides --split. "
                         "Used by the loop's easy_a milestone probe and by self-authored "
-                        "challenges (PROMPT.md §2.2).")
+                        "tasks under data/ARC_madeup/ (PROMPT.md §2.2).")
     p.add_argument("--limit", type=int, default=None, help="max tasks to run")
     p.add_argument("--shuffle", action="store_true", help="randomize task order")
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
@@ -132,8 +132,8 @@ def main():
             sys.exit(1)
         # Refer to each task relative to the manager's data_root ("data") so
         # ARCManager.load_task resolves it via its first path candidate. Works
-        # for dirs under data/ (ARC_easy_a → "ARC_easy_a/x.json") and for
-        # repo-root dirs (challenges → "../challenges/x.json").
+        # for dirs under data/ (data/ARC_madeup → "ARC_madeup/x.json") and for
+        # repo-root dirs (foo → "../foo/x.json").
         task_hexes = sorted(
             os.path.relpath(os.path.join(args.task_dir, f), "data")
             for f in os.listdir(args.task_dir) if f.endswith(".json")

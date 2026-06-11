@@ -221,8 +221,9 @@ ARC_easy_a: $EASYA_SCORE
 ===== ESCALATION (PROMPT.md §2.2) =====
 Do not emit a near-duplicate / cosmetic commit. If no real gap surfaces from the
 sampled training tasks, ESCALATE: pick a training task the agent fails and close
-the underlying capability gap, or author a new minimal task under challenges/
-(run it with: python run_learn.py --task-dir challenges/). When you judge the
+the underlying capability gap, or author a new minimal task under
+data/ARC_madeup/ (run it with: python run_learn.py --task-dir data/ARC_madeup/).
+When you judge the
 system sufficiently developed, end the loop honestly per §2.2 (write
 logs/_LOOP_COMPLETE.md)."
         PROBE_SCORE="$TRAIN_SCORE"
@@ -254,7 +255,7 @@ $EASYA_SCORE"
                 echo "> **PHASE GRADUATION** at iter $ITER — easy → training."
                 echo "> Easy slice + all of easy_a solved 100% for $EASY_STREAK consecutive iters (K=$GRADUATION_K)."
                 echo "> Probe now samples data/ARC_AGI/training/ (ARC-AGI-2). easy + easy_a kept as regression guard."
-                echo "> Per PROMPT.md §2.2 the loop may now also author challenges/ and will end itself when sufficiently developed."
+                echo "> Per PROMPT.md §2.2 the loop may now also author data/ARC_madeup/ tasks and will end itself when sufficiently developed."
             } >> "${LOG_DIR}/session_log.md"
         else
             phase_write "easy" "$EASY_STREAK" "null"

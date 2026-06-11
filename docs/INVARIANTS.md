@@ -29,7 +29,7 @@ check.
 
 Any diff against `main` (or the prior commit, for non-`main` branches) touching:
 
-- `data/`
+- `data/` — **except `data/ARC_madeup/`** (see exemption below)
 - `agent/cycle.py`
 - `agent/wm.py`
 - `ARCKG/task.py`, `ARCKG/pair.py`, `ARCKG/grid.py`, `ARCKG/object.py`, `ARCKG/pixel.py`
@@ -41,7 +41,13 @@ These define the SOAR cycle, the 5-level node identity contract, and the
 read-only design context. Changing them is an architecture change, not a
 session task.
 
-Check: `git diff <base> -- data/ agent/cycle.py agent/wm.py ARCKG/task.py ARCKG/pair.py ARCKG/grid.py ARCKG/object.py ARCKG/pixel.py docs/arbor_context/ | wc -l` must be `0`.
+**Exemption — `data/ARC_madeup/`.** This one subdirectory is the loop's
+self-authored task area (`PROMPT.md §2.2`, `data/ARC_madeup/README.md`). The
+loop may create / run / delete tasks there; the supplied datasets (`ARC_easy`,
+`ARC_easy_a`, `ARC_AGI`) remain read-only. Editing a supplied dataset to route
+around the freeze is still an F1 violation.
+
+Check: `git diff <base> -- data/ ':(exclude)data/ARC_madeup/' agent/cycle.py agent/wm.py ARCKG/task.py ARCKG/pair.py ARCKG/grid.py ARCKG/object.py ARCKG/pixel.py docs/arbor_context/ | wc -l` must be `0`.
 
 ### F2 — New `_try_*` or `_apply_*` method
 

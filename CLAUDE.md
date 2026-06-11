@@ -501,10 +501,10 @@ logged** (state file `logs/_phase_state.json`), never a silent auto-grow of the
 budget — see `docs/INVARIANTS.md F6`, `PROMPT.md §2.1`.
 
 Beyond the supplied data, the loop is expected to **escalate**: take on
-ARC-AGI-2 training tasks it fails, or **author its own probe tasks** under the
-non-frozen `challenges/` directory (run via `run_learn.py --task-dir
-challenges/`), rather than emit meaningless near-duplicate commits
-(`PROMPT.md §2.2`). When development has genuinely converged, an iter may **end
+ARC-AGI-2 training tasks it fails, or **author its own probe tasks** under
+`data/ARC_madeup/` — the one F1-exempt corner of the otherwise-frozen `data/`
+(run via `run_learn.py --task-dir data/ARC_madeup/`) — rather than emit
+meaningless near-duplicate commits (`PROMPT.md §2.2`). When development has genuinely converged, an iter may **end
 the loop honestly** by writing `logs/_LOOP_COMPLETE.md` (justification +
 standings); `run_loop.sh` detects it at the top of the next iter and stops (the
 user resumes by deleting it).

@@ -93,13 +93,15 @@ purpose.** In rough order of preference:
 
 2. **Author your own challenge tasks.** When no supplied task surfaces a fresh,
    nameable gap, *invent one*. Write a minimal ARC-style task under
-   `challenges/` (standard `{"train":[…],"test":[…]}` JSON — see
-   `challenges/README.md`) that isolates a specific capability you suspect is
-   missing, then make the agent solve it by **extending the system**:
-   `python run_learn.py --task-dir challenges/`. Author the smallest task you
-   expect to *fail* — a challenge you can already solve teaches nothing. Build a
-   small ladder of these (easy variant → harder variant) and climb it. `data/`
-   is frozen; `challenges/` is yours to write in freely.
+   `data/ARC_madeup/` (standard `{"train":[…],"test":[…]}` JSON — see
+   `data/ARC_madeup/README.md`) that isolates a specific capability you suspect
+   is missing, then make the agent solve it by **extending the system**:
+   `python run_learn.py --task-dir data/ARC_madeup/`. Author the smallest task
+   you expect to *fail* — a challenge you can already solve teaches nothing.
+   Build a small ladder of these (easy variant → harder variant) and climb it.
+   `data/` is frozen, but `data/ARC_madeup/` is the **one exempt corner** you may
+   write in freely (F1 excludes it); tasks there are tracked and pushed, so they
+   persist.
 
 3. **Generalize across what is already solved.** Two task-specific programs that
    share a skeleton are an invitation for `anti_unification.unify()` to lift
@@ -310,8 +312,9 @@ commitment. Each iter re-diagnoses from scratch.
 - **Spin.** Do not emit a near-duplicate, cosmetic, or trivially-reshuffling
   commit just to have committed something this iter. If the easy slice is
   mastered and no nameable gap surfaces, you must either *escalate* the
-  challenge (§2.2: a failing ARC-AGI-2 training task, or a new `challenges/`
-  task you author to expose a gap), make a real no-op iter (§5), or — when
+  challenge (§2.2: a failing ARC-AGI-2 training task, or a new
+  `data/ARC_madeup/` task you author to expose a gap), make a real no-op iter
+  (§5), or — when
   development has genuinely converged — end the loop honestly (§2.2,
   `logs/_LOOP_COMPLETE.md`). Repeating the same low-value change is the single
   behavior this project most wants gone.
@@ -324,8 +327,8 @@ If you cannot find a smallest-step gap that satisfies §3 without tripping a
 forbidden signal, the correct iter output is:
 
 1. **First try to escalate, not idle** (§2.2). If `easy_a` is mastered, look for
-   a failing ARC-AGI-2 training task or author a `challenges/` task that exposes
-   a real gap — that is usually where the next defensible step actually is.
+   a failing ARC-AGI-2 training task or author a `data/ARC_madeup/` task that
+   exposes a real gap — that is usually where the next defensible step is.
 2. If escalation also yields no defensible step *and* you judge development has
    converged, write `logs/_LOOP_COMPLETE.md` per §2.2 to end the loop honestly.
 3. Otherwise, append a `Iter <N>: no defensible step found — analysis only`

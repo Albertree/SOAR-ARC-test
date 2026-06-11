@@ -165,8 +165,10 @@ fi
 violations=()
 
 # F1 — Frozen files
+# data/ is frozen EXCEPT data/ARC_madeup/ — the self-authored task area the loop
+# may write to (PROMPT.md §2.2). Everything else under data/ stays read-only.
 F1_OUT=$(git diff "$BASE_HEAD" -- \
-    data/ \
+    data/ ':(exclude)data/ARC_madeup/' \
     agent/cycle.py \
     agent/wm.py \
     ARCKG/task.py ARCKG/pair.py ARCKG/grid.py ARCKG/object.py ARCKG/pixel.py \
