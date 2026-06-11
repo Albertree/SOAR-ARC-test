@@ -17,6 +17,7 @@ from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
+from agent.episodic import write_attempt
 
 
 class ActiveSoarAgent:
@@ -28,9 +29,11 @@ class ActiveSoarAgent:
 
     def __init__(self, semantic_memory_root: str = "semantic_memory",
                  procedural_memory_root: str = "procedural_memory",
+                 episodic_memory_root: str = "episodic_memory",
                  max_steps: int = 50):
         self.semantic_memory_root = semantic_memory_root
         self.procedural_memory_root = procedural_memory_root
+        self.episodic_memory_root = episodic_memory_root
         self.max_steps = max_steps
         self._submission_count: int = 0
         self._current_task_hex: str = None
@@ -72,6 +75,7 @@ class ActiveSoarAgent:
                         "rule_source": entry.get("source_task"),
                     })
                     self._submission_count += 1
+                    self._record_episode(task, predicted, cycle_result=None)
                     return predicted
 
         # --- Slow path: full SOAR pipeline ---
@@ -110,9 +114,77 @@ class ActiveSoarAgent:
             )
 
         self._submission_count += 1
+        self._record_episode(task, predicted, cycle_result=result)
         return predicted
 
     # ---- helpers --------------------------------------------------------
+
+    def _record_episode(self, task, predicted, cycle_result=None) -> None:
+        """Write one episodic ``attempt_NNN/`` folder for this solve (CLAUDE.md §3.3).
+
+        Records only what the (non-frozen) solve boundary can *observe*: the
+        path taken (fast stored-rule vs slow pipeline), the cycle summary the
+        frozen ``run_cycle`` returned, the rule that fired, and before/after
+        grid snapshots (each test input + the produced prediction). The trace
+        is summary-level and says so (``granularity: "summary"``) — it does not
+        fabricate per-cycle entries the frozen cycle never exposed.
+
+        Episodic writing must never break a learning run; a writer failure is
+        surfaced on stderr (not silently swallowed) and the prediction still
+        returns.
+        """
+        info = self.last_solve_info
+        method = info.get("method", "none")
+
+        grids = []
+        try:
+            for i, tp in enumerate(getattr(task, "test_pairs", []) or []):
+                ig = getattr(tp, "input_grid", None)
+                raw = getattr(ig, "raw", None)
+                if raw is not None:
+                    grids.append((f"test{i}-input", raw))
+        except Exception:
+            pass
+        grids.append(("predicted", predicted))
+
+        trace = {
+            "task": task.task_hex,
+            "granularity": "summary",   # cycle.py frozen — no per-cycle hook (§4)
+            "path": method,
+            "rule_type": info.get("rule_type"),
+            "rule_source": info.get("rule_source"),
+            "steps_taken": info.get("steps", 0),
+            "goal_satisfied": (
+                bool(cycle_result.get("goal_satisfied"))
+                if isinstance(cycle_result, dict) else None
+            ),
+        }
+
+        metadata = {
+            "task": task.task_hex,
+            "method": method,
+            "rule_type": info.get("rule_type"),
+            "rule_source": info.get("rule_source"),
+            "steps": info.get("steps", 0),
+            "n_test_pairs": len(getattr(task, "test_pairs", []) or []),
+            "outcome": "prediction-produced" if predicted else "no-prediction",
+            "submission_index": self._submission_count,
+            # Anti-unification is not yet wired into save_rule (§8); honest 0.
+            "anti_unification_invocations": 0,
+        }
+
+        try:
+            write_attempt(
+                task.task_hex,
+                trace=trace,
+                metadata=metadata,
+                grids=grids,
+                episodic_root=self.episodic_memory_root,
+            )
+        except Exception as e:  # never let episodic I/O break a learning run
+            import sys
+            print(f"[episodic] failed to write attempt for "
+                  f"{task.task_hex}: {e}", file=sys.stderr)
 
     def _rule_matches_examples(self, rule, task) -> bool:
         """Check if a rule produces correct output for ALL example pairs."""

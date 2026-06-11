@@ -1,6 +1,52 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 2 — 2026-06-11 — branch test30
+
+**Diagnosis**: `episodic_memory/` held only `.gitkeep` → P4=0. Per CLAUDE.md
+§3.3 *every* `solve()` (pass or fail) must produce exactly one `attempt_NNN/`
+folder; an empty store means the episodic writer was never built — an
+architecture violation and ARBOR's third LTM store is dead. This is the
+smallest *durable*, self-contained gap and the one iter 1 flagged as "next".
+`agent/cycle.py` is frozen and `run_cycle` returns only a run summary, so the
+writer must live at the non-frozen `solve()` boundary and record an honest
+*summary-level* trace — not fabricated per-cycle entries the frozen cycle never
+exposes.
+
+**Change**:
+- `agent/episodic.py` (new): `write_attempt()` — writes one `attempt_NNN/`
+  folder (`trace.json` + `metadata.json` + `grids/step_NNN.json`) with
+  monotonic per-task attempt indexing so repeated solves accumulate (P4).
+  Trace is tagged `granularity:"summary"` and self-documents *why* (frozen
+  cycle, no per-cycle hook) rather than inventing step data.
+- `agent/active_agent.py`: added `episodic_memory_root` ctor param and a
+  `_record_episode()` helper called before both `solve()` returns (fast
+  stored-rule path + slow pipeline path). Records the observable boundary
+  (path, cycle summary, rule fired, test-input + predicted grid snapshots).
+  Writer failure is surfaced on stderr, never silently swallowed, and never
+  breaks the learning run. No frozen file touched; `active_operators.py`
+  untouched (no F8 risk).
+- `tests/test_episodic.py` (new): 3 standalone tests — layout contract,
+  monotonic accumulation, empty-dir indexing. All pass.
+
+**Probe before**: 0/3 correct; 3 rules; P4=0 (episodic store empty —
+architecture violation).
+**Probe after** : 0/3 correct (unchanged — score is not the target); 3 rules;
+P4=3 after the easy probe (12 attempts on disk after easy + easy_a). Run is
+crash-free; `test_rule_schema.py` (8) still passes.
+
+**Invariants**: forbidden=none (check verdict CLEAN); positives=P4 0→3 (+3).
+P1/P2/P3/P5/P6 unchanged.
+
+**Next gap (note for future iter)**: the schema spine (iter 1) and the episodic
+writer (this iter) now exist, but the condition matchers in `agent/conditions/`
+are still unused at solve time — the fast path remains the legacy
+`load_all_rules` equality check, never consulting `condition.type`. Wiring the
+matcher registry into the generalize/lookup path (so a saved rule's
+`condition` actually gates reuse) is the next self-contained step; `coloring`/
+`make_grid` DSL *code* and anti-unification (P3=0) remain unbuilt beyond that.
+
+---
 ## Iter 1 — 2026-06-11 — branch test30
 
 **Diagnosis**: The probe's own `save_rule_to_ltm` wrote three rules
@@ -80,3 +126,43 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260611_203706.log
+
+---
+## Learning Loop -- 2026-06-11 20:40
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260611_204038.log
+
+---
+## Learning Loop -- 2026-06-11 20:40
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260611_204040.log
+
+---
+## Learning Loop -- 2026-06-11 20:44
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260611_204453.log
+
+---
+## Learning Loop -- 2026-06-11 20:45
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260611_204516.log
