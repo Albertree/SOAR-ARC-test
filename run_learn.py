@@ -51,6 +51,9 @@ def parse_args():
     p.add_argument("--seed", type=int, default=42, help="random seed for shuffle")
     p.add_argument("--log-wm", action="store_true", help="print WM logs per task")
     p.add_argument("--viz", action="store_true", help="show input/predicted/answer grids")
+    p.add_argument("--no-root-log", action="store_true",
+                   help="suppress the repo-root run_learn_*.txt report (used by the "
+                        "loop's automated probes so they don't litter the root each iter)")
     return p.parse_args()
 
 
@@ -162,9 +165,11 @@ def main():
     log_file = open(log_path, "w")
 
     # Root txt file — only when --split is explicitly given (e.g. --split training)
+    # and not suppressed. The loop's automated probes pass --no-root-log so they
+    # don't drop a run_learn_*.txt in the repo root every iter.
     root_log_path = None
     root_log_file = None
-    if force_split:
+    if force_split and not args.no_root_log:
         root_log_path = f"run_learn_{branch}_{split}_{timestamp}.txt"
         root_log_file = open(root_log_path, "w")
 

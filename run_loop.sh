@@ -189,7 +189,7 @@ while true; do
     EASYA_SCORE="Correct: (no easy_a dir)"
     EASYA_CLEAN=1
     if [ -d "data/ARC_easy_a" ]; then
-        EASYA_OUTPUT=$(python run_learn.py --task-dir data/ARC_easy_a --seed "$PROBE_SEED" 2>&1 || true)
+        EASYA_OUTPUT=$(python run_learn.py --task-dir data/ARC_easy_a --no-root-log --seed "$PROBE_SEED" 2>&1 || true)
         echo "$EASYA_OUTPUT" >> "$PIPELINE_LOG"
         EASYA_SCORE=$(echo "$EASYA_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / ?")
         EASYA_PCT=$(echo "$EASYA_SCORE" | grep -oE '[0-9.]+%' | tr -d '%' | tail -1)
@@ -208,7 +208,7 @@ while true; do
         # Probe samples real ARC training tasks (deterministic via fixed seed).
         PROBE_CMD="run_learn.py --split training --limit $TRAIN_PROBE_SIZE --shuffle --seed $PROBE_SEED"
         log "Training probe: $PROBE_CMD"
-        TRAIN_OUTPUT=$(python run_learn.py --split training --limit "$TRAIN_PROBE_SIZE" --shuffle --seed "$PROBE_SEED" 2>&1 || true)
+        TRAIN_OUTPUT=$(python run_learn.py --split training --limit "$TRAIN_PROBE_SIZE" --shuffle --no-root-log --seed "$PROBE_SEED" 2>&1 || true)
         echo "$TRAIN_OUTPUT" >> "$PIPELINE_LOG"
         TRAIN_SCORE=$(echo "$TRAIN_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $TRAIN_PROBE_SIZE")
         PROBE_OUTPUT="[PHASE: training]
