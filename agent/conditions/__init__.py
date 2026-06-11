@@ -73,3 +73,4 @@ def recognized_conditions(patterns: dict) -> list:
 # the bottom so the registry helpers above are defined first.
 from agent.conditions import color_mapping as _color_mapping  # noqa: E402,F401
 from agent.conditions import recolor_sequential as _recolor_sequential  # noqa: E402,F401
+from agent.conditions import constant_output as _constant_output  # noqa: E402,F401

@@ -1,6 +1,59 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 3 — 2026-06-11 — branch test30
+
+**Diagnosis**: The comparison scheduler (module C) only schedules **Intra-Pair**
+(G0↔G1) comparisons; it never performs the **Inter-Grid, role==G1** comparison
+across example pairs (P0.G1↔P1.G1) that the slice doc (§3) names as easy000a's
+*decisive* comparison. Because that signal is never computed, the pipeline can
+only force every task into a `color_mapping`/`recolor_sequential` interpretation
+— structurally unable to recognise "all outputs identical → copy the common
+output", the easy000a mechanism. Filling module C's missing Inter-Grid half (the
+slice's P0 priority) is the smallest foundational step toward the intended path;
+wiring the predict/submit that *uses* the recognition is deliberately the next
+(smaller) half.
+
+**Change**:
+- `agent/active_operators.py` `SelectTargetOperator.effect`: also schedule the
+  Inter-Grid role==G1 comparison, pairwise across consecutive example outputs
+  (P6), tagged `type:"inter_output"`. Reuses the existing node_lookup + ARCKG
+  `compare()`; results drain before `extract_pattern`
+  (`ReadyForPatternExtractionRule` gates on `pending==0`).
+- `agent/active_operators.py` `ExtractPatternOperator`: new
+  `_summarize_inter_output()` surfaces the COMM/DIFF verdicts from the
+  comparison receipts into `patterns["inter_output"]` (P4 — recognition comes
+  from a comparison result, never a re-read of the grids).
+- `agent/conditions/constant_output.py` (new) + registered in
+  `agent/conditions/__init__.py`: value-agnostic matcher firing iff every
+  Inter-Grid role==G1 comparison is COMM (no literal colour/coord — slice §9
+  guardrail). Raises recognition vocabulary P5 2→3. Co-touch satisfies F8.
+- `tests/test_constant_output.py` (new): 3 tests (registration, fire-only-on-
+  all-COMM + crash-safety, easy000a end-to-end recognition). All pass; existing
+  rule-schema (8) and episodic (3) suites still pass.
+
+**Probe before**: 0/3 easy, 0/9 easy_a; 3 rules; P5=2; coverage 1.33; steps=14.
+**Probe after** : 0/3 easy, 0/9 easy_a (unchanged — score is not the target;
+0 errors, rules 3→3 no churn); P5=3; coverage 1.33; steps=16. On easy000a the
+new Inter-Grid compare returns COMM 3/3 (size·color·contents all match) and
+`constant_output` fires; verified value-agnostic (fires on any all-identical
+output set, e.g. easy000b/easy0001 which also have constant training outputs;
+does not fire when outputs DIFF).
+
+**Invariants**: forbidden=none (check verdict CLEAN); positives=P5 +1 (2→3),
+P4 +13 (episodic writer accumulating). P1/P2/P3 unchanged; P6 −52 lines (net
+additions to active_operators.py, permitted under F8 via the conditions/
+co-touch).
+
+**Next gap (note for future iter)**: recognition now exists but nothing
+*consumes* it — `GeneralizeOperator`/`PredictOperator` still only emit
+`color_mapping`/`recolor_sequential`. The intended easy000a solve needs a
+value-agnostic predict path that, when `constant_output` holds, emits the common
+G1 as the test output (the slice's `PredictByAllPairCommOp`, expressible as a
+`make_grid`+`coloring` composition over the discovered common grid). The
+`coloring`/`make_grid` DSL *code* and anti-unification (P3=0) remain unbuilt.
+
+---
 ## Iter 2 — 2026-06-11 — branch test30
 
 **Diagnosis**: `episodic_memory/` held only `.gitkeep` → P4=0. Per CLAUDE.md
@@ -166,3 +219,53 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 0
 - Time: 4s
 - Log: logs/learn_20260611_204516.log
+
+---
+## Learning Loop -- 2026-06-11 20:46
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260611_204612.log
+
+---
+## Learning Loop -- 2026-06-11 20:46
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260611_204614.log
+
+---
+## Learning Loop -- 2026-06-11 20:47
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260611_204737.log
+
+---
+## Learning Loop -- 2026-06-11 20:52
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260611_205216.log
+
+---
+## Learning Loop -- 2026-06-11 20:52
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260611_205218.log

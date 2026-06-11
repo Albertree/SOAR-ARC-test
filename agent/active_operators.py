@@ -61,6 +61,8 @@ class SelectTargetOperator(Operator):
         agenda = []
         pending = []
 
+        # Intra-Pair (Grid-level): within each example pair, compare the input
+        # grid (G0) against the output grid (G1).
         for idx, pair in enumerate(task.example_pairs):
             if pair.input_grid is not None and pair.output_grid is not None:
                 spec = {
@@ -69,6 +71,27 @@ class SelectTargetOperator(Operator):
                     "pair_type": "example",
                     "id1": pair.input_grid.node_id,
                     "id2": pair.output_grid.node_id,
+                }
+                agenda.append(spec)
+                pending.append(spec)
+
+        # Inter-Grid (Grid-level, role-aligned on G1): compare each example's
+        # output grid against the next example's output grid, pairwise (P6:
+        # always two at a time). When every such comparison is COMM the task
+        # has a constant output across examples (the easy000a mechanism, slice
+        # doc §3) — recognition that grounds the `constant_output` matcher (P4:
+        # the verdict comes from a comparison receipt, not a re-read of grids).
+        example_pairs = task.example_pairs
+        for idx in range(len(example_pairs) - 1):
+            g1_a = example_pairs[idx].output_grid
+            g1_b = example_pairs[idx + 1].output_grid
+            if g1_a is not None and g1_b is not None:
+                spec = {
+                    "type": "inter_output",
+                    "pair_idx": idx,
+                    "pair_type": "example",
+                    "id1": g1_a.node_id,
+                    "id2": g1_b.node_id,
                 }
                 agenda.append(spec)
                 pending.append(spec)
@@ -172,7 +195,36 @@ class ExtractPatternOperator(Operator):
             if g0.height != g1.height or g0.width != g1.width:
                 patterns["grid_size_preserved"] = False
 
+        # Surface the Inter-Grid (role==G1) comparison verdicts scheduled by
+        # SelectTargetOperator. `constant_output` (agent/conditions/) reads this
+        # to recognise the easy000a mechanism: every example output is COMM, so
+        # the test output is that common grid. Verdicts come from the comparison
+        # receipts in wm.s1["comparisons"], never from re-reading the grids (P4).
+        patterns["inter_output"] = self._summarize_inter_output(wm)
+
         wm.s1["patterns"] = patterns
+
+    @staticmethod
+    def _summarize_inter_output(wm):
+        """COMM/DIFF summary of the inter-output (role==G1) comparisons."""
+        comparisons = wm.s1.get("comparisons") or {}
+        scores = []
+        all_comm = True
+        count = 0
+        for key, entry in comparisons.items():
+            if not key.startswith("inter_output"):
+                continue
+            count += 1
+            # entry["result"] is the full compare() return: {"id", "result"}.
+            verdict = ((entry or {}).get("result") or {}).get("result") or {}
+            scores.append(verdict.get("score"))
+            if verdict.get("type") != "COMM":
+                all_comm = False
+        return {
+            "count": count,
+            "all_comm": count >= 1 and all_comm,
+            "scores": scores,
+        }
 
     # ---- internal helpers ------------------------------------------------
 
