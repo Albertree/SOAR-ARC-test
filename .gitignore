@@ -208,11 +208,13 @@ __marimo__/
 
 
 # Memory (SOAR LTM: semantic, procedural, episodic)
+# procedural_memory/ is TRACKED — the learned rules are the agent's knowledge,
+# small and meaningful, so they are committed/pushed. semantic_memory/ (ARCKG,
+# regenerated each run) and episodic_memory/ (per-attempt traces) stay ignored:
+# they churn thousands of files per iter and are regenerable.
 memory/
 semantic_memory/*
 !semantic_memory/.gitkeep
-procedural_memory/*
-!procedural_memory/.gitkeep
 episodic_memory/*
 !episodic_memory/.gitkeep
 # Result code
