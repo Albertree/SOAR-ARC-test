@@ -114,11 +114,24 @@ class ActiveSoarAgent:
         })
 
         # --- Learn: save new rule if pipeline discovered one ---
+        # Covers integrity: a rule may only be persisted (and thereby claim to
+        # `cover` its source task) if it actually *reproduces that task's
+        # training examples*. The agent cannot see the test output, but a
+        # genuine rule must at least explain the example pairs it was induced
+        # from — exactly the criterion the fast path (`_rule_matches_examples`)
+        # already enforces before growing `covers`. Without this gate the slow
+        # path saved every non-identity active-rule unconditionally, minting
+        # dead `color_mapping` rules with false coverage for tasks it solved
+        # INCORRECTLY (the 168-sub-coverage-rule failure mode, in miniature).
+        rule_saved = False
         if active_rules and rule_type != "identity":
-            save_rule_to_ltm(
-                active_rules[0], task.task_hex,
-                self.procedural_memory_root,
-            )
+            if self._rule_matches_examples(active_rules[0], task):
+                save_rule_to_ltm(
+                    active_rules[0], task.task_hex,
+                    self.procedural_memory_root,
+                )
+                rule_saved = True
+        self.last_solve_info["rule_saved"] = rule_saved
 
         self._submission_count += 1
         self._record_episode(task, predicted, cycle_result=result)

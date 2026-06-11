@@ -1,6 +1,61 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 7 — 2026-06-11 — branch test30
+
+**Diagnosis**: Procedural memory held three `color_mapping` rules
+(rule_001/002/003) claiming `covers` for constant-output/ambiguous tasks they
+cannot actually solve — a recolor-in-place rule can never reproduce easy000a's
+object-moved-to-corner output. Probing for the root cause (not just the
+symptom) revealed the source: `ActiveSoarAgent.solve`'s **slow path saved every
+non-identity pipeline rule unconditionally**, with no check that the rule even
+reproduces its own task's training examples. Re-running the probe immediately
+re-minted the same false rules (rule_006/007 for INCORRECT easy0003/0007). This
+is the 168-sub-coverage-rule failure mode in miniature; the smallest durable
+fix is a covers-integrity gate, not another manual deletion.
+
+**Change**:
+- `agent/active_agent.py` `solve()`: gate the slow-path `save_rule_to_ltm` on
+  `self._rule_matches_examples(active_rules[0], task)` — the *same* criterion
+  the fast path already enforced before growing `covers`. A discovered rule is
+  persisted (and may claim to `cover` its source) only if it reproduces that
+  task's training output pairs; otherwise it is dropped. Records
+  `last_solve_info["rule_saved"]`. No `_try_*`/`_apply_*` added; no
+  `active_operators.py` edit (so F2/F8 N/A).
+- Deleted `procedural_memory/rule_001.json`, `rule_002.json`, `rule_003.json` —
+  legacy `color_mapping` rules with false coverage (`times_reused: 0`, never
+  selected; the real solves go via `constant_output` rule_004/005). The
+  `color_mapping` *capability* is computed by the pipeline at runtime, so
+  deletion removes only the dead memory, not a mechanism (verified: easy0003
+  still routes through `color_mapping via=pipeline` afterward).
+- `tests/test_covers_integrity.py` (new): 2 end-to-end tests — easy0003
+  (contradictory training) persists NO rule; easy000a (constant output) still
+  persists its `constant_output` rule. Full suite 28 passed.
+
+**Probe before**: easy 4/16, easy_a 2/9; 5 rules; P1 1.40, P2 2.00, P4 135, P5 3, P6 710.
+**Probe after** : easy 4/16, easy_a 2/9 (correct-counts unchanged — no
+legitimate solve depended on the deleted rules); 2 rules; re-running the easy
+probe now reports "Discovered: 4 / Rules 2→2 (+0 learned)" — the pipeline still
+*discovers* candidate rules but the gate refuses to persist the non-reproducing
+ones, so no false rules regenerate. P1 **3.0** (+1.6), P2 **3.0** (+1.0), P4 199
+(+64), P5 3, P6 710. Checker verdict CLEAN.
+
+**Invariants**: forbidden=**none** (checker CLEAN; F1 no frozen file, F2 diff
+empty, F8 N/A — `active_operators.py` untouched, F4 remaining rule_004/005 valid).
+positives=**P1 +1.6, P2 +1.0, P4 +64** (3 deltas). P3 still 0 (anti-unification
+unbuilt — and out of Slice-1 scope, §9). P5/P6 unchanged.
+
+**Next gap (note for future iter)**: the remaining easy_a tasks (easy000c–i) all
+require **object-level / G0 analysis** — place the *input object's* colour at a
+fixed/grid-relative position (c/d/g/h/i) or translate it by a constant offset
+(e/f). That is Slice-2 territory (`SLICE_1_LOOP.md §9/§10`: object/pixel-level
+property DSL and module E–J/anti-unification are explicitly **human-gated**, not
+to be started autonomously). With Slice-1's value-agnostic constant_output path
+sound and now backed by honest covers, in-scope gaps are nearly exhausted;
+absent a `SLICE_2_LOOP.md`, future iters should prefer a real no-op over churn
+(PROMPT §5) rather than hand-coding the object-level moves.
+
+---
 ## Iter 6 — 2026-06-11 — branch test30
 
 **Diagnosis**: Iters 3+5 built both halves of the easy000a path but left them
@@ -466,3 +521,83 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 4
 - Time: 7s
 - Log: logs/learn_20260611_212025.log
+
+---
+## Learning Loop -- 2026-06-11 21:23
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260611_212328.log
+
+---
+## Learning Loop -- 2026-06-11 21:23
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 2
+- Time: 3s
+- Log: logs/learn_20260611_212330.log
+
+---
+## Learning Loop -- 2026-06-11 21:24
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 2
+- Time: 3s
+- Log: logs/learn_20260611_212441.log
+
+---
+## Learning Loop -- 2026-06-11 21:28
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 1
+- Time: 2s
+- Log: logs/learn_20260611_212840.log
+
+---
+## Learning Loop -- 2026-06-11 21:28
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 2
+- Time: 3s
+- Log: logs/learn_20260611_212842.log
+
+---
+## Learning Loop -- 2026-06-11 21:28
+
+- Split: None, Tasks: 16
+- Correct: 4 / 16 (25.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 4
+- Time: 7s
+- Log: logs/learn_20260611_212845.log
+
+---
+## Learning Loop -- 2026-06-11 21:31
+
+- Split: None, Tasks: 16
+- Correct: 4 / 16 (25.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 4
+- Time: 7s
+- Log: logs/learn_20260611_213137.log
+
+---
+## Learning Loop -- 2026-06-11 21:31
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 2
+- Time: 4s
+- Log: logs/learn_20260611_213145.log
