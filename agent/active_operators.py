@@ -225,6 +225,14 @@ class ExtractPatternOperator(Operator):
         Computed purely from `agent.dsl_expr` so the selection/property reads
         are the lift-ready expressions (`unique(objects_of(G))`, `color_of`,
         `size_of`, `position_of`), not ad-hoc cell scans.
+
+        Also surfaces the *target* sub-signal the fixed-cell filling keys on
+        (BACKLOG_LOOP.md R1, §2.5-2b): whether every output object lands on the
+        same cell (`target_constant` / `target_cell` — the COMM of the example
+        output positions) and whether the output grid keeps the input grid's
+        size (`outsize_preserved`). These additional keys are ignored by the
+        base `single_object_move` matcher and read by
+        `single_object_move_fixed_target`.
         """
         pairs = []
         for pair in task.example_pairs:
@@ -232,29 +240,46 @@ class ExtractPatternOperator(Operator):
                 continue
             src = unique(objects_of(pair.input_grid.raw))
             dst = unique(objects_of(pair.output_grid.raw))
-            pairs.append((src, dst))
+            in_size = (pair.input_grid.height, pair.input_grid.width)
+            out_size = (pair.output_grid.height, pair.output_grid.width)
+            pairs.append((src, dst, in_size, out_size))
 
         if not pairs:
             return {
                 "all_single": False, "color_preserved": False,
-                "shape_preserved": False, "moved": False, "evidence_count": 0,
+                "shape_preserved": False, "moved": False,
+                "target_constant": False, "target_cell": None,
+                "outsize_preserved": False, "evidence_count": 0,
             }
 
-        all_single = all(src is not None and dst is not None for src, dst in pairs)
+        all_single = all(src is not None and dst is not None for src, dst, _, _ in pairs)
         color_preserved = all_single and all(
-            color_of(src) == color_of(dst) for src, dst in pairs
+            color_of(src) == color_of(dst) for src, dst, _, _ in pairs
         )
         shape_preserved = all_single and all(
-            size_of(src) == size_of(dst) for src, dst in pairs
+            size_of(src) == size_of(dst) for src, dst, _, _ in pairs
         )
         moved = all_single and all(
-            position_of(src) != position_of(dst) for src, dst in pairs
+            position_of(src) != position_of(dst) for src, dst, _, _ in pairs
         )
+
+        # Fixed-cell target: every output object at the same (row, col) — the
+        # COMM of the example output positions, derived value-agnostically.
+        out_positions = [position_of(dst) for _, dst, _, _ in pairs] if all_single else []
+        target_constant = bool(out_positions) and all(
+            p == out_positions[0] for p in out_positions
+        )
+        target_cell = out_positions[0] if target_constant else None
+        outsize_preserved = all(insz == outsz for _, _, insz, outsz in pairs)
+
         return {
             "all_single": all_single,
             "color_preserved": color_preserved,
             "shape_preserved": shape_preserved,
             "moved": moved,
+            "target_constant": target_constant,
+            "target_cell": target_cell,
+            "outsize_preserved": outsize_preserved,
             "evidence_count": len(pairs),
         }
 
@@ -388,6 +413,16 @@ class GeneralizeOperator(Operator):
         if match_condition("constant_output", patterns):
             rule = self._build_constant_output_rule(patterns)
 
+        # R1: recognize a single object relocated onto a fixed cell (the COMM of
+        # the example output positions). One value-agnostic `place_object` rule
+        # covers the whole fixed-target subfamily (easy000c/d/h); the cell and
+        # the object's colour are derived per task at apply time, never stored in
+        # the rule, so the rule dedups into one with a growing `covers`
+        # (BACKLOG_LOOP.md R1, §2.5-2b). Checked after constant_output so the
+        # constant-output members (easy000a/b) keep their R0 path.
+        elif match_condition("single_object_move_fixed_target", patterns):
+            rule = self._build_place_object_rule(patterns)
+
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -417,6 +452,35 @@ class GeneralizeOperator(Operator):
             },
             "action": {
                 "dsl": "copy_common_output",
+                "args": {},
+            },
+            "confidence": 1.0,
+        }
+
+    # ---- R1: place-object rule construction -----------------------------
+
+    def _build_place_object_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the
+        fixed-target move subfamily. The action is the *recipe* `place_object`
+        — "relocate the single object onto the cell that is the COMM of the
+        example output positions", replayed at apply time as
+        `make_grid` ∘ `coloring`. Args are empty: the target cell and the
+        object colour are derived from each task's own grids (P5: from G0 +
+        the example outputs), not stored here — so one rule covers the whole
+        subfamily (§2.5-2b / §2.5-3)."""
+        transition = patterns.get("object_transition") or {}
+        if not transition.get("target_constant") or transition.get("target_cell") is None:
+            return None
+        return {
+            "type": "place_object",               # WM dispatch tag for PredictOperator
+            "concept": "place_moved_object",
+            "category": "single_object_move",
+            "condition": {
+                "type": "single_object_move_fixed_target",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "place_object",
                 "args": {},
             },
             "confidence": 1.0,
@@ -491,6 +555,8 @@ class PredictOperator(Operator):
         rule_type = rule.get("type")
         if rule_type == "constant_output":
             return self._render_constant_output(rule, self._task)
+        if rule_type == "place_object":
+            return self._render_place_object(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -529,6 +595,78 @@ class PredictOperator(Operator):
                 if common[r][c] != background:
                     out = apply_DSL("coloring", out, selection=(r, c),
                                     color=common[r][c])
+        return out
+
+    def _render_place_object(self, rule, task, input_grid):
+        """Render the R1 `place_object` action: relocate the test grid's single
+        object onto the cell that is the COMM of the example output positions,
+        reconstructed via the two frozen primitives (`make_grid` ∘ `coloring`).
+
+        Value-agnostic and P5-clean: the target cell is read from the *example
+        outputs* (the matcher guarantees they all coincide), the object's colour
+        and cells are read from the *test G0* (never its absent G1), and the
+        background is the example outputs' shared fill. Nothing is hard-coded —
+        the differing target cell across tasks is exactly the variable R3's
+        anti-unification will abstract (§2.5-2b)."""
+        if task is None or input_grid is None:
+            return None
+
+        # Target = the constant output-object position across example pairs.
+        out_positions = []
+        for pair in task.example_pairs:
+            if pair.output_grid is None:
+                continue
+            o = unique(objects_of(pair.output_grid.raw))
+            if o is None:
+                return None
+            out_positions.append(position_of(o))
+        if not out_positions or any(p != out_positions[0] for p in out_positions):
+            return None
+        target = out_positions[0]
+
+        # Read the test object via the seed selection/property vocabulary.
+        obj = unique(objects_of(input_grid.raw))
+        if obj is None:
+            return None
+        color = color_of(obj)
+        src_pos = position_of(obj)
+        if color is None or src_pos is None:
+            return None
+
+        # Background = most-frequent colour across the example outputs (their
+        # shared fill), so the source cells are erased by the fresh canvas.
+        flat = [
+            cell
+            for pair in task.example_pairs if pair.output_grid is not None
+            for row in pair.output_grid.raw
+            for cell in row
+        ]
+        if not flat:
+            return None
+        background = Counter(flat).most_common(1)[0][0]
+
+        height = len(input_grid.raw)
+        width = len(input_grid.raw[0]) if input_grid.raw else 0
+        if height == 0 or width == 0:
+            return None
+
+        # Translate the object's cells so its top-left lands on `target`
+        # (handles 1×1 and larger single-colour shapes uniformly).
+        dr = target[0] - src_pos[0]
+        dc = target[1] - src_pos[1]
+        placed = []
+        for (r, c) in sorted(obj.get("cells") or []):
+            nr, nc = r + dr, c + dc
+            if not (0 <= nr < height and 0 <= nc < width):
+                return None
+            placed.append((nr, nc))
+        if not placed:
+            return None
+
+        out = apply_DSL("make_grid", None, height=height, width=width,
+                        color=background)
+        for (nr, nc) in placed:
+            out = apply_DSL("coloring", out, selection=(nr, nc), color=color)
         return out
 
 

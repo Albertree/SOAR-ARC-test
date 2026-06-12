@@ -270,7 +270,62 @@ rule (§2.5-3); the target-position expression (fixed `(5,5)` vs grid
 bottom-right) is the variable the lift must abstract.
 
 ---
-## Learning Loop -- 2026-06-12 11:52
+## Iter 4 — 2026-06-12 — branch test31
+
+**Diagnosis**: R1's recognition substrate exists (iter 3: seed vocabulary +
+`single_object_move` matcher + `object_transition` signal) but nothing consumes
+it — the move family (easy000c–i) still resolves to `identity`. Following iter
+2's R0 wiring shape, the smallest defensible step is to wire the *generation* of
+the simplest sub-case: the **fixed-target** movers (object lands on the same cell
+across every example pair). That cell is derivable value-agnostically as the COMM
+of the example output positions, so one `place_object` rule covers the whole
+sub-case; the relative/corner/resized members (e/f/g/i) need different target
+fillings and are left as the R3-lift variable (§2.5-2b), not forced now.
+
+**Change**:
+- `agent/conditions/single_object_move_fixed_target.py` (new) — second matcher:
+  the *applicability condition* for the fixed-cell filling of `place_object`
+  (§2.5-2b: an abstraction's hole needs a filling rule). Fires only when the
+  moved object lands on a constant cell across all pairs **and** grid size is
+  preserved. General predicate (any fixed-cell mover), not a per-task detector.
+  P5 2→3; also the F8 companion for the active_operators edit.
+- `agent/active_operators.py` — (a) `ExtractPatternOperator._object_transition`
+  now also surfaces `target_constant` / `target_cell` (the COMM of example
+  output positions) / `outsize_preserved`, all from the seed vocabulary;
+  (b) `GeneralizeOperator` emits a value-agnostic `place_object` rule when the
+  fixed-target matcher fires (after constant_output, so a/b keep their R0 path);
+  (c) `PredictOperator._render_place_object` relocates the test object onto the
+  derived cell via `make_grid` ∘ `coloring` — target read from example outputs,
+  colour/cells read from test G0 (never its absent G1, P5), nothing hard-coded.
+  No new `_try_*`/`_apply_*` (F2-safe; helpers are `_build_*`/`_render_*`).
+- `procedural_memory/rule_002.json` (new, learned) — one value-agnostic rule,
+  `condition.type=single_object_move_fixed_target`, `action.dsl=place_object`,
+  `covers=[easy000c, easy000d, easy000h]` via dedup (not one rule per task);
+  `anti_unification_trace=null`, consistent with rule_001 (AU lift is R3).
+- `tests/test_place_object.py` (new) — registry + unit + real-signal + true
+  end-to-end (pipeline renders the exact known test output for c/d/h; emits
+  identity, *not* an overfit literal, for e/f/g/i). 10 tests; suite 28/28 pass.
+
+**Probe before**: easy 1/3, easy_a 2/9; rules=1 (covers=6); P1=6.0, P5=2
+**Probe after** : easy 1/3 (unchanged — 0002/0003 out of scope, no false fire),
+easy_a **5/9** (a,b constant_output; **c,d,h place_object**; e/f/g/i correctly
+identity); rules=2 (covers 6 + 3); P5=3. R0 family unregressed.
+
+**Invariants**: forbidden=none (F8 companion present: new conditions/ file).
+positives = **P5 +1 (2→3)** → verdict CLEAN. P1 6.0→4.5, P2 6.0→4.5, P6 −138:
+expected dips from adding a *genuinely new general skeleton* (a second rule, more
+code), not overfit accumulation — covers/P2 for rule_002 rises as more movers
+solve. P3/P4 flat.
+
+**Next gap (note for future iter)**: the relative-target movers are now the
+glaring hole — e/f (constant displacement Δ=position_of(G1)−position_of(G0),
+equal across pairs) and g (relative corner (H−1,W−1)) each need their own
+*target-filling* matcher + render branch, mirroring this iter's fixed-target one.
+Once two such fillings exist, `place_object`'s several pair-programs share the
+"select object → erase source → paint at f(target)" skeleton differing only in
+`f` — the exact `anti_unification.unify()` input for R3 to lift into one rule
+whose target is a variable. (Also latent: the fast path reads `entry["rule"]`,
+absent in the new schema, so stored rules never reuse — re-discovered each run.)
 
 - Split: None, Tasks: 3
 - Correct: 1 / 3 (33.3%)
@@ -308,3 +363,43 @@ bottom-right) is the variable the lift must abstract.
 - Stored rule hits: 0
 - Time: 4s
 - Log: logs/learn_20260612_115910.log
+
+---
+## Learning Loop -- 2026-06-12 12:00
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_120039.log
+
+---
+## Learning Loop -- 2026-06-12 12:00
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_120041.log
+
+---
+## Learning Loop -- 2026-06-12 12:08
+
+- Split: None, Tasks: 9
+- Correct: 5 / 9 (55.6%)
+- Rules: 1 -> 2 (+1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_120814.log
+
+---
+## Learning Loop -- 2026-06-12 12:08
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_120828.log

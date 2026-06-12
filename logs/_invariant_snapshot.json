@@ -3,9 +3,9 @@
   "P2_mean_covers": 6.0,
   "P3_au_traced_frac": 0.0,
   "P4_episodic_entries": 247,
-  "P5_condition_matchers": 1,
-  "P6_active_operators_lines": 524,
-  "_head": "77d5aa6c2ca2c62220fbbf8fbf2f8abc172d75d1",
+  "P5_condition_matchers": 2,
+  "P6_active_operators_lines": 585,
+  "_head": "13bfbbd109984b221b57762e9cc8ee943888396c",
   "_rule_count": 1,
   "_solved_count": 6
 }
