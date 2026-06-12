@@ -29,8 +29,9 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from agent.program_synthesis import synthesize_pair_program  # noqa: E402
 from program.anti_unification import anti_unify_pair_programs  # noqa: E402
 from agent.program_binding import (  # noqa: E402
-    bind_program_variables, program_is_fully_bound,
+    bind_program_variables, program_is_fully_bound, instantiate_program,
 )
+from agent.program_synthesis import run_program  # noqa: E402
 
 
 def _load_task(task_path, data_root="data"):
@@ -91,6 +92,76 @@ def test_easy000e_reports_unbound_target():
     # the bound holes are the source-derived ones
     assert bound[0]["args"]["selection"] == {"origin": "source_cells"}
     assert bound[1]["args"]["color"] == {"origin": "source_color"}
+
+
+# ── instantiation: the bound program is executable on a test G0 ────────
+# These exercise the full synthesize→AU→bind→instantiate→run chain on real
+# held-out test pairs (the pair has no G1 — instantiation must read every hole
+# off the test G0 alone, P5), making good on program_is_fully_bound's promise.
+
+def _solves_via_chain(task_path):
+    """True iff the fully-bound lifted program, instantiated on each held-out
+    test input, reproduces that test's output. The whole chain end-to-end."""
+    task = _load_task(task_path)
+    abstract, progs, inputs = _lift(task)
+    bound, unbound = bind_program_variables(abstract, progs, inputs)
+    if unbound or not program_is_fully_bound(bound):
+        return None  # not a fully-bound task — out of scope for this assertion
+    for tp in task.test_pairs:
+        inst = instantiate_program(bound, tp.input_grid.raw)
+        if inst is None or run_program(inst, tp.input_grid.raw) != tp.output_grid.raw:
+            return False
+    return True
+
+
+def test_fully_binding_easy_a_tasks_solve_end_to_end():
+    # Every easy_a task whose lift fully binds with the *existing* origin set is
+    # solved the general way: synthesize per pair → anti-unify → bind holes to G0
+    # origins → instantiate on the test G0 → run. Value-agnostic across the set
+    # (different cells/colours, one mechanism — observation criterion 2).
+    for t in ["a", "b", "c", "d", "h", "i"]:
+        assert _solves_via_chain(f"ARC_easy_a/easy000{t}") is True, t
+
+
+def test_instantiate_declines_when_origin_unreadable():
+    # A program bound to source_cells, instantiated on a test G0 with no unique
+    # object, declines (None) rather than guessing or crashing.
+    bound = [{"dsl": "coloring",
+              "args": {"selection": {"origin": "source_cells"}, "color": 0}}]
+    # two foreground objects → unique(objects_of(.)) is None → origin unreadable
+    test_g0 = [[1, 0, 2], [0, 0, 0], [0, 0, 0]]
+    assert instantiate_program(bound, test_g0) is None
+
+
+def test_instantiate_resolves_descriptors_to_literals():
+    # Origins resolve to concrete G0 readings; invariant literals pass through.
+    bound = [
+        {"dsl": "coloring", "args": {"selection": {"origin": "source_cells"}, "color": 0}},
+        {"dsl": "coloring", "args": {"selection": [[5, 5]], "color": {"origin": "source_color"}}},
+    ]
+    test_g0 = [[0, 0, 0], [0, 7, 0], [0, 0, 0]]  # single object: cell (1,1), colour 7
+    inst = instantiate_program(bound, test_g0)
+    assert inst[0]["args"]["selection"] == [[1, 1]]
+    assert inst[0]["args"]["color"] == 0           # invariant literal, untouched
+    assert inst[1]["args"]["selection"] == [[5, 5]]  # invariant literal, untouched
+    assert inst[1]["args"]["color"] == 7
+
+
+def test_instantiate_rejects_unbound_program():
+    # A program still carrying a ?vN hole has no test-time value to supply;
+    # instantiating it would be inventing one — rejected, not silently filled.
+    program = [{"dsl": "coloring", "args": {"selection": "?v1", "color": 1}}]
+    try:
+        instantiate_program(program, [[1]])
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("expected ValueError on an unbound program")
+
+
+def test_instantiate_passes_through_fully_literal_program():
+    program = [{"dsl": "coloring", "args": {"selection": [[0, 0]], "color": 3}}]
+    assert instantiate_program(program, [[9]]) == program
 
 
 # ── precision / contract ──────────────────────────────────────────────

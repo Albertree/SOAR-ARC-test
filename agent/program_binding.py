@@ -177,6 +177,60 @@ def bind_program_variables(abstract_program, pair_programs, pair_inputs):
     return bound, unbound
 
 
+def _resolve_origin(descriptor, grid):
+    """Read the value a `{"origin": <name>}` descriptor names off a single grid
+    (a test G0). Returns the literal value, or None when the origin cannot be read
+    from this grid (e.g. `source_cells` on a grid with no unique object) — an
+    honest decline, never a guessed value. The origin set is exactly the one
+    `bind_program_variables` can emit; an unknown name returns None rather than
+    inventing a reading (a new origin is grown in :data:`_ARG_ORIGINS` first, not
+    here)."""
+    name = descriptor.get("origin")
+    if name == "source_cells":
+        cells = _origin_source_cells(grid)
+        return None if cells is None else [list(cell) for cell in cells]
+    if name == "source_color":
+        return _origin_source_color(grid)
+    return None
+
+
+def instantiate_program(bound_program, test_input):
+    """Instantiate a fully-bound program on a test input, making good on
+    :func:`program_is_fully_bound`'s promise that such a program is "instantiable
+    on a test G0".
+
+    `bound_program` is the output of :func:`bind_program_variables`: a flat list
+    of `{"dsl", "args"}` steps whose arg values are either invariant literals or
+    `{"origin": <name>}` G0-reading descriptors. This walks the program and
+    replaces every descriptor with the value its origin reads off `test_input`
+    (the test pair's G0 — never an output, P5), returning a *literal*
+    `coloring`/`make_grid` program ready to run through
+    `agent.program_synthesis.run_program`. The synthesize→AU→bind→**instantiate**
+    chain is then end-to-end executable on a test input that has no G1.
+
+    Returns the instantiated program, or **None** if any origin cannot be read
+    from `test_input` (the program does not apply to this test — an honest decline,
+    consistent with the binder's no-guess discipline). Raises `ValueError` if the
+    program still carries a `?vN` hole (it was never fully bound, so there is no
+    test-time value to supply — instantiating it would be inventing one)."""
+    instantiated = []
+    for step in bound_program:
+        new_args = {}
+        for key, value in (step.get("args") or {}).items():
+            if _is_var(value):
+                raise ValueError(
+                    f"cannot instantiate unbound hole {value!r}; bind it first")
+            if isinstance(value, dict) and "origin" in value:
+                resolved = _resolve_origin(value, test_input)
+                if resolved is None:
+                    return None
+                new_args[key] = resolved
+            else:
+                new_args[key] = value
+        instantiated.append({"dsl": step.get("dsl"), "args": new_args})
+    return instantiated
+
+
 def program_is_fully_bound(bound_program) -> bool:
     """True iff `bound_program` (from :func:`bind_program_variables`) carries no
     remaining `?vN` hole — every position is either an invariant literal or a

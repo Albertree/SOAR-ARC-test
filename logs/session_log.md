@@ -1,6 +1,93 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 29 — 2026-06-12T17:25 — branch test31
+
+**Diagnosis**: Before touching anything I **ran the now-complete iter-26→28
+substrate (synthesize→AU→bind) on real data** to decide iter-28's two named next
+moves. Two hard findings redirected the iter. (1) **The chain reaches 0/120 of a
+seed-42 ARC-AGI-2 training sample** — 90 "unbound", 30 "no-skeleton" — and adding
+*richer selection origins* (largest-object, all-foreground) still yields 0/120:
+the flat pixel-DIFF synthesizer destroys the object→transform structure at
+synthesis time, so no binder origin recovers it. The real training frontier is
+**object-level synthesis** (express `coloring.selection` as `cells_of(object
+selected by predicate)` rather than raw cells — taxonomy §4 / §2.5-2b), a large
+multi-iter step, *not* "one more origin". So wiring the chain now is empirically
+premature (0 new solves) and carries easy_a-regression risk → deferred, same
+verdict iter-28 reached. (2) iter-28's option (b) — the `target = source + Δ`
+displacement origin that would bind easy000e/f — is, by iter-28's own module
+docstring, **open question Q-B3/Q-B4** ("inventing the derive-expression / corner
+concept ... 현재는 구체적으로 어떻게 개념을 만들어 낼지는 의문이야 — the user's flagged
+*가장 본질적 미해결*"). BACKLOG_LOOP §5 forbids inventing an answer → surfaced, not
+implemented (see Open-question block below). The remaining defensible,
+non-open-question gap: the binder promises `program_is_fully_bound` = "instantiable
+on a test G0", but **no instantiation function exists** — the gate guards a door
+that was never built. The chain could synthesize→lift→bind but had no way to
+*execute* a bound program on a test input. That is the smallest real gap that
+needs no new origin.
+
+**Change**:
+- `agent/program_binding.py` — added `instantiate_program(bound_program,
+  test_input)` (+ `_resolve_origin` helper): walks a fully-bound program and
+  replaces each `{"origin": <name>}` descriptor with the value its origin reads
+  off the **test G0** (never an output — P5), returning a literal
+  `coloring`/`make_grid` program runnable by `program_synthesis.run_program`.
+  Declines with `None` when an origin is unreadable on the test input (no unique
+  object) — the binder's same no-guess discipline; raises `ValueError` on a still-
+  `?vN` program (no test-time value exists to supply). **Invents no origin** — uses
+  only the existing `source_cells`/`source_color`, so it stays clear of Q-B3/Q-B4.
+  This completes the synthesize→AU→bind→**instantiate**→run chain end-to-end for
+  the class that already fully binds.
+- `tests/test_program_binding.py` (+5 tests) — the ground is the **full chain on
+  real held-out test pairs**: every easy_a task that fully binds with the existing
+  origins (a,b,c,d,h,i) is solved synthesize→AU→bind→instantiate→run == the test
+  output, value-agnostic (one mechanism, criterion 2); plus instantiate-declines-
+  on-unreadable-origin, descriptor→literal resolution with invariant pass-through,
+  reject-unbound-program, literal pass-through.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate, [[graduation_gate_unsatisfiable]]),
+easy_a 9/9; rules=3 (covers 6+9+2=17); P1=P2=5.67, P3=0.67, P5=10, P6=2229.
+**Probe after** : identical solve behaviour (instantiate is unwired by design — no
+solve-path change); 188/188 pytest pass (+5 new). check_invariants verdict
+**CLEAN** (P4 +10 incidental).
+
+**Invariants**: forbidden=**none** — F1 (no frozen-file edit; change in
+`agent/`+`tests/`), F2 (no `_try_`/`_apply_`), F3 (no DSL primitive — function is in
+`agent/`, only *reads* via existing `dsl_expr` origins), F4/F5/F6/F7 N/A, F8 N/A
+(`active_operators.py` untouched). positives=**P4 +10** (incidental, probe's own
+episodic writes); P1/P2/P3/P5/P6 Δ=0 — the documented [[synthesizer_frontier]]/
+[[reuse_signal_blindspot]] blind spot (no P-signal measures pre-wiring solve-path
+substrate). **Not spinning** (PROMPT §4): this is not a 5th near-duplicate origin
+brick — it is the *missing executor stage* that makes `program_is_fully_bound`'s
+promise real, the chain end-to-end runnable on a test G0 for the first time, and
+it route-arounds the Q-B3/Q-B4 open-question block per BACKLOG §5 rather than
+inventing through it. Grounded by a real-pair end-to-end test (synthesize→…→run ==
+held-out answer) on 6 easy_a tasks, not a speculative unwired claim.
+
+**OPEN QUESTION surfaced (BACKLOG_LOOP §5 — do not invent through it)**:
+binding the *moved-to target* hole of single-pixel moves needs a derive-expression
+the user reserved as **Q-B3/Q-B4** (`arbor-open-questions.md`): easy000e/f want
+`target = source_cells + Δ` (Δ = the cross-pair-constant displacement); easy000g
+wants `target = (height-1, width-1)` (the grid-corner concept the question names
+verbatim). These are *not* example-reproduction selections among a fixed set (the
+existing origins) but **concept-invention** with an unsettled admission/weighting
+criterion (Q-B4 (a)/(b)/(c)). Decision needed before the binder may grow these
+origins. Until then easy000e/f/g stay unbound by design (their iter-28 test
+`test_easy000e_reports_unbound_target` is kept *passing*, documenting the block).
+
+**Next gap (note for future iter)**: two diverging routes, both bigger than this
+iter. (a) **The training frontier is object-level synthesis** — `program_synthesis`
+must emit selections as object-relational expressions (`cells_of(select(objects,
+predicate))`) so the lift yields holes bindable to *multi-object* selections;
+the empirical 0/120 shows flat pixel-DIFF can't reach training and no binder origin
+fixes it. This is R1's core (predicate-selection vocabulary) and is large. (b) If
+the user resolves Q-B3/Q-B4, grow the displacement + grid-corner origins (small,
+unblocks easy000e/f/g the uniform way). Wiring the chain into
+`GeneralizeOperator`'s identity fallback remains deferred until (a) gives it a
+currently-failing task to actually solve (today it would solve 0 new tasks and
+risk the mastered easy_a).
+
+---
 ## Iter 28 — 2026-06-12T17:10 — branch test31
 
 **Diagnosis**: Iters 26→27 built the synthesize→AU producer (`program_synthesis`)
@@ -3369,3 +3456,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 4s
 - Log: logs/learn_20260612_170638.log
+
+---
+## Learning Loop -- 2026-06-12 17:15
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_171525.log
+
+---
+## Learning Loop -- 2026-06-12 17:15
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_171527.log
