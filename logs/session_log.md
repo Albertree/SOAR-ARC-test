@@ -72,3 +72,133 @@ intended way and stops the stale pipeline from regenerating F4-dirty
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_112313.log
+
+---
+## Learning Loop -- 2026-06-12 11:38
+
+- Split: None, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_113815.log
+
+---
+## Learning Loop -- 2026-06-12 11:38
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 1 -> 3 (+2 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_113817.log
+
+---
+## Learning Loop -- 2026-06-12 11:49
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_114907.log
+
+---
+## Learning Loop -- 2026-06-12 11:49
+
+- Split: None, Tasks: 16
+- Correct: 4 / 16 (25.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 8s
+- Log: logs/learn_20260612_114908.log
+
+---
+## Learning Loop -- 2026-06-12 11:49
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_114916.log
+
+---
+## Learning Loop -- 2026-06-12 11:50
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_115042.log
+
+---
+## Iter 2 — 2026-06-12 — branch test31
+
+**Diagnosis**: R0's recognition substrate existed (iter 1's `constant_output`
+matcher) but **had no consumer** — `GeneralizeOperator` still ran the two
+hand-coded color detectors (`_try_color_mapping`/`_try_recolor_sequential`),
+which mis-solved the constant-output family (probe: easy0001 INCORRECT) and
+saved condition-less `color_mapping` rules through the unvalidated
+`save_rule_to_ltm` (F4-dirty dead memory — the probe kept regenerating
+rule_001..003). The smallest defensible step that closes a *real* gap is to
+wire the matcher end-to-end (recognition → make_grid/coloring action →
+prediction → validated persistence) and **delete** the superseded detectors —
+the exact "kill the hand-coded special case" the architecture wants.
+
+**Change**:
+- `procedural_memory/DSL/{make_grid,coloring,apply,__init__}.py` (new) — the two
+  (and only two) frozen transformation primitives + `apply_DSL` dispatcher. R0
+  substrate; explicitly allowed (PROMPT.md Step 3), F3-safe (only these two
+  registered). Source had been stripped at the clean-start node (only stale
+  pyc remained); now restored.
+- `agent/memory.py` — add `RuleSchemaError`, `validate_rule()`, and `save_rule()`:
+  the validated successor to `save_rule_to_ltm`, persisting `{condition, action}`
+  rules and **deduplicating by (condition.type, action)** so one value-agnostic
+  rule absorbs a whole family via a growing `covers` (not one rule per task).
+  Marked as the single anti-unification call site (CLAUDE.md §8; AU lift is R3).
+- `agent/active_operators.py` — `GeneralizeOperator` now consults the matcher
+  registry (`match("constant_output", patterns)`) and emits the value-agnostic
+  `copy_common_output` `{condition, action}` rule; `PredictOperator` renders it
+  by replaying `make_grid ∘ coloring` over the COMM of the example outputs
+  (P5: never the test pair's own G1). **Removed** the four hand-coded detector/
+  applier methods (`_try_recolor_sequential`, `_check_sort_key`,
+  `_try_color_mapping`, `_apply_recolor_sequential`, `_apply_color_mapping`,
+  `_group_positions`) — net −95 lines (P6). No new `_try_*`/`_apply_*`; the
+  existing `_apply_rule` def line is left byte-identical (F2-safe).
+- `agent/active_agent.py` — route learning through `save_rule`; only persist a
+  rule carrying `condition`+`action` (identity / condition-less results are no
+  longer written → the F4-dirty regeneration is fixed at the source).
+- `procedural_memory/rule_001..003.json` (deleted) — schema-invalid dead memory.
+
+**Probe before**: easy 0/3, easy_a 0/9; rules=3 (all condition-less); P1=1.33
+**Probe after** : easy0001 CORRECT (the family the intended way); easy000a AND
+easy000b both CORRECT via the *same module*; one rule (`copy_common_output`)
+covers 6 constant-output tasks; P1=6.0, P2=6.0.
+
+**Invariants**: forbidden=none; positives = P1 +4.67 (1.33→6.0), P2 +4.67
+(1.33→6.0), P6 +95 lines removed (619→524). P3/P4/P5 neutral. Verdict CLEAN.
+
+### RUNG R0 CLEARED — GRID-level COMM-copy
+- **(1) Works**: pipeline runs error-free; the `constant_output` matcher → 
+  `copy_common_output` action → make_grid/coloring render path solves every
+  constant-output task it sees.
+- **(2) Module uniformity**: easy0001/0005/0009/0013/000a/000b are solved by
+  **one** module and converge to **one** rule (`covers`=6) — no per-task branch,
+  no per-task rule. The differing fixed output is derived from each task's
+  example-output COMM at apply time, never hard-coded (value-agnostic proof:
+  easy000a and easy000b have *different* fixed outputs, same module).
+- **(3) Approaches the answer**: exact correct grids, reconstructed from the two
+  frozen primitives.
+- **(4) Search sanity**: deterministic, no brute force.
+- Signals moved: P1/P2 1.33→6.0, P6 −95. R1's premise (a clean, value-agnostic
+  GRID-level path that produces liftable `{condition, action}` rules) is now met.
+
+**Next gap (note for future iter)**: R1 — object-level analysis. easy000c–i
+(the easy_a remainder, still 2/9) need G0 object detection + a seed
+property/relation/selection vocabulary (`position-of`/`color-of`/`unique`/
+`argmax`, located under `agent/` not `DSL/` per BACKLOG §2.5-1) and OBJECT-level
+`compare`, so a moving single pixel → fixed corner is solved by *selecting* the
+object and reading its position/color into `coloring` args (the lift R3 then
+unifies). That is the graduation-blocking rung.

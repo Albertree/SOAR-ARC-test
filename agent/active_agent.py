@@ -15,7 +15,7 @@ from agent.elaboration_rules import build_elaborator
 from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
-from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
+from agent.memory import load_all_rules, save_rule, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
 
 
@@ -102,12 +102,20 @@ class ActiveSoarAgent:
             "steps": result["steps_taken"],
         })
 
-        # --- Learn: save new rule if pipeline discovered one ---
-        if active_rules and rule_type != "identity":
-            save_rule_to_ltm(
-                active_rules[0], task.task_hex,
-                self.procedural_memory_root,
-            )
+        # --- Learn: persist only a valid {condition, action} rule ---
+        # The pipeline emits either a {condition, action} rule (e.g. R0's
+        # constant_output) or an identity fallback. Only the former is learned;
+        # identity / condition-less results are not written, so no dead,
+        # condition-less memory accumulates (INVARIANTS F4). save_rule validates
+        # and raises RuleSchemaError on a malformed rule rather than swallowing
+        # it (F7).
+        if active_rules:
+            rule = active_rules[0]
+            if rule.get("condition") and rule.get("action"):
+                save_rule(
+                    rule, task.task_hex,
+                    procedural_memory_root=self.procedural_memory_root,
+                )
 
         self._submission_count += 1
         return predicted

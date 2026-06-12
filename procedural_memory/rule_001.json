@@ -1,0 +1,26 @@
+{
+  "id": 1,
+  "concept": "copy_common_output",
+  "category": "constant_output",
+  "condition": {
+    "type": "constant_output",
+    "params": {},
+    "min_evidence": 2
+  },
+  "action": {
+    "dsl": "copy_common_output",
+    "args": {}
+  },
+  "covers": [
+    "easy0001",
+    "easy0005",
+    "easy0009",
+    "easy0013",
+    "easy000a",
+    "easy000b"
+  ],
+  "source_task": "easy0001",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-12T11:49:07.836257",
+  "times_reused": 0
+}

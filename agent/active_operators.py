@@ -10,7 +10,11 @@ Pipeline operators (all fire in S2, read/write S1):
   SubmitOperator        -> write prediction to output-link, satisfy goal
 """
 
+from collections import Counter
+
 from agent.operators import Operator
+from agent.conditions import match as match_condition
+from procedural_memory.DSL.apply import apply_DSL
 from ARCKG.comparison import compare as arckg_compare
 
 
@@ -290,9 +294,18 @@ class ExtractPatternOperator(Operator):
 
 class GeneralizeOperator(Operator):
     """
-    Reads extracted patterns and attempts to create a transformation rule.
-    Tries multiple strategies in priority order. If no strategy succeeds,
-    falls back to an identity rule so the pipeline can still complete.
+    Reads extracted patterns and builds a `{condition, action}` transformation
+    rule by consulting the condition-matcher registry (recognition vocabulary).
+
+    R0 path: when the `constant_output` matcher fires (all example outputs are
+    the same grid — the Inter-Grid G1 COMM), emit a value-agnostic rule whose
+    action reconstructs that common grid via the two frozen primitives
+    (`make_grid` ∘ `coloring`). The *same module* handles every member of the
+    constant-output family (easy0001/0005/0009/0013/000a/000b); the differing
+    grid is derived from each task's example outputs at apply time, never
+    hard-coded — so all of them dedup into one rule with a growing `covers`
+    (BACKLOG_LOOP.md R0, §2.5). When no matcher fires, fall back to identity so
+    the pipeline still completes (identity is not persisted).
     """
 
     def __init__(self, generalize_fn=None, save_fn=None):
@@ -310,111 +323,43 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
-        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        # R0: recognize the constant-output family via the registered matcher.
+        if match_condition("constant_output", patterns):
+            rule = self._build_constant_output_rule(patterns)
 
-        # Strategy 2: simple 1:1 color mapping
-        if rule is None:
-            rule = self._try_color_mapping(patterns)
-
-        # Fallback: identity (copy input as output)
+        # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
 
-    # ---- strategy: sequential recoloring --------------------------------
+    # ---- R0: constant-output rule construction --------------------------
 
-    def _try_recolor_sequential(self, patterns):
-        """
-        Detect pattern: all changed-cell groups have one source color,
-        output colors are sequential (1,2,3,...), ordered by position.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
+    def _build_constant_output_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the
+        constant-output family. The action is the *recipe* `copy_common_output`
+        — "emit the grid that is the COMM of the example outputs", replayed at
+        apply time as `make_grid` ∘ `coloring`. Args are empty: the value comes
+        from each task's example outputs, not from this rule (so one rule covers
+        the whole family)."""
+        invariant = patterns.get("output_invariant") or {}
+        if not invariant.get("all_equal") or invariant.get("common_output") is None:
             return None
-
-        # All pairs must have the same number of change groups
-        group_counts = [a["num_groups"] for a in pair_analyses]
-        if len(set(group_counts)) != 1 or group_counts[0] == 0:
-            return None
-
-        all_source_colors = set()
-
-        for analysis in pair_analyses:
-            for g in analysis["groups"]:
-                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
-                    return None
-                all_source_colors.add(g["input_colors"][0])
-
-            out_colors = sorted(set(g["output_colors"][0] for g in analysis["groups"]))
-            expected = list(range(min(out_colors), min(out_colors) + len(out_colors)))
-            if out_colors != expected:
-                return None
-
-        # Try sorting by different position keys
-        for sort_key in ["top_row", "top_col"]:
-            if self._check_sort_key(pair_analyses, sort_key):
-                start_color = min(
-                    g["output_colors"][0]
-                    for g in pair_analyses[0]["groups"]
-                )
-                return {
-                    "type": "recolor_sequential",
-                    "sort_key": sort_key,
-                    "start_color": start_color,
-                    "source_colors": sorted(all_source_colors),
-                    "confidence": 1.0,
-                }
-
-        return None
-
-    @staticmethod
-    def _check_sort_key(pair_analyses, sort_key):
-        """Verify that sorting groups by sort_key produces sequential output colors."""
-        for analysis in pair_analyses:
-            groups = analysis["groups"]
-            sorted_groups = sorted(groups, key=lambda g: g[sort_key])
-            colors = [g["output_colors"][0] for g in sorted_groups]
-            if colors != list(range(colors[0], colors[0] + len(colors))):
-                return False
-        return True
-
-    # ---- strategy: simple color mapping ---------------------------------
-
-    def _try_color_mapping(self, patterns):
-        """
-        Detect pattern: each input color consistently maps to one output color.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
-            return None
-
-        # Collect all observed color transitions
-        color_map = {}
-        for analysis in pair_analyses:
-            for group in analysis["groups"]:
-                for ic in group["input_colors"]:
-                    for oc in group["output_colors"]:
-                        if ic not in color_map:
-                            color_map[ic] = set()
-                        color_map[ic].add(oc)
-
-        # Each input color must map to exactly one output color
-        simple_map = {}
-        for ic, ocs in color_map.items():
-            if len(ocs) != 1:
-                return None
-            simple_map[ic] = list(ocs)[0]
-
-        if simple_map:
-            return {
-                "type": "color_mapping",
-                "mapping": simple_map,
-                "confidence": 0.8,
-            }
-
-        return None
+        return {
+            "type": "constant_output",            # WM dispatch tag for PredictOperator
+            "concept": "copy_common_output",
+            "category": "constant_output",
+            "condition": {
+                "type": "constant_output",
+                "params": {},
+                "min_evidence": 2,
+            },
+            "action": {
+                "dsl": "copy_common_output",
+                "args": {},
+            },
+            "confidence": 1.0,
+        }
 
 
 # ======================================================================
@@ -449,6 +394,9 @@ class PredictOperator(Operator):
 
     def __init__(self):
         super().__init__("predict")
+        # Task in scope for the current effect(); read by constant_output
+        # rendering, which derives its grid from the task's example outputs.
+        self._task = None
 
     def precondition(self, wm) -> bool:
         raise NotImplementedError("PredictOperator.precondition() not implemented.")
@@ -459,6 +407,7 @@ class PredictOperator(Operator):
         if not task or not active_rules:
             return
 
+        self._task = task
         rule = active_rules[0]
         predictions = dict(wm.s1.get("predictions") or {})
 
@@ -479,91 +428,47 @@ class PredictOperator(Operator):
 
     def _apply_rule(self, rule, input_grid):
         rule_type = rule.get("type")
-        if rule_type == "recolor_sequential":
-            return self._apply_recolor_sequential(rule, input_grid)
-        if rule_type == "color_mapping":
-            return self._apply_color_mapping(rule, input_grid)
+        if rule_type == "constant_output":
+            return self._render_constant_output(rule, self._task)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
 
-    def _apply_recolor_sequential(self, rule, input_grid):
-        raw = input_grid.raw
-        height = len(raw)
-        width = len(raw[0]) if raw else 0
-        sort_key = rule["sort_key"]
-        start_color = rule["start_color"]
-        source_colors = set(rule.get("source_colors", []))
+    def _render_constant_output(self, rule, task):
+        """Render the R0 `copy_common_output` action: emit the grid that is the
+        COMM of the example outputs, reconstructed via the two frozen primitives
+        (`make_grid` ∘ `coloring`). Value-agnostic — the grid is read from the
+        task's example outputs (the matcher guarantees they are all identical),
+        never from the test pair's own output (P5), and never hard-coded."""
+        if task is None:
+            return None
+        example_outputs = [
+            pair.output_grid.raw
+            for pair in task.example_pairs
+            if pair.output_grid is not None
+        ]
+        if not example_outputs:
+            return None
 
-        # Find target cells
-        target_cells = []
+        common = example_outputs[0]
+        height = len(common)
+        width = len(common[0]) if common else 0
+        if height == 0 or width == 0:
+            return None
+
+        # Background = the most frequent color → fewest `coloring` strokes.
+        flat = [cell for row in common for cell in row]
+        background = Counter(flat).most_common(1)[0][0]
+
+        # make_grid(background) ∘ coloring(non-background cells).
+        out = apply_DSL("make_grid", None, height=height, width=width,
+                        color=background)
         for r in range(height):
             for c in range(width):
-                if raw[r][c] in source_colors:
-                    target_cells.append((r, c))
-
-        if not target_cells:
-            return [row[:] for row in raw]
-
-        # Group into connected components
-        groups = self._group_positions(target_cells)
-
-        # Sort groups by the rule's sort key
-        def _sort_val(group):
-            if sort_key == "top_row":
-                return min(r for r, c in group)
-            if sort_key == "top_col":
-                return min(c for r, c in group)
-            return 0
-
-        sorted_groups = sorted(groups, key=_sort_val)
-
-        # Build output grid
-        output = [row[:] for row in raw]
-        for idx, group in enumerate(sorted_groups):
-            new_color = start_color + idx
-            for r, c in group:
-                output[r][c] = new_color
-
-        return output
-
-    def _apply_color_mapping(self, rule, input_grid):
-        raw = input_grid.raw
-        mapping = rule.get("mapping", {})
-
-        output = []
-        for row in raw:
-            output.append([mapping.get(cell, cell) for cell in row])
-        return output
-
-    # ---- helpers ---------------------------------------------------------
-
-    @staticmethod
-    def _group_positions(positions):
-        """Group (row, col) positions into 4-connected components."""
-        pos_set = set(positions)
-        visited = set()
-        groups = []
-
-        for pos in positions:
-            if pos in visited:
-                continue
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_set:
-                    continue
-                visited.add(p)
-                group.append(p)
-                r, c = p
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (r + dr, c + dc)
-                    if nb in pos_set and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
+                if common[r][c] != background:
+                    out = apply_DSL("coloring", out, selection=(r, c),
+                                    color=common[r][c])
+        return out
 
 
 # ======================================================================
