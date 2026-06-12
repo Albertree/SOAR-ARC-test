@@ -484,12 +484,14 @@ but are **never called** by `cycle.py` (see 7.1), so the pipeline runs anyway.
 | `ExtractPatternOperator` | RUNS | Turns COMM/DIFF results into `patterns` (invariant / diff_pattern). |
 | `GeneralizeOperator` | PARTIAL / LEGACY | Produces `active-rules` via **two hand-coded detectors only**: `_try_recolor_sequential` and `_try_color_mapping`. It does **not** consult `procedural_memory/` rule conditions and does **not** call anti-unification. This is the closed `_try_*`/`_apply_*` family (`CLAUDE.md §5.1`, F2) — the redesign replaces it, it does not extend it. |
 | `DescendOperator` | STUB (`NotImplementedError`) | The depth-descent TASK→PAIR→GRID→OBJECT (the easy000b / 08ed6ac7 "go one level deeper when stuck" mechanism, the user's central flow) is **unbuilt**. This is the single biggest gap vs the intended solver. |
-| `PredictOperator` | PARTIAL / LEGACY | Applies a discovered rule to test inputs via `_apply_rule` / `_apply_recolor_sequential` / `_apply_color_mapping`. Mirror of the legacy `GeneralizeOperator` path. |
+| `PredictOperator` | RUNS | Renders canonical `{condition, action}` rules through the `action.dsl` branches (copy_common_output / size_to_grid / recolor / recolor_rank / fill_canvas / place_object); `_apply_rule` is now only the `identity` no-op fallback. The legacy `_apply_recolor_sequential` / `_apply_color_mapping` appliers were removed once the canonical `recolor_rank` / `color_remap` families superseded them. |
 | `SubmitOperator` / `VerifyOperator` | RUNS | Writes predictions to the output-link and marks the goal satisfied. |
 
-Existing `_try_*` / `_apply_*` members (the **closed** family — do not add to it):
-`_try_recolor_sequential`, `_try_color_mapping`, `_apply_rule`,
-`_apply_recolor_sequential`, `_apply_color_mapping`.
+The `_try_*` / `_apply_*` family is **closed** — do not add to it (`CLAUDE.md §5.1`,
+F2). Its hand-coded detectors/appliers (`_try_recolor_sequential`,
+`_try_color_mapping`, `_apply_recolor_sequential`, `_apply_color_mapping`) have all
+been removed as the canonical condition-bearing families superseded them; only the
+`identity`-fallback `_apply_rule` remains.
 
 ### 7.3 Procedural memory + rule schema — mostly LEGACY / MISSING
 

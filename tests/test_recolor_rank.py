@@ -13,8 +13,10 @@ with the canonical path — an ``analyze_recolor_rank`` reading, a registered
 in the absolute colours/positions, and expressed in the two frozen primitives
 (BACKLOG_LOOP §2.5-1). The learned argument is a ``rank-by(position)`` selector,
 the first ordinal selector in the vocabulary (R4-adjacent). The legacy *applier*
-(``_apply_recolor_sequential``) is kept for backward-compat; only the producer is
-migrated, mirroring iter20's color_remap work.
+(``_apply_recolor_sequential``) has since been removed: with the canonical producer
+in place there is no producer and no stored rule in the legacy
+``{type: recolor_sequential}`` shape, so the dead applier (and its
+``_group_positions`` helper) was deleted (INVARIANTS P6 / §5.1).
 
 These tests pin: the reading detects a consistent ordering key and abstains on a
 non-sequential run / a multi-colour group / a resize; the matcher honours

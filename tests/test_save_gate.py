@@ -28,6 +28,20 @@ from types import SimpleNamespace
 
 from managers.arc_manager import ARCManager
 from agent.active_agent import ActiveSoarAgent
+from agent.active_operators import RECOLOR_DSL
+
+
+def _color_remap_rule(color_map):
+    """A canonical ``{condition, action}`` color_remap rule — the live shape the
+    save gate now receives (the legacy ``{type: color_mapping}`` envelope and its
+    ``_apply_color_mapping`` applier were removed once this canonical family
+    superseded them, INVARIANTS P6 / §5.1). The gate recomputes the map from the
+    examples, so the carried args are only self-description."""
+    return {
+        "condition": {"type": "color_remap", "params": {}, "min_evidence": 2},
+        "action": {"dsl": RECOLOR_DSL,
+                   "args": {"color_map": {str(k): v for k, v in color_map.items()}}},
+    }
 
 
 def _load(task_id):
@@ -50,16 +64,19 @@ def _fake_task(pairs):
 # ── the gate rejects a rule that does not reproduce its train pairs ────────
 def test_gate_rejects_non_reproducing_rule():
     agent = ActiveSoarAgent()
-    # a color_mapping rule that maps 0->1, applied to a pair whose output keeps 0
-    rule = {"type": "color_mapping", "mapping": {0: 1}, "confidence": 0.8}
-    task = _fake_task([_pair([[0, 0]], [[0, 0]])])
+    # a canonical color_remap rule against a *resize* pair — the recolor family
+    # abstains on a size change, so it reproduces nothing and the gate rejects it.
+    rule = _color_remap_rule({0: 1})
+    task = _fake_task([_pair([[0, 0]], [[1]])])
     assert agent._rule_matches_examples(rule, task) is False
 
 
 # ── the gate accepts a rule that reproduces its train pairs ────────────────
 def test_gate_accepts_reproducing_rule():
     agent = ActiveSoarAgent()
-    rule = {"type": "color_mapping", "mapping": {0: 1}, "confidence": 0.8}
+    # a canonical color_remap rule against a clean 0->1 recolor: the gate recomputes
+    # the map from the example and renders it back, reproducing the train output.
+    rule = _color_remap_rule({0: 1})
     task = _fake_task([_pair([[0, 0]], [[1, 1]])])
     assert agent._rule_matches_examples(rule, task) is True
 

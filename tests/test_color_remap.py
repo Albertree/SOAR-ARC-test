@@ -10,8 +10,9 @@ the canonical path — an ``analyze_color_remap`` reading, a registered
 ``color_remap`` condition matcher, and a ``coloring``-composition renderer — so the
 recolor family is now condition-bearing, value-agnostic in geometry, and expressed
 in the two frozen primitives (BACKLOG_LOOP §2.5-1). The legacy *applier*
-(``_apply_color_mapping``) is kept for backward-compat with any stored legacy rule;
-only the producer is migrated.
+(``_apply_color_mapping``) has since been removed: with the canonical producer in
+place there is no producer and no stored rule in the legacy ``{type: color_mapping}``
+shape, so the dead applier was deleted (INVARIANTS P6 / §5.1).
 
 These tests pin: the reading detects a consistent map and abstains on a
 non-function / a resize; the matcher honours ``min_evidence``; the renderer paints

@@ -1426,92 +1426,18 @@ class PredictOperator(Operator):
     # ---- rule application dispatchers ------------------------------------
 
     def _apply_rule(self, rule, input_grid):
-        rule_type = rule.get("type")
-        if rule_type == "recolor_sequential":
-            return self._apply_recolor_sequential(rule, input_grid)
-        if rule_type == "color_mapping":
-            return self._apply_color_mapping(rule, input_grid)
-        if rule_type == "identity":
+        # Canonical {condition, action} rules are rendered by the action.dsl
+        # branches in PredictOperator.effect (copy_common_output / size_to_grid /
+        # recolor / recolor_rank / fill_canvas / place_object). This fallback only
+        # handles the `identity` no-op rule the generalizer emits when no family
+        # matches. The legacy `{type: recolor_sequential | color_mapping}` appliers
+        # were removed once the canonical `recolor_rank` / `color_remap`
+        # condition-bearing families superseded them (INVARIANTS P6 / §5.1: remove
+        # methods that anti-unification-based generalization made dead — there is
+        # no producer and no stored rule in that legacy shape).
+        if rule.get("type") == "identity":
             return [row[:] for row in input_grid.raw]
         return None
-
-    def _apply_recolor_sequential(self, rule, input_grid):
-        raw = input_grid.raw
-        height = len(raw)
-        width = len(raw[0]) if raw else 0
-        sort_key = rule["sort_key"]
-        start_color = rule["start_color"]
-        source_colors = set(rule.get("source_colors", []))
-
-        # Find target cells
-        target_cells = []
-        for r in range(height):
-            for c in range(width):
-                if raw[r][c] in source_colors:
-                    target_cells.append((r, c))
-
-        if not target_cells:
-            return [row[:] for row in raw]
-
-        # Group into connected components
-        groups = self._group_positions(target_cells)
-
-        # Sort groups by the rule's sort key
-        def _sort_val(group):
-            if sort_key == "top_row":
-                return min(r for r, c in group)
-            if sort_key == "top_col":
-                return min(c for r, c in group)
-            return 0
-
-        sorted_groups = sorted(groups, key=_sort_val)
-
-        # Build output grid
-        output = [row[:] for row in raw]
-        for idx, group in enumerate(sorted_groups):
-            new_color = start_color + idx
-            for r, c in group:
-                output[r][c] = new_color
-
-        return output
-
-    def _apply_color_mapping(self, rule, input_grid):
-        raw = input_grid.raw
-        mapping = rule.get("mapping", {})
-
-        output = []
-        for row in raw:
-            output.append([mapping.get(cell, cell) for cell in row])
-        return output
-
-    # ---- helpers ---------------------------------------------------------
-
-    @staticmethod
-    def _group_positions(positions):
-        """Group (row, col) positions into 4-connected components."""
-        pos_set = set(positions)
-        visited = set()
-        groups = []
-
-        for pos in positions:
-            if pos in visited:
-                continue
-            group = []
-            queue = [pos]
-            while queue:
-                p = queue.pop(0)
-                if p in visited or p not in pos_set:
-                    continue
-                visited.add(p)
-                group.append(p)
-                r, c = p
-                for dr, dc in [(-1, 0), (1, 0), (0, -1), (0, 1)]:
-                    nb = (r + dr, c + dc)
-                    if nb in pos_set and nb not in visited:
-                        queue.append(nb)
-            groups.append(group)
-
-        return groups
 
 
 # ======================================================================

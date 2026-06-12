@@ -149,9 +149,10 @@ def render_recolor_rank(grid: list, sort_key: str, start_color: int,
     `coloring` primitive (BACKLOG_LOOP §2.5-1, F3): geometry is preserved (no
     `make_grid` resize), and the whole content lives in the *argument* — a
     `rank-by(position)` selector plus the start colour, read off the example DIFF
-    (§2.5-2b), not in any new primitive. Mirrors the legacy
-    ``_apply_recolor_sequential`` painting (groups of *source-coloured* cells,
-    re-derived from the input) so the migration preserves behaviour exactly.
+    (§2.5-2b), not in any new primitive. Reproduces the behaviour of the
+    now-removed legacy ``_apply_recolor_sequential`` painting (groups of
+    *source-coloured* cells, re-derived from the input) so the migration that
+    deleted that applier preserved behaviour exactly.
     """
     height = len(grid)
     width = len(grid[0]) if height else 0

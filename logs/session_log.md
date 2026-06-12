@@ -1,6 +1,81 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 26 — 2026-06-12T23:25 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. iter25's
+Next-gap named the **`canvas_fill` + `object_size_grid` → `solid_canvas` fold** (the
+R3 prize: both are solid `make_grid` fills, differing only in which argument is a
+reading, so unifying them raises P1/P2/P3 together). I scoped it and found it
+genuinely too large/risky for one safe commit: the merge would have to re-route the
+heavily-reused `rule_001` (covers=10, the madeup/easy_a regression guards) through a
+new unified analyzer **and** teach `family_for_rule` / `_abstract_absorbs` /
+`_consolidate_family` the cross-category skeleton, destabilising two *working* AU
+lifts (object_move + object_size_grid). I also tested the smaller alternatives the
+data allows and they don't hold: a microscope over all 1000 training tasks found 17
+solid-output tasks but only **1** is same-size (`5582e5ca`, already solved); every
+other is resized with a non-general size reading, so (a) sibling colour readings
+(`least_frequent_color`/`unique_color`) would be **dead detectors gaming P5** (no
+same-size task uses them — exactly iter25's warned trap), and (b) chasing a resized
+task needs a task-specific size reading (accretion). With no safe P1/P2/P3 step
+available this iter, the defensible positive move is the **P6 cleanup the canonical
+families earned**: the legacy `_apply_*` appliers are now fully dead.
+
+**Change** (pure deletion completing the §5.1 / arbor.md 진단 #4 migration —
+F2/F3/F4/F5/F6/F7 N/A, F8 = net-negative so exempt):
+- `agent/active_operators.py` — removed the dead legacy appliers
+  `_apply_recolor_sequential`, `_apply_color_mapping` and their sole helper
+  `_group_positions`, plus the two dispatch branches in `_apply_rule` (net −74/+10
+  lines). These were superseded by the canonical condition-bearing `recolor_rank` /
+  `color_remap` families (iters 20/21): **no producer emits `{type:
+  recolor_sequential|color_mapping}` and no stored rule is in that shape**, so the
+  appliers were unreachable on the live path. `_apply_rule` now serves only the
+  `identity` no-op rule the generalizer still emits (verified live: easy_a/madeup
+  guards exercise it).
+- `tests/test_save_gate.py` — migrated the two gate tests off the legacy
+  `{type: color_mapping}` vehicle onto a **canonical `color_remap` rule**, so they
+  now exercise the *real* live gate path (`_canonical_rule_reproduces`, the one that
+  matters for R3/R5 — `canonical_rules_never_persist` memory) instead of the deleted
+  applier. Reject case uses a resize pair (recolor family abstains); accept case a
+  clean 0→1 recolor. (Caught the last live dependency on `_apply_color_mapping` —
+  the gate's reproduce-check — which my first pass missed; re-verified per the
+  `slice1_converged` "always re-verify" caution.)
+- `agent/dsl_expr/render.py`, `docs/RULE_FORMAT.md`, `tests/test_color_remap.py`,
+  `tests/test_recolor_rank.py` — docstring/table updates: the appliers are
+  *removed*, not "kept for backward-compat"; `PredictOperator` row marked RUNS
+  (canonical renderers) with `_apply_rule` as the `identity`-only fallback.
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10);
+  rules=4; P1=6.0 P2=6.0 P3=0.5 P4=932 P5=11 P6≈1567 (active_operators lines); 143
+  tests.
+**Probe after** : training 0/3 unchanged (no rule/predict-behaviour change); easy_a
+  9/9, madeup 14/14 (guards hold); 5582e5ca reproduction unchanged (canvas_fill path
+  untouched; `test_canvas_fill` passes); rules 4→4; **P1/P2/P3/P4/P5 all flat**
+  (rule-neutral by construction); **P6 active_operators.py −74 lines (dead appliers
+  removed)** — the §5.1 / INVARIANTS-P6 "strongest single signal" direction; 143
+  tests still pass (2 migrated, none added/lost).
+
+**Invariants**: forbidden=**none** (check_invariants verdict **CLEAN**; F1 frozen
+  diff 0; F2 *removes* `_apply_*`, adds none; F3 DSL untouched; F4 no rule saved; F8
+  active_operators.py is net-negative — the explicit pure-deletion exemption).
+  positives=**P6 (−74 lines on active_operators.py)**. (The check's P1/P2/P3 "↓" is
+  an artefact of a **stale snapshot baseline** pinned at the iter23 commit
+  `80403db5` (3 rules, P1=7.67): those deltas are iter25's already-committed
+  `rule_006`, not this iter — post-PM-cleanup values 6.0/6.0/0.5 equal iter25's
+  exactly. Removed two covers=1 overfit rules `rule_007/008` an exploratory 150-task
+  training scan had accreted, restoring PM to 001/002/005/006.)
+
+**Next gap (note for future iter)**: the `solid_canvas` fold remains the real R3
+  prize and is now the cleanest path to moving P1/P2/P3 *together* — but it needs a
+  **unified `analyze_solid_canvas`** that searches height×width×colour readings and a
+  predict path that reuses the existing `_place_size_grid_grids` / `_canvas_fill_grids`
+  renderers *unchanged* (so predictions stay byte-identical → no guard regression),
+  then a cross-category AU lift that does **not** perturb `family_for_rule` ordering
+  for the working object_move/object_size_grid lifts. That's the careful multi-step
+  design to attempt next; the resized solid-output training tasks (17 found, e.g.
+  `1190e5a7`/`7039b2d7`) become reachable only as the size-reading vocabulary grows.
+
+---
 ## Iter 25 — 2026-06-12T22:55 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. iter24's
