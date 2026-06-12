@@ -1,6 +1,73 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 19 — 2026-06-12T21:43 — branch test32
+
+**Diagnosis**: Training phase. The training probe is 0/3 (expected for ARC-AGI-2 —
+its tasks are same-size object-recolor/move problems the Slow-path synthesizer
+cannot yet program), and iter18 already gated the accretion leak so no junk rule
+was saved. The microscope's *real* finding is the one iter17 explicitly teed up:
+Fast-path reuse (R5, BACKLOG §3) is wired for **only** the `size_to_grid` family.
+The `place_object` abstraction (rule_002, covers 11, the lifted move family) still
+**never activates** — every move task re-derives through the Slow path
+(`easy_a Reused 0`). Its `action.args.target.reading == "?v0"` is an *unfilled
+reading-hole* (§2.5-2b): unlike size_to_grid's self-resolving renderer, reuse here
+must first *choose* which of 5 readings grounds the task from COMM. Smallest
+defensible step: extend the existing `_abstract_reuse` table to `place_object` with
+a render_fn that resolves `?v0` from the task's own example COMM, proving the reuse
+mechanism is **family-generic** (cross-family R5 done-when), not bound to one shape.
+
+**Change**:
+- `agent/active_agent.py` — added the `place_object` entry to `_abstract_reuse`
+  (activated by its own `object_move` condition matcher) and a new
+  `_place_object_render(task)` that resolves the lifted `?v0` reading-hole: it tries
+  each of the 5 concrete reading renderers (constant_target/offset/corner/resize/
+  select — the *same* renderers the Slow path uses) and keeps the first that
+  reproduces **every** example output. That reproduction check *is* the COMM-grounded
+  choice of filler (§2.5-2b "fill the hole from COMM, then verify"). New constant
+  `PLACE_OBJECT_ABSTRACT_DSL`. The existing `_reproduces_examples` safety gate still
+  re-verifies, so reuse can only *skip*, never break, a solvable task. No
+  `active_operators.py`/`DSL/` edit (no F2/F3/F8 exposure).
+- `tests/test_abstract_rule_reuse.py` — updated the table-scope test to cover both
+  families; added 3 tests: reuse fires on a constant-target move (easy000c, resolves
+  to constant_target), resolves the *offset* reading on easy000e (a different filler
+  → one rule, many tasks), and the place_object abstraction abstains on a size-grid
+  task (families stay disjoint). Renamed the old "abstains on move" test to assert
+  the *size_to_grid* rule (not all rules) abstains there, since place_object now
+  legitimately fires.
+
+**Probe before**: easy_a 9/9 (all `via=pipeline`, **Reused 0**); madeup 14/14
+  (Reused 10); training 0/3; rules=3 (size_to_grid covers 10, place_object covers 11,
+  copy_common covers 2); P1=7.67 P2=7.67 P3=0.67 P4=932 P5=8 P6=1349; 91 tests.
+**Probe after** : easy_a 9/9 with **5 now `via=stored(...) rule=place_object`
+  (Reused 0 → 5)** — easy000c/d/h resolve to constant_target, e/f to constant_offset;
+  g (corner)/i (resize) still Slow-path (object_move matcher is scoped to
+  target/offset — fine, no regression). madeup 14/14 (Reused 10, unchanged);
+  rules=3 (reuse skips the Slow-path save); P1–P6 unchanged; 94 tests.
+
+**Invariants**: forbidden=none (F1 frozen diff 0; F2/F8 `active_operators.py` and
+  `DSL/` untouched; F3 no DSL primitive; no rule saved without a condition).
+  positives=**NEUTRAL on P1–P6** — the expected reading: the snapshot has *no signal
+  that measures reuse* (memory `reuse_signal_blindspot`; P1 only moves when a *new*
+  task enters a rule's covers, but these tasks were already covered). The moved
+  signal is the R5 done-when itself: `easy_a Reused 0 → 5`, the `place_object`
+  covers>1 abstraction now **activates across a structurally different family** than
+  size_to_grid, with a genuinely new multi-reading resolution step — exactly the R5
+  "stored-hit diversity ↑" the ladder asks for, which the P-metrics structurally
+  cannot see.
+
+**Next gap (note for future iter)**: reuse now covers size_to_grid + the
+  target/offset readings of place_object. Two reuse gaps remain: (a) the
+  corner/resize/select readings (covered by rule_002 via AU but **not** by the
+  `object_move` activation matcher — broadening that matcher to the full lifted
+  family would carry reuse onto easy000g/i and the madeup_select_* tasks); (b)
+  `copy_common`. But the *dominant* unfilled frontier is no longer reuse — it is the
+  **Slow-path program synthesizer** for unseen training tasks (modules F/G): the
+  training probe is 0/N because object-level COMM/DIFF produces no program for
+  same-size recolor/move tasks. That is the next *capability* gap, not a reuse one,
+  and it is large enough to need its own decomposition.
+
+---
 ## Iter 18 — 2026-06-12 — branch test32
 
 **Diagnosis**: First iter of the **training** phase (graduated from madeup this
@@ -1982,3 +2049,53 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 10
 - Time: 6s
 - Log: logs/learn_20260612_213411.log
+
+---
+## Learning Loop -- 2026-06-12 21:35
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_213525.log
+
+---
+## Learning Loop -- 2026-06-12 21:35
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 5s
+- Log: logs/learn_20260612_213528.log
+
+---
+## Learning Loop -- 2026-06-12 21:35
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_213534.log
+
+---
+## Learning Loop -- 2026-06-12 21:42
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_214240.log
+
+---
+## Learning Loop -- 2026-06-12 21:42
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 5s
+- Log: logs/learn_20260612_214243.log

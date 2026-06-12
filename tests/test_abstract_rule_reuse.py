@@ -63,16 +63,18 @@ def test_reuse_fires_on_non_square_rect_task():
 
 
 # ── reuse is scoped: it abstains on the move / constant families ──────────
-def test_reuse_abstains_on_move_task():
-    """easy000c is an object-move task; the size_to_grid matcher abstains, so the
-    abstraction does not reuse (the Slow path solves it instead)."""
+def test_size_grid_reuse_abstains_on_move_task():
+    """easy000c is an object-move task; the *size_to_grid* abstraction abstains on
+    it (its object_size_grid matcher does not fire), so the families stay disjoint
+    — the move is handled by the place_object abstraction, never size_to_grid."""
     task = _load("ARC_easy_a/easy000c")
     agent = ActiveSoarAgent()
 
-    # _reuse_abstract_rule must decline every stored rule for this task.
+    # The size_to_grid rule must decline this move task.
     from agent.memory import load_all_rules
     for entry in load_all_rules(agent.procedural_memory_root):
-        assert agent._reuse_abstract_rule(entry, task) is None
+        if entry.get("action", {}).get("dsl") == SIZE_GRID_DSL:
+            assert agent._reuse_abstract_rule(entry, task) is None
 
 
 # ── honesty: the safety gate declines an abstraction that mis-grounds ─────
@@ -91,10 +93,53 @@ def test_reuse_declined_when_examples_not_reproduced():
     assert ActiveSoarAgent._reproduces_examples(good_render, task) is True
 
 
-def test_reuse_table_targets_size_grid_only_for_now():
-    """This slice scopes abstract reuse to the size_to_grid family (the simplest
-    abstraction). The activation table records exactly that family."""
+def test_reuse_table_covers_size_grid_and_place_object():
+    """Abstract reuse is wired for the two structurally distinct families that
+    have a lifted (covers>1) rule: the size_to_grid canvas-sizing family and the
+    place_object move family. Each is activated by *its own* condition matcher."""
+    from agent.active_agent import PLACE_OBJECT_ABSTRACT_DSL
     agent = ActiveSoarAgent()
-    assert set(agent._abstract_reuse) == {SIZE_GRID_DSL}
-    cond_type, _patterns_fn, _render_fn = agent._abstract_reuse[SIZE_GRID_DSL]
-    assert cond_type == "object_size_grid"
+    assert set(agent._abstract_reuse) == {SIZE_GRID_DSL, PLACE_OBJECT_ABSTRACT_DSL}
+    assert agent._abstract_reuse[SIZE_GRID_DSL][0] == "object_size_grid"
+    assert agent._abstract_reuse[PLACE_OBJECT_ABSTRACT_DSL][0] == "object_move"
+
+
+# ── the stored place_object abstraction reuses on a move task ─────────────
+def test_reuse_fires_on_constant_target_move_task():
+    """easy000c is a constant-target object move. The stored place_object
+    abstraction now *activates* (object_move matcher fires), resolves its ?v0
+    reading-hole to constant_target from COMM, and renders — the Fast path,
+    not a re-derivation. This proves cross-family reuse (a different family from
+    size_to_grid, with a richer reading-resolution step)."""
+    task = _load("ARC_easy_a/easy000c")
+    agent = ActiveSoarAgent()
+    predicted = agent.solve(task)
+
+    assert predicted == _expected_outputs(task)
+    assert agent.last_solve_info["method"] == "stored_rule"
+    assert agent.last_solve_info["rule_type"] == "place_object"
+
+
+def test_reuse_resolves_offset_reading_on_offset_move_task():
+    """easy000e is a constant-*offset* move. The same stored place_object rule
+    resolves its ?v0 hole to the *offset* reading (a different filler than
+    easy000c) and renders correctly — one rule, many tasks, the variable filled
+    per-task from COMM (§2.5-2b)."""
+    task = _load("ARC_easy_a/easy000e")
+    agent = ActiveSoarAgent()
+    predicted = agent.solve(task)
+
+    assert predicted == _expected_outputs(task)
+    assert agent.last_solve_info["method"] == "stored_rule"
+
+
+def test_place_object_reuse_abstains_on_size_grid_task():
+    """A size-grid madeup task is not a move; the object_move matcher abstains, so
+    the place_object abstraction declines (size_to_grid reuse handles it instead —
+    the two families stay disjoint)."""
+    from agent.memory import load_all_rules
+    task = _load("ARC_madeup/madeup_size_to_square")
+    agent = ActiveSoarAgent()
+    for entry in load_all_rules(agent.procedural_memory_root):
+        if entry.get("action", {}).get("dsl") == "place_object":
+            assert agent._reuse_abstract_rule(entry, task) is None

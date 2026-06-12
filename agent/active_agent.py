@@ -18,9 +18,16 @@ from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator, SIZE_GRID_DSL
 from agent.conditions import match as match_condition
-from agent.dsl_expr.selection import analyze_object_size_grid
+from agent.dsl_expr.selection import analyze_object_size_grid, analyze_object_move
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
+
+# The abstract (AU-lifted) ``action.dsl`` name carried by the place_object family
+# rule (rule_002). Distinct from the *concrete* per-reading DSL names
+# (``place_object_constant`` …) the Slow-path predictor dispatches on: this is the
+# lifted umbrella whose ``args.target.reading == "?v0"`` hole is resolved at reuse
+# time (BACKLOG_LOOP §2.5-2b).
+PLACE_OBJECT_ABSTRACT_DSL = "place_object"
 
 
 class ActiveSoarAgent:
@@ -51,10 +58,19 @@ class ActiveSoarAgent:
         #   (condition.type, patterns_fn, render_fn)
         # where the condition matcher is the *activation* test (module E) and the
         # render_fn recomputes the variable from the task's examples and renders —
-        # i.e. the stored rule is *reused* rather than rediscovered. Scoped to the
-        # size_to_grid family for this slice (the simplest abstraction, whose
-        # renderer already self-resolves its property from the pairs); place_object
-        # / copy_common reuse are later, separate steps.
+        # i.e. the stored rule is *reused* rather than rediscovered.
+        #
+        # Two families are wired:
+        #  - ``size_to_grid``  — the simplest abstraction (the renderer
+        #    self-resolves its dimension property from the pairs);
+        #  - ``place_object``  — the move family, a *structurally different*
+        #    abstraction whose ``?v0`` is a *reading* hole (constant_target vs.
+        #    constant_offset vs. …). Its render_fn resolves *which* reading grounds
+        #    the task from the task's own COMM before rendering (§2.5-2b: "AU 결과는
+        #    미완성; 변수를 채우는 선택이 선행돼야"). This is the richer resolution
+        #    the size_to_grid self-resolving renderer did not need — and proves the
+        #    Fast-path reuse mechanism is family-generic, not bound to one shape.
+        #  ``copy_common`` reuse is a later, separate step.
         self._abstract_reuse = {
             SIZE_GRID_DSL: (
                 "object_size_grid",
@@ -62,6 +78,13 @@ class ActiveSoarAgent:
                     "object_size_grid": analyze_object_size_grid(task.example_pairs)
                 },
                 self._predictor._place_size_grid_grids,
+            ),
+            PLACE_OBJECT_ABSTRACT_DSL: (
+                "object_move",
+                lambda task: {
+                    "object_move": analyze_object_move(task.example_pairs)
+                },
+                self._place_object_render,
             ),
         }
 
@@ -230,6 +253,38 @@ class ActiveSoarAgent:
             if pair.output_grid is None or rendered.get(i) != pair.output_grid.raw:
                 return False
         return True
+
+    # ---- place_object reuse: resolve the ?v0 reading-hole from COMM ------
+
+    def _place_object_render(self, task):
+        """Render the place_object family abstraction by first *resolving* its
+        ``?v0`` reading-hole from the task's own comparison evidence (BACKLOG_LOOP
+        §2.5-2b, R5).
+
+        The lifted ``place_object`` rule is incomplete: its target is one of five
+        readings (constant_target / constant_offset / constant_corner /
+        constant_resize / constant_select) and *which* one grounds a given task is
+        not stored — it must be chosen from the task's COMM/DIFF (P3/P4: reason,
+        not value). We try each reading's renderer in turn and keep the first that
+        reproduces *every* example output; that reproduction check is the COMM-
+        grounded choice of filler. The chosen renderer then renders the test pairs.
+        Returns {} when no reading reproduces the examples (reuse then declines and
+        the Slow path runs unchanged — reuse can only skip, never break).
+
+        The renderers are the *same* ones the Slow path uses, so a resolved reuse
+        renders identically to a fresh derivation — it just skips the rediscovery.
+        """
+        readings = [
+            self._predictor._place_object_grids,          # constant_target
+            self._predictor._place_object_offset_grids,   # constant_offset
+            self._predictor._place_object_corner_grids,   # constant_corner
+            self._predictor._place_object_resize_grids,   # constant_resize
+            self._predictor._place_object_select_grids,   # constant_select
+        ]
+        for render in readings:
+            if self._reproduces_examples(render, task):
+                return render(task)
+        return {}
 
     # ---- helpers --------------------------------------------------------
 
