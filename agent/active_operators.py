@@ -47,6 +47,7 @@ from agent.dsl_expr.selection import (
     GRID_DIM_PROPERTY_VOCAB,
     GRID_RECT_DIM_VOCAB,
     RECT_DIM_VOCAB,
+    SCALE_FACTOR_VOCAB,
     SELECTOR_VOCAB,
 )
 
@@ -1596,24 +1597,37 @@ class PredictOperator(Operator):
         """Map test-pair index -> predicted grid for the whole-grid scale/replicate
         family.
 
-        The mode + constant factor (block-upscale or tile × (kh, kw)) is recomputed
-        from the example pairs (the §2.5-1 lifted argument: the single mode+factor
-        that reproduces every example output). For each test pair that replication
-        is applied to the test input via render_scale_transform — `make_grid` +
-        `coloring` at the replicated coordinate (P5: the mode/factor from the example
-        COMM, the cells from the test G0). Returns {} when the analysis yields no
-        consistent constant factor+mode."""
+        The mode + factor (block-upscale or tile × (kh, kw)) is recomputed from the
+        example pairs (the §2.5-1 lifted argument: the single mode+factor that
+        reproduces every example output). The factor is either a cross-pair constant
+        or — the §2.5-2b factor-axis lift — a property *read off each input*
+        (`factor_expr`, e.g. distinct-colour count / grid side). For each test pair
+        the replication is applied to the test input via render_scale_transform —
+        `make_grid` + `coloring` at the replicated coordinate (P5: the mode/factor
+        from the example COMM, the per-test factor and cells from the test G0).
+        Returns {} when the analysis yields no consistent mode+factor."""
         sig = analyze_scale_transform(task.example_pairs)
         mode = sig.get("mode")
-        factor = sig.get("factor")
-        if mode is None or factor is None:
+        if mode is None:
             return {}
-        kh, kw = factor
+        factor = sig.get("factor")
+        factor_expr = sig.get("factor_expr")
 
         grids = {}
         for i, test_pair in enumerate(task.test_pairs):
             g0 = test_pair.input_grid
             if g0 is None:
+                continue
+            if factor is not None:
+                kh, kw = factor
+            elif factor_expr is not None:
+                # Read the per-test factor off this test input (P5: variables come
+                # from the test G0), the same property that fit every example pair.
+                k = SCALE_FACTOR_VOCAB[factor_expr](g0.raw)
+                if not isinstance(k, int) or k < 1:
+                    continue
+                kh = kw = k
+            else:
                 continue
             grids[i] = render_scale_transform(g0.raw, mode, kh, kw)
         return grids

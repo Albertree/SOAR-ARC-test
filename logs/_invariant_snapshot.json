@@ -1,11 +1,11 @@
 {
-  "P1_rule_coverage": 6.714285714285714,
-  "P2_mean_covers": 6.714285714285714,
-  "P3_au_traced_frac": 0.5714285714285714,
+  "P1_rule_coverage": 6.5,
+  "P2_mean_covers": 6.5,
+  "P3_au_traced_frac": 0.5,
   "P4_episodic_entries": 932,
-  "P5_condition_matchers": 13,
-  "P6_active_operators_lines": 1789,
-  "_head": "9901b21bcbd29db96bfc74e442aa0dc902d2ac5b",
-  "_rule_count": 7,
-  "_solved_count": 47
+  "P5_condition_matchers": 14,
+  "P6_active_operators_lines": 1907,
+  "_head": "2c3e63c9152bec3f000094cc46d147e0160e191e",
+  "_rule_count": 8,
+  "_solved_count": 52
 }

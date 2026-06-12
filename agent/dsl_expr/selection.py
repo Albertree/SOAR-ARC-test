@@ -1739,10 +1739,11 @@ def analyze_geometric_transform(example_pairs: list) -> dict:
 #
 # Both produce output dims (H*kh, W*kw); they differ only in the back-map. This
 # module only *recognises* which (mode, kh, kw) fits; `render.render_scale_transform`
-# composes the chosen back-map with `make_grid` + `coloring`. This slice learns a
-# *constant* factor (the same (kh, kw) in every pair — the cross-pair COMM); a
-# factor *read off an input property* (e.g. distinct-colour count) is a separate,
-# named next step (§2.5-2b lift on the factor axis).
+# composes the chosen back-map with `make_grid` + `coloring`. The factor is either
+# a *constant* (the same (kh, kw) in every pair — the cross-pair COMM) or — the
+# §2.5-2b lift on the factor axis — a property *read off each input*
+# (`SCALE_FACTOR_VOCAB`: distinct-colour count, grid side), recomputed per test
+# input at predict time so one rule still covers the whole family.
 # ----------------------------------------------------------------------
 
 #: name -> (output row, col, H, W, kh, kw) -> (input row, col) back-map.
@@ -1754,6 +1755,36 @@ SCALE_BACKMAP = {
 #: deterministic recognition order (vocab order breaks ties when both reproduce,
 #: e.g. on a uniform grid block and tile coincide).
 SCALE_VOCAB = list(SCALE_BACKMAP)
+
+
+def _scale_factor_distinct_color_count(grid: list):
+    """The number of distinct *non-background* colours in the grid (a property
+    read off the input). The §2.5-2b factor-axis lift's primary reading: tasks
+    ac0a08a4 / b91ae062 / a59b95c0 scale by exactly this count (2 colours → ×2,
+    3 → ×3, …). Returns an int ≥ 0, or None on an empty grid."""
+    if not grid or not grid[0]:
+        return None
+    return len({v for row in grid for v in row if v != 0})
+
+
+def _scale_factor_grid_side(grid: list):
+    """The grid's side length when it is square (H == W), else None. Task
+    ccd554ac tiles by its own side (3×3 → ×3, 2×2 → ×2, 4×4 → ×4) — the fractal
+    self-tiling reading. A scalar property read off the input (P5)."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    return H if H == W and H > 0 else None
+
+
+#: factor-expression vocabulary (§2.5-2b lift on the scale *factor* axis): a small
+#: named set of input-property reads that yield the per-pair integer factor when it
+#: is *not* a cross-pair constant. Tried only after the constant-factor path
+#: abstains, so a constant scale is never reclassified. Each maps a grid → int|None;
+#: the factor is applied square (kh = kw = k), covering the observed family.
+SCALE_FACTOR_VOCAB = {
+    "distinct_color_count": _scale_factor_distinct_color_count,
+    "grid_side": _scale_factor_grid_side,
+}
 
 
 def apply_scale(grid: list, mode: str, kh: int, kw: int) -> list:
@@ -1815,6 +1846,7 @@ def analyze_scale_transform(example_pairs: list) -> dict:
 
     mode = None
     factor = None
+    factor_expr = None
     if pairs:
         # The factor must be a constant integer multiple across every pair (the
         # cross-pair COMM); abstain otherwise.
@@ -1836,9 +1868,40 @@ def analyze_scale_transform(example_pairs: list) -> dict:
                         factor = (kh, kw)
                         break
 
+    # §2.5-2b factor-axis lift: when no single *constant* factor fits, the factor
+    # may be a property *read off each input* (distinct-colour count, grid side,
+    # …). Tried only after the constant path abstains, so a constant scale is never
+    # reclassified. Requires ≥2 pairs and the read factor to *genuinely vary*
+    # (len(set)≥2) — an all-equal read would itself be the constant case the path
+    # above already owns, so a varying read is what makes "factor = property"
+    # meaningful rather than a coincidence. Each candidate is admitted only if
+    # apply_scale(input, mode, k, k) reproduces every output exactly (P3/P4: the
+    # COMM between predicted and actual outputs), like the constant path.
+    if mode is None and len(pairs) >= 2:
+        for fname, ffn in SCALE_FACTOR_VOCAB.items():
+            ks = []
+            ok = True
+            for a, _b in pairs:
+                k = ffn(a)
+                if not isinstance(k, int) or k < 1:
+                    ok = False
+                    break
+                ks.append(k)
+            if not ok or len(set(ks)) < 2:
+                continue
+            for name in SCALE_VOCAB:
+                if all(apply_scale(a, name, k, k) == b
+                       for (a, b), k in zip(pairs, ks)):
+                    mode = name
+                    factor_expr = fname
+                    break
+            if mode is not None:
+                break
+
     return {
         "mode": mode,
         "factor": factor,
+        "factor_expr": factor_expr,
         "valid_all": mode is not None,
         "evidence": len(pairs),
     }

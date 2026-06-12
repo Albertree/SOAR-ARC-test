@@ -25,6 +25,7 @@ from agent.dsl_expr.selection import (
     analyze_scale_transform,
     SCALE_VOCAB,
     SCALE_BACKMAP,
+    SCALE_FACTOR_VOCAB,
 )
 from agent.dsl_expr.render import render_scale_transform
 from agent.conditions import match as match_condition
@@ -120,3 +121,87 @@ def test_analyzer_abstains_on_non_integer_ratio():
     p1 = _pair([[1, 1, 1]], [[1, 1, 1, 1, 1]])
     sig = analyze_scale_transform([p1, p1])
     assert sig["mode"] is None
+
+
+# --- §2.5-2b factor-axis lift: factor read off an input property ------------
+
+def test_factor_vocab_reads_distinct_color_count():
+    f = SCALE_FACTOR_VOCAB["distinct_color_count"]
+    assert f([[0, 3, 0], [3, 0, 8], [0, 8, 0]]) == 2   # {3, 8}
+    assert f([[6, 0, 4], [0, 2, 0], [4, 0, 6]]) == 3   # {6, 4, 2}, 0 ignored
+
+
+def test_factor_vocab_grid_side_square_only():
+    f = SCALE_FACTOR_VOCAB["grid_side"]
+    assert f([[1, 2], [3, 4]]) == 2
+    assert f([[1, 2, 3]]) is None                       # non-square abstains
+
+
+def test_analyzer_learns_block_factor_from_color_count():
+    # factor varies per pair (2, 3) and equals the input's distinct-colour count:
+    # the constant path abstains, the factor-axis lift recognises the property read.
+    a1 = [[0, 3, 0], [3, 0, 8], [0, 8, 0]]              # 2 colours -> x2
+    a2 = [[6, 0, 4], [0, 2, 0], [4, 0, 6]]              # 3 colours -> x3
+    p1 = _pair(a1, apply_scale(a1, "block", 2, 2))
+    p2 = _pair(a2, apply_scale(a2, "block", 3, 3))
+    sig = analyze_scale_transform([p1, p2])
+    assert sig["valid_all"] is True
+    assert sig["mode"] == "block"
+    assert sig["factor"] is None
+    assert sig["factor_expr"] == "distinct_color_count"
+    assert match_condition("scale_transform", {"scale_transform": sig}, {"min_evidence": 2})
+
+
+def test_analyzer_learns_tile_factor_from_grid_side():
+    # ccd554ac-shape: a square grid tiled by its own side (2x2->x2, 3x3->x3).
+    a1 = [[5, 0], [0, 5]]                                # side 2 -> x2
+    a2 = [[7, 0, 7], [0, 7, 0], [7, 0, 0]]              # side 3 -> x3
+    p1 = _pair(a1, apply_scale(a1, "tile", 2, 2))
+    p2 = _pair(a2, apply_scale(a2, "tile", 3, 3))
+    sig = analyze_scale_transform([p1, p2])
+    assert sig["valid_all"] is True
+    assert sig["mode"] == "tile"
+    assert sig["factor_expr"] == "grid_side"
+
+
+def test_constant_factor_preferred_over_property():
+    # when a constant factor fits, the analyzer keeps it (factor_expr stays None)
+    # even though a property could coincidentally read the same value.
+    a1 = [[1, 0], [0, 2]]                                # 2 colours, x2
+    a2 = [[3, 0], [0, 4]]                                # 2 colours, x2
+    p1 = _pair(a1, apply_scale(a1, "block", 2, 2))
+    p2 = _pair(a2, apply_scale(a2, "block", 2, 2))
+    sig = analyze_scale_transform([p1, p2])
+    assert sig["factor"] == (2, 2)
+    assert sig["factor_expr"] is None
+
+
+def test_factor_axis_abstains_when_no_property_explains():
+    # varying factors from *identical* inputs cannot be a property read (same input
+    # -> same property -> same factor); the lift must abstain, not guess.
+    a = [[1, 0], [0, 2]]
+    p1 = _pair(a, apply_scale(a, "block", 2, 2))
+    p2 = _pair(a, apply_scale(a, "block", 3, 3))
+    sig = analyze_scale_transform([p1, p2])
+    assert sig["mode"] is None
+    assert sig["factor_expr"] is None
+
+
+def test_render_uses_per_test_factor_from_property():
+    # end-to-end through the predict path: two test inputs with different colour
+    # counts must scale by *their own* count (P5: factor read off the test G0).
+    from agent.active_operators import PredictOperator
+
+    a1 = [[0, 3, 0], [3, 0, 8], [0, 8, 0]]              # 2 colours -> x2
+    a2 = [[6, 0, 4], [0, 2, 0], [4, 0, 6]]              # 3 colours -> x3
+    train = [
+        _pair(a1, apply_scale(a1, "block", 2, 2)),
+        _pair(a2, apply_scale(a2, "block", 3, 3)),
+    ]
+    t1 = [[9, 0], [0, 9]]                                # 1 colour  -> x1
+    t2 = [[1, 0], [0, 2]]                                # 2 colours -> x2
+    test = [_pair(t1, []), _pair(t2, [])]
+    task = SimpleNamespace(example_pairs=train, test_pairs=test)
+    grids = PredictOperator._scale_transform_grids(task)
+    assert grids[0] == apply_scale(t1, "block", 1, 1)
+    assert grids[1] == apply_scale(t2, "block", 2, 2)

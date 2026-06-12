@@ -4,16 +4,19 @@ worked example on the scale axis: a block-upscale / tiling is the frozen
 `coloring` primitive applied at a *replicated coordinate* on a `make_grid` canvas,
 not a new primitive).
 
-Fires when a single constant integer factor `(kh, kw)` and replication mode from
-`agent/dsl_expr/selection.SCALE_VOCAB` ("block" upscale / "tile") reproduces
-*every* example output from its input exactly, with the factor not the identity
-`(1, 1)` (a genuine scale, not a copy). The (mode, kh, kw) triple is the lifted
-*argument* — value-, colour- and content-agnostic — so one value-agnostic rule
-covers the whole scale family rather than one literal rule per task (the §2.5-3/4
-"covers, not accretion" shape). Reads the `scale_transform` signal surfaced by
+Fires when a replication mode from `agent/dsl_expr/selection.SCALE_VOCAB` ("block"
+upscale / "tile") plus a per-pair factor reproduces *every* example output from its
+input exactly, with the factor not the identity (a genuine scale, not a copy). The
+factor is either a *cross-pair constant* `(kh, kw)` or — the §2.5-2b factor-axis
+lift — a property *read off each input* (`factor_expr`, e.g. distinct-colour count
+or grid side); the matcher fires in both cases (it keys on `valid_all` + `mode`,
+which the analyzer sets either way). The (mode, factor) is the lifted *argument* —
+value-, colour- and content-agnostic — so one value-agnostic rule covers the whole
+scale family rather than one literal rule per task (the §2.5-3/4 "covers, not
+accretion" shape). Reads the `scale_transform` signal surfaced by
 ExtractPatternOperator (computed by
 agent/dsl_expr/selection.analyze_scale_transform), which already verified the
-factor+mode against the COMM between predicted and actual outputs (P3/P4: grounded
+mode+factor against the COMM between predicted and actual outputs (P3/P4: grounded
 in comparison, never assumed).
 
 Stays inert (mode None) whenever no single constant factor+mode reproduces all
@@ -30,9 +33,10 @@ def scale_transform(patterns: dict, params: dict | None = None) -> bool:
     output from its input (a genuine non-identity scale) with enough evidence.
 
     `params.min_evidence` (default 2) guards against committing to a factor from a
-    single pair — one pair cannot establish that the factor is *constant* across
-    the family rather than a value read off that input (the §2.5-2b factor-reading
-    case, which this constant-factor reading deliberately abstains on).
+    single pair — one pair cannot establish whether the factor is *constant* across
+    the family or a value *read off each input* (the §2.5-2b factor-axis lift); the
+    analyzer needs ≥2 pairs (and, for the property read, a genuinely *varying*
+    factor) to tell the two apart.
     """
     if not isinstance(patterns, dict):
         return False

@@ -1,6 +1,84 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 37 — 2026-06-13T02:55 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 24/24 hold. I took iter
+36's explicitly-named *next* gap — the **factor-axis lift** (§2.5-2b on the scale
+axis): the `scale_transform` family iter 36 built learns only a *constant* factor and
+deliberately abstains when the factor *varies per pair*. A 1000-task structural census
+confirms a clean, real cluster where the factor is a **property read off each input**:
+ac0a08a4 / b91ae062 (block-upscale by **distinct non-background colour count**, 2→×2,
+3→×3, 5→×5), a59b95c0 (tile by colour count), ccd554ac (tile by **grid side**). All
+four ran INCORRECT (rule=identity — the constant path abstains on a varying factor).
+The gap is general and folds into the *existing* rule_010 with no new rule/matcher.
+
+**Change** (the lift is in the *argument* layer `agent/dsl_expr/`, F3-exempt — no
+transformation primitive, no new `_try_*`, no new matcher, **no new rule**; a scale is
+still `coloring` at a replicated coordinate on a `make_grid` canvas):
+- `agent/dsl_expr/selection.py`: added **`SCALE_FACTOR_VOCAB`** — two input-property
+  factor reads (`distinct_color_count`, `grid_side` [square-only]) — and extended
+  `analyze_scale_transform` with a factor-axis branch tried **only after** the
+  constant-factor path abstains, so a constant scale is never reclassified. It requires
+  ≥2 pairs and a *genuinely varying* read (`len(set(ks))≥2` — an all-equal read is the
+  constant case the prior path already owns) and admits a property only if
+  `apply_scale(input, mode, k, k)` reproduces every output exactly (P3/P4: the COMM).
+  New dict field `factor_expr` (the property name) — `factor` stays None in that case.
+- `agent/active_operators.py`: `_scale_transform_grids` now renders the per-test factor
+  when `factor_expr` is set — reads the property off each *test* G0 (P5) and scales by
+  it. The constant path is unchanged. (+14 net; F8 companion = the matcher docstring
+  accuracy fix below.)
+- `agent/conditions/scale_transform.py`: docstring/`min_evidence` accuracy fix — the
+  matcher now fires for the factor-read case too (it keys on `valid_all`+`mode`, which
+  the analyzer sets either way); the prior "deliberately abstains on factor-reading"
+  text was stale. Genuine recognition-scope update + F8 companion (iter 35 precedent).
+- `procedural_memory/rule_010.json`: **auto-saved by the pipeline** (merge by
+  condition+action equivalence) — `covers` += a59b95c0, ac0a08a4, b91ae062, ccd554ac
+  (4 real ARC-AGI-2 tasks), all **verified CORRECT**. One rule still covers the whole
+  scale family (constant + property factor); no accretion.
+- `data/ARC_madeup/madeup_scale_by_colors.json`: grounding task (3 value-agnostic
+  block-upscale pairs whose factor = distinct colour count [2,3,2] → test 4, different
+  colours/shapes each) — the §2.1 "grid size = function of a property" concept,
+  isolating the factor-read lift as a madeup regression guard.
+- `tests/test_scale_transform.py`: +7 tests (factor vocab reads; analyzer learns block
+  factor=colour-count and tile factor=grid-side; constant preferred over property;
+  abstains when no property explains a varying factor from identical inputs; end-to-end
+  render uses the per-test factor).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 23/23; rules=8; P1=6.5 P2=6.5
+  P3=0.5 P5=14. The 4 scale-by-property tasks INCORRECT (constant path abstains on a
+  varying factor).
+**Probe after** : a59b95c0 / ac0a08a4 / b91ae062 / ccd554ac **CORRECT** via the
+  factor-axis lift folded into rule_010 (covers 5→9). madeup **24/24** (scale_by_colors
+  solves the intended way); easy_a **9/9**; pytest **207/207** (200+7). Training
+  120-sample (seed 42): **2/120, 0 errors, Rules 8→8 (+0 spurious), 0 discovered** —
+  the lift is inert on the non-scale tasks (the 4 fixed scale-by-property tasks are not
+  in this sample; verified directly above).
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P1 +0.625**
+  (6.5→7.125), **P2 +0.625** (6.5→7.125) — 4 real tasks folded into the existing
+  rule_010, rule count flat at 8: the §2.5-4 real-progress shape (covers up, rules flat,
+  **P3 held** at 0.5 — no accretion/dilution). P4 unchanged. P5 unchanged (no new
+  matcher — the lift reuses the existing `scale_transform` matcher, the intended
+  one-family-one-matcher shape). P6 +14 (active_operators for the per-test factor render;
+  F8-clean via the conditions/ docstring companion). Reverted the verification runs'
+  `times_reused` churn on rule_001/002 (runtime accounting — iter18..36 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  `SCALE_FACTOR_VOCAB` property reads are util/selection (argument-expression) vocabulary
+  under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's "no new DSL def" binds only
+  `procedural_memory/DSL/`). No transformation primitive added; F3 contract intact (the
+  scale still bottoms out in `make_grid` + `coloring`).
+
+**Next gap (note for future iter)**: the factor-axis vocab now reads colour-count and
+  grid-side; a natural extension is a *per-axis* factor read (kh ≠ kw off two distinct
+  properties) and an object-property factor (e.g. output size = a *selected object's*
+  size — the size-grid family's converse on the scale axis). The large standing frontier
+  is unchanged: the general Slow-path synthesizer / `object_level_lift` for raw-cell
+  ray/path tasks (e5790162, c9680e90, 878187ab) behind most failing training tasks,
+  still grounding-blocked.
+
+---
 ## Iter 36 — 2026-06-13T02:45 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 22/22 hold. I first
@@ -4591,3 +4669,83 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 302s
 - Log: logs/learn_20260613_023845.log
+
+---
+## Learning Loop -- 2026-06-13 02:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_024710.log
+
+---
+## Learning Loop -- 2026-06-13 02:47
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 13
+- Time: 10s
+- Log: logs/learn_20260613_024714.log
+
+---
+## Learning Loop -- 2026-06-13 02:47
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_024724.log
+
+---
+## Learning Loop -- 2026-06-13 02:50
+
+- Split: None, Tasks: 4
+- Correct: 4 / 4 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260613_025051.log
+
+---
+## Learning Loop -- 2026-06-13 02:52
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_025208.log
+
+---
+## Learning Loop -- 2026-06-13 02:53
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_025326.log
+
+---
+## Learning Loop -- 2026-06-13 02:53
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_025330.log
+
+---
+## Learning Loop -- 2026-06-13 02:58
+
+- Split: training, Tasks: 120
+- Correct: 2 / 120 (1.7%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 0
+- Time: 301s
+- Log: logs/learn_20260613_025345.log
