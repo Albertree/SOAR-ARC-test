@@ -1,6 +1,108 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 17 — 2026-06-12T15:18 — branch test31
+
+**Diagnosis**: R0–R5(reuse) + R4 cleared, R3 re-proven; iter 16 fixed the
+training-crash so training tasks now fail *cleanly* (identity). PROMPT §2.2 ranks
+**real ARC-AGI-2 training failures the agent fails for a nameable reason** above
+elaborating the recolor family further (the iter-15/16 "key-lift" would be more of
+an already-heavily-built family). I scanned the 1000 training tasks for a single
+nameable, *general* gap and found one: **5 tasks (`0d3d703e`, `b1948b0a`,
+`c8f0f002`, `d511f180`, `aabf363d`) are pure global color substitutions** — same
+shape, every input color `c` → one fixed `map[c]` consistently across pairs — and
+all return `identity` because the system has **no global color-map capability**.
+The existing families cannot express it (`constant_output` needs identical
+outputs; `single_object_move_*` gate on one moving object; `recolor_extreme`
+recolors one size-ranked object). This is R6 (training escalation via a *general*
+mechanism, one rule for the whole family) — strictly preferred over a 4th madeup
+recolor sibling.
+
+**Change**:
+- `agent/conditions/color_map.py` (new matcher, **P5 6→7**) — recognises a
+  consistent, changed, same-shape global recolor from the `color_map` signal.
+  Recognition-vocabulary growth (CLAUDE.md §6.3), not a transformation primitive.
+- `agent/active_operators.py` — the producer/builder/renderer triple, mirroring
+  the established families (F8 satisfied: paired with the `memory.py` +
+  `conditions/` touches below):
+  - module-level `_derive_color_map(pairs)`: the comparison result (COMM/DIFF) —
+    the per-color input→output map, or None on shape-mismatch / inconsistency /
+    no-change. **One** definition shared by producer (signal), matcher, and
+    renderer (module uniformity, BACKLOG §5 criterion 2), so recognition and
+    execution agree by construction.
+  - `_color_map_determines(mapping, grids)`: the §5-criterion-4 (search sanity)
+    discriminator — a global recolor is only *confidently* applicable when every
+    **test-input** color (read from G0, P5; never G1) already has an image in the
+    example-derived map. This is what stops `color_map` from misfiring on
+    `aabf363d`, which is *train-consistent* with a map but whose real rule is
+    "recolor the shape to the bottom-left marker's color" and whose test
+    introduces a fresh color (8). With the guard it declines → `identity`, so no
+    dead/wrong color_map rule is ever built or saved for it.
+  - `ExtractPatternOperator._color_map` surfaces the signal; `GeneralizeOperator.
+    _build_color_map_rule` emits the value-agnostic `{condition: color_map,
+    action: {dsl: color_map, args: {}}}` rule (empty args ⇒ map re-derived per
+    task, one rule covers the family, §2.5-3); branch placed last (disjoint from
+    all others, so order is immaterial). `PredictOperator._render_color_map`
+    re-derives the map and applies it as **`coloring` per source-color group** on
+    the input canvas (same-shape ⇒ no `make_grid`); declines (None, never raises)
+    on shape-mismatch or an undetermined test color — the speculative-apply
+    discipline (iter 16).
+- `agent/memory.py` — `"color_map": "color_map"` added to `_DSL_TO_DISPATCH` so a
+  *stored* color_map rule (empty args ⇒ no unresolved `?v`) is fast-path
+  replayable. Not in `_RUNTIME_RESOLVABLE` (nothing to resolve).
+- `tests/test_color_map.py` (new, +10) — signal/matcher (consistent, declines on
+  inconsistent / identity / shape-change), end-to-end rule build, **exact-match
+  solve of the real training tasks `0d3d703e` + `b1948b0a`**, renderer apply +
+  decline-on-undetermined-color, and the fast-path `applicable_rule` bridge.
+
+**Probe before**: easy 1/3, easy_a 9/9; training all identity; rules=3 (covers
+6+9+2); P1=5.67 P2=5.67 P3=0.67 P4=486 P5=6 P6=1280.
+**Probe after** : easy 1/3, easy_a 9/9 (regression guard intact — `color_map`
+stays dormant on every easy/easy_a task; rules unchanged at 3); 4 of the 5 real
+global-recolor training tasks (`0d3d703e`/`b1948b0a`/`c8f0f002`/`d511f180`) now
+solve **exactly** via the pipeline-built `color_map` rule (were `identity`), the
+5th (`aabf363d`) correctly declines to `identity` rather than emit a confident
+wrong grid; training sweep seed42×40 = **0 errors** (no crash introduced).
+P1/P2/P3 flat (no per-task rule persisted — the capability is proven in code +
+tests; the loop will learn/persist `rule_004` organically when training tasks it
+matches recur, so no covers=1 dip is committed this iter); **P5 6→7**, **P4
+486→549 (+63)** (sweeps exercised the episodic writer). Suite 114→**124** pass.
+
+**Invariants**: forbidden=**none** — F1: no frozen-file edit (only
+`active_operators.py` + `memory.py` + new `conditions/` + `tests/`; F1 diff = 0);
+F2: no new `_try_*`/`_apply_*` (the additions are a matcher + producer/builder/
+renderer, the blessed vocabulary); F3: no DSL primitive — the recolor is the
+frozen `coloring` composed per color group, no `make_grid`/`@register` added; F4:
+no rule saved without condition (no rule persisted at all); F8:
+`active_operators.py` net-positive **and** `agent/memory.py` + `agent/conditions/`
+also touched ⇒ satisfied. Checker verdict: **CLEAN** (P4 +63, P5 +1). positives =
+**P5 +1, P4 +63**. P6 −209 (new capability code — one general family, not
+`_try_*` accretion; same shape as iter 14's +205).
+
+### Observation criteria (BACKLOG §5) — R6 general mechanism on real training tasks
+1. **Works**: producer/matcher/builder/renderer run error-free; 4 real ARC-AGI-2
+   training tasks solve, the false-positive declines, 0 crashes over 40 tasks.
+2. **Module uniformity**: **one** value-agnostic `color_map` rule (empty args)
+   covers the whole global-recolor family; recognition and execution share the
+   single `_derive_color_map` definition — no per-task branch.
+3. **Approaches the answer**: exact outputs for the 4 genuine tasks via frozen
+   `coloring`; the map is the COMM/DIFF of corresponding cells (P3/P4), re-derived
+   per task, never stored.
+4. **Search sanity**: deterministic; declines (no guess) when the map is
+   inconsistent, the shapes differ, or a test color is undetermined — the guard
+   that separates a true global recolor from a coincidental train-match.
+
+**Next gap (note for future iter)**: `color_map` is the *positional* recolor
+(cell-for-cell). The natural neighbour gap it exposes is **object-keyed recolor**
+— `aabf363d`-style "recolor object A to the color of marker B": a relation between
+two objects (the changing object and a reference), which `arg_extreme`/`color_of`
+can express but needs a *relation* read (the marker's color as the fill source)
+rather than a constant. That, or persist `rule_004` via a training run to turn the
+now-working `color_map` into a *reused* stored hit (R5/R6 reuse signal, driving P1
+once a second matching task recurs). Latent (unchanged): no P-signal rewards reuse
+rate.
+
+---
 ## Iter 16 — 2026-06-12T14:55 — branch test31
 
 **Diagnosis**: R0–R5(reuse) + R4 cleared, R3 re-proven. Iter 15's "Next gap"
@@ -1940,3 +2042,63 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 0
 - Time: 30s
 - Log: logs/learn_20260612_145557.log
+
+---
+## Learning Loop -- 2026-06-12 15:04
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_150424.log
+
+---
+## Learning Loop -- 2026-06-12 15:04
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_150426.log
+
+---
+## Learning Loop -- 2026-06-12 15:05
+
+- Split: training, Tasks: 6
+- Correct: 0 / 6 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 22s
+- Log: logs/learn_20260612_150528.log
+
+---
+## Learning Loop -- 2026-06-12 15:18
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_151829.log
+
+---
+## Learning Loop -- 2026-06-12 15:18
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_151833.log
+
+---
+## Learning Loop -- 2026-06-12 15:21
+
+- Split: training, Tasks: 40
+- Correct: 0 / 40 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 135s
+- Log: logs/learn_20260612_151845.log

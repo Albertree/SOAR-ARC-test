@@ -390,6 +390,7 @@ _DSL_TO_DISPATCH = {
     "copy_common_output": "constant_output",
     "place_object": "place_object",
     "recolor_extreme": "recolor_extreme",
+    "color_map": "color_map",
 }
 
 

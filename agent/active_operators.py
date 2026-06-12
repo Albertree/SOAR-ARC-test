@@ -72,6 +72,73 @@ def _with_extreme(rule, direction):
     return new
 
 
+def _derive_color_map(pairs):
+    """Derive the global input->output color substitution the example pairs agree
+    on, or None when they do not define one (R6 color-map family).
+
+    `pairs` is a list of `(g0, g1)` ARCKG grids. The map is a comparison result
+    (P3/P4): for each input color, the single output color the *same* cell takes
+    across every pair. Returns the `{int: int}` map iff
+
+      * every pair is the same shape input vs output (a global per-cell recolor is
+        only defined when cells correspond), and
+      * no input color maps to two different output colors in any pair
+        (consistency — the COMM holds), and
+      * at least one color actually changes (else it is identity, not a recolor).
+
+    Returns None otherwise. Value-agnostic and symbolic (a dict, P7): nothing is
+    stored per task — the renderer re-derives this map from each task's own
+    examples, so one rule covers the whole family. This single definition is
+    shared by the `color_map` producer (signal) and renderer (apply), so the same
+    notion of "is this a global recolor" gates recognition and execution (module
+    uniformity, BACKLOG_LOOP.md §5 criterion 2)."""
+    if not pairs:
+        return None
+    mapping = {}
+    changed = False
+    for g0, g1 in pairs:
+        if g0 is None or g1 is None:
+            return None
+        if g0.height != g1.height or g0.width != g1.width:
+            return None
+        raw0, raw1 = g0.raw, g1.raw
+        for r in range(g0.height):
+            row0, row1 = raw0[r], raw1[r]
+            for c in range(g0.width):
+                iv, ov = row0[c], row1[c]
+                if iv in mapping:
+                    if mapping[iv] != ov:
+                        return None
+                else:
+                    mapping[iv] = ov
+                if iv != ov:
+                    changed = True
+    if not changed:
+        return None
+    return mapping
+
+
+def _grid_colors(raw):
+    """The set of colors present in a raw grid."""
+    return {cell for row in raw for cell in row}
+
+
+def _color_map_determines(mapping, grids):
+    """True iff `mapping` assigns an image to *every* color present in `grids`
+    (the test inputs). A global recolor is only *confidently* applicable when the
+    examples have shown what each test color becomes — a test color the examples
+    never exhibited has an undetermined image, so applying the map would be a
+    guess (BACKLOG_LOOP.md §5 criterion 4, search sanity). This is the
+    discriminator that keeps `color_map` from misfiring on tasks that are merely
+    *train-consistent* with a global map but whose real rule is different (e.g. a
+    recolor-to-marker task whose test introduces a fresh color). Reads only test
+    G0 (P5), never G1."""
+    if mapping is None:
+        return False
+    domain = set(mapping)
+    return all(_grid_colors(g.raw) <= domain for g in grids if g is not None)
+
+
 # ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
 # ======================================================================
@@ -271,7 +338,50 @@ class ExtractPatternOperator(Operator):
         # from the example COMM/DIFF, never a stored literal (P3/P4).
         patterns["object_ranking"] = self._object_ranking(task)
 
+        # Global color-substitution signal (R6, BACKLOG_LOOP.md "training
+        # escalation"). When every example pair is the same shape and realises one
+        # consistent per-color input->output map (a COMM over the corresponding
+        # cells), the task is a global recolor — the family the move / constant-
+        # output / recolor-extreme matchers cannot express. Surfaced here as the
+        # `color_map` signal the `color_map` matcher keys on; the map is derived
+        # value-agnostically from the example COMM/DIFF, never a stored literal
+        # (P3/P4), so one rule covers the whole family.
+        patterns["color_map"] = self._color_map(task)
+
         wm.s1["patterns"] = patterns
+
+    def _color_map(self, task):
+        """Surface the global color-substitution signal (R6) the `color_map`
+        matcher reads. Delegates the actual derivation to the module-level
+        `_derive_color_map` so recognition and rendering share one definition.
+
+        `consistent` requires both a consistent example-derived map *and* that the
+        map determines every color in the test inputs (`_color_map_determines`) —
+        so a task merely train-consistent with a global map but whose test
+        introduces a fresh color (its real rule is something else) is not
+        recognised, and no dead/wrong color_map rule is built or saved for it.
+
+        Returns::
+
+            {
+              "consistent":     bool,        # consistent map AND test-determined
+              "color_map":      {int: int},  # the derived input->output map (None if not)
+              "evidence_count": int,
+            }
+        """
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        mapping = _derive_color_map(pairs)
+        test_inputs = [tp.input_grid for tp in getattr(task, "test_pairs", [])]
+        determined = _color_map_determines(mapping, test_inputs)
+        return {
+            "consistent": mapping is not None and determined,
+            "color_map": mapping,
+            "evidence_count": len(pairs),
+        }
 
     def _object_ranking(self, task):
         """Aggregate the per-pair *size-ranked recolor* signal across example
@@ -692,6 +802,20 @@ class GeneralizeOperator(Operator):
         elif match_condition("recolor_extreme_object", patterns):
             rule = self._build_recolor_extreme_rule(patterns)
 
+        # R6: recognise a *global color substitution* — same-shape grids where
+        # every input color `c` becomes one fixed output color `map[c]`, the same
+        # way in every pair. Disjoint from every branch above: a constant output
+        # makes the map position-dependent (inconsistent), a moved object forces
+        # the background to map to two colors, and a size-ranked recolor leaves
+        # same-colored siblings unchanged (one input color -> two outputs) — so
+        # each of those breaks global-map consistency and this branch only fires on
+        # a genuine global recolor. Order is therefore immaterial; placed last so
+        # the established families keep their paths. One value-agnostic `color_map`
+        # rule covers the whole family — the map is re-derived from each task's own
+        # examples at apply time, never stored (§2.5-3).
+        elif match_condition("color_map", patterns):
+            rule = self._build_color_map_rule(patterns)
+
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -861,6 +985,35 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- R6: color-map rule construction --------------------------------
+
+    def _build_color_map_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the global
+        color-substitution family. The action is the *recipe* `color_map` —
+        "recolor every cell by the global input->output map the examples agree on"
+        — replayed at apply time as `coloring` over each source-color group. Args
+        are empty: the map itself is re-derived from each task's example pairs at
+        apply time (the COMM of corresponding cells, P3/P4), never stored here —
+        so one rule covers the whole family (§2.5-3) and generalises to unseen
+        recolor tasks rather than minting one detector per task."""
+        sig = patterns.get("color_map") or {}
+        if not sig.get("consistent") or not sig.get("color_map"):
+            return None
+        return {
+            "type": "color_map",                  # WM dispatch tag for PredictOperator
+            "concept": "recolor_by_global_map",
+            "category": "color_map",
+            "condition": {
+                "type": "color_map",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "color_map",
+                "args": {},                       # map re-derived per task at apply time
+            },
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -934,6 +1087,8 @@ class PredictOperator(Operator):
             return self._render_place_object(rule, self._task, input_grid)
         if rule_type == "recolor_extreme":
             return self._render_recolor_extreme(rule, self._task, input_grid)
+        if rule_type == "color_map":
+            return self._render_color_map(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1224,6 +1379,60 @@ class PredictOperator(Operator):
                         color=background)
         for (nr, nc) in placed:
             out = apply_DSL("coloring", out, selection=(nr, nc), color=color)
+        return out
+
+    def _render_color_map(self, rule, task, input_grid):
+        """Render the R6 `color_map` action: recolor the test grid by the global
+        input->output color map the examples agree on, via the frozen `coloring`
+        primitive.
+
+        The map is re-derived value-agnostically from the example pairs
+        (`_derive_color_map`, the *same* definition the `color_map` producer/matcher
+        use, P5 module uniformity) — never read from the test pair's absent output
+        (P5) and never stored in the rule. The transformation is exactly
+        `coloring` applied per source-color group: a same-shape in-place recolor,
+        so the test input *is* the canvas and only cells whose mapped color differs
+        are painted — no `make_grid` is needed. Colors that appear only in the test
+        input (unseen in the examples) pass through unchanged, the natural default
+        of a substitution map.
+
+        Declines (returns None) — never raises — when the examples do not define a
+        consistent global map (different shapes, an inconsistent color, or no
+        change). This matters because a *stored* color_map rule (empty args ⇒
+        runtime-replayable) is tried against every task on the fast path: it must
+        cleanly decline on a non-recolor task, not crash (the speculative-apply
+        discipline, INVARIANTS / iter 16)."""
+        if task is None or input_grid is None:
+            return None
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        mapping = _derive_color_map(pairs)
+        if mapping is None:
+            return None
+        # Decline if this grid holds a color the examples never showed an image
+        # for — applying the map would be a guess (criterion 4). Keeps a stored
+        # color_map rule from emitting a confident wrong grid on a task it only
+        # train-matches.
+        if not _color_map_determines(mapping, [input_grid]):
+            return None
+
+        raw = input_grid.raw
+        height = len(raw)
+        width = len(raw[0]) if raw else 0
+        if height == 0 or width == 0:
+            return None
+
+        # coloring composition: input is the canvas (same-shape recolor); paint
+        # only the cells whose color the map actually changes.
+        out = [row[:] for row in raw]
+        for r in range(height):
+            for c in range(width):
+                mapped = mapping.get(out[r][c], out[r][c])
+                if mapped != out[r][c]:
+                    out = apply_DSL("coloring", out, selection=(r, c), color=mapped)
         return out
 
 
