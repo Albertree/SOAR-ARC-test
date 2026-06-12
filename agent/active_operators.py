@@ -199,6 +199,79 @@ def _derive_scale_factor(pairs):
     return factor
 
 
+def _self_tile_empties(raw_in, raw_out):
+    """The set of *witnessed* empty colours `e` for which `raw_out` is a fractal
+    self-tile of `raw_in`, or None when the shapes are not `H*H x W*W` (R6
+    self-tile family).
+
+    `raw_out` is a self-tile of `raw_in` under empty colour `e` when, laid out as
+    `H x W` macro-blocks of size `H x W`, every macro-block `(r, c)` is either an
+    all-`e` block (when `raw_in[r][c] == e`) or an exact copy of the whole input
+    (when `raw_in[r][c] != e`). Only colours *present in the input* are returned
+    (a colour absent from the input would make every block a copy — that is a
+    pure tiling, a different family, not a *masked* self-tile), so this is the
+    set of colours that genuinely act as the mask's "off" value for this pair."""
+    ih = len(raw_in)
+    iw = len(raw_in[0]) if ih else 0
+    oh = len(raw_out)
+    ow = len(raw_out[0]) if oh else 0
+    if ih == 0 or iw == 0:
+        return None
+    if oh != ih * ih or ow != iw * iw:
+        return None
+    in_colors = {cell for row in raw_in for cell in row}
+    copy_block = [raw_in[a][b] for a in range(ih) for b in range(iw)]
+    empties = set()
+    for e in in_colors:
+        ok = True
+        for r in range(ih):
+            for c in range(iw):
+                block = [raw_out[r * ih + dr][c * iw + dc]
+                         for dr in range(ih) for dc in range(iw)]
+                expect = [e] * (ih * iw) if raw_in[r][c] == e else copy_block
+                if block != expect:
+                    ok = False
+                    break
+            if not ok:
+                break
+        if ok:
+            empties.add(e)
+    return empties
+
+
+def _derive_self_tile(pairs):
+    """Derive the single empty colour `e` the example pairs agree on for a fractal
+    self-tile, or None when they do not define one (R6 self-tile family).
+
+    `pairs` is a list of `(g0, g1)` ARCKG grids. For each pair, `_self_tile_empties`
+    gives the colours under which the output is a masked self-tile of the input;
+    the answer is the *intersection* across every pair (the COMM — one rule can
+    carry only one empty colour). Returns that colour iff the intersection is a
+    single colour (an ambiguous pair, with two viable empties, declines rather
+    than guesses — search sanity, BACKLOG_LOOP.md §5 criterion 4), and None when
+    any pair is not a self-tile, the pairs disagree, or the answer is ambiguous.
+
+    Value-agnostic and symbolic (P7): nothing is stored per task — the renderer
+    re-derives this colour from each task's own examples, so one rule covers the
+    whole family. This single definition is shared by the `self_tile` producer
+    (signal) and renderer (apply), so the same notion of "is this a masked
+    self-tile" gates recognition and execution (module uniformity,
+    BACKLOG_LOOP.md §5 criterion 2)."""
+    if not pairs:
+        return None
+    inter = None
+    for g0, g1 in pairs:
+        if g0 is None or g1 is None:
+            return None
+        empties = _self_tile_empties(g0.raw, g1.raw)
+        if not empties:
+            return None
+        inter = empties if inter is None else (inter & empties)
+        if not inter:
+            return None
+    return next(iter(inter)) if len(inter) == 1 else None
+
+
 def _object_keyed_parts(raw):
     """Select the (body, marker) objects of a two-object grid and read the
     marker's color and the grid background — the argument material an
@@ -514,6 +587,18 @@ class ExtractPatternOperator(Operator):
         # literal (P3/P4), so one rule covers the whole family.
         patterns["integer_scale"] = self._integer_scale(task)
 
+        # Fractal self-tile signal (R6, BACKLOG_LOOP.md "training escalation").
+        # When every example output is the input expanded into H×W macro-blocks of
+        # size H×W — each block a copy of the whole input where input[r][c] is
+        # live, or the empty colour where it is off — the task is a self-tile, a
+        # class none of the recolor / move / constant-output / integer-scale
+        # families express (they keep the shape, move one object, or paint solid
+        # blocks). Surfaced here as the `self_tile` signal the matcher of the same
+        # name keys on; the empty colour is derived value-agnostically from the
+        # example COMM/DIFF (the colour every pair masks on), never a stored
+        # literal (P3/P4), so one rule covers the whole family.
+        patterns["self_tile"] = self._self_tile(task)
+
         wm.s1["patterns"] = patterns
 
     def _object_keyed_recolor(self, task):
@@ -563,6 +648,33 @@ class ExtractPatternOperator(Operator):
         return {
             "consistent": factor is not None,
             "factor": factor,
+            "evidence_count": len(pairs),
+        }
+
+    def _self_tile(self, task):
+        """Surface the fractal self-tile signal (R6) the `self_tile` matcher
+        reads. Delegates the actual derivation to the module-level
+        `_derive_self_tile` so recognition and rendering share one definition
+        (module uniformity).
+
+        Returns::
+
+            {
+              "consistent":     bool,      # one empty colour `e` makes every pair
+                                           #   an H*H × W*W masked self-tile
+              "empty":          int|None,  # the derived empty colour (None if not)
+              "evidence_count": int,
+            }
+        """
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        empty = _derive_self_tile(pairs)
+        return {
+            "consistent": empty is not None,
+            "empty": empty,
             "evidence_count": len(pairs),
         }
 
@@ -1061,6 +1173,21 @@ class GeneralizeOperator(Operator):
         elif match_condition("integer_scale", patterns):
             rule = self._build_integer_scale_rule(patterns)
 
+        # R6: recognise a *fractal self-tile* — every example output is the input
+        # expanded into H×W macro-blocks of size H×W, each block a copy of the
+        # whole input where input[r][c] is live, or the empty colour where it is
+        # off. Disjoint from every branch above: it is the only one whose output
+        # is the input *self-referenced* (block content = a copy of the input,
+        # output dims = the input's own size squared), so integer_scale (solid
+        # blocks) and the same-shape families decline on it; order is immaterial,
+        # placed last so the established families keep their paths. One
+        # value-agnostic `self_tile` rule covers the whole family — the empty
+        # colour is re-derived from each task's own examples at apply time, never
+        # stored (§2.5-3). This is the first family whose canvas dimensions are an
+        # argument expression over the *input itself* (H*H × W*W, §2.5-1).
+        elif match_condition("self_tile", patterns):
+            rule = self._build_self_tile_rule(patterns)
+
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1322,6 +1449,36 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    def _build_self_tile_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the fractal
+        self-tile family. The action is the *recipe* `self_tile` — "expand the
+        grid into H×W macro-blocks of size H×W, copying the whole input into each
+        block whose input cell is live and filling the rest with the empty colour"
+        — replayed at apply time as a `make_grid` canvas (its height/width an
+        argument expression `in_h*in_h × in_w*in_w` over the test grid, §2.5-1)
+        painted by `coloring` per live block. Args are empty: the empty colour is
+        re-derived from each task's example pairs at apply time (the COMM colour
+        every pair masks on, P3/P4), never stored here — so one rule covers the
+        whole family (§2.5-3) and generalises to unseen self-tile tasks rather
+        than minting one detector per task."""
+        sig = patterns.get("self_tile") or {}
+        if not sig.get("consistent") or sig.get("empty") is None:
+            return None
+        return {
+            "type": "self_tile",                  # WM dispatch tag for PredictOperator
+            "concept": "fractal_self_tile",
+            "category": "scale",
+            "condition": {
+                "type": "self_tile",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "self_tile",
+                "args": {},                       # empty colour re-derived per task at apply time
+            },
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -1401,6 +1558,8 @@ class PredictOperator(Operator):
             return self._render_object_keyed_recolor(rule, self._task, input_grid)
         if rule_type == "integer_scale":
             return self._render_integer_scale(rule, self._task, input_grid)
+        if rule_type == "self_tile":
+            return self._render_self_tile(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1852,6 +2011,65 @@ class PredictOperator(Operator):
                 block = [(r * kh + dr, c * kw + dc)
                          for dr in range(kh) for dc in range(kw)]
                 out = apply_DSL("coloring", out, selection=block, color=color)
+        return out
+
+    def _render_self_tile(self, rule, task, input_grid):
+        """Render the R6 `self_tile` action: expand the test grid into `H x W`
+        macro-blocks of size `H x W`, copying the whole input into every block
+        whose input cell is live and leaving the empty colour everywhere else, via
+        the two frozen primitives (`make_grid` ∘ `coloring`).
+
+        The empty colour is re-derived value-agnostically from the example pairs
+        (`_derive_self_tile`, the *same* definition the `self_tile`
+        producer/matcher use, P5 module uniformity) — never read from the test
+        pair's absent output (P5) and never stored in the rule. The output canvas
+        is `make_grid(in_h*in_h, in_w*in_w, empty)`: its dimensions are an
+        *argument expression* over the test input's own size (§2.5-1), not copied
+        from any task. Each live block `(r, c)` (whose input cell differs from the
+        empty colour) is then painted with a copy of the input by `coloring`, one
+        non-empty source cell at a time; the empty colour fills the rest, so the
+        strokes are minimised.
+
+        Declines (returns None) — never raises — when the examples do not define a
+        consistent self-tile empty colour. This matters because a *stored*
+        self_tile rule (empty args ⇒ runtime-replayable) is tried against every
+        task on the fast path: it must cleanly decline on a non-self-tile task,
+        not crash (the speculative-apply discipline, INVARIANTS / iter 16)."""
+        if task is None or input_grid is None:
+            return None
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        empty = _derive_self_tile(pairs)
+        if empty is None:
+            return None
+
+        raw = input_grid.raw
+        in_h = len(raw)
+        in_w = len(raw[0]) if in_h else 0
+        if in_h == 0 or in_w == 0:
+            return None
+        height, width = in_h * in_h, in_w * in_w
+
+        out = apply_DSL("make_grid", None, height=height, width=width,
+                        color=empty)
+        for r in range(in_h):
+            for c in range(in_w):
+                if raw[r][c] == empty:
+                    continue  # off block stays the empty colour the canvas filled
+                # Live block (r, c): copy the whole input into the macro-block,
+                # painting only its non-empty cells (the empty ones already match
+                # the canvas), so the block is a faithful copy of the input.
+                for a in range(in_h):
+                    for b in range(in_w):
+                        color = raw[a][b]
+                        if color == empty:
+                            continue
+                        out = apply_DSL("coloring", out,
+                                        selection=[(r * in_h + a, c * in_w + b)],
+                                        color=color)
         return out
 
 
