@@ -5,15 +5,15 @@ with a copy of the input placed at each of its own foreground cells, drawn by th
 frozen `coloring` primitive on a `make_grid` canvas — a *where-to-place*
 selection expression, not a new `tile`/`fractal` primitive).
 
-Fires when, in *every* example, placing a copy of the input at each non-background
-cell of the input reproduces the output exactly (verified by
+Fires when, in *every* example, placing a copy of the input at each cell matching
+a *learned* placement predicate reproduces the output exactly (verified by
 agent/dsl_expr/selection.analyze_self_fractal against the COMM between predicted
 and actual outputs — P3/P4, grounded in comparison, never assumed), with ≥2 pairs
 and a genuine expansion (output strictly larger than input). The placement
-predicate ("the cell is foreground") is fixed and value-agnostic, recomputed off
-each test input's own background at predict time (P5), so one rule covers the
-whole fractal family rather than one literal rule per task (the §2.5-3/4 "covers,
-not accretion" shape).
+predicate is searched ("place at foreground", then "place at colour == C" for each
+specific foreground colour — the §2.5-2b lift), value-agnostic and recomputed off
+each test input at predict time (P5), so one rule covers the whole fractal family
+rather than one literal rule per task (the §2.5-3/4 "covers, not accretion" shape).
 
 Stays inert (valid_all False) whenever the fractal does not reproduce all pairs —
 in particular on every same-size task and every non-h²×w² output — so it never

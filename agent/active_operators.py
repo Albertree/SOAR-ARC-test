@@ -1007,10 +1007,11 @@ class GeneralizeOperator(Operator):
         Not a `_try_*`-family detector: recognition is delegated to the registered
         `self_fractal` matcher (agent/conditions/), and the result is a
         schema-canonical {condition, action} rule. The action carries *empty* args
-        — the placement predicate ("place a copy where the cell is foreground") is
-        fixed and the per-test background is recomputed at predict time off each
-        test input, so the rule is value-, colour- and size-agnostic and one rule
-        covers the whole fractal family (it merges by condition+action equivalence,
+        — the placement predicate ("place at foreground" or "place at colour == C")
+        is *learned* per task and re-derived at predict time, and the per-test
+        background is recomputed off each test input, so the rule is value-, colour-
+        and size-agnostic and one rule covers the whole fractal family (it merges by
+        condition+action equivalence,
         like the geometric/scale/symmetry/extract families, rather than accreting
         one literal rule per task — §2.5-3/4). The transformation bottoms out in
         the frozen `coloring` primitive on a `make_grid` canvas
@@ -1981,23 +1982,26 @@ class PredictOperator(Operator):
     def _self_fractal_grids(task):
         """Map test-pair index -> predicted grid for the self-fractal family.
 
-        The placement predicate is fixed ("place a copy of the input at each of its
-        own foreground cells"); the only per-test reading is the test input's own
-        background (P5). For each test pair the tiled (h·h)×(w·w) grid is built by
-        `self_fractal` and rendered via `make_grid` + `coloring`
-        (render_grid_via_primitives) — the COMM-verified mechanism, never a stored
-        literal. Returns {} when the analysis does not validate (so a stored rule
-        re-derived on a non-fractal task abstains rather than emitting a wrong
-        grid)."""
+        The placement predicate is *learned* from the example pairs (`analyze_self_fractal`
+        searches "place at foreground" then "place at colour == C"); the only other
+        per-test reading is the test input's own background (P5). The chosen predicate
+        is re-derived here off the task's own train pairs, so the stored rule stays
+        abstract (empty args) and one rule covers the whole fractal family. For each
+        test pair the tiled (h·h)×(w·w) grid is built by `self_fractal` and rendered
+        via `make_grid` + `coloring` (render_grid_via_primitives) — the COMM-verified
+        mechanism, never a stored literal. Returns {} when the analysis does not
+        validate (so a stored rule re-derived on a non-fractal task abstains rather
+        than emitting a wrong grid)."""
         sig = analyze_self_fractal(task.example_pairs)
         if not sig.get("valid_all"):
             return {}
+        predicate = sig.get("predicate", "fg")
         grids = {}
         for i, test_pair in enumerate(task.test_pairs):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            tiled = self_fractal(g0.raw)
+            tiled = self_fractal(g0.raw, predicate=predicate)
             if tiled is None:
                 continue
             grids[i] = render_grid_via_primitives(tiled)

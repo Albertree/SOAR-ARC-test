@@ -1,6 +1,76 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 44 — 2026-06-13T04:49 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (c9680e90/878187ab/e5790162 — the raw-cell
+geometric-synthesis frontier, multi-iter, not a smallest step); easy_a 9/9, madeup 28/28 hold.
+Rather than debut yet another born-general family (the iter 36–43 mode, which dips P3 each time
+and risks the §2.5-4 "family accretion = symptom"), I took iter 43's **explicitly named
+next-gap**: the self-fractal family (rule_013) placed copies only at the *fixed* `fg`
+(any-foreground) predicate. A whole-corpus census found **exactly 1** unhandled task —
+**cce03e0d** (3×3→9×9) — that is a genuine fractal but places the copy at one *specific*
+foreground colour (`2`-cells only, not every foreground cell), with **zero** false positives
+across all 1000 under a train-only predicate search (the strict h²×w² + exact-reproduction
+filter is highly selective). The gap is the §2.5-2b *lift the placement predicate into a learned
+selection* — covers up, **no new family, no P3 dip** (the clean progress shape, unlike a debut).
+
+**Change** (generalize an existing family's argument expression — no new family, no new rule, no
+transformation primitive, no new `_try_*`; F8 companion = the existing
+`agent/conditions/self_fractal.py` is touched alongside `active_operators.py`):
+- `agent/dsl_expr/selection.py`: `self_fractal(grid, background, predicate="fg")` now accepts a
+  placement predicate (`"fg"` = any foreground, or an int colour C = place at colour-C cells
+  only). `analyze_self_fractal` **searches** the vocabulary `["fg"] + <each foreground colour>`
+  in that order — `"fg"` first (most general, preserves 007bbfb7/5b6cbef5 exactly), then each
+  specific colour — and admits the first predicate that reproduces **every** example output with
+  a genuine expansion (P3/P4: grounded in COMM, never assumed). The chosen predicate is returned
+  in the fit dict, re-derived per task at predict, so the rule stays abstract (empty args) — the
+  §2.5-2b lift, analogous to `analyze_object_extract`'s `SELECTOR_VOCAB` search.
+- `agent/active_operators.py`: `_self_fractal_grids` now reads the learned `predicate` from the
+  re-derived analysis and passes it to `self_fractal`; docstrings (`_self_fractal_rule`,
+  `_self_fractal_grids`) corrected to say the predicate is *learned/searched*, not fixed.
+- `agent/conditions/self_fractal.py`: matcher docstring corrected (searched predicate).
+- `procedural_memory/rule_013.json`: **covers 3→4** — cce03e0d folded in by the pipeline merge
+  (one value-agnostic rule still, no new rule file: `Rules 11→11`).
+- `tests/test_self_fractal.py`: **+4 tests** (colour-predicate placement; analyzer learns
+  `predicate==2`; `"fg"` preferred when it reproduces — no coincidental specific colour; matcher
+  fires on the colour-predicate fit). Module docstring updated.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 28/28; rules=11; P1=6.636 P2=6.636 P3=0.364
+  P5=17. cce03e0d INCORRECT (fractal family fired only on the `fg` predicate).
+**Probe after** : cce03e0d **CORRECT** via the generalized predicate (rule_013 covers=4); the two
+  original fractals (007bbfb7, 5b6cbef5) still CORRECT (`"fg"` chosen first, unchanged). easy_a
+  **9/9**, madeup **28/28** (regression guards intact); pytest **249/249** (245+4). Training
+  120-sample (seed 42): **4/120** (was 3), **0 errors**, **Rules 11→11 (+0 spurious)**, 0
+  discovered — the generalized search is inert on every non-fractal task (zero false positives,
+  no crashes corpus-wide).
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P1 +0.091**
+  (6.636→6.727), **P2 +0.091** (6.636→6.727), **P3 flat 0.364 (no dip)**, **_solved_count
+  73→74**. This is the §2.5-4 *genuine-progress* shape — covers/mean rose with **no new rule and
+  no P3 regression** (contrast iters 38/42/43, where a born-general-family debut raised solved
+  count but dipped the means). P4 flat 932; P5 flat 17; P6 active_operators +4 lines (F8-clean —
+  accompanied by `agent/conditions/self_fractal.py` + `agent/dsl_expr/selection.py`). Reverted
+  the verification runs' `times_reused` churn on rule_001/002 (runtime accounting — iter18..43
+  precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the searched
+  predicate vocabulary lives in the F3-exempt `agent/dsl_expr/` argument layer (taxonomy §3
+  allows; §6.1's "no new DSL def" binds only `procedural_memory/DSL/`). No transformation
+  primitive added; F3 contract intact (a fractal still bottoms out in `coloring` at each cell of
+  the tiled grid on a `make_grid` canvas — `render_grid_via_primitives` of the placement).
+
+**Next gap (note for future iter)**: rule_013 now lifts the placement predicate
+  (foreground / specific-colour). The remaining covers-headroom on the fractal axis is small
+  (the census shows only these 3 tasks corpus-wide). The standing big-ticket directions are
+  unchanged: (a) the **R3 prize** — once ≥2 size-expanding families (scale, fractal) are
+  expressed as coordinate-remap argument trees, `anti_unification.unify()` lifting them into one
+  rule with `covers`>1 (the only move that raises P3); (b) the **reference-composing selector**
+  open question (iter 41 — relational object selection for 54db823b / 63613498, blocked on a
+  design decision); (c) the raw-cell ray/path/gravity synthesizer frontier (c9680e90, e5790162,
+  878187ab), still grounding-blocked.
+
+---
 ## Iter 43 — 2026-06-13T04:32 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 27/27 hold. Iters 40/41 were
@@ -5584,3 +5654,83 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 5
 - Time: 3s
 - Log: logs/learn_20260613_043227.log
+
+---
+## Learning Loop -- 2026-06-13 04:35
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_043500.log
+
+---
+## Learning Loop -- 2026-06-13 04:35
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 14
+- Time: 13s
+- Log: logs/learn_20260613_043504.log
+
+---
+## Learning Loop -- 2026-06-13 04:35
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_043517.log
+
+---
+## Learning Loop -- 2026-06-13 04:41
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260613_044109.log
+
+---
+## Learning Loop -- 2026-06-13 04:41
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_044127.log
+
+---
+## Learning Loop -- 2026-06-13 04:41
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 14
+- Time: 12s
+- Log: logs/learn_20260613_044130.log
+
+---
+## Learning Loop -- 2026-06-13 04:41
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260613_044143.log
+
+---
+## Learning Loop -- 2026-06-13 04:47
+
+- Split: training, Tasks: 120
+- Correct: 4 / 120 (3.3%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 303s
+- Log: logs/learn_20260613_044240.log

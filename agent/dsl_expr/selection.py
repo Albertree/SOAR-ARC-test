@@ -2309,19 +2309,26 @@ def analyze_object_extract(example_pairs: list) -> dict:
     }
 
 
-def self_fractal(grid: list, background: int | None = None):
+def self_fractal(grid: list, background: int | None = None, predicate="fg"):
     """Self-fractal placement: tile a copy of `grid` into an (h·h)×(w·w) canvas,
-    placing the copy at block (i, j) **iff** `grid[i][j]` is a non-background cell
-    (the classic ARC self-similar / fractal family — 007bbfb7, 5b6cbef5).
+    placing the copy at block (i, j) **iff** `grid[i][j]` satisfies `predicate`
+    (the classic ARC self-similar / fractal family — 007bbfb7, 5b6cbef5, cce03e0d).
 
-    The placement predicate ("the cell is foreground") is the *argument
-    expression* — value-, colour- and size-agnostic, read from comparison rather
-    than assumed (P3/P4). The transformation itself bottoms out in the two frozen
-    primitives: the returned grid is a plain nested list that
-    `render_grid_via_primitives` rebuilds as `coloring` calls on a `make_grid`
-    canvas, so this introduces no new `tile`/`fractal` transformation primitive
-    (§2.5-1, F3) — only a *where-to-place* selection expression in the F3-exempt
-    `agent/dsl_expr/` argument layer.
+    The placement predicate is the *argument expression* — value-, colour- and
+    size-agnostic, read from comparison rather than assumed (P3/P4):
+      * `predicate == "fg"` — place where the cell is foreground (≠ background),
+        the original family (any non-background mark is a placement site);
+      * `predicate == <int colour C>` — place where the cell is *exactly* colour
+        C (the placement colour is one specific foreground colour, selected from
+        among several — the §2.5-2b lift of the fixed predicate into a learned
+        placement selection, e.g. cce03e0d where copies go at the `2`-cells only).
+
+    The transformation itself bottoms out in the two frozen primitives: the
+    returned grid is a plain nested list that `render_grid_via_primitives`
+    rebuilds as `coloring` calls on a `make_grid` canvas, so this introduces no
+    new `tile`/`fractal` transformation primitive (§2.5-1, F3) — only a
+    *where-to-place* selection expression in the F3-exempt `agent/dsl_expr/`
+    argument layer.
 
     Returns None for an empty grid."""
     if not grid or not grid[0]:
@@ -2332,7 +2339,9 @@ def self_fractal(grid: list, background: int | None = None):
     out = [[bg] * (w * w) for _ in range(h * h)]
     for i in range(h):
         for j in range(w):
-            if grid[i][j] != bg:
+            cell = grid[i][j]
+            hit = (cell != bg) if predicate == "fg" else (cell == predicate)
+            if hit:
                 for r in range(h):
                     for c in range(w):
                         out[i * h + r][j * w + c] = grid[r][c]
@@ -2342,23 +2351,33 @@ def self_fractal(grid: list, background: int | None = None):
 def analyze_self_fractal(example_pairs: list) -> dict:
     """Self-fractal placement — output = the input tiled into its own foreground.
 
-    Fires when, in *every* example, `self_fractal(input)` (a copy of the input
-    placed at each of its own non-background cells) equals the output exactly,
-    with ≥2 pairs and a genuine expansion (output strictly larger than input, so
-    it is inert on every same-size task and on a 1×1 grid). The predicate is
-    fixed — "place where the cell is foreground" — and recomputed off each test
-    input's own background at predict time, so one value-agnostic rule covers the
-    whole family rather than one literal rule per task (§2.5-3/4). The
+    Fires when, in *every* example, `self_fractal(input, predicate)` (a copy of
+    the input placed at each cell satisfying `predicate`) equals the output
+    exactly, with ≥2 pairs and a genuine expansion (output strictly larger than
+    input, so it is inert on every same-size task and on a 1×1 grid).
+
+    The predicate is **searched, not fixed** — the §2.5-2b lift of the placement
+    site into a learned selection (analogous to `analyze_object_extract`'s
+    `SELECTOR_VOCAB` search). The vocabulary is `["fg"] + <each foreground
+    colour>`, tried in that order: "place where foreground" first (the original,
+    most general predicate — 007bbfb7 / 5b6cbef5), then "place where colour == C"
+    for each specific foreground colour (cce03e0d, where the copies go at the
+    `2`-cells only, not every foreground cell). The *first* predicate whose
+    placement reproduces every example output is chosen, and that choice is
+    recomputed off each test input at predict time, so one value-agnostic rule
+    still covers the whole family rather than one literal rule per task (§2.5-3/4)
+    — the chosen colour is a learned argument, not a hand-coded constant. The
     transformation bottoms out in the frozen `coloring` primitive on a `make_grid`
     canvas (render_grid_via_primitives of the tiled grid), not a new primitive
     (§2.5-1, F3).
 
-    Grounded in comparison, never assumed (P3/P4): a fit is admitted only if the
-    placed-copy grid equals the output for every pair (the COMM between predicted
-    and actual outputs). Stays inert (valid_all False) whenever the fractal does
-    not reproduce all pairs, so it never perturbs the scale / move / recolor /
-    extract families. Returns a symbolic dict consumed by the `self_fractal`
-    matcher (agent/conditions/) and PredictOperator."""
+    Grounded in comparison, never assumed (P3/P4): a predicate is admitted only if
+    the placed-copy grid equals the output for every pair (the COMM between
+    predicted and actual outputs). Stays inert (valid_all False) whenever no
+    predicate reproduces all pairs, so it never perturbs the scale / move /
+    recolor / extract families. Returns a symbolic dict (`predicate` carries the
+    selected placement expression) consumed by the `self_fractal` matcher
+    (agent/conditions/) and PredictOperator."""
     pairs = []
     for pair in example_pairs:
         g0 = getattr(pair, "input_grid", None)
@@ -2370,20 +2389,30 @@ def analyze_self_fractal(example_pairs: list) -> dict:
         if a and b and a[0] and b[0]:
             pairs.append((a, b))
 
-    valid = False
+    chosen = None
     if len(pairs) >= 2:
-        valid = True
-        grew = False
-        for a, b in pairs:
-            out = self_fractal(a)
-            if out != b:
-                valid = False
+        # candidate predicates: "fg" (any foreground) first, then each specific
+        # foreground colour present across the inputs — the learned placement
+        # selection (P3/P4: admitted only by reproducing every output).
+        fg_colors = sorted(
+            {v for a, _ in pairs for row in a for v in row if v != background_of(a)}
+        )
+        for pred in ["fg"] + fg_colors:
+            ok = True
+            grew = False
+            for a, b in pairs:
+                out = self_fractal(a, predicate=pred)
+                if out != b:
+                    ok = False
+                    break
+                if len(b) > len(a) or len(b[0]) > len(a[0]):
+                    grew = True
+            if ok and grew:
+                chosen = pred
                 break
-            if len(b) > len(a) or len(b[0]) > len(a[0]):
-                grew = True
-        valid = valid and grew
 
     return {
-        "valid_all": valid,
+        "valid_all": chosen is not None,
         "evidence": len(pairs),
+        "predicate": chosen if chosen is not None else "fg",
     }

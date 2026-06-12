@@ -10,9 +10,11 @@ geometric/scale/symmetry/extract families: it adds an analyzer
 (`agent/conditions/self_fractal`), and renders the tiled grid with the shared
 `self_fractal` builder so recognition and rendering agree by construction.
 
-The placement predicate ("place a copy where the cell is foreground") is fixed and
-value-agnostic, the per-test background recomputed at predict time (P5). Grounds
-two real ARC-AGI-2 tasks (007bbfb7, 5b6cbef5) plus the madeup self-fractal task.
+The placement predicate is *searched* ("place at foreground", then "place at
+colour == C" for each specific foreground colour — the §2.5-2b lift) and
+value-agnostic, the per-test reading recomputed at predict time (P5). Grounds three
+real ARC-AGI-2 tasks (007bbfb7, 5b6cbef5 via foreground; cce03e0d via colour==2)
+plus the madeup self-fractal task.
 """
 
 from types import SimpleNamespace
@@ -99,3 +101,38 @@ def test_inert_on_one_by_one():
     # A 1x1 grid fractals to 1x1 (no expansion) — guarded out.
     sig = analyze_self_fractal([_pair([[3]], [[3]]), _pair([[4]], [[4]])])
     assert sig["valid_all"] is False
+
+
+# --- learned colour predicate (the §2.5-2b lift: place at colour == C only) ----
+
+# Two foreground colours {1, 2} present; copies are placed at the 2-cells ONLY,
+# the 1-cells are inert background-of-the-block (cce03e0d's shape).
+C_IN = [[1, 0, 2], [2, 1, 0], [0, 2, 1]]
+C_OUT = self_fractal(C_IN, predicate=2)
+
+
+def test_self_fractal_colour_predicate_places_only_at_that_colour():
+    # 'fg' would place at both 1- and 2-cells; predicate=2 places at 2-cells only.
+    assert self_fractal(C_IN, predicate=2) != self_fractal(C_IN, predicate="fg")
+    # block (0,2) holds colour 2 in C_IN → a copy; block (0,0) holds colour 1 → none.
+    assert C_OUT[0][6:9] == C_IN[0]            # top-right block = a copy
+    assert C_OUT[0][0:3] == [0, 0, 0]          # top-left block (1-cell) = empty
+
+
+def test_analyze_learns_colour_predicate():
+    sig = analyze_self_fractal([_pair(C_IN, C_OUT), _pair(C_IN, C_OUT)])
+    assert sig["valid_all"] is True
+    assert sig["predicate"] == 2
+
+
+def test_foreground_predicate_preferred_when_it_reproduces():
+    # When plain foreground reproduces, "fg" is chosen first (most general), never a
+    # coincidental specific colour — preserves 007bbfb7 / 5b6cbef5 behaviour.
+    sig = analyze_self_fractal([_pair(A_IN, A_OUT), _pair(B_IN, B_OUT)])
+    assert sig["predicate"] == "fg"
+
+
+def test_colour_predicate_matcher_fires():
+    sig = analyze_self_fractal([_pair(C_IN, C_OUT), _pair(C_IN, C_OUT)])
+    assert match_condition("self_fractal", {"self_fractal": sig},
+                           {"min_evidence": 2}) is True
