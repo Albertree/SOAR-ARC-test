@@ -1,6 +1,91 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 28 — 2026-06-12T23:48 — branch test32 — **no defensible step found (analysis only)**
+
+**Diagnosis**: Training phase, probe 0/3 (`c9680e90` / `878187ab` / `e5790162`);
+easy_a 9/9, madeup 14/14 hold. I searched for the smallest defensible gap and found
+**none that moves a P-signal or closes a nameable gap** without tripping a forbidden
+signal or accreting ungrounded substrate. Per PROMPT §5.3 the correct output is an
+analysis-only no-op (not a manufactured commit, not `_LOOP_COMPLETE` — a named
+frontier remains). Detail below so the next iter re-diagnoses from evidence, not
+from a stale "register the next lift family" reflex.
+
+**What I checked (the candidate steps, and why each is not defensible *this* iter):**
+
+1. **The three probe tasks are beyond the frozen transformation vocabulary.** I read
+   the grids directly: `e5790162` is *line-drawing / path-extension* (a coloured
+   seed grows an orthogonal path toward another marker and turns) — 5 train pairs,
+   each a single `coloring` of raw cells that reproduces but shares **no object-level
+   skeleton** with the next. `c9680e90` / `878187ab` are dense 3-`coloring`-line
+   reproductions (multi-colour fills). Solving any of them needs a *new
+   transformation concept* (draw-line, path, region-fill-by-relation). That concept
+   may not be hand-coded (F3) — it must **emerge** from `make_grid`/`coloring` via
+   AU. But AU cannot lift two raw-cell line programs (they share no common skeleton —
+   the 168-rule wall, BACKLOG §2.5-2). So these tasks sit behind the *general*
+   `object_level_lift` problem, which is the open frontier, not a one-commit gap.
+
+2. **Object-level recolor — the named synthesizer substrate — is NOT a live gap.** I
+   authored a multi-object "repaint an object" task (`.tmp_probe/`) expecting a
+   failure to ground the `synthesize_object_recolor_program` producer. It came back
+   `CORRECT` — and inspection of the diff showed *why*: my task recoloured 2→4
+   **globally**, so it is a `color_remap` instance, and `save_rule` correctly
+   **absorbed it into the existing abstract `rule_007`** (covers +1, `color_maps`
+   += `"2>4"`) rather than minting a new rule. (I reverted that probe pollution.)
+   Lesson: a task I can author whose recolour is *object-selection-specific* (the
+   selector being the crux, not a global map) is the only thing that would ground the
+   object-level producer — and I could not author one that the existing `color_remap`
+   absorption does **not** already swallow, because once the changed cells map to a
+   consistent colour rule it reads as a global map. So the producer stays
+   grounding-blocked. Separately I verified the producer + lift substrate work as the
+   docstring claims: two `{select:'unique'}` recolor programs
+   anti-unify to `{color:'?v0', selection:{select:'unique'}}` (color variabilised,
+   selector preserved); raw-cell programs collapse the coordinate (the wall). So the
+   substrate is *proven* but **grounding-blocked**: every writable-set task it could
+   ground is already solved (absorbed by `color_remap`, or a closed-family detector),
+   so wiring producer→AU→`save_rule`→predict moves no observable signal and only risks
+   the mastered guards.
+   This is `synthesizer_frontier` / `test32_synthesizer_substrate` memory restated
+   with fresh evidence: the wiring is real remaining work but it is the *large,
+   render+binding, guard-risky* slice — not a smallest defensible single commit.
+
+3. **No liftable pair is available to raise P1/P2/P3 together** (the only "real
+   progress" shape, §2.5-4). The 5 rules are already at their lift ceiling:
+   `object_move` covers=11, `object_size_grid` covers=10 (maximally folded),
+   `color_remap` covers=4 (iter27 folded all 4 ARC-AGI-2 recolor-map tasks),
+   `copy_common_output` covers=2 (value-agnostic R0, correctly au-trace=null),
+   `canvas_fill` covers=1 (only one such task exists in ARC-AGI-2 — iter27 scan).
+   Registering `recolor_rank`/`canvas_fill` as lift families (iter27's Next-gap) was
+   re-confirmed to move **no** signal: `recolor_rank` has 0 grounding rules and no 2nd
+   real task exists for either — adding the family is ungrounded code = spinning.
+   P3=0.6 (3/5 au-traced) is arithmetically pinned: the 2 non-traced rules are a
+   single-task literal (`canvas_fill`, covers=1) and a value-agnostic R0 rule
+   (`copy_common_output`) — both *correctly* null per CLAUDE.md §3.2 req-3.
+
+**Change**: none (no code, no rule, no DSL, no matcher). Analysis-only iter.
+
+**Probe before/after**: unchanged — training 0/3; easy_a 9/9, madeup 14/14;
+  rules=5; P1=5.6 P2=5.6 P3=0.6 P4=932 P5=11 P6=1493. No commit of substance.
+
+**Invariants**: forbidden=**none** (no files of substance touched). positives=**none
+  moved** (deliberately — no ungrounded substrate added). Reverted the guard runs'
+  `times_reused` churn on rule_001/002 (runtime accounting — iter18/21/23/24/25/26/27
+  precedent). Removed scratch `.tmp_probe/`.
+
+**Next gap (note for future iter)**: the one real remaining frontier is the
+  **general `object_level_lift`** that lets AU lift *raw-cell* pair programs (line/
+  path/region tasks like `e5790162`) into an object/relational skeleton — the wall
+  behind every failing training task. The recolor case was special-cased; the general
+  case is genuinely hard and is the prize, not a smallest step. The synthesizer's
+  *live wiring* (producer→AU→save_rule→value-agnostic render) is the next-largest real
+  slice but stays grounding-blocked until a writable-set task needs it that the closed
+  detector family does *not* already solve. When a future iter takes the wiring on, do
+  the **render half first** behind a `{select:…}`/`?v0`-only guard so it cannot perturb
+  the easy_a/madeup guards (no existing rule carries that shape). Do **not** register
+  another rare lift family with no 2nd grounding task — that is the spinning this loop
+  most wants gone.
+
+---
 ## Iter 27 — 2026-06-12T23:39 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. A 60-task
@@ -3064,3 +3149,53 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 10
 - Time: 6s
 - Log: logs/learn_20260612_233935.log
+
+---
+## Learning Loop -- 2026-06-12 23:42
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_234156.log
+
+---
+## Learning Loop -- 2026-06-12 23:42
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_234200.log
+
+---
+## Learning Loop -- 2026-06-12 23:42
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_234207.log
+
+---
+## Learning Loop -- 2026-06-12 23:47
+
+- Split: None, Tasks: 2
+- Correct: 1 / 2 (50.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260612_234723.log
+
+---
+## Learning Loop -- 2026-06-12 23:47
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260612_234739.log
