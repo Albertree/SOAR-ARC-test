@@ -28,7 +28,16 @@ import json
 import os
 from datetime import datetime
 
+from program import anti_unification
+
 PROCEDURAL_MEMORY_ROOT = "procedural_memory"
+
+#: The DSL name of the abstract object-move rule produced by anti-unification.
+#: Concrete object-move rules (place_object_constant / place_object_relative)
+#: are absorbed by an abstract place_object rule whose `readings` include their
+#: reading — keeping the lift stable across runs (no churn).
+_ABSTRACT_PLACE_OBJECT_DSL = "place_object"
+_LIFTABLE_CATEGORIES = {"object_move"}
 
 
 class RuleSchemaError(Exception):
@@ -152,6 +161,8 @@ def _save_canonical_rule(rule: dict, task_hex: str,
         if f.startswith("rule_") and f.endswith(".json")
     )
 
+    incoming_reading = _object_move_reading(rule)
+
     for fname in existing:
         path = os.path.join(procedural_memory_root, fname)
         try:
@@ -159,6 +170,19 @@ def _save_canonical_rule(rule: dict, task_hex: str,
                 stored = json.load(fh)
         except (json.JSONDecodeError, IOError):
             continue
+        # An abstract place_object rule (R3 lift) absorbs a concrete object-move
+        # rule whose reading it already ranges over — so re-discovering the
+        # concrete rule on a later run merges its task into the abstraction
+        # rather than re-spawning the source (no churn, the lift stays stable).
+        if incoming_reading is not None and _absorbs_object_move(stored, incoming_reading):
+            covers = stored.get("covers", [])
+            if task_hex not in covers:
+                covers.append(task_hex)
+                stored["covers"] = covers
+                validate_rule(stored)
+                with open(path, "w") as fh:
+                    json.dump(stored, fh, indent=2)
+            return path
         if _canonical_equivalent(stored, rule):
             covers = stored.get("covers", [])
             if task_hex not in covers:
@@ -167,6 +191,7 @@ def _save_canonical_rule(rule: dict, task_hex: str,
                 validate_rule(stored)
                 with open(path, "w") as fh:
                     json.dump(stored, fh, indent=2)
+            _consolidate_object_move(procedural_memory_root)
             return path
 
     next_id = _next_rule_id(existing)
@@ -197,6 +222,9 @@ def _save_canonical_rule(rule: dict, task_hex: str,
     path = os.path.join(procedural_memory_root, filename)
     with open(path, "w") as fh:
         json.dump(entry, fh, indent=2)
+    # A freshly-created object-move rule may complete a liftable pair with an
+    # existing sibling — attempt the R3 lift now (CLAUDE.md §8 single call site).
+    _consolidate_object_move(procedural_memory_root)
     return path
 
 
@@ -212,6 +240,118 @@ def _canonical_equivalent(stored: dict, rule: dict) -> bool:
         and sa.get("dsl") == ra.get("dsl")
         and _norm_dict(sa.get("args", {})) == _norm_dict(ra.get("args", {}))
     )
+
+
+# ======================================================================
+# Anti-unification (R3) — the single permitted call site (CLAUDE.md §8)
+# ======================================================================
+
+def _object_move_reading(rule: dict):
+    """The COMM reading a concrete object-move rule fixes its target by, or None
+    if the rule is not a concrete (un-lifted) object-move rule."""
+    if not _is_canonical(rule):
+        return None
+    dsl = rule.get("action", {}).get("dsl")
+    return anti_unification._OBJECT_MOVE_READING.get(dsl)
+
+
+def _absorbs_object_move(stored: dict, reading: str) -> bool:
+    """True if `stored` is an abstract place_object rule whose lifted target
+    variable already ranges over `reading` — so a concrete rule with that
+    reading is subsumed and merely adds to the abstraction's covers."""
+    if not _is_canonical(stored):
+        return False
+    act = stored.get("action", {})
+    if act.get("dsl") != _ABSTRACT_PLACE_OBJECT_DSL:
+        return False
+    return reading in (act.get("args", {}).get("readings") or [])
+
+
+def save_rule(new_rule: dict, source_task: str, related_rules: list):
+    """The ONLY function permitted to invoke anti_unification.unify (CLAUDE.md §8).
+
+    Given a newly-saved canonical rule and the related rules sharing its category,
+    attempt to lift them into one abstract rule. Returns the AntiUnifyResult when
+    a more-general abstraction was found, else None — the caller leaves the input
+    rules unchanged on None (the NoCommonSkeleton failure mode)."""
+    if not related_rules:
+        return None
+    result = anti_unification.unify(list(related_rules) + [new_rule])
+    if result is not None and result.is_more_general():
+        return result
+    return None
+
+
+def _consolidate_object_move(procedural_memory_root: str) -> None:
+    """Lift the concrete object-move family into one abstract place_object rule.
+
+    Gathers the concrete (un-lifted) object-move rules on disk; if ≥2 with
+    *distinct* readings exist, routes them through save_rule() → unify(). On a
+    successful lift, writes the abstract rule into the lowest-id source file
+    (covers = union), records the anti_unification_trace, and removes the now
+    subsumed siblings. Idempotent: once lifted, only the abstract rule remains in
+    the family, so a re-run finds <2 concrete rules and no-ops (the §2.5-4
+    direction — rule count falls while covers rises)."""
+    rules = []
+    for fname in sorted(os.listdir(procedural_memory_root)):
+        if not (fname.startswith("rule_") and fname.endswith(".json")):
+            continue
+        path = os.path.join(procedural_memory_root, fname)
+        try:
+            with open(path, "r") as fh:
+                r = json.load(fh)
+        except (json.JSONDecodeError, IOError):
+            continue
+        r["_path"] = path
+        rules.append(r)
+
+    concrete = [
+        r for r in rules
+        if r.get("category") in _LIFTABLE_CATEGORIES
+        and _object_move_reading(r) is not None
+    ]
+    if len({_object_move_reading(r) for r in concrete}) < 2:
+        return  # nothing to lift (or already lifted)
+
+    # Deterministic source order: by id, so the lowest-id file hosts the result.
+    concrete.sort(key=lambda r: r.get("id", 0))
+    result = save_rule(concrete[-1], concrete[-1].get("source_task", ""), concrete[:-1])
+    if result is None:
+        return
+
+    host = concrete[0]
+    covers = []
+    for r in concrete:
+        for t in r.get("covers", []):
+            if t not in covers:
+                covers.append(t)
+
+    source_task = host.get("source_task") or (covers[0] if covers else "")
+    trace_path = result.write_trace(source_task)
+
+    abstract = dict(result.abstract_rule)
+    entry = {
+        "id": host.get("id", _next_rule_id(
+            [os.path.basename(r["_path"]) for r in rules])),
+        "concept": abstract.get("concept", "place_object"),
+        "category": abstract.get("category", "object_move"),
+        "condition": abstract["condition"],
+        "action": abstract["action"],
+        "covers": covers,
+        "source_task": source_task,
+        "anti_unification_trace": trace_path,
+        "created_at": host.get("created_at", datetime.now().isoformat()),
+        "times_reused": 0,
+    }
+    validate_rule(entry)
+
+    with open(host["_path"], "w") as fh:
+        json.dump(entry, fh, indent=2)
+    for r in concrete[1:]:
+        try:
+            os.remove(r["_path"])
+        except OSError:
+            pass
 
 
 def _next_rule_id(existing) -> int:

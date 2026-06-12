@@ -328,3 +328,112 @@ and rule_003 (`place_object_relative`) now share the `place_object_*` skeleton �
 R3 anti-unification should lift them into one parameterized `place_object`
 (target-expression as the generalization variable), raising covers on a single
 rule instead of adding families.
+
+---
+## Learning Loop -- 2026-06-12 18:57
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_185735.log
+
+---
+## Learning Loop -- 2026-06-12 19:12
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 3 -> 2 (+-1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_191221.log
+
+---
+## Learning Loop -- 2026-06-12 19:12
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_191242.log
+
+---
+## Iter 5 — 2026-06-12T19:13 — branch test32
+
+**Diagnosis**: The §2.5-4 litmus was flashing and R3 (anti-unification wiring —
+BACKLOG's "★ 최우선 큰-틀 보상") was wholly unbuilt. Iters 3–4 produced two
+`object_move`-family rules — rule_002 (`place_object_constant`, covers c/d/h) and
+rule_003 (`place_object_relative`, covers e/f) — that share the `place_object`
+skeleton, which *dropped* P1/P2 (2.5→2.33): exactly the "rule count up, covers not
+up = accretion, not progress" failure the doc warns against. `program/
+anti_unification.py` was 5 stub functions (`pass`) and `save_rule` never called
+`unify()` (P3=0.0). Smallest defensible step: implement a minimal `unify()` over
+the object-move *argument-expression* skeleton (§2.5-2) and wire it into the
+single `save_rule` call site (CLAUDE.md §8) so the two families lift into one
+parameterized `place_object` rule with covers>1 + an anti_unification_trace.
+
+**Change**:
+- `program/anti_unification.py` — implemented the real anti-unifier (was all
+  stubs). Term model + `program_lines_to_terms`/`anti_unify_terms`/
+  `terms_to_program_lines`/`_align_term_lists_dp` honoring the stubbed flow, plus
+  the rule-level entry `unify(rules)`. Key design (§2.5-1/2): a concrete
+  `place_object_constant`/`place_object_relative` action is first *expressed* as
+  one `place_object` line parameterized by a target *reading*
+  (`constant_target`/`constant_offset`); anti-unification then lifts the differing
+  reading to a `?v0` variable. Returns an `AntiUnifyResult` (`.is_more_general()`,
+  `.abstract_rule`, `.write_trace()`); declines (None / NoCommonSkeleton) when
+  rules aren't a shared lift family.
+- `program/__init__.py` — export `unify` (was importing a nonexistent
+  `anti_unify`, which would have ImportError'd on any `import program`).
+- `agent/memory.py` — wired AU as the single call site `save_rule(new_rule,
+  source_task, related_rules)` (CLAUDE.md §8); `_consolidate_object_move()` runs
+  after each canonical save and routes ≥2 distinct-reading concrete object-move
+  rules through `save_rule`→`unify`, writing the abstract rule into the lowest-id
+  source file (covers = union), recording the trace, deleting subsumed siblings.
+  Absorption (`_absorbs_object_move`) makes a re-discovered concrete rule merge
+  into the abstraction's covers instead of re-spawning a source → the lift is
+  idempotent (verified: 2nd run stays 2 rules, no churn).
+- `agent/conditions/object_move.py` (new) — umbrella matcher recognizing the
+  lifted family (single object moved, target fixed by *some* constant COMM
+  reading). The recognition counterpart of the abstract `place_object` rule; P5+1.
+- `tests/test_anti_unification.py` (new) — 4 tests: lift produces the variable +
+  readings, declines unrelated rules, save consolidates + is stable, abstract
+  rule passes `validate_rule`.
+- `procedural_memory/rule_002.json` → now the abstract `place_object` rule
+  (covers c,d,h,e,f; anti_unification_trace set); `rule_003.json` deleted
+  (subsumed). Slow-path prediction is unchanged (GeneralizeOperator still emits
+  the concrete in-memory rule; the abstract rule is the on-disk consolidation),
+  so the probe held at 7/9 — `active_operators.py` untouched (no F8).
+
+**Probe before**: easy_a 7/9; rules=3 (a,b / c,d,h / e,f); P1=2.33, P2=2.33, P3=0.0
+**Probe after** : easy_a 7/9 (unchanged); rules=2 (a,b / abstract place_object
+  covers c,d,h,e,f); P1=3.5, P2=3.5, P3=0.5
+
+**Invariants**: forbidden=none; positives = P1 +1.17, P2 +1.17, P3 +0.5 (0→0.5,
+AU now firing), P5 +1 (3→4). Verdict CLEAN (4 positive deltas). 23/23 tests pass.
+This is the §2.5-4 *real-progress* direction: rule count fell (3→2) while covers
+rose — the inverse of the 168-rule accretion failure.
+
+**RUNG R3 — CLEARED (first lift).** R3's done-when ("최소 한 쌍이 lift 되어
+covers>1 + anti_unification_trace 기록") is met: the two object_move families
+lifted into one `place_object` rule, covers=5>1, trace recorded. 4 observation
+criteria: (1) works — `unify` runs error-free, consolidation idempotent across
+re-runs; (2) module uniformity — same-kind work (object move) now in ONE
+rule/module, the abstraction *discovered* by `unify()` not hand-merged, no
+per-task branch; (3) approaches answer — prediction unchanged (7/9), abstraction
+faithful; (4) search sanity — deterministic, bounded. The single AU call site
+(CLAUDE.md §8) is now live and available to fold future object rules too.
+
+**Next gap (note for future iter)**: the abstract `place_object` rule is currently
+a *coverage artifact* — the canonical fast path (`active_agent.solve`) reads
+`entry["rule"]`/`type`, which canonical {condition,action} rules don't have, so
+stored canonical rules are never reused (Stored rule hits: 0). Making the abstract
+rule actually *drive* prediction (resolving its `?v0` reading from the task's
+COMM/DIFF, §2.5-2b) is R5 (Fast-path / skill reuse) and would let the lift pay off
+on unseen tasks, not just raise coverage. Alternatively R1's still-open g (corner
+target, grid-size-relative) / i (grid resize) need new argument vocabulary
+(`corner-of-grid` relation; unequal in/out size) — but those add families and,
+until the R5 reuse path exists, would re-press P1/P2 downward, so R5 (teach the
+fast path to read canonical rules) is the higher-leverage next step.
