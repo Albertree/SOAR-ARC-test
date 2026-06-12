@@ -1,6 +1,94 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 25 — 2026-06-12T16:50 — branch test31 — NO-OP (analysis only)
+
+**Iter 25: no defensible *smallest* step found — analysis only.** Commit no code
+change (PROMPT.md §5.3). This is **not** a re-run of the iters 21/23 no-ops: it
+adds two *verified* findings and one *reframe* that moves the stuck-point off the
+P1/P2-tension circle the last ~8 iters have orbited.
+
+**Diagnosis**: probe is the documented steady state — easy 1/3 (easy0002/3
+ill-posed gate, [[graduation_gate_unsatisfiable]]), easy_a 9/9; rules=3
+(covers 6+9+2=17); P1=P2=5.67, P3=0.67, P5=10, P6=2229. I did *not* re-surface the
+known P1/P2↔§6.2 tension and stop (iters 21/23/24 already did). Instead I verified
+the two things prior iters *asserted* but didn't check, and traced *why* the loop
+keeps producing in-code families.
+
+**Finding 1 — R4 is functionally cleared (closes a [[reuse_signal_blindspot]]-class
+memory ambiguity).** Memory listed cleared rungs as "R0/R1/R2/R3/R5-reuse",
+conspicuously omitting **R4** (2nd-order / edge-of-edge relation). Verified: the
+literal 2nd-order branch in `ARCKG/comparison.py` (`_is_relation_result(a) and
+_is_relation_result(b)`) exists and is correct, but is **intentionally unused** by
+the pipeline — R4's capability ("answer's value has a *reason*: a ranking over an
+object property") is delivered by the **agent-side ranking-selector expression**
+(`recolor_extreme_object` / `object_keyed_recolor` conditions + `argmax` in
+`agent/dsl_expr/`), which is exactly the §2.5-2b intended form. rule_003
+(`recolor_extreme`, covers `largest_recolor`/`smallest_recolor`, au-traced) is the
+proof. ⇒ **R4 is cleared; no future iter should "wire edge-of-edge compare" as if
+R4 were an open rung** — that would be building unused machinery.
+
+**Finding 2 — the deferred structural fix is *grounding-blocked*, not merely
+"P1/P2-lowering" (sharpens iter 23).** The three in-code-only families that *could*
+be lifted into `covers>1` data rules (`color_map`, `integer_scale`, `self_tile` —
+the rest, place_object/recolor, are *already* persisted as au-traced rule_002/003)
+fire only on scattered ARC-AGI **training** tasks. There are **0 grounding pairs**
+for them in the writable easy/easy_a/`ARC_madeup/` sets, so `unify()` has no
+skeleton-sharing pair to lift and a single-task persist reproduces the **covers=1
+failure mode** the iter-23 probe accidentally demonstrated (rule_004 artifact,
+P1/P2/P3 all down). So even if the user resolved the P1/P2↔§6.2 reward tension, the
+move still needs a grounding task pair that doesn't exist without authoring busywork
+(§2.2). [[psignal_saturation_arithmetic]] stands, now with the grounding cause named.
+
+**The reframe (the real finding — names the frontier, off the P1/P2 circle)**:
+`GeneralizeOperator.effect` is a fixed `match_condition(X) → _build_X_rule(X)` chain
+over **pre-built in-code families**; no match ⇒ `identity` fallback (unsolved).
+`unify()` is correctly single-sited (`memory.py:save_rule()`) but only lifts
+pair-programs *within a family a `_build_X` already recognized*. **There is no
+general Slow-path program *synthesizer*** — nothing that, for a task no family
+recognizes, emits an overfit per-pair `coloring`/`make_grid` program from the
+COMM/DIFF receipts (the material §2.5-3 explicitly blesses as AU input) so `unify()`
+could lift it. That absence is *why* iters 14–24 each hand-built one more
+`_derive_/_build_/_render_` family: the family chain is the *only* solving path, so a
+new task category has nowhere to go **but** a new in-code family — the F2-in-spirit
+accretion the project diagnoses (passes the literal `_try_/_apply_` regex, violates
+§6.2 "discovered layer is data, not code"). **The missing synthesizer (arbor-modules
+F/G, the Slow path) is the binding architectural gap**, and the P1/P2-tension the
+loop has circled is a *symptom* of building families instead of it.
+
+**Why not a code step this iter**: (a) the synthesizer is the genuine frontier but
+*not a smallest step* — wiring a new solve path into `GeneralizeOperator` carries
+real easy_a-regression risk and needs deliberate design, not a rushed slice; (b) an
+*unwired* synthesizer brick is speculative growth (the exact thing prior iters
+rightly avoided) and reads NEUTRAL; (c) iter 24's named next-gap (lift the
+`_example_pairs` comprehension into a helper) is a *second consecutive* P6
+micro-refactor — the "repeated low-value change" PROMPT.md §4 most wants gone — so I
+**decline** it. No accretion family, no premature persist, no cosmetic-repeat.
+
+**Not termination**: a large *nameable* gap now exists (the Slow-path synthesizer),
+so `_LOOP_COMPLETE.md` would be false (BACKLOG §7 cond. 1 unmet). The loop continues;
+this iter converts the stuck-point from a user-gated reward argument into a concrete
+buildable target.
+
+**Probe before / after**: identical — no code change. `check_invariants --check`:
+P1=P2=5.67, P3=0.67, P4=827, P5=10, P6=2229, all Δ=0 ⇒ verdict **NEUTRAL** (exit 2).
+
+**Invariants**: forbidden=**none** (no files changed beyond this log entry; the
+rule_001/002 `times_reused` bumps + snapshot are the loop's own pre-invocation probe
+state). positives=**none** (intentional no-op; a wrong/spinning commit pollutes the
+P-baseline — PROMPT.md §5).
+
+**Next gap (note for future iter)**: build the **smallest wired slice of the
+Slow-path synthesizer** — a pure `agent/program_synthesis.py:synthesize_pair_program(
+input, output, comparison)` emitting a literal `coloring`/`make_grid` per-pair program
+from a single pair's COMM/DIFF, **grounded by a test on one real pair (e.g.
+easy000c)**, then a 2nd iter wiring it as the `identity`-fallback replacement that
+hands 2+ pair-programs to `save_rule()→unify()`. That replaces *family accretion*
+with *general synthesis→AU* — the §6.2/modules-F-G intent — and is the only path that
+makes training competence grow without a new `_build_X` per category. Take it in
+small, test-grounded, easy_a-regression-guarded slices; do **not** build it unwired.
+
+---
 ## Iter 24 — 2026-06-12T16:41 — branch test31
 
 **Diagnosis**: Iters 21 & 23 (both no-ops) proved P1/P2 are arithmetically pinned
@@ -3005,3 +3093,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 0
 - Time: 53s
 - Log: logs/learn_20260612_164100.log
+
+---
+## Learning Loop -- 2026-06-12 16:45
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_164500.log
+
+---
+## Learning Loop -- 2026-06-12 16:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_164502.log
