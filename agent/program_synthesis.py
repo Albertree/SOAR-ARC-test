@@ -46,6 +46,7 @@ Design boundaries (deliberate — keep the slice small and defensible):
 from collections import Counter
 
 from procedural_memory.DSL.apply import apply_DSL
+from agent.dsl_expr.selection import objects_of, SELECTOR_VOCAB
 
 
 def _dims(grid):
@@ -117,15 +118,133 @@ def synthesize_pair_program(input_grid, output_grid):
     return program
 
 
+# ---------------------------------------------------------------------------
+# Object-level recolor producer (the §2.5-2b / R1 *liftable* pair program)
+# ---------------------------------------------------------------------------
+#
+# `synthesize_pair_program` above emits a *raw-cell* program: its `coloring`
+# selection is a literal list of coordinates. That program reproduces its pair
+# faithfully, but it is the wall iter22/23 named (memory `synthesizer_frontier`,
+# wall (a)): two raw-cell programs from different tasks share **no** liftable
+# skeleton — anti-unification sees two unrelated coordinate lists and collapses
+# the *whole selection* into one variable, so the COMM ("which object is
+# recolored") is lost and the lift degrades to a literal again (the 168-rule
+# failure, BACKLOG_LOOP §2.5-2).
+#
+# This producer closes that wall for the *recolor* case — the one that "lifts
+# cleanly and avoids the open-question origins" (iter23 Next-gap): the object is
+# not displaced (no target/origin ambiguity → no `arbor-open-questions` design
+# decision), only repainted. Instead of literal cells, the `coloring` selection
+# is an **object-level selection expression** ``{"select": <selector-name>}`` —
+# the §2.5-2b lift: "the object", named by a selector (`unique` / `max_size` /
+# `unique_color` / …), not by its coordinates. Two such programs that name the
+# object the *same* way share that expression as common skeleton, so
+# anti-unification lifts only the *differing* colour to a variable while the
+# selector survives — the first object-level pair program whose lift is
+# meaningful. Still off the live path and overfit material for AU (§2.5-3), like
+# the raw-cell producer; binding the lifted colour at predict time (§2.5-2b) and
+# wiring as the `identity`-fallback remain the explicitly-later, easy_a-guarded
+# slices.
+
+def _recolor_selectors():
+    """Selector vocabulary for *naming* the recolored object, in deterministic
+    trial order. ``unique`` is the degenerate single-object selector; the rest
+    (``SELECTOR_VOCAB``) pick one object among many by a named criterion. Each
+    yields ``(name, fn(objects, grid) -> object | None)``."""
+    yield "unique", lambda objs, grid: objs[0] if len(objs) == 1 else None
+    for name, fn in SELECTOR_VOCAB.items():
+        yield name, fn
+
+
+def _cells_set(obj):
+    return {tuple(cell) for cell in obj["cells"]}
+
+
+def _name_selector(objs, grid, target):
+    """The first selector that *unambiguously* names ``target`` among ``objs``,
+    or None. The selector is the §2.5-2b lifted argument — discovered, not
+    assumed; returning None keeps the producer honest when no named criterion
+    singles the recolored object out."""
+    target_cells = _cells_set(target)
+    for name, fn in _recolor_selectors():
+        chosen = fn(objs, grid)
+        if chosen is not None and _cells_set(chosen) == target_cells:
+            return name
+    return None
+
+
+def synthesize_object_recolor_program(input_grid, output_grid):
+    """Emit an *object-level* program for a same-size single-object recolor, or
+    None when the pair is not one.
+
+    A recolor pair here is: same size, the changed cells are exactly the cells of
+    **one** input foreground object, and they all change to a single new colour.
+    The emitted program is one ``coloring`` line whose selection is the
+    object-level expression ``{"select": <selector-name>}`` (not literal cells)
+    and whose colour is the new colour. Returns None (caller falls back to the
+    raw-cell `synthesize_pair_program`) when the pair is not a clean object
+    recolor or no selector names the object unambiguously.
+    """
+    if not output_grid or not output_grid[0] or not _same_size(input_grid, output_grid):
+        return None
+
+    changed = set()
+    new_colors = set()
+    for r, (irow, orow) in enumerate(zip(input_grid, output_grid)):
+        for c, (iv, ov) in enumerate(zip(irow, orow)):
+            if iv != ov:
+                changed.add((r, c))
+                new_colors.add(ov)
+    if not changed or len(new_colors) != 1:
+        return None
+    new_color = next(iter(new_colors))
+
+    objs = objects_of(input_grid)
+    target = next((o for o in objs if _cells_set(o) == changed), None)
+    if target is None:
+        return None
+
+    selector = _name_selector(objs, input_grid, target)
+    if selector is None:
+        return None
+
+    return [{"dsl": "coloring",
+             "args": {"selection": {"select": selector}, "color": new_color}}]
+
+
+def _resolve_selection(selection, grid):
+    """Resolve a `coloring` selection against the running grid.
+
+    A literal coordinate list passes through unchanged (the raw-cell producer's
+    output). An object-level selection expression ``{"select": <name>}`` is
+    resolved by running the named selector over the grid's objects and returning
+    its cells (or ``[]`` when the selector declines — coloring then paints
+    nothing, a faithful no-op rather than a crash)."""
+    if isinstance(selection, dict) and "select" in selection:
+        objs = objects_of(grid)
+        for name, fn in _recolor_selectors():
+            if name == selection["select"]:
+                chosen = fn(objs, grid)
+                return [list(cell) for cell in chosen["cells"]] if chosen else []
+        return []
+    return selection
+
+
 def run_program(program, input_grid):
     """Execute a synthesized program line-by-line through the frozen DSL.
 
     ``make_grid`` ignores the incoming grid (fresh canvas); ``coloring`` paints
-    the running grid. Returns the final grid; the input is never mutated.
+    the running grid. A `coloring` line's selection is first resolved via
+    :func:`_resolve_selection`, so both raw-cell and object-level (``{"select":
+    …}``) selections execute through the same frozen primitive. Returns the final
+    grid; the input is never mutated.
     """
     grid = [row[:] for row in input_grid]
     for line in program:
-        grid = apply_DSL(line["dsl"], grid, **line.get("args", {}))
+        args = dict(line.get("args", {}))
+        if "selection" in args:
+            args["selection"] = _resolve_selection(args["selection"], grid)
+        grid = apply_DSL(line["dsl"], grid, **args)
     return grid
 
 

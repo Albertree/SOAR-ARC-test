@@ -17,6 +17,7 @@ import pytest
 
 from agent.program_synthesis import (
     synthesize_pair_program,
+    synthesize_object_recolor_program,
     run_program,
     program_reproduces,
 )
@@ -116,3 +117,84 @@ def test_two_pair_programs_feed_anti_unification():
     assert isinstance(lifted, list)
     # the skeleton is preserved: same number of coloring lines across the pair
     assert len(lifted) == len(programs[0])
+
+
+# ---- object-level recolor producer (the *liftable* pair program) ----------
+
+# A single-object recolor: one object (colour 5) on background 0, repainted.
+_RECOLOR_IN = [[0, 0, 0], [0, 5, 5], [0, 0, 0]]
+_RECOLOR_OUT = [[0, 0, 0], [0, 3, 3], [0, 0, 0]]
+
+
+def test_object_recolor_reproduces():
+    program = synthesize_object_recolor_program(_RECOLOR_IN, _RECOLOR_OUT)
+    assert program is not None
+    assert program_reproduces(program, _RECOLOR_IN, _RECOLOR_OUT)
+
+
+def test_object_recolor_selection_is_expression_not_cells():
+    """The wall-(a) fix: the selection is an *object-level* expression
+    (``{"select": …}``), not a literal coordinate list."""
+    program = synthesize_object_recolor_program(_RECOLOR_IN, _RECOLOR_OUT)
+    sel = program[0]["args"]["selection"]
+    assert isinstance(sel, dict) and sel == {"select": "unique"}
+    assert program[0]["args"]["color"] == 3
+
+
+def test_object_recolor_selects_among_many_by_named_criterion():
+    # two objects of different size; recolor the larger -> `max_size` selector
+    inp = [[2, 0, 0, 0], [2, 0, 0, 7], [0, 0, 0, 0]]
+    out = [[4, 0, 0, 0], [4, 0, 0, 7], [0, 0, 0, 0]]
+    program = synthesize_object_recolor_program(inp, out)
+    assert program is not None
+    assert program[0]["args"]["selection"] == {"select": "max_size"}
+    assert program_reproduces(program, inp, out)
+
+
+def test_object_recolor_declines_on_resize():
+    inp = [[5]]
+    out = [[3, 3], [3, 3]]
+    assert synthesize_object_recolor_program(inp, out) is None
+
+
+def test_object_recolor_declines_on_partial_object_change():
+    # only one of the object's two cells changes -> not a whole-object recolor
+    inp = [[0, 0, 0], [0, 5, 5], [0, 0, 0]]
+    out = [[0, 0, 0], [0, 3, 5], [0, 0, 0]]
+    assert synthesize_object_recolor_program(inp, out) is None
+
+
+def test_two_object_recolor_programs_lift_to_shared_skeleton():
+    """The point of the object-level producer: two single-object recolors that
+    name the object the *same* way (`unique`) but to *different* colours lift
+    into one program whose **selector survives as common skeleton** while only
+    the colour becomes a ``?v`` variable — the COMM ("which object") is kept,
+    the incidental colour is abstracted. Raw-cell programs cannot do this."""
+    out_a = [[0, 0, 0], [0, 3, 3], [0, 0, 0]]
+    out_b = [[0, 0, 0], [0, 8, 8], [0, 0, 0]]
+    prog_a = synthesize_object_recolor_program(_RECOLOR_IN, out_a)
+    prog_b = synthesize_object_recolor_program(_RECOLOR_IN, out_b)
+    lifted = anti_unify_pair_programs([prog_a, prog_b])
+    assert len(lifted) == 1
+    args = lifted[0]["args"]
+    # selector preserved (common skeleton), colour lifted to a variable
+    assert args["selection"] == {"select": "unique"}
+    assert isinstance(args["color"], str) and args["color"].startswith("?v")
+
+
+def test_raw_cell_recolor_loses_selection_to_a_variable():
+    """Contrast / motivation: two *raw-cell* recolors to the same colour but
+    different cells lift with the colour preserved and the whole **selection**
+    collapsed to a variable — the COMM is lost. This is exactly the wall the
+    object-level producer above is built to clear."""
+    in_a = [[0, 0, 0], [0, 5, 5], [0, 0, 0]]
+    out_a = [[0, 0, 0], [0, 3, 3], [0, 0, 0]]
+    in_b = [[5, 0], [0, 0]]
+    out_b = [[3, 0], [0, 0]]
+    raw_a = synthesize_pair_program(in_a, out_a)
+    raw_b = synthesize_pair_program(in_b, out_b)
+    lifted = anti_unify_pair_programs([raw_a, raw_b])
+    args = lifted[0]["args"]
+    assert args["color"] == 3                       # colour preserved
+    assert isinstance(args["selection"], str)       # selection lost to a var
+    assert args["selection"].startswith("?v")

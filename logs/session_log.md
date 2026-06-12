@@ -1,6 +1,79 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 24 — 2026-06-12T22:40 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (c9680e90 gravity, 878187ab
+reflect+resize, e5790162 line-draw); easy_a 9/9, madeup 14/14 hold. The
+dominant frontier is unchanged — the Slow-path program synthesizer (modules
+F/G) — and iter23 built its first half: `synthesize_pair_program`, a *raw-cell*
+per-pair producer (off the live path, round-trip grounded). Iter23's Next-gap
+named the precise smallest next half: the **object-level recolor producer**,
+because the raw-cell producer hits *wall (a)* — two raw-cell programs from
+different tasks share no liftable skeleton (anti-unification collapses the whole
+coordinate-list selection into one variable, losing the "which object" COMM; the
+168-rule failure, §2.5-2). Recolor is the case that "lifts cleanly and avoids the
+open-question origins": the object is repainted, not displaced, so there is no
+target/origin design decision (`arbor-open-questions`) to invent.
+
+**Change** (producer-only substrate, off the live path — no operator/predict/save
+edit; F2/F3/F8 not in play):
+- `agent/program_synthesis.py` — new `synthesize_object_recolor_program(in, out)`:
+  for a same-size pair whose changed cells are exactly one input foreground
+  object's cells all repainted a single new colour, emits one `coloring` line
+  whose selection is an **object-level expression** `{"select": <selector-name>}`
+  (not literal cells) — the §2.5-2b selection lift. The selector is *discovered*
+  (`_name_selector`): the first of `unique` / `SELECTOR_VOCAB`
+  (max_size/min_size/unique_color/unique_shape/border_object) that unambiguously
+  names the recolored object; None when the pair is not a clean object recolor or
+  no selector singles it out (honest abstention). `run_program` now resolves a
+  `coloring` selection via new `_resolve_selection` before dispatch, so both
+  raw-cell lists and `{"select": …}` expressions execute through the *same* frozen
+  `coloring` primitive (F3-safe; raw-cell programs pass through unchanged). Reuses
+  `agent/dsl_expr/selection.py` (objects_of, SELECTOR_VOCAB) — no new detection.
+- `tests/test_program_synthesis.py` (+7 tests, 8→15) — object recolor round-trips
+  (single-object and `max_size`-selected-among-many), declines on resize and on a
+  partial-object change; the selection is the expression `{"select": …}` not a
+  cell list; and the load-bearing pair: **two object recolors that name the object
+  the same way (`unique`) but to different colours lift to one program whose
+  selector survives as common skeleton while the colour becomes a `?v` variable** —
+  the COMM kept, the incidental colour abstracted. A contrast test pins that the
+  *raw-cell* producer lifts the opposite way (colour kept, whole selection lost to
+  a variable) — the exact wall this producer clears.
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10);
+  rules=3; P1=7.67 P2=7.67 P3=0.67 P4=932 P5=10 P6=1457; 126 tests.
+**Probe after** : training 0/3 unchanged (producer is off the live path by design —
+  it does not yet feed `GeneralizeOperator`, protecting the mastered easy_a/madeup
+  guards); easy_a 9/9, madeup 14/14 untouched; rules 3→3; P1–P6 all flat; 133 tests
+  (+7).
+
+**Invariants**: forbidden=**none** (check_invariants verdict NEUTRAL; F1 frozen
+  diff 0 — only `agent/program_synthesis.py` + tests touched; F2/F3/F8 N/A —
+  `active_operators.py` and `procedural_memory/DSL/` untouched; no rule saved
+  without a condition — no rule saved at all). positives=**NEUTRAL on P1–P6**, the
+  correct reading for off-live-path substrate (INVARIANTS §3: "scaffolding whose
+  payoff lands in a later iter") — the snapshot has no signal measuring *whether a
+  liftable object-level pair program exists*. The moved thing is wall (a): the
+  producer now emits the **first object-level pair program whose anti-unification
+  lift is meaningful** (selector preserved, only the differing value variabilised),
+  grounded by a direct lift test against the raw-cell contrast. (Reverted the
+  `rule_001/002` `times_reused` probe churn — runtime accounting, iter18/21/23
+  precedent.)
+
+**Next gap (note for future iter)**: the recolor producer lifts cleanly, but two
+  walls remain before a saved `covers>1` rule. (b) the lifted colour is a hole
+  needing a *binder* at predict time (§2.5-2b) — for recolor the binder is itself
+  cleanish (the new colour is a cross-pair COMM/DIFF reading, not an open
+  question), so the smallest next half is plausibly a tiny *recolor binder* that
+  resolves `?color` from the example DIFF, turning the lifted skeleton into a
+  reproducing rule. (c) only *then* does wiring the synthesizer as the
+  `identity`-fallback (handing ≥2 pair-programs to `save_rule()→unify()`) become
+  defensible — and even then it must stay easy_a/madeup-guarded. The
+  displacement/origin object-move producer remains blocked on
+  `arbor-open-questions` (surface, don't invent) and is *not* the next step.
+
+---
 ## Iter 23 — 2026-06-12T22:30 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3 (c9680e90 gravity, 878187ab
@@ -2607,3 +2680,33 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 5s
 - Log: logs/learn_20260612_222629.log
+
+---
+## Learning Loop -- 2026-06-12 22:34
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_223358.log
+
+---
+## Learning Loop -- 2026-06-12 22:34
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_223402.log
+
+---
+## Learning Loop -- 2026-06-12 22:34
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_223408.log
