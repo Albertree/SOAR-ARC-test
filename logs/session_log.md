@@ -1,6 +1,87 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 14 — 2026-06-12 — branch test32
+
+**Diagnosis**: madeup probe was 8/8, but every §2.1 concept the size-grid family
+expresses so far is sized by a property of *one* object (`object_size`,
+`bbox_height` via `unique_object`). The next uncovered §2.1 concept is **object
+count ≠ 1** combined with **grid size = f(object-set property)**: an output whose
+side counts the *several* objects in the grid. The analysis hard-required
+`single_object_all`, so a multi-object count-sized task fell back to identity
+(authored two such tasks, confirmed INCORRECT before the fix). This is the §2.5-2b
+point that *which subject* feeds the dimension argument
+(`unique_object` vs `objects_of`) is itself part of the lifted variable — so the
+fix folds a count-sized task into the *same* `size_to_grid` family (covers up,
+rule count flat), not a new family.
+
+**Change**:
+- `data/ARC_madeup/madeup_count_to_square.json` + `..._b.json` (new, F1-exempt) —
+  multi-object tasks whose output side = the *number of objects* (count varies
+  2/3/4→5 per pair). Task A uses single-pixel objects; task B uses multi-cell
+  objects (size 2/3 ≠ count) so the property provably cannot be a per-object size.
+  Two tasks so `object_count` is value-agnostic (covers 2), not a per-task literal
+  (§2.5-3).
+- `agent/dsl_expr/selection.py` — `object_count_of(objects)` + new
+  `GRID_DIM_PROPERTY_VOCAB` (grid-level scalar properties, seed `object_count`),
+  kept separate from the per-object `DIM_PROPERTY_VOCAB` because its subject is the
+  object *set*. `analyze_object_size_grid` now (a) computes a *subject colour* as
+  the COMM across the whole object set (collapses to the single object's colour
+  when there is one — single-object behaviour byte-identical), and (b) learns the
+  dimension property by trying per-object properties first, then grid-level ones as
+  a fallback (so single-object tasks keep resolving to their object property; count
+  there is always 1 and never matches a side > 1). §2.5-1 *argument*-vocabulary
+  growth — the `make_grid` dimension argument can now be
+  `object_count(objects_of(in))`; the transformation stays frozen.
+- `agent/conditions/object_size_grid.py` — dropped the `single_object_all` gate
+  (the grid-level property has no single-object subject); a learned `dim_property`
+  plus solid-square output + the colour COMM keep it disjoint from the move
+  readings, so widening the family does not bleed into them.
+- `agent/active_operators.py` — `_place_size_grid_grids` now dispatches on whether
+  the learned property is per-object (read off the single test object, as before)
+  or grid-level (count the test grid's own objects, colour = the object-set's
+  shared colour). The object path is byte-identical. F8 satisfied via the
+  agent/conditions/ companion edit.
+- `program/anti_unification.py` — **unchanged**: the `object_size_grid` lift family
+  keys on the `dim_property` *string*, so `object_count` is just one more filler of
+  the existing dimension variable. The count rule folds into rule_001 via the same
+  `_consolidate_family` path (no new family, the §2.5-2 design holding).
+- `tests/test_count_grid.py` (new, 8 tests) — count-of property, analysis learns
+  `object_count` on both tasks, single-object tasks still resolve to `object_size`
+  (no perturbation), inert on a move task, matcher fires/abstains, end-to-end
+  render equals expected.
+
+**Probe before**: easy_a 9/9; madeup 8/8 (count tasks did not exist → INCORRECT
+  identity once authored); rules=3 (place_object covers 11, size_to_grid covers 4
+  [object_size+bbox_height, AU-traced], copy_common_output covers 2); 17 tasks / 3
+  rules; P1=5.67, P2=5.67, P3=0.67.
+**Probe after** : easy_a 9/9 (regression guard held); madeup 10/10; rules=3
+  (place_object covers 11, **size_to_grid covers 6 — object_size+bbox_height+
+  object_count, AU ?v0 over all three, traced**, copy_common_output covers 2); 19
+  tasks / 3 rules; P1=6.33, P2=6.33, P3=0.67. 68/68 tests pass.
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN). F1 data edits under
+  exempt ARC_madeup/; F2 no new `_try_*`/`_apply_*`; F3 no new DSL primitive
+  (`object_count` is LHS argument vocabulary under agent/, the action is the frozen
+  `make_grid`); F8 satisfied (active_operators.py companion edit in
+  agent/conditions/). positives: **P1 +0.67, P2 +0.67** — covers rises while rule
+  count holds, the §2.5-4 definition of real progress (a third dimension value
+  absorbed into the one abstraction, not a fourth standalone rule). P3 flat because
+  `object_count` folded into the already-traced rule_001 rather than creating a new
+  traced rule — honest: no *new* unification episode, the existing one widened.
+
+**Next gap (note for future iter)**: the size-grid family now sizes a square from
+  either a per-object scalar or a grid-level scalar, but always a **square** (one
+  dimension expression reused for h and w) and always with the output colour being
+  the (shared) object colour. Two uncovered axes: (a) a *non-square* output where
+  height and width are two *independent* dimension expressions (e.g. h=bbox_height,
+  w=bbox_width) — would need the lift to range over a (h_prop, w_prop) pair, a
+  two-axis generalization the current single-variable `unify` does not yet do; or
+  (b) the dimension read off a *selected* object among several
+  (`size_of(argmax(objects, size))`) — folding the SELECTOR_VOCAB into the
+  dimension subject, the explicit §2.5-2b composition of the two grown vocabularies.
+
+---
 ## Iter 13 — 2026-06-12 — branch test32
 
 **Diagnosis**: madeup probe was 6/6 green, but the size-grid family (iter12) knew
@@ -1305,3 +1386,63 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_203211.log
+
+---
+## Learning Loop -- 2026-06-12 20:35
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_203520.log
+
+---
+## Learning Loop -- 2026-06-12 20:35
+
+- Split: None, Tasks: 8
+- Correct: 8 / 8 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_203523.log
+
+---
+## Learning Loop -- 2026-06-12 20:41
+
+- Split: None, Tasks: 10
+- Correct: 8 / 10 (80.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_204113.log
+
+---
+## Learning Loop -- 2026-06-12 20:42
+
+- Split: None, Tasks: 10
+- Correct: 10 / 10 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_204236.log
+
+---
+## Learning Loop -- 2026-06-12 20:42
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_204250.log
+
+---
+## Learning Loop -- 2026-06-12 20:43
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_204258.log

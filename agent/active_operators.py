@@ -29,6 +29,7 @@ from agent.dsl_expr.selection import (
     objects_of,
     unique_object,
     DIM_PROPERTY_VOCAB,
+    GRID_DIM_PROPERTY_VOCAB,
     SELECTOR_VOCAB,
 )
 
@@ -1133,8 +1134,9 @@ class PredictOperator(Operator):
         prop_name = sz.get("dim_property")
         if prop_name is None:
             return {}
-        prop = DIM_PROPERTY_VOCAB.get(prop_name)
-        if prop is None:
+        obj_prop = DIM_PROPERTY_VOCAB.get(prop_name)
+        grid_prop = GRID_DIM_PROPERTY_VOCAB.get(prop_name)
+        if obj_prop is None and grid_prop is None:
             return {}
 
         grids = {}
@@ -1142,11 +1144,21 @@ class PredictOperator(Operator):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            obj = unique_object(g0.raw)
-            if obj is None:
-                continue
-            color = color_of(obj)
-            side = prop(obj)
+            if obj_prop is not None:
+                # Per-object property: read it (and the colour) off the single
+                # test object — value-agnostic in colour/size/shape/position (P5).
+                obj = unique_object(g0.raw)
+                if obj is None:
+                    continue
+                color = color_of(obj)
+                side = obj_prop(obj)
+            else:
+                # Grid-level property (object_count): the side counts the test
+                # grid's own objects; the colour is the object-set's shared colour.
+                objs = objects_of(g0.raw)
+                colors = {o["color"] for o in objs if o.get("color") is not None}
+                color = next(iter(colors)) if len(colors) == 1 else None
+                side = grid_prop(objs)
             if color is None or side < 1:
                 continue
             grids[i] = render_solid_square(side, color)

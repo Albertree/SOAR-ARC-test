@@ -409,6 +409,44 @@ DIM_PROPERTY_VOCAB = {
 }
 
 
+# ---------------------------------------------------------------------------
+# property vocabulary: scalar *grid-level* features that can size a canvas
+# ---------------------------------------------------------------------------
+#
+# The object properties above read a scalar off *one* object — they presuppose a
+# single object (`unique_object`). The §2.1 "object count ≠ 1" concept is the
+# converse: the canvas dimension is a function not of any single object but of the
+# *set* of objects in the grid. `object_count` is the seed — the number of
+# foreground objects. It is the §2.5-2b point that *which subject* the dimension
+# property reads is itself part of the lifted argument: `size_of(unique_object(in))`
+# reads one object, `object_count(objects_of(in))` reads the whole set. Both bottom
+# out in the same frozen `make_grid` dimension argument, so a count-sized task lifts
+# into the *same* `size_to_grid` family (one more value the dimension variable
+# ranges over) rather than a new family — covers rises, rule count holds (§2.5-4).
+#
+# Each function takes the object *list*, so it works whatever the object count is.
+# Adding one grows the LHS argument vocabulary; it introduces no new transformation
+# (F3-exempt, lives under agent/).
+
+def object_count_of(objects: list) -> int:
+    """Number of foreground objects in a grid — a *grid-level* scalar property
+    (it reads the whole object set, not one object). Sizes a canvas when the
+    output side counts the objects (§2.1 "object count ≠ 1")."""
+    return len(objects)
+
+
+#: name -> fn(objects) -> int. A scalar *grid-level* property usable as a canvas
+#: dimension. Tried (after the per-object `DIM_PROPERTY_VOCAB`) when *learning*
+#: which property a task uses. Kept separate from the object properties because
+#: its subject is the object *set*, not a single object — the §2.5-2b "which
+#: subject feeds the dimension argument" axis. A value learned here is just one
+#: more filler of the same `size_to_grid` dimension variable (it lifts into the
+#: existing family, not a new one).
+GRID_DIM_PROPERTY_VOCAB = {
+    "object_count": object_count_of,
+}
+
+
 def analyze_object_size_grid(example_pairs: list) -> dict:
     """Output canvas *sized by an object property* (BACKLOG_LOOP §2.1 / R1).
 
@@ -443,38 +481,56 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
         g1 = getattr(pair, "output_grid", None)
         if g0 is None or g1 is None:
             continue
-        obj = unique_object(g0.raw)
+        objs = objects_of(g0.raw)
+        obj = objs[0] if len(objs) == 1 else None
         out = g1.raw or []
         out_h = len(out)
         out_w = len(out[0]) if out_h else 0
         out_colors = {cell for row in out for cell in row}
         out_solid = len(out_colors) == 1 and out_h > 0 and out_w > 0
         out_color = next(iter(out_colors)) if out_colors else None
+        # Subject colour: the colour shared by *every* input object (a colour
+        # COMM across the object set), which collapses to the single object's
+        # colour when there is one. None when the objects disagree, so a
+        # multi-colour grid never grounds a colour relation.
+        all_colored = bool(objs) and all(
+            o.get("color") is not None for o in objs)
+        obj_colors = {o["color"] for o in objs} if all_colored else set()
+        subj_color = next(iter(obj_colors)) if len(obj_colors) == 1 else None
         per_pair.append({
             "single_object": obj is not None,
             "obj_size": size_of(obj) if obj is not None else None,
             "obj_color": color_of(obj) if obj is not None else None,
+            "subj_color": subj_color,
             "out_h": out_h,
             "out_w": out_w,
             "out_square": out_h == out_w and out_h > 0,
             "out_solid": out_solid,
             "out_color": out_color,
             "obj": obj,
+            "objs": objs,
         })
 
     single_all = bool(per_pair) and all(p["single_object"] for p in per_pair)
     solid_all = bool(per_pair) and all(
         p["out_solid"] and p["out_square"] for p in per_pair)
+    # Colour grounding now reads the subject colour (the object-set COMM), so it
+    # holds for both the single-object and the multi-object (count) cases. For a
+    # single object subj_color == obj_color, so single-object behaviour is
+    # unchanged.
     color_all = bool(per_pair) and all(
-        p["obj_color"] is not None and p["obj_color"] == p["out_color"]
+        p["subj_color"] is not None and p["subj_color"] == p["out_color"]
         for p in per_pair)
 
     # Learn the dimension property: the first named scalar property whose value
-    # equals the output side in every pair. The COMM between an object property
-    # and the output dimension is what *grounds* the size relation (P3/P4); it is
-    # discovered, not assumed.
+    # equals the output side in every pair. The COMM between the property and the
+    # output dimension is what *grounds* the size relation (P3/P4); it is
+    # discovered, not assumed. Per-object properties are tried first (they
+    # require a single object per pair); the grid-level properties (object_count)
+    # are tried only as a fallback, so a single-object task keeps resolving to its
+    # object property — count there is always 1 and never matches a side > 1.
     dim_property = None
-    if single_all and solid_all:
+    if solid_all:
         for name, fn in DIM_PROPERTY_VOCAB.items():
             if all(
                 p["obj"] is not None and fn(p["obj"]) == p["out_h"]
@@ -482,6 +538,11 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
             ):
                 dim_property = name
                 break
+        if dim_property is None:
+            for name, fn in GRID_DIM_PROPERTY_VOCAB.items():
+                if all(fn(p["objs"]) == p["out_h"] for p in per_pair):
+                    dim_property = name
+                    break
 
     return {
         "per_pair": per_pair,
