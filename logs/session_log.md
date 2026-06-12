@@ -1,6 +1,69 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 46 — 2026-06-13T05:12 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (c9680e90/878187ab/e5790162 — the raw-cell
+geometric-synthesis frontier, multi-iter & grounding-blocked); easy_a 9/9, madeup 28/28 hold. The
+last ~10 iters either debuted born-general families (the §2.5-4 "family accretion = symptom" mode)
+or, in iter 45, wired **one** family into the Fast-path reuse table by hand. Iter 45's explicitly
+named next-gap was that `_abstract_reuse` is "ripe to become **data-driven** over a family registry
+rather than hand-listed": it wired only **3 of 10** born-general families that own a lifted rule, so
+the other 7 (fill_canvas, recolor_map, recolor_selected_object, geometric_transform, scale_transform,
+symmetry_repair, object_extract) re-derive through the full Slow pipeline on every unseen task
+(`Reused: 0` on training). The smallest defensible R5/module-E step is to generalize the reuse
+*mechanism* once — a data registry — instead of hand-spelling another entry (which would be the
+near-duplicate of iter 45 that §2.2 forbids).
+
+**Change** (R5 / module E — generalize the Fast-path reuse mechanism; **no** new family, **no**
+`_try_*`, **no** DSL primitive, **no** edit to `active_operators.py` so F8 is not implicated; confined
+to the unrestricted `active_agent.py` + its test):
+- `agent/active_agent.py`: replaced the hand-spelled 3-entry `_abstract_reuse` dict with a build
+  driven by a new module-level **`_ABSTRACT_REUSE_REGISTRY`** data list — `(action.dsl,
+  condition.type, analyze_fn, render_target)` per family. The table is now comprehension-built from
+  it, wiring **all 10** lifted families (every rule-owning family except `copy_common_output`, which
+  has no self-resolving `_*_grids` renderer yet — documented exception). Most renderers self-resolve
+  their lifted argument off the task's own examples; `place_object` keeps its multi-reading resolver
+  via a `_PLACE_OBJECT_RESOLVER` sentinel. Added `_make_reuse_patterns_fn` factory (closes over each
+  family's `cond_type`/`analyze_fn` — no late-binding capture bug) and the 7 new analyze/DSL-const
+  imports. The reuse safety gate (`_reproduces_examples`) is unchanged and guards every entry, so
+  wiring a family can only convert a Slow-path re-derivation into a Fast-path reuse, never a wrong
+  answer.
+- `tests/test_abstract_rule_reuse.py`: rewrote the table-coverage test to assert the table is
+  registry-driven and that **every** lifted family on disk (minus `copy_common_output`) is wired —
+  catching the "a new lifted family silently re-derives" regression the old 3-family assertion would
+  have missed.
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 28/28 (Reused **14**); training
+  120-sample (seed 42) **4/120, Reused 0**; rules=11; P1=6.727 P2=6.727 P3=0.364 P4=932 P5=17 P6=2296.
+**Probe after** : easy_a **9/9** (Reused 5, unchanged — those tasks already used wired families),
+  madeup **28/28** (Reused **14→24** — 10 more tasks now activate via the Fast path instead of
+  re-deriving), training 120-sample **4/120 (unchanged), 0 errors, Rules 11→11 (+0 spurious),
+  Reused 0→4** — the 4 solved training tasks now reuse via the Fast path rather than re-deriving;
+  no wrong answer introduced across 120 (the gate held). pytest **251/251**.
+
+**Invariants**: forbidden=**none** (checker verdict **NEUTRAL**). positives=**all P1–P6 flat** —
+  R5 reuse breadth is invisible to the formal signals (no P-measure counts stored-rule hits; the
+  documented `reuse_signal_blindspot`). This is a legitimate NEUTRAL scaffolding iter (INVARIANTS §3
+  blesses Fast-path/module-E build-out as real work whose payoff is reuse breadth, not a P-delta);
+  it is **not** a near-duplicate of iter 45 — iter 45 wired one family by hand, this generalizes the
+  *mechanism* to a registry wiring 7 more at once (madeup Reused 14→24, training 0→4 is the concrete
+  evidence the gap closed corpus-wide, not for one task). P6 flat (active_operators.py untouched → F8
+  not implicated). Reverted the verification runs' `times_reused` churn on rule files (runtime
+  accounting — iter18..45 precedent).
+
+**Next gap (note for future iter)**: the Fast-path reuse registry now wires all 10 lifted families;
+  the only un-wired family is `copy_common_output` (needs a self-resolving `_*_grids` renderer — a
+  small, separate step). With reuse now generalized, the registry could become *fully* data-driven by
+  deriving `(cond_type, analyze_fn, render)` from the rule's own `action.dsl` via a family-descriptor
+  table shared with the Slow path's ExtractPattern, eliminating the parallel hand-maintained list.
+  The standing big-ticket directions are unchanged: the **R3 prize** (cross-family AU lift, the only
+  move that raises P3 — but scale/fractal don't share a one-argument skeleton, a design/open-question
+  decision); the **reference-composing selector** (iter 41, relational object selection, blocked on a
+  design decision); and the raw-cell ray/path/gravity synthesizer frontier (c9680e90, e5790162,
+  878187ab), still grounding-blocked.
+
+---
 ## Iter 45 — 2026-06-13T04:58 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3 (c9680e90/878187ab/e5790162 — the raw-cell
@@ -5838,3 +5901,63 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 15
 - Time: 12s
 - Log: logs/learn_20260613_045820.log
+
+---
+## Learning Loop -- 2026-06-13 05:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_050038.log
+
+---
+## Learning Loop -- 2026-06-13 05:00
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 15
+- Time: 12s
+- Log: logs/learn_20260613_050042.log
+
+---
+## Learning Loop -- 2026-06-13 05:01
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_050055.log
+
+---
+## Learning Loop -- 2026-06-13 05:07
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_050714.log
+
+---
+## Learning Loop -- 2026-06-13 05:07
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 24
+- Time: 12s
+- Log: logs/learn_20260613_050718.log
+
+---
+## Learning Loop -- 2026-06-13 05:12
+
+- Split: training, Tasks: 120
+- Correct: 4 / 120 (3.3%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 4
+- Time: 306s
+- Log: logs/learn_20260613_050736.log

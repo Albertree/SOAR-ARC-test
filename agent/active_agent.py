@@ -16,12 +16,30 @@ from agent.cycle import run_cycle
 from agent.elaboration_rules import build_elaborator
 from agent.rules import build_proposer
 from agent.io import inject_arc_task
-from agent.active_operators import PredictOperator, SIZE_GRID_DSL, SELF_FRACTAL_DSL
+from agent.active_operators import (
+    PredictOperator,
+    SIZE_GRID_DSL,
+    SELF_FRACTAL_DSL,
+    CANVAS_FILL_DSL,
+    RECOLOR_DSL,
+    OBJECT_SELECT_RECOLOR_DSL,
+    GEOMETRIC_TRANSFORM_DSL,
+    SCALE_TRANSFORM_DSL,
+    SYMMETRY_REPAIR_DSL,
+    OBJECT_EXTRACT_DSL,
+)
 from agent.conditions import match as match_condition
 from agent.dsl_expr.selection import (
     analyze_object_size_grid,
     analyze_object_move,
     analyze_self_fractal,
+    analyze_canvas_fill,
+    analyze_color_remap,
+    analyze_object_select_recolor,
+    analyze_geometric_transform,
+    analyze_scale_transform,
+    analyze_symmetry_repair,
+    analyze_object_extract,
 )
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
@@ -32,6 +50,46 @@ from agent.wm_logger import reset_wm_snapshot
 # lifted umbrella whose ``args.target.reading == "?v0"`` hole is resolved at reuse
 # time (BACKLOG_LOOP §2.5-2b).
 PLACE_OBJECT_ABSTRACT_DSL = "place_object"
+
+# Sentinel render target for the place_object family: its ``?v0`` reading-hole
+# (constant_target / constant_offset / constant_corner / constant_resize /
+# constant_select) is not a single self-resolving renderer but a *multi-reading
+# resolver* on the agent (``_place_object_render``), which tries each reading and
+# keeps the first that reproduces the examples. Every other family's renderer
+# self-resolves its argument off the task's own examples, so it is named directly
+# by its PredictOperator method. Distinct object so it can never collide with a
+# real predictor attribute name.
+_PLACE_OBJECT_RESOLVER = object()
+
+# ── Fast-path abstract-rule reuse registry (R5 / module E) ────────────────────
+# Each tuple is (action.dsl, condition.type, analyze_fn, render_target) where
+# render_target either names a self-resolving ``PredictOperator`` method — it
+# recomputes the family's lifted argument expression off the task's *own* example
+# COMM and renders the test pairs (§2.5-2b "fill the hole from COMM, then verify")
+# — or is the ``_PLACE_OBJECT_RESOLVER`` sentinel for the one family that needs
+# the multi-reading resolver on the agent.
+#
+# This is a *data table*, not a hand-spelled dict (iter 45's named next gap):
+# every born-general family that owns a lifted ``covers>1`` rule now participates
+# in Fast-path reuse by appearing in this list, instead of requiring a bespoke
+# constructor edit per family. That is the §2.5 generalisation — extend the reuse
+# *mechanism* once, not once per family. The reuse safety gate
+# (``_reproduces_examples``) still guards every entry, so wiring a family can only
+# turn a Slow-path re-derivation into a Fast-path reuse, never a wrong answer.
+# (``copy_common_output`` is intentionally absent — it has no self-resolving
+# ``_*_grids`` renderer yet; wiring it is a separate later step.)
+_ABSTRACT_REUSE_REGISTRY = [
+    (SIZE_GRID_DSL,             "object_size_grid",      analyze_object_size_grid,      "_place_size_grid_grids"),
+    (PLACE_OBJECT_ABSTRACT_DSL, "object_move",           analyze_object_move,           _PLACE_OBJECT_RESOLVER),
+    (SELF_FRACTAL_DSL,          "self_fractal",          analyze_self_fractal,          "_self_fractal_grids"),
+    (CANVAS_FILL_DSL,           "canvas_fill",           analyze_canvas_fill,           "_canvas_fill_grids"),
+    (RECOLOR_DSL,               "color_remap",           analyze_color_remap,           "_recolor_grids"),
+    (OBJECT_SELECT_RECOLOR_DSL, "object_select_recolor", analyze_object_select_recolor, "_object_select_recolor_grids"),
+    (GEOMETRIC_TRANSFORM_DSL,   "geometric_transform",   analyze_geometric_transform,   "_geometric_transform_grids"),
+    (SCALE_TRANSFORM_DSL,       "scale_transform",       analyze_scale_transform,       "_scale_transform_grids"),
+    (SYMMETRY_REPAIR_DSL,       "symmetry_repair",       analyze_symmetry_repair,       "_symmetry_repair_grids"),
+    (OBJECT_EXTRACT_DSL,        "object_extract",        analyze_object_extract,        "_object_extract_grids"),
+]
 
 
 class ActiveSoarAgent:
@@ -64,47 +122,27 @@ class ActiveSoarAgent:
         # render_fn recomputes the variable from the task's examples and renders —
         # i.e. the stored rule is *reused* rather than rediscovered.
         #
-        # Two families are wired:
-        #  - ``size_to_grid``  — the simplest abstraction (the renderer
-        #    self-resolves its dimension property from the pairs);
-        #  - ``place_object``  — the move family, a *structurally different*
-        #    abstraction whose ``?v0`` is a *reading* hole (constant_target vs.
-        #    constant_offset vs. …). Its render_fn resolves *which* reading grounds
-        #    the task from the task's own COMM before rendering (§2.5-2b: "AU 결과는
-        #    미완성; 변수를 채우는 선택이 선행돼야"). This is the richer resolution
-        #    the size_to_grid self-resolving renderer did not need — and proves the
-        #    Fast-path reuse mechanism is family-generic, not bound to one shape.
-        #  - ``self_fractal`` — a *size-expanding* abstraction (output (h·h)×(w·w)),
-        #    structurally different again from both sizing-square and same-size
-        #    object-move. Its renderer self-resolves its placement predicate (the
-        #    §2.5-2b lift — "place at foreground" vs "place at colour C") from the
-        #    task's own pairs, so it reuses like ``size_to_grid`` (no separate
-        #    reading-hole). Wiring it lets the learned fractal rule *activate* on an
-        #    unseen fractal task (the Fast path) instead of re-deriving through the
-        #    full Slow pipeline every time (`Reused: 0` on the size-expanding axis).
-        #  ``copy_common`` reuse is a later, separate step.
+        # The table is built from the module-level ``_ABSTRACT_REUSE_REGISTRY``
+        # data list (iter 46): every born-general family that owns a lifted rule
+        # participates by appearing there, so the reuse *mechanism* (module E) is
+        # extended once rather than re-hand-spelled per family. Most renderers
+        # self-resolve their lifted argument off the task's own examples; the one
+        # exception is ``place_object``, whose ``?v0`` reading-hole needs the
+        # multi-reading resolver ``_place_object_render`` on the agent (the
+        # ``_PLACE_OBJECT_RESOLVER`` sentinel selects it). The reuse safety gate
+        # (``_reproduces_examples``) guards every entry — wiring a family can only
+        # convert a Slow-path re-derivation into a Fast-path reuse, never a wrong
+        # answer (it declines unless the resolved program reproduces *every*
+        # example output exactly).
         self._abstract_reuse = {
-            SIZE_GRID_DSL: (
-                "object_size_grid",
-                lambda task: {
-                    "object_size_grid": analyze_object_size_grid(task.example_pairs)
-                },
-                self._predictor._place_size_grid_grids,
-            ),
-            PLACE_OBJECT_ABSTRACT_DSL: (
-                "object_move",
-                lambda task: {
-                    "object_move": analyze_object_move(task.example_pairs)
-                },
-                self._place_object_render,
-            ),
-            SELF_FRACTAL_DSL: (
-                "self_fractal",
-                lambda task: {
-                    "self_fractal": analyze_self_fractal(task.example_pairs)
-                },
-                self._predictor._self_fractal_grids,
-            ),
+            dsl: (
+                cond_type,
+                self._make_reuse_patterns_fn(cond_type, analyze_fn),
+                (self._place_object_render
+                 if render_target is _PLACE_OBJECT_RESOLVER
+                 else getattr(self._predictor, render_target)),
+            )
+            for dsl, cond_type, analyze_fn, render_target in _ABSTRACT_REUSE_REGISTRY
         }
 
         # Stats for logging
@@ -207,6 +245,17 @@ class ActiveSoarAgent:
         return predicted
 
     # ---- abstract (covers>1) rule reuse — R5 / §2.5-2b -------------------
+
+    @staticmethod
+    def _make_reuse_patterns_fn(cond_type, analyze_fn):
+        """Build the ``patterns_fn`` for one registry family: it runs the family's
+        ``analyze_fn`` on the task's own example pairs and keys the result under the
+        family's ``condition.type`` — the exact shape the Slow path's ExtractPattern
+        produces, so the stored rule's condition matcher activates identically on a
+        fresh task (module E). A factory (not an inline lambda in the registry) so
+        each family closes over *its own* ``cond_type``/``analyze_fn`` with no
+        late-binding capture bug."""
+        return lambda task: {cond_type: analyze_fn(task.example_pairs)}
 
     def _reuse_abstract_rule(self, entry, task):
         """Activate a stored *abstract* rule on ``task`` and return its test

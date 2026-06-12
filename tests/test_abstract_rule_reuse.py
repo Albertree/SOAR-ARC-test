@@ -93,19 +93,51 @@ def test_reuse_declined_when_examples_not_reproduced():
     assert ActiveSoarAgent._reproduces_examples(good_render, task) is True
 
 
-def test_reuse_table_covers_size_grid_place_object_and_fractal():
-    """Abstract reuse is wired for the structurally distinct families that have a
-    lifted (covers>1) rule: the size_to_grid canvas-sizing family, the place_object
-    same-size move family, and the self_fractal *size-expanding* family. Each is
-    activated by *its own* condition matcher."""
-    from agent.active_agent import PLACE_OBJECT_ABSTRACT_DSL
-    from agent.active_operators import SELF_FRACTAL_DSL
+def test_reuse_table_is_registry_driven_and_covers_every_lifted_family():
+    """Abstract reuse is built from the data-driven ``_ABSTRACT_REUSE_REGISTRY``
+    (iter 46): *every* born-general family that owns a lifted (covers>1) rule
+    participates, not a hand-spelled three. The table's dsl keys equal the
+    registry's, each maps to its own condition.type, and — the property that makes
+    it real reuse rather than a dead table — every stored rule's ``action.dsl`` is
+    present in the table (so no lifted family silently re-derives through the Slow
+    path). ``copy_common_output`` is the one documented exception (no self-resolving
+    renderer yet)."""
+    from agent.active_agent import (
+        PLACE_OBJECT_ABSTRACT_DSL,
+        _ABSTRACT_REUSE_REGISTRY,
+    )
+    from agent.active_operators import (
+        SELF_FRACTAL_DSL,
+        CANVAS_FILL_DSL,
+        RECOLOR_DSL,
+        OBJECT_SELECT_RECOLOR_DSL,
+        GEOMETRIC_TRANSFORM_DSL,
+        SCALE_TRANSFORM_DSL,
+        SYMMETRY_REPAIR_DSL,
+        OBJECT_EXTRACT_DSL,
+    )
+    from agent.memory import load_all_rules
+
     agent = ActiveSoarAgent()
-    assert set(agent._abstract_reuse) == {
-        SIZE_GRID_DSL, PLACE_OBJECT_ABSTRACT_DSL, SELF_FRACTAL_DSL}
-    assert agent._abstract_reuse[SIZE_GRID_DSL][0] == "object_size_grid"
-    assert agent._abstract_reuse[PLACE_OBJECT_ABSTRACT_DSL][0] == "object_move"
-    assert agent._abstract_reuse[SELF_FRACTAL_DSL][0] == "self_fractal"
+    # the table is exactly the registry's families, each keyed by its cond.type
+    expected = {
+        SIZE_GRID_DSL, PLACE_OBJECT_ABSTRACT_DSL, SELF_FRACTAL_DSL,
+        CANVAS_FILL_DSL, RECOLOR_DSL, OBJECT_SELECT_RECOLOR_DSL,
+        GEOMETRIC_TRANSFORM_DSL, SCALE_TRANSFORM_DSL, SYMMETRY_REPAIR_DSL,
+        OBJECT_EXTRACT_DSL,
+    }
+    assert set(agent._abstract_reuse) == expected
+    assert {dsl for dsl, *_ in _ABSTRACT_REUSE_REGISTRY} == expected
+    for dsl, cond_type, _analyze, _render in _ABSTRACT_REUSE_REGISTRY:
+        assert agent._abstract_reuse[dsl][0] == cond_type
+
+    # every lifted family on disk is wired (except the documented copy_common_output)
+    stored_dsls = {
+        (e.get("action") or {}).get("dsl")
+        for e in load_all_rules(agent.procedural_memory_root)
+    }
+    unwired = stored_dsls - expected - {"copy_common_output", None}
+    assert unwired == set(), f"lifted families with no Fast-path reuse: {unwired}"
 
 
 # ── the stored self_fractal abstraction reuses on a size-expanding task ───
