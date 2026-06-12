@@ -1,6 +1,66 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 30 — 2026-06-13T00:17 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 16/16 hold. Iter 29's
+Next-gap named the smallest unfilled sibling of the object-selective recolor family
+it built: that family learns only a *constant* new colour. The colour-argument
+analogue of the §2.5-2b selector lift is a **selected object painted another
+object's colour** (a *reading*, not a literal). Per the `generalize_not_accrete_families`
+lesson I did **not** mint a new family (which dilutes P1/P2, as iter29's did) — I
+**grew the colour argument *inside* the existing `object_select_recolor` family** so
+the existing `rule_008` absorbs the new tasks and its `covers` rises. This is the
+exact `color_remap` blind spot squared: a source colour that maps to *different*
+targets across pairs (donor colour varies), so both `color_remap` (non-function) and
+the constant-colour path abstain.
+
+**Change**:
+- `agent/dsl_expr/selection.py`: `analyze_object_select_recolor()` now learns a
+  `color_reading` — the donor `SELECTOR_VOCAB` criterion whose chosen object's colour
+  equals the recolored object's new colour in every pair — **only when** the constant
+  reading abstains. Reuses the existing selector vocabulary as the *donor*; no new
+  selection concept invented. (verified: donor_min→selector=max_size, reading=min_size;
+  donor_max→selector=min_size, reading=max_size; `color_remap` abstains on both.)
+- `agent/conditions/object_select_recolor.py`: matcher now fires when the colour is
+  determined by *either* a constant COMM (`new_color`) *or* a donor reading
+  (`color_reading`) — no new matcher added (P5 held, not a fresh family).
+- `agent/active_operators.py`: `_object_select_recolor_grids` predict path recomputes
+  the donor object's colour per test input when the colour is a reading; same single
+  frozen `coloring` render (`render_object_recolor`), unchanged canonical rule (empty
+  args), so both new tasks **merge into `rule_008`** by condition+action equivalence.
+- `data/ARC_madeup/madeup_recolor_donor_min.json` (recolor the *larger* object the
+  *smaller*'s colour) + `madeup_recolor_donor_max.json` (the converse). Two different
+  (selector, donor) combos, both in `color_remap`'s blind spot.
+- `procedural_memory/rule_008.json`: `covers` **2 → 4** (the two constant-colour
+  selectors + the two donor readings — one value-agnostic rule, four tasks).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 16/16; rules=6; P1=5.0 P2=5.0
+  P3=0.5 P5=12. The two new tasks ran `rule=none`/INCORRECT pre-change (constant path
+  + `color_remap` both abstain — the gap confirmed).
+**Probe after** : madeup **18/18** (both new solved the intended way, via stored
+  `rule=none` pipeline → selector + donor-reading recolor); easy_a **9/9**; pytest
+  **147/147**; training 30-sample **0 errors, 0 spurious rules** (family stays inert
+  on real tasks). rules=6; rule_008 covers 2→4.
+
+**Invariants**: forbidden=**none** (checker verdict CLEAN). positives=**P1 +0.33**
+  (5.0→5.33), **P2 +0.33** (5.0→5.33) — the §2.5-4 "real progress" shape: covers
+  rises while rule count holds, the opposite of iter29's family-accretion dilution.
+  This is what growing an existing family's *argument* vocabulary (not adding a
+  family) buys. P3/P4/P5 unchanged; P6 +14 lines (argument-vocab growth, not a new
+  matcher/family). Reverted the guard runs' `times_reused` churn on rule_001/002
+  (runtime accounting — iter18/21/.../29 precedent).
+
+**Next gap (note for future iter)**: the donor reading picks *another whole object's*
+  colour. The next colour-argument step is a **swap** (two objects exchange colours)
+  — currently each pair is "one object changed"; a swap changes two objects, so it
+  needs the family to admit ≥2 selected groups with paired donor readings, or to be
+  recognised as the bijective two-object case `color_remap` *does* cover (worth
+  checking which absorbs it before building). The large standing frontier is still the
+  general `object_level_lift` for raw-cell line/path tasks (e5790162) behind most
+  failing training tasks.
+
+---
 ## Iter 29 — 2026-06-13T00:05 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. Iter 28
@@ -3347,3 +3407,73 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 117s
 - Log: logs/learn_20260613_000356.log
+
+---
+## Learning Loop -- 2026-06-13 00:09
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_000912.log
+
+---
+## Learning Loop -- 2026-06-13 00:09
+
+- Split: None, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 10
+- Time: 7s
+- Log: logs/learn_20260613_000915.log
+
+---
+## Learning Loop -- 2026-06-13 00:09
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_000923.log
+
+---
+## Learning Loop -- 2026-06-13 00:15
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 10
+- Time: 8s
+- Log: logs/learn_20260613_001455.log
+
+---
+## Learning Loop -- 2026-06-13 00:15
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_001514.log
+
+---
+## Learning Loop -- 2026-06-13 00:15
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_001530.log
+
+---
+## Learning Loop -- 2026-06-13 00:17
+
+- Split: training, Tasks: 30
+- Correct: 0 / 30 (0.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 88s
+- Log: logs/learn_20260613_001544.log

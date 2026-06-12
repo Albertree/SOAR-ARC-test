@@ -15,7 +15,9 @@
   },
   "covers": [
     "madeup_recolor_largest",
-    "madeup_recolor_smallest"
+    "madeup_recolor_smallest",
+    "madeup_recolor_donor_max",
+    "madeup_recolor_donor_min"
   ],
   "source_task": "madeup_recolor_largest",
   "anti_unification_trace": null,

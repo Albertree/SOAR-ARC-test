@@ -1379,22 +1379,29 @@ class PredictOperator(Operator):
         """Map test-pair index -> predicted grid for the multi-object selective
         recolor family.
 
-        The selector name and the constant new colour are recomputed from the
-        example pairs (the §2.5-2b lift: the criterion that consistently picks the
-        recolored object, plus the cross-pair COMM on its new colour). For each
-        test pair the selector chooses one object out of that test input's own
-        objects, and only its cells are repainted to the new colour via one frozen
-        `coloring` call — every other object (including a same-coloured distractor)
-        is left untouched, which is precisely what a global 1:1 map cannot do.
-        Geometry comes from the test G0 (P5). Returns {} when the analysis yields no
-        consistent selector or new colour."""
+        The selector name and the new colour are recomputed from the example pairs
+        (the §2.5-2b lift: the criterion that consistently picks the recolored
+        object, plus the new colour). The new colour is either a constant cross-pair
+        COMM (`new_color`) or a *reading* off another object — the colour of the
+        object a learned donor selector (`color_reading`) picks, the colour-argument
+        analogue of the selector lift. For each test pair the selector chooses one
+        object out of that test input's own objects, and only its cells are
+        repainted to the (per-test recomputed) colour via one frozen `coloring`
+        call — every other object (including a same-coloured distractor) is left
+        untouched, which is precisely what a global 1:1 map cannot do. Geometry comes
+        from the test G0 (P5). Returns {} when the analysis yields no consistent
+        selector, or neither a constant colour nor a donor reading."""
         sig = analyze_object_select_recolor(task.example_pairs)
         selector_name = sig.get("selector")
         new_color = sig.get("new_color")
-        if selector_name is None or new_color is None:
+        reading = sig.get("color_reading")
+        if selector_name is None or (new_color is None and reading is None):
             return {}
         selector = SELECTOR_VOCAB.get(selector_name)
         if selector is None:
+            return {}
+        donor = SELECTOR_VOCAB.get(reading) if new_color is None else None
+        if new_color is None and donor is None:
             return {}
 
         grids = {}
@@ -1402,10 +1409,17 @@ class PredictOperator(Operator):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            obj = selector(objects_of(g0.raw), g0.raw)
+            objs = objects_of(g0.raw)
+            obj = selector(objs, g0.raw)
             if obj is None:
                 continue
-            grids[i] = render_object_recolor(g0.raw, obj["cells"], new_color)
+            color = new_color
+            if color is None:
+                donor_obj = donor(objs, g0.raw)
+                color = color_of(donor_obj) if donor_obj is not None else None
+                if color is None:
+                    continue
+            grids[i] = render_object_recolor(g0.raw, obj["cells"], color)
         return grids
 
     @staticmethod

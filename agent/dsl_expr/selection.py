@@ -1154,9 +1154,12 @@ def analyze_object_select_recolor(example_pairs: list) -> dict:
     2. Across pairs, the first named selector that picks that recolored object in
        *every* pair is the lifted argument (value-agnostic in colour, position and
        the non-selected distractors).
-    3. The new colour must be the same in every pair (a cross-pair COMM); it is
-       recomputed at predict time, so the rule is value-agnostic in the actual
-       colour.
+    3. The new colour is either *constant* across pairs (a cross-pair COMM) or a
+       *reading* off another object — the selected object painted the colour of the
+       object a learned donor selector picks (`color_reading`), used when the
+       constant reading abstains. Both are recomputed at predict time, so the rule
+       is value-agnostic in the actual colour; the donor is the colour-argument
+       analogue of the selector lift (§2.5-2b).
 
     Returns a symbolic dict; the `object_select_recolor` matcher (agent/conditions/)
     decides firing and PredictOperator renders from it. Stays inert (valid_all
@@ -1207,7 +1210,7 @@ def analyze_object_select_recolor(example_pairs: list) -> dict:
     valid = bool(per_pair) and all(p["ok"] for p in per_pair)
 
     # The new colour as a cross-pair COMM: the same colour in every pair, else the
-    # reading is not value-agnostically learnable and the family abstains.
+    # reading is not value-agnostically learnable and the constant path abstains.
     new_colors = [p["new_color"] for p in per_pair if p["new_color"] is not None]
     constant_new_color = (
         new_colors[0]
@@ -1230,9 +1233,40 @@ def analyze_object_select_recolor(example_pairs: list) -> dict:
                 selector = name
                 break
 
+    # Learn the new colour as a *reading* off another object (the §2.5-2b colour
+    # hole filler on the selection axis). When the new colour is NOT constant across
+    # pairs, it may still be value-agnostically determined: the selected object is
+    # painted the colour of the object a *donor* selector (a different
+    # `SELECTOR_VOCAB` criterion) picks. This is the colour-argument analogue of the
+    # selector lift — where the selector names *which* object changes, the donor
+    # names *what colour* it becomes, both read from comparison (another object's
+    # colour), neither a literal (P3/P4). It is the same COMM the constant case uses
+    # (the recolored object's output colour), only here that colour equals a donor
+    # object's colour in every pair rather than being fixed. Learned *only* when the
+    # constant reading abstains, so an existing constant-colour task is unchanged;
+    # the first consistent donor wins. The donor that picks the recolored object
+    # itself can never qualify (its colour is the *source*, not the new colour, so
+    # the recolour would be a no-op — already excluded by `changed`), so a genuine
+    # donor is always a different object.
+    color_reading = None
+    if valid and constant_new_color is None and selector is not None:
+        for name, fn in SELECTOR_VOCAB.items():
+            ok_donor = True
+            for p in per_pair:
+                donor = fn(p["objs"], p["grid"])
+                if (donor is None
+                        or color_of(donor) is None
+                        or color_of(donor) != p["new_color"]):
+                    ok_donor = False
+                    break
+            if ok_donor:
+                color_reading = name
+                break
+
     return {
         "per_pair": per_pair,
         "valid_all": valid,
         "selector": selector,
         "new_color": constant_new_color,
+        "color_reading": color_reading,
     }

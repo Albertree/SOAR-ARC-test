@@ -30,11 +30,13 @@ from agent.conditions import register
 def object_select_recolor(patterns: dict, params: dict | None = None) -> bool:
     """True iff every example holds several objects, exactly one is repainted to a
     single new colour (its shape and position unchanged), a single named selector
-    picks that object in every pair, and the new colour is constant across pairs,
-    with enough evidence.
+    picks that object in every pair, and the new colour is value-agnostically
+    learnable — either *constant* across pairs or a *reading* off another object
+    (the selected object painted a learned donor object's colour) — with enough
+    evidence.
 
     `params.min_evidence` (default 2) guards against committing to a selector or a
-    new colour from a single pair — one example cannot establish that either is
+    colour from a single pair — one example cannot establish that either is
     *consistent* across the family.
     """
     if not isinstance(patterns, dict):
@@ -49,6 +51,9 @@ def object_select_recolor(patterns: dict, params: dict | None = None) -> bool:
         return False
     if sig.get("selector") is None:
         return False
-    if sig.get("new_color") is None:
+    # The new colour is determined either by a constant cross-pair COMM
+    # (`new_color`) or by a learned donor reading (`color_reading`); one of the two
+    # must be present for the prediction to be well-defined.
+    if sig.get("new_color") is None and sig.get("color_reading") is None:
         return False
     return len(sig.get("per_pair") or []) >= min_evidence
