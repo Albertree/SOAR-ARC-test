@@ -202,3 +202,109 @@ property/relation/selection vocabulary (`position-of`/`color-of`/`unique`/
 `compare`, so a moving single pixel → fixed corner is solved by *selecting* the
 object and reading its position/color into `coloring` args (the lift R3 then
 unifies). That is the graduation-blocking rung.
+
+---
+## Iter 3 — 2026-06-12 — branch test31
+
+**Diagnosis**: R0 is cleared (iter 2); the lowest unproven rung is **R1 —
+object-level analysis**. The probe shows easy000c–i still INCORRECT via
+`identity`: the pipeline has no object-level recognition at all, so a single
+foreground object moved with its color/shape preserved (the whole easy000c–i
+family — verified: every pair has one non-bg object in G0 and G1, color & size
+preserved, position changed) is invisible to it. Following the same two-step
+shape that cleared R0 (iter 1 laid the `constant_output` *recognition*
+substrate, iter 2 wired it), the smallest defensible step is R1's recognition
+substrate — the seed object-selection/property vocabulary + an object-level
+matcher — **not** the generation+lift, which is a later iter.
+
+**Change**:
+- `agent/dsl_expr/__init__.py` (new) — the seed *argument-expression* vocabulary
+  (BACKLOG §2.5-1/2b): `objects_of` (canonical foreground objects via
+  `ARCKG.hodel`), `unique` (selection), `color_of`/`size_of`/`position_of`
+  (properties). Pure, symbolic, side-effect-free (P7). Located under `agent/`,
+  **not** `procedural_memory/DSL/`, so the F3 transformation-freeze is honored
+  while the argument vocabulary grows where the checker does not apply.
+- `agent/active_operators.py` — `ExtractPatternOperator` now surfaces an
+  `object_transition` signal (per-pair single-object COMM/DIFF: all_single /
+  color_preserved / shape_preserved / moved), computed via the seed vocabulary
+  so the reads are lift-ready expressions (`unique(objects_of(G))`,
+  `color_of`,…), not ad-hoc cell scans. +61 lines; no new `_try_*`/`_apply_*`
+  (F2-safe); F8 companion = `agent/conditions/`.
+- `agent/conditions/single_object_move.py` (new) — second matcher: fires when
+  every example pair relocates one color/shape-preserved object. Recognizes the
+  easy000c–i family value-agnostically (fixed target c–f, relative corner g/h,
+  resized grid i); the differing target is *not* part of recognition (derived
+  at apply time — the R3 lift). P5 +1.
+- `tests/test_single_object_move.py` (new) — vocabulary + unit + integration
+  (matcher fires on real `object_transition` for all of easy000c–i; rejects a
+  recolor-in-place task built on disk, proving it discriminates on the
+  COMM/DIFF, not on "one object exists"). 11 tests; suite 18/18 pass.
+
+**CLAUDE.md §6.1 ↔ arbor-dsl-taxonomy §3 conflict (surfaced per BACKLOG §2.5-1)**:
+§6.1 says "no new `def` under `procedural_memory/DSL/`"; taxonomy §3 says
+property/relation/util hand-coding is allowed and *should* grow. Resolution
+taken: the frozen contract binds only the *transformation* directory
+(`procedural_memory/DSL/*.py`, what F3 checks), so the new property/selection
+vocabulary lives in `agent/dsl_expr/`. No frozen contract violated; the conflict
+is noted, not silently resolved.
+
+**Probe before**: easy 1/3, easy_a 2/9; rules=1 (covers=6); P1=6.0, P5=1
+**Probe after** : easy 1/3, easy_a 2/9 (unchanged — substrate iter; matcher not
+yet consumed by `generalize`, exactly as iter 1 preceded iter 2's R0 wiring);
+rules=1 (covers=6); P5=2. R0 family (easy000a/b, easy0001) still CORRECT — no
+regression.
+
+**Invariants**: forbidden=none; positives = P5 +1 (1→2). P6 −61 (active_operators
+grew by the object_transition computation; allowed — F8 companion present, no
+`_try_*`). P1–P4 neutral. Verdict CLEAN.
+
+**Next gap (note for future iter)**: wire `single_object_move` end-to-end — have
+`GeneralizeOperator` emit a `{condition: single_object_move, action: place_object}`
+pair-specific program that reads the object via the seed vocabulary
+(`position_of(unique(objects_of(G0)))`, `color_of(...)`) and renders it as
+`coloring`(erase source) ∘ `coloring`(paint target) over a `make_grid`/reused
+canvas, then have `predict` apply it from the test G0 only (P5). Because c–i
+share that skeleton, the resulting pair-programs are exactly the R3
+anti-unification input — do NOT let each task mint its own permanent literal
+rule (§2.5-3); the target-position expression (fixed `(5,5)` vs grid
+bottom-right) is the variable the lift must abstract.
+
+---
+## Learning Loop -- 2026-06-12 11:52
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_115229.log
+
+---
+## Learning Loop -- 2026-06-12 11:52
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_115231.log
+
+---
+## Learning Loop -- 2026-06-12 11:59
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_115908.log
+
+---
+## Learning Loop -- 2026-06-12 11:59
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_115910.log

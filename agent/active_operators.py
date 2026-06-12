@@ -14,6 +14,7 @@ from collections import Counter
 
 from agent.operators import Operator
 from agent.conditions import match as match_condition
+from agent.dsl_expr import objects_of, unique, color_of, size_of, position_of
 from procedural_memory.DSL.apply import apply_DSL
 from ARCKG.comparison import compare as arckg_compare
 
@@ -195,7 +196,67 @@ class ExtractPatternOperator(Operator):
             "common_output": example_outputs[0] if all_equal else None,
         }
 
+        # Object-level transition: for each example pair, select the single
+        # foreground object in G0 and G1 (via the seed selection vocabulary) and
+        # record the COMM/DIFF between them — same color/size (COMM), moved
+        # position (DIFF). This is the symbolic evidence R1's object-level
+        # matcher keys on (BACKLOG_LOOP.md R1, §2.5-2b): a moving object selected
+        # by `unique(objects_of(G))` and read by `color_of`/`size_of`/
+        # `position_of`, never a raw cell literal. Surfaced here as a signal
+        # only; acting on it (placing via make_grid/coloring + the R3 lift) is a
+        # later rung, exactly as `output_invariant` preceded the R0 wiring.
+        patterns["object_transition"] = self._object_transition(task)
+
         wm.s1["patterns"] = patterns
+
+    def _object_transition(self, task):
+        """Aggregate the per-pair single-object COMM/DIFF across example pairs.
+
+        Returns a symbolic dict::
+
+            {
+              "all_single":      bool,   # every pair: exactly one fg object in G0 and G1
+              "color_preserved": bool,   # every pair: color_of(G0 obj) == color_of(G1 obj)
+              "shape_preserved": bool,   # every pair: size_of(G0 obj) == size_of(G1 obj)
+              "moved":           bool,   # every pair: position_of differs G0->G1
+              "evidence_count":  int,    # number of example pairs examined
+            }
+
+        Computed purely from `agent.dsl_expr` so the selection/property reads
+        are the lift-ready expressions (`unique(objects_of(G))`, `color_of`,
+        `size_of`, `position_of`), not ad-hoc cell scans.
+        """
+        pairs = []
+        for pair in task.example_pairs:
+            if pair.input_grid is None or pair.output_grid is None:
+                continue
+            src = unique(objects_of(pair.input_grid.raw))
+            dst = unique(objects_of(pair.output_grid.raw))
+            pairs.append((src, dst))
+
+        if not pairs:
+            return {
+                "all_single": False, "color_preserved": False,
+                "shape_preserved": False, "moved": False, "evidence_count": 0,
+            }
+
+        all_single = all(src is not None and dst is not None for src, dst in pairs)
+        color_preserved = all_single and all(
+            color_of(src) == color_of(dst) for src, dst in pairs
+        )
+        shape_preserved = all_single and all(
+            size_of(src) == size_of(dst) for src, dst in pairs
+        )
+        moved = all_single and all(
+            position_of(src) != position_of(dst) for src, dst in pairs
+        )
+        return {
+            "all_single": all_single,
+            "color_preserved": color_preserved,
+            "shape_preserved": shape_preserved,
+            "moved": moved,
+            "evidence_count": len(pairs),
+        }
 
     # ---- internal helpers ------------------------------------------------
 
