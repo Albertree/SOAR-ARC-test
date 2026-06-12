@@ -1,0 +1,53 @@
+"""
+render — express a concrete target grid as a `make_grid` + `coloring` composition.
+
+This is the operational meaning of BACKLOG_LOOP §2.5-1 for R0: the COMM-copy
+*action* ("the output is this fixed grid") is not a new primitive — it is the
+two frozen primitives composed. We build a background canvas with `make_grid`,
+then paint each non-background color with one `coloring` call. The result is
+provably equal to the target, demonstrating that even "emit a constant grid"
+bottoms out in the two-primitive vocabulary rather than a stored literal op.
+
+The function is value-agnostic: it works for any target grid (easy000a's
+`2`-at-(5,5) and easy000b's different fixed output alike), which is exactly the
+property R0 requires (one module, many constant outputs).
+"""
+
+from collections import Counter
+
+from procedural_memory.DSL.apply import apply_DSL
+
+
+def _background_color(grid: list) -> int:
+    """Pick the most frequent color as the canvas background (ties → smallest)."""
+    counts = Counter(cell for row in grid for cell in row)
+    if not counts:
+        return 0
+    most = max(counts.values())
+    return min(c for c, n in counts.items() if n == most)
+
+
+def render_grid_via_primitives(grid: list) -> list:
+    """Rebuild `grid` from `make_grid` + per-color `coloring` calls.
+
+    Returns a fresh grid equal to `grid`. Raises nothing for an empty grid
+    (returns an empty canvas).
+    """
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    bg = _background_color(grid)
+
+    canvas = apply_DSL("make_grid", height=height, width=width, color=bg)
+
+    # Group the non-background cells by color, one coloring() call per color.
+    by_color: dict = {}
+    for r in range(height):
+        for c in range(width):
+            color = grid[r][c]
+            if color != bg:
+                by_color.setdefault(color, []).append((r, c))
+
+    for color, cells in by_color.items():
+        canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
+
+    return canvas

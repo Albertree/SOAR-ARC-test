@@ -31,6 +31,53 @@ from datetime import datetime
 PROCEDURAL_MEMORY_ROOT = "procedural_memory"
 
 
+class RuleSchemaError(Exception):
+    """A rule violated the canonical {condition, action} schema on save/load.
+
+    Raised (never swallowed — INVARIANTS F7) so an invalid rule fails loudly
+    rather than becoming dead memory (the F4 / 168-rule failure mode)."""
+
+
+# ======================================================================
+# Validation
+# ======================================================================
+
+def validate_rule(entry: dict) -> None:
+    """Raise RuleSchemaError unless `entry` is a canonical {condition, action} rule.
+
+    Structural validation only (CLAUDE.md §3.2, docs/RULE_FORMAT.md): both halves
+    present and well-formed, and a non-empty covers list. Task-id *format* is not
+    enforced here — the supplied beginner suite uses ids like `easy000a`.
+    """
+    if not isinstance(entry, dict):
+        raise RuleSchemaError(f"rule is not an object: {type(entry).__name__}")
+    cond = entry.get("condition")
+    act = entry.get("action")
+    if not isinstance(cond, dict) or not cond:
+        raise RuleSchemaError("rule missing non-empty 'condition'")
+    if not isinstance(act, dict) or not act:
+        raise RuleSchemaError("rule missing non-empty 'action'")
+    if not cond.get("type"):
+        raise RuleSchemaError("condition missing 'type'")
+    if "params" not in cond:
+        raise RuleSchemaError("condition missing 'params'")
+    if not isinstance(cond.get("min_evidence"), int):
+        raise RuleSchemaError("condition missing integer 'min_evidence'")
+    if not act.get("dsl"):
+        raise RuleSchemaError("action missing 'dsl'")
+    if "args" not in act:
+        raise RuleSchemaError("action missing 'args'")
+    covers = entry.get("covers")
+    if not isinstance(covers, list) or not covers:
+        raise RuleSchemaError("rule missing non-empty 'covers'")
+
+
+def _is_canonical(rule: dict) -> bool:
+    """True if `rule` is already in {condition, action} form (not the legacy
+    `{type, ...}` shape)."""
+    return isinstance(rule, dict) and "condition" in rule and "action" in rule
+
+
 # ======================================================================
 # Public API
 # ======================================================================
@@ -40,12 +87,18 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
     """
     Save a learned rule to procedural_memory.
 
-    If an equivalent rule already exists, extend its "covers" list and return
-    its path — no duplicate file is created.
+    Canonical `{condition, action}` rules (CLAUDE.md §3.2) are persisted in the
+    canonical schema and validated before write; an equivalent canonical rule
+    (same condition.type + action) absorbs the new task into its `covers` list
+    instead of spawning a duplicate (the P1/P2 generalization direction). Legacy
+    `{type, ...}` rules keep the old `{rule: ...}` envelope for backward compat.
 
     Returns the file path of the saved (or updated) rule.
     """
     os.makedirs(procedural_memory_root, exist_ok=True)
+
+    if _is_canonical(rule):
+        return _save_canonical_rule(rule, task_hex, procedural_memory_root)
 
     existing = sorted(
         f for f in os.listdir(procedural_memory_root)
@@ -70,7 +123,7 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
             continue
 
     # New rule — assign next ID and build full entry
-    next_id = len(existing) + 1
+    next_id = _next_rule_id(existing)
     entry = {
         "id": next_id,
         "concept": _infer_concept(rule),
@@ -88,6 +141,89 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
         json.dump(entry, fh, indent=2)
 
     return path
+
+
+def _save_canonical_rule(rule: dict, task_hex: str,
+                         procedural_memory_root: str) -> str:
+    """Persist a {condition, action} rule, merging into an equivalent existing
+    rule's covers when one is found."""
+    existing = sorted(
+        f for f in os.listdir(procedural_memory_root)
+        if f.startswith("rule_") and f.endswith(".json")
+    )
+
+    for fname in existing:
+        path = os.path.join(procedural_memory_root, fname)
+        try:
+            with open(path, "r") as fh:
+                stored = json.load(fh)
+        except (json.JSONDecodeError, IOError):
+            continue
+        if _canonical_equivalent(stored, rule):
+            covers = stored.get("covers", [])
+            if task_hex not in covers:
+                covers.append(task_hex)
+                stored["covers"] = covers
+                validate_rule(stored)
+                with open(path, "w") as fh:
+                    json.dump(stored, fh, indent=2)
+            return path
+
+    next_id = _next_rule_id(existing)
+    cond = rule["condition"]
+    act = rule["action"]
+    entry = {
+        "id": next_id,
+        "concept": rule.get("concept") or cond.get("type", "rule"),
+        "category": rule.get("category") or cond.get("type", "other"),
+        "condition": {
+            "type": cond.get("type"),
+            "params": cond.get("params", {}),
+            "min_evidence": cond.get("min_evidence", 2),
+        },
+        "action": {
+            "dsl": act.get("dsl"),
+            "args": act.get("args", {}),
+        },
+        "covers": [task_hex],
+        "source_task": task_hex,
+        "anti_unification_trace": None,
+        "created_at": datetime.now().isoformat(),
+        "times_reused": 0,
+    }
+    validate_rule(entry)
+
+    filename = f"rule_{next_id:03d}.json"
+    path = os.path.join(procedural_memory_root, filename)
+    with open(path, "w") as fh:
+        json.dump(entry, fh, indent=2)
+    return path
+
+
+def _canonical_equivalent(stored: dict, rule: dict) -> bool:
+    """Two canonical rules are equivalent when their condition.type and action
+    (dsl + args) match — i.e. the same recognition→transformation skeleton."""
+    if not _is_canonical(stored):
+        return False
+    sc, rc = stored.get("condition", {}), rule.get("condition", {})
+    sa, ra = stored.get("action", {}), rule.get("action", {})
+    return (
+        sc.get("type") == rc.get("type")
+        and sa.get("dsl") == ra.get("dsl")
+        and _norm_dict(sa.get("args", {})) == _norm_dict(ra.get("args", {}))
+    )
+
+
+def _next_rule_id(existing) -> int:
+    """Next monotonic id: max existing id + 1 (never reuses a deleted id)."""
+    max_id = 0
+    for fname in existing:
+        try:
+            n = int(fname[len("rule_"):-len(".json")])
+            max_id = max(max_id, n)
+        except ValueError:
+            continue
+    return max_id + 1
 
 
 def load_all_rules(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:

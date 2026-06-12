@@ -6,7 +6,7 @@ Two layers:
   * unit       — the matcher's logic on synthetic `patterns` dicts.
   * integration— the matcher fed by the REAL `output_invariant` signal that
                  ExtractPatternOperator surfaces for an actual constant-output
-                 task (easy0001), proving matcher and pipeline agree on schema.
+                 task (easy000a), proving matcher and pipeline agree on schema.
 """
 
 import os
@@ -63,14 +63,14 @@ def test_extract_pattern_surfaces_output_invariant_on_constant_task():
     from agent.active_operators import ExtractPatternOperator
 
     with tempfile.TemporaryDirectory() as tmp:
-        task = ARCManager(semantic_memory_root=tmp).load_task("easy0001")
+        task = ARCManager(semantic_memory_root=tmp).load_task("ARC_easy_a/easy000a")
 
     wm = WorkingMemory()
     wm.task = task
     ExtractPatternOperator().effect(wm)
 
     inv = wm.s1["patterns"]["output_invariant"]
-    # easy0001's every training output is the same grid (a 2 at (5,5)).
+    # easy000a's every training output is the same grid (a 2 at (5,5)).
     assert inv["all_equal"] is True
     assert inv["evidence_count"] >= 2
     assert inv["common_output"] is not None

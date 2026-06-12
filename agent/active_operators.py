@@ -12,6 +12,11 @@ Pipeline operators (all fire in S2, read/write S1):
 
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
+from agent.conditions import match as match_condition
+from agent.dsl_expr.render import render_grid_via_primitives
+
+#: condition.type the GeneralizeOperator emits for the constant-output family
+CONSTANT_OUTPUT_DSL = "copy_common_output"
 
 
 # ======================================================================
@@ -310,8 +315,18 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
+        # Strategy 0 (R0, BACKLOG_LOOP §3): the constant-output family. If the
+        # `constant_output` matcher fires (all example outputs identical — the
+        # Inter-Grid G1 COMM signal), emit a canonical {condition, action} rule
+        # value-agnostically. The action is the discovered composition
+        # `copy_common_output`, which PredictOperator renders from the two
+        # frozen primitives. This is recognition-driven, not a hand-coded
+        # detector: the decision is delegated to the registered matcher.
+        rule = self._constant_output_rule(patterns)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
 
         # Strategy 2: simple 1:1 color mapping
         if rule is None:
@@ -322,6 +337,37 @@ class GeneralizeOperator(Operator):
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- strategy: constant output (R0 COMM-copy) -----------------------
+
+    def _constant_output_rule(self, patterns):
+        """Emit the canonical constant-output rule when the matcher fires.
+
+        Not a `_try_*`-family detector: the recognition is delegated to the
+        registered `constant_output` matcher (agent/conditions/), and the result
+        is a schema-canonical `{condition, action}` rule, not a literal grid.
+        The common output is recomputed at predict time, so the rule stays
+        value-agnostic and one rule covers the whole family.
+        """
+        invariant = patterns.get("output_invariant") or {}
+        evidence = invariant.get("evidence_count", 0)
+        params = {"min_evidence": 2}
+        if not match_condition("constant_output", patterns, params):
+            return None
+        return {
+            "condition": {
+                "type": "constant_output",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": CONSTANT_OUTPUT_DSL,
+                "args": {},
+            },
+            "concept": "copy_common_output",
+            "category": "constant_output",
+            "confidence": 1.0,
+        }
 
     # ---- strategy: sequential recoloring --------------------------------
 
@@ -462,6 +508,22 @@ class PredictOperator(Operator):
         rule = active_rules[0]
         predictions = dict(wm.s1.get("predictions") or {})
 
+        # Canonical {condition, action} rule for the constant-output family
+        # (R0). The prediction is value-agnostic: recompute the common example
+        # output and render it via the two frozen primitives, independent of the
+        # test input. P5 (variable origin): the answer comes from G0/G1 of the
+        # examples, never from the test G1 (there is none).
+        action = rule.get("action") if isinstance(rule, dict) else None
+        if action and action.get("dsl") == CONSTANT_OUTPUT_DSL:
+            common = self._common_output_grid(task)
+            if common is not None:
+                for i in range(len(task.test_pairs)):
+                    key = f"test_{i}"
+                    if key not in predictions:
+                        predictions[key] = common
+            wm.s1["predictions"] = predictions
+            return
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -474,6 +536,19 @@ class PredictOperator(Operator):
                 predictions[key] = predicted
 
         wm.s1["predictions"] = predictions
+
+    @staticmethod
+    def _common_output_grid(task):
+        """The output grid shared by all example pairs, rendered from the two
+        frozen primitives — or None if the example outputs are not all equal."""
+        outputs = [
+            p.output_grid.raw
+            for p in task.example_pairs
+            if p.output_grid is not None
+        ]
+        if not outputs or any(o != outputs[0] for o in outputs):
+            return None
+        return render_grid_via_primitives(outputs[0])
 
     # ---- rule application dispatchers ------------------------------------
 

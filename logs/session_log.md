@@ -72,3 +72,87 @@ intended way and stops the stale pipeline from regenerating F4-dirty
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_112313.log
+
+---
+## Learning Loop -- 2026-06-12 18:33
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 0 -> 2 (+2 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_183259.log
+
+---
+## Learning Loop -- 2026-06-12 18:40
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_184028.log
+
+---
+## Iter 2 — 2026-06-12 — branch test32
+
+**Diagnosis**: Lowest unproven rung is still **R0 (GRID-level COMM-copy)**. Iter 1
+built R0's *recognition* (the `constant_output` matcher, P5=1) but left its
+generation→prediction→persistence half unwired, so the probe kept relearning the
+constant-output family (easy000a/b) as bogus condition-less `color_mapping` rules
+(rule_001/002, F4-dirty dead memory). Compounding this, the two frozen
+transformation primitives were **missing entirely** — only orphaned `.pyc` files
+remained under `procedural_memory/DSL/` (clean-start never committed the source).
+Smallest defensible step: lay the `make_grid`/`coloring` substrate and close R0's
+COMM-copy loop value-agnostically so one canonical rule solves the whole family.
+
+**Change**:
+- `procedural_memory/DSL/{__init__,make_grid,coloring,apply}.py` (new) — the two
+  frozen transformation primitives (F3-blessed; the only two ever) + `apply_DSL`
+  dispatcher. Restores the missing static layer the orphaned `.pyc` evidenced.
+- `agent/dsl_expr/{__init__,render}.py` (new) — the argument/composition vocabulary
+  home under `agent/` (BACKLOG §2.5-1, *not* in frozen DSL dir). `render_grid_via_
+  primitives` expresses any target grid as `make_grid` + per-color `coloring`,
+  so "emit the common output" bottoms out in the two primitives, not a stored op.
+- `agent/active_operators.py` — `GeneralizeOperator` now consults the registered
+  `constant_output` matcher *first* and emits a canonical `{condition, action}`
+  rule (`action.dsl = copy_common_output`), value-agnostically; `PredictOperator`
+  renders the common example output via the primitives. No new `_try_*`/`_apply_*`
+  (helpers named `_constant_output_rule`/`_common_output_grid`); recognition is
+  delegated to the matcher, not hand-coded. F8 companion = `agent/memory.py`.
+- `agent/memory.py` — `save_rule_to_ltm` persists canonical rules in `{condition,
+  action}` schema and *merges* equivalent ones (same condition.type + action) into
+  one `covers`>1 rule. Added `validate_rule()` + `RuleSchemaError` (raised, never
+  swallowed — F7), the F4 guard the checker references.
+- `procedural_memory/rule_001/002.json` (deleted) — the F4-dirty `color_mapping`
+  rules the stale probe regenerated; replaced by one canonical rule covering both.
+- `tests/test_constant_output_path.py` (new, 14 tests) — primitives, render,
+  generalize-emits-canonical, predict-renders, save-merges, validate-rejects.
+- `tests/test_constant_output.py` — repointed the stale `easy0001` integration
+  reference (deleted with the retired ARC_easy slice) to `easy000a`.
+
+**Probe before**: easy_a 0/9; rules=2 (both condition-less color_mapping); P1=1.0
+**Probe after** : easy_a 2/9 (easy000a+easy000b CORRECT, value-agnostic, same
+  module); rules=1 canonical (covers=[easy000a,easy000b]); P1=2.0, P2=2.0
+
+**Invariants**: forbidden=none; positives = P1 +1.0 (1.0→2.0), P2 +1.0 (1.0→2.0).
+P5 unchanged (matcher already counted iter 1); P6 grew +75 (the COMM-copy
+generation/prediction path; F8 companion `agent/memory.py` present). Verdict CLEAN.
+19/19 tests pass.
+
+**RUNG R0 CLEARED** — (1) *works*: pipeline runs error-free, easy000a/b solve.
+(2) *module uniformity*: easy000a and easy000b — **different** fixed outputs —
+are solved by the *same* module (constant_output matcher + copy_common_output
+action), proving the value-agnostic property R0's done-when demands; no per-task
+branch. (3) *approaches answer*: the prediction IS the correct grid, derived from
+example G0/G1 COMM (never test G1 — P5). (4) *search sanity*: 14 cycle steps, no
+brute force. Signals moved: P1/P2 1.0→2.0. Next rung's premise (a working
+transformation substrate + canonical persistence) is now met.
+
+**Next gap (note for future iter)**: R1 — easy000c–i (`identity`, INCORRECT) need
+object-level analysis. The seed selection/property vocabulary (`objects-of`,
+`unique`, `position-of`, `color-of`) belongs in `agent/dsl_expr/`, and `compare`
+must descend to OBJECT level; easy000c (single pixel → fixed corner, color kept)
+is the smallest entry. Also: the fast path (`active_agent` `entry.get("rule")`)
+cannot yet reuse canonical rules, so reuse (P-reuse/R5) stays 0 until that lookup
+is taught the `{condition, action}` shape.
