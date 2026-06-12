@@ -71,6 +71,16 @@ def extent_of(obj: dict):
     return (max(rows) - min(rows) + 1, max(cols) - min(cols) + 1)
 
 
+def bbox_height_of(obj: dict) -> int:
+    """The object's bounding-box height in cells — a scalar property *distinct*
+    from `size_of` (cell-count) whenever the shape is not a solid column. A
+    second named dimension property (`DIM_PROPERTY_VOCAB`), so the size-grid
+    family carries ≥2 properties sharing one `make_grid` skeleton — the input
+    anti-unification lifts into a property-parameterised `size_to_grid` rule
+    (R3, §2.5-2)."""
+    return extent_of(obj)[0]
+
+
 # ---------------------------------------------------------------------------
 # relation vocabulary: grid-relative position (a corner of the canvas)
 # ---------------------------------------------------------------------------
@@ -386,8 +396,16 @@ def analyze_object_select_move(example_pairs: list) -> dict:
 # it introduces no new transformation (F3-exempt, lives under agent/).
 
 #: name -> fn(obj) -> int. A scalar object property usable as a canvas dimension.
+#: Tried in this deterministic order when *learning* which property a task uses
+#: (the first whose value reproduces the output side in every pair wins). Adding
+#: a property grows the LHS argument vocabulary; it introduces no new
+#: transformation (F3-exempt). Two distinct properties here are what give the
+#: size-grid family ≥2 concrete rules sharing the `size_to_grid` skeleton — the
+#: anti-unification lift input (R3, §2.5-2 / §2.5-4: rule count falls while covers
+#: rises, the only "real progress" direction).
 DIM_PROPERTY_VOCAB = {
     "object_size": size_of,
+    "bbox_height": bbox_height_of,
 }
 
 

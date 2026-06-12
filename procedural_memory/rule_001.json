@@ -1,24 +1,32 @@
 {
   "id": 1,
-  "concept": "copy_common_output",
-  "category": "constant_output",
+  "concept": "object_property_to_solid_square",
+  "category": "object_size_grid",
   "condition": {
-    "type": "constant_output",
+    "type": "object_size_grid",
     "params": {
       "min_evidence": 2
     },
     "min_evidence": 2
   },
   "action": {
-    "dsl": "copy_common_output",
-    "args": {}
+    "dsl": "size_to_grid",
+    "args": {
+      "dim_property": "?v0",
+      "properties": [
+        "bbox_height",
+        "object_size"
+      ]
+    }
   },
   "covers": [
-    "easy000a",
-    "easy000b"
+    "madeup_bbox_height_to_square",
+    "madeup_bbox_height_to_square_b",
+    "madeup_size_to_square",
+    "madeup_size_to_square_big"
   ],
-  "source_task": "easy000a",
-  "anti_unification_trace": null,
-  "created_at": "2026-06-12T18:40:28.677410",
+  "source_task": "madeup_bbox_height_to_square",
+  "anti_unification_trace": "episodic_memory\\madeup_bbox_height_to_square\\anti_unification\\size_to_grid_lift.json",
+  "created_at": "2026-06-12T20:31:56.992120",
   "times_reused": 0
 }

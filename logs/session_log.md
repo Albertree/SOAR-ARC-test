@@ -1,6 +1,78 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 13 — 2026-06-12 — branch test32
+
+**Diagnosis**: madeup probe was 6/6 green, but the size-grid family (iter12) knew
+exactly one dimension property (`object_size`), and — crucially — the R3
+anti-unification lift was wired **only** for the `object_move` category. So a task
+sized by a *different* object property would (a) fail, and (b) even once a property
+was added, produce a *second* standalone `size_to_grid` rule that just accretes
+(rule count up, covers/P3 flat) — the §2.5-4 failure mode. The smallest defensible
+gap that is genuine forward motion (not accretion) is therefore the iter12 next-gap:
+add a second dim-property *and* make the size-grid family liftable, so the two
+property-rules fold into one `covers>1` abstraction with a real AU trace — the first
+AU lift **outside** object_move (BACKLOG R3, the "★ 최우선 큰-틀 보상").
+
+**Change**:
+- `data/ARC_madeup/madeup_bbox_height_to_square.json` + `..._b.json` (new,
+  F1-exempt) — single-object tasks whose output side = the object's *bounding-box
+  height*, with `object_size ≠ out_side` and `bbox_width ≠ out_side` in every pair,
+  so the existing `object_size` property cannot match (confirmed INCORRECT→identity
+  before the fix). Two tasks so `bbox_height` itself is value-agnostic (covers 2),
+  not a per-task literal (§2.5-3).
+- `agent/dsl_expr/selection.py` — `bbox_height_of(obj)` (a scalar property distinct
+  from `size_of`) added to `DIM_PROPERTY_VOCAB` (1→2 properties). This is the
+  §2.5-1 *argument*-vocabulary growth: the `make_grid` dimension argument can now be
+  `bbox_height(unique_object(in))`; the transformation stays frozen (F3-exempt,
+  lives under agent/).
+- `program/anti_unification.py` — generalized the lift from the single hard-coded
+  object-move path into a **family registry** `LIFT_FAMILIES`: each family declares
+  how a concrete rule maps to its argument-expression program, which value differs
+  (the lift `key`), and the umbrella condition/concept + `args` list-key. Added the
+  `object_size_grid` family (concrete `size_to_grid` rules differing only in
+  `dim_property` lift into one `size_to_grid` rule carrying `properties:[…]`).
+  `_rule_to_program`/`unify` now dispatch on family; object_move behaviour is
+  byte-identical (its tests still pin it). Trace filename derives from the abstract
+  dsl (`size_to_grid_lift.json`).
+- `agent/memory.py` — replaced the object-move-specific `_consolidate_object_move`/
+  `_absorbs_object_move`/`_object_move_reading` with family-generic
+  `_consolidate_all`→`_consolidate_family` and `_abstract_absorbs`, driven by
+  `anti_unification.LIFT_FAMILIES`. The single AU call site (`save_rule`) is
+  unchanged (CLAUDE.md §8). Idempotent re-discovery (absorb) now covers both
+  families.
+- `tests/` — existing 60 tests still pass (object_move lift unchanged); the AU
+  lift firing on the size-grid family is verified end-to-end via the probe.
+
+**Probe before**: easy_a 9/9; madeup 6/6 (bbox tasks did not exist); rules=3
+  (place_object covers 11, size object_size covers 2, copy_common_output covers 2);
+  P1=5.0, P2=5.0, P3=0.33.
+**Probe after** : easy_a 9/9 (regression guard held); madeup 8/8; rules=3
+  (place_object covers 11, **size_to_grid abstract covers 4 — object_size+bbox_height,
+  AU-traced**, copy_common_output covers 2); 17 tasks / 3 rules; P1=5.67, P2=5.67,
+  P3=0.67. 60/60 tests pass.
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN; F1 data edits under
+exempt ARC_madeup/; F2/F3 untouched — no new `_try_*`/`_apply_*`, no new DSL
+primitive [bbox_height is LHS argument vocabulary under agent/, the action is the
+frozen `make_grid`]; active_operators.py untouched so F8 N/A). positives: **P1
++0.67, P2 +0.67, P3 +0.33** — the three rise *together*, the §2.5-4 definition of
+real progress. P3 doubled: a second rule family now carries a genuine
+`anti_unification_trace`, demonstrating `unify()` firing outside object_move.
+
+**Next gap (note for future iter)**: the size-grid abstraction now ranges over two
+properties but the concrete tasks are still square solid fills sized by one scalar.
+The next concepts the size-grid family does *not* express: (a) a *non-square* output
+(height = one property, width = another — two independent dimension expressions); or
+(b) the grid size driven by a property of a *selected* object among several (folding
+the §2.5-2b selector vocabulary into the dimension argument), or by **object count**
+(a grid-level property, requiring the analysis to drop its single-object
+precondition). Orthogonally, the three `place_object_select` rules collapsed into the
+object_move abstraction only because easy_a supplied distinct readings — a pure
+selector-axis lift (same reading `constant_select`, differing only in `selector`)
+still has no home and would be the first *intra-reading* generalization.
+
+---
 ## Iter 12 — 2026-06-12 — branch test32
 
 **Diagnosis**: The loop graduated easy_a → **madeup** this iter (phase_state.json:
@@ -1153,3 +1225,83 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_201837.log
+
+---
+## Learning Loop -- 2026-06-12 20:21
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_202120.log
+
+---
+## Learning Loop -- 2026-06-12 20:21
+
+- Split: None, Tasks: 6
+- Correct: 6 / 6 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_202124.log
+
+---
+## Learning Loop -- 2026-06-12 20:27
+
+- Split: None, Tasks: 8
+- Correct: 6 / 8 (75.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_202709.log
+
+---
+## Learning Loop -- 2026-06-12 20:27
+
+- Split: None, Tasks: 8
+- Correct: 6 / 8 (75.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_202718.log
+
+---
+## Learning Loop -- 2026-06-12 20:27
+
+- Split: None, Tasks: 8
+- Correct: 8 / 8 (100.0%)
+- Rules: 0 -> 5 (+5 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_202746.log
+
+---
+## Learning Loop -- 2026-06-12 20:31
+
+- Split: None, Tasks: 8
+- Correct: 8 / 8 (100.0%)
+- Rules: 0 -> 4 (+4 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_203156.log
+
+---
+## Learning Loop -- 2026-06-12 20:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 3 (+-1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_203207.log
+
+---
+## Learning Loop -- 2026-06-12 20:32
+
+- Split: None, Tasks: 8
+- Correct: 8 / 8 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_203211.log

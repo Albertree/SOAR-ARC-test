@@ -37,7 +37,6 @@ PROCEDURAL_MEMORY_ROOT = "procedural_memory"
 #: are absorbed by an abstract place_object rule whose `readings` include their
 #: reading — keeping the lift stable across runs (no churn).
 _ABSTRACT_PLACE_OBJECT_DSL = "place_object"
-_LIFTABLE_CATEGORIES = {"object_move"}
 
 
 class RuleSchemaError(Exception):
@@ -161,8 +160,6 @@ def _save_canonical_rule(rule: dict, task_hex: str,
         if f.startswith("rule_") and f.endswith(".json")
     )
 
-    incoming_reading = _object_move_reading(rule)
-
     for fname in existing:
         path = os.path.join(procedural_memory_root, fname)
         try:
@@ -170,11 +167,12 @@ def _save_canonical_rule(rule: dict, task_hex: str,
                 stored = json.load(fh)
         except (json.JSONDecodeError, IOError):
             continue
-        # An abstract place_object rule (R3 lift) absorbs a concrete object-move
-        # rule whose reading it already ranges over — so re-discovering the
-        # concrete rule on a later run merges its task into the abstraction
-        # rather than re-spawning the source (no churn, the lift stays stable).
-        if incoming_reading is not None and _absorbs_object_move(stored, incoming_reading):
+        # An abstract lift rule (R3) absorbs a concrete rule whose argument value
+        # (object-move reading / size-grid dimension property) it already ranges
+        # over — so re-discovering the concrete rule on a later run merges its
+        # task into the abstraction rather than re-spawning the source (no churn,
+        # the lift stays stable).
+        if _abstract_absorbs(stored, rule):
             covers = stored.get("covers", [])
             if task_hex not in covers:
                 covers.append(task_hex)
@@ -191,7 +189,7 @@ def _save_canonical_rule(rule: dict, task_hex: str,
                 validate_rule(stored)
                 with open(path, "w") as fh:
                     json.dump(stored, fh, indent=2)
-            _consolidate_object_move(procedural_memory_root)
+            _consolidate_all(procedural_memory_root)
             return path
 
     next_id = _next_rule_id(existing)
@@ -222,9 +220,9 @@ def _save_canonical_rule(rule: dict, task_hex: str,
     path = os.path.join(procedural_memory_root, filename)
     with open(path, "w") as fh:
         json.dump(entry, fh, indent=2)
-    # A freshly-created object-move rule may complete a liftable pair with an
-    # existing sibling — attempt the R3 lift now (CLAUDE.md §8 single call site).
-    _consolidate_object_move(procedural_memory_root)
+    # A freshly-created rule may complete a liftable pair with an existing
+    # sibling — attempt the R3 lift now (CLAUDE.md §8 single call site).
+    _consolidate_all(procedural_memory_root)
     return path
 
 
@@ -246,25 +244,26 @@ def _canonical_equivalent(stored: dict, rule: dict) -> bool:
 # Anti-unification (R3) — the single permitted call site (CLAUDE.md §8)
 # ======================================================================
 
-def _object_move_reading(rule: dict):
-    """The COMM reading a concrete object-move rule fixes its target by, or None
-    if the rule is not a concrete (un-lifted) object-move rule."""
-    if not _is_canonical(rule):
-        return None
-    dsl = rule.get("action", {}).get("dsl")
-    return anti_unification._OBJECT_MOVE_READING.get(dsl)
-
-
-def _absorbs_object_move(stored: dict, reading: str) -> bool:
-    """True if `stored` is an abstract place_object rule whose lifted target
-    variable already ranges over `reading` — so a concrete rule with that
-    reading is subsumed and merely adds to the abstraction's covers."""
-    if not _is_canonical(stored):
+def _abstract_absorbs(stored: dict, rule: dict) -> bool:
+    """True if `stored` is an abstract lift rule whose ranged-over values already
+    include the concrete `rule`'s lifted argument (object-move reading or
+    size-grid dimension property) — so the concrete rule is subsumed and merely
+    adds its task to the abstraction's covers (no re-spawn, the lift stays
+    stable)."""
+    if not _is_canonical(stored) or not _is_canonical(rule):
         return False
-    act = stored.get("action", {})
-    if act.get("dsl") != _ABSTRACT_PLACE_OBJECT_DSL:
+    fam = anti_unification.family_for_rule(rule)
+    if fam is None:
         return False
-    return reading in (act.get("args", {}).get("readings") or [])
+    key = fam["key"](rule)
+    if key is None:
+        return False
+    if stored.get("category") != fam["category"]:
+        return False
+    sargs = stored.get("action", {}).get("args", {})
+    if fam["list_key"] not in sargs:           # stored is not the abstraction
+        return False
+    return key in anti_unification.abstract_values(stored, fam)
 
 
 def save_rule(new_rule: dict, source_task: str, related_rules: list):
@@ -282,21 +281,30 @@ def save_rule(new_rule: dict, source_task: str, related_rules: list):
     return None
 
 
-def _consolidate_object_move(procedural_memory_root: str) -> None:
-    """Lift the object-move family into one abstract place_object rule.
+def _consolidate_all(procedural_memory_root: str) -> None:
+    """Attempt the R3 lift for every liftable family (CLAUDE.md §8). Each family
+    is folded independently through the single AU call site save_rule()→unify()."""
+    for fam in anti_unification.LIFT_FAMILIES:
+        _consolidate_family(procedural_memory_root, fam)
 
-    Two cases, both routed through the single AU call site save_rule()→unify():
 
-    (a) **first lift** — ≥2 standalone concrete rules with *distinct* readings
-        (e.g. constant_target + constant_offset) collapse into one abstraction.
-    (b) **re-lift** — an existing abstract place_object rule plus a standalone
-        concrete rule carrying a reading the abstraction does not yet range over
-        (e.g. a corner move appearing after the target/offset lift). The new
-        reading is folded in and the concrete's covers absorbed.
+def _consolidate_family(procedural_memory_root: str, fam: dict) -> None:
+    """Lift one liftable family into a single abstract rule (BACKLOG_LOOP R3).
+
+    Family-generic over `anti_unification.LIFT_FAMILIES`: ``object_move`` collapses
+    the placement readings into ``place_object``; ``object_size_grid`` collapses
+    the canvas-sizing dimension properties (object_size, bbox_height, …) into one
+    ``size_to_grid`` rule. Two cases, both routed through the single AU call site:
+
+    (a) **first lift** — ≥2 standalone concrete rules with *distinct* lifted
+        values (e.g. constant_target + constant_offset, or object_size +
+        bbox_height) collapse into one abstraction.
+    (b) **re-lift** — an existing abstraction plus a standalone concrete carrying
+        a value the abstraction does not yet range over is folded in.
 
     On success, writes the abstract rule into the lowest-id family file
     (covers = union), records the anti_unification_trace, and removes the now
-    subsumed siblings. Idempotent: once every family reading lives in the
+    subsumed siblings. Idempotent: once every family value lives in the
     abstraction, re-discovered concretes are absorbed at save time so a re-run
     finds no standalone concrete and no-ops (the §2.5-4 direction — rule count
     falls while covers rises)."""
@@ -313,39 +321,27 @@ def _consolidate_object_move(procedural_memory_root: str) -> None:
         r["_path"] = path
         rules.append(r)
 
-    family = [r for r in rules if r.get("category") in _LIFTABLE_CATEGORIES]
-    concrete = [r for r in family if _object_move_reading(r) is not None]
-    abstract = [
-        r for r in family
-        if r.get("action", {}).get("dsl") == _ABSTRACT_PLACE_OBJECT_DSL
-    ]
+    family = [r for r in rules if r.get("category") == fam["category"]]
+    concrete = [r for r in family if fam["key"](r) is not None]
+    abstract = [r for r in family
+                if fam["list_key"] in r.get("action", {}).get("args", {})]
     if not concrete:
         return  # nothing un-lifted to fold
 
-    # Every reading the family spans: those already lifted into an abstraction
-    # plus those carried by standalone concrete rules.
-    abstract_readings = set()
+    # Every value the family spans: those already lifted into an abstraction plus
+    # those carried by standalone concrete rules.
+    abstract_vals = set()
     for a in abstract:
-        abstract_readings |= set(a.get("action", {}).get("args", {}).get("readings") or [])
-    concrete_readings = {_object_move_reading(r) for r in concrete}
-    all_readings = abstract_readings | concrete_readings
-    if len(all_readings) < 2:
-        return  # not enough distinct readings to generalise
+        abstract_vals |= set(anti_unification.abstract_values(a, fam))
+    concrete_vals = {fam["key"](r) for r in concrete}
+    all_vals = abstract_vals | concrete_vals
+    if len(all_vals) < 2:
+        return  # not enough distinct values to generalise
 
-    # Synthesize one concrete rule per distinct reading so unify (the single AU
-    # call site) lifts the whole family uniformly, whether a reading comes from a
-    # standalone concrete rule or an existing abstraction's readings list.
-    reading_to_dsl = {v: k for k, v in anti_unification._OBJECT_MOVE_READING.items()}
-    synth = [
-        {
-            "condition": {"type": "object_move",
-                          "params": {"min_evidence": 2}, "min_evidence": 2},
-            "action": {"dsl": reading_to_dsl[reading], "args": {}},
-            "concept": "place_object",
-            "category": "object_move",
-        }
-        for reading in sorted(all_readings)
-    ]
+    # Synthesize one concrete rule per distinct value so unify (the single AU
+    # call site) lifts the whole family uniformly, whether a value comes from a
+    # standalone concrete rule or an existing abstraction's ranged-over list.
+    synth = [fam["synth"](v) for v in sorted(all_vals)]
     result = save_rule(synth[-1], "", synth[:-1])
     if result is None:
         return
@@ -366,8 +362,8 @@ def _consolidate_object_move(procedural_memory_root: str) -> None:
     entry = {
         "id": host.get("id", _next_rule_id(
             [os.path.basename(r["_path"]) for r in rules])),
-        "concept": abstract_rule.get("concept", "place_object"),
-        "category": abstract_rule.get("category", "object_move"),
+        "concept": abstract_rule.get("concept", fam["concept"]),
+        "category": abstract_rule.get("category", fam["category"]),
         "condition": abstract_rule["condition"],
         "action": abstract_rule["action"],
         "covers": covers,

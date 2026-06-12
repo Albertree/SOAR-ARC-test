@@ -257,6 +257,132 @@ _OBJECT_MOVE_READING = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Liftable families (BACKLOG_LOOP §2.5-2 / R3)
+# ---------------------------------------------------------------------------
+#
+# A *liftable family* is a set of concrete rules that share one transformation
+# skeleton and differ only in a single *argument expression*. Anti-unification
+# turns that differing argument into a variable, collapsing N concrete rules into
+# one ``covers>1`` abstract rule (§2.5-4: rule count falls while covers rises).
+#
+# Each family declares (a) how a concrete rule maps to its single-line
+# argument-expression *program* (or None when the rule is not a concrete member),
+# (b) which single value differs across members (the lift `key`), (c) the
+# umbrella `condition_type`/`concept` for the abstract rule, and (d) the `args`
+# slot (`list_key`) under which the abstraction records the concrete values it
+# ranges over (so the consumer can resolve the variable at predict time from
+# COMM/DIFF — §2.5-2b). Adding a family here is the *only* way the lift grows to a
+# new concept; it introduces no new transformation (the program bottoms out in
+# make_grid/coloring — F3-exempt).
+
+
+def _object_move_program(rule):
+    reading = _OBJECT_MOVE_READING.get(rule.get("action", {}).get("dsl"))
+    if reading is None:
+        return None
+    return [{"dsl": "place_object", "args": {"target": {"reading": reading}}}]
+
+
+def _object_move_key(rule):
+    return _OBJECT_MOVE_READING.get(rule.get("action", {}).get("dsl"))
+
+
+def _object_move_synth(reading):
+    reading_to_dsl = {v: k for k, v in _OBJECT_MOVE_READING.items()}
+    return {
+        "condition": {"type": "object_move",
+                      "params": {"min_evidence": 2}, "min_evidence": 2},
+        "action": {"dsl": reading_to_dsl[reading], "args": {}},
+        "concept": "place_object",
+        "category": "object_move",
+    }
+
+
+def _size_grid_program(rule):
+    act = rule.get("action", {})
+    if act.get("dsl") != "size_to_grid":
+        return None
+    args = act.get("args", {})
+    if "properties" in args:            # already an abstract lift, not a source
+        return None
+    prop = args.get("dim_property")
+    if not isinstance(prop, str) or prop.startswith("?"):
+        return None
+    return [{"dsl": "size_to_grid", "args": {"dim_property": prop}}]
+
+
+def _size_grid_key(rule):
+    act = rule.get("action", {})
+    if act.get("dsl") != "size_to_grid":
+        return None
+    args = act.get("args", {})
+    if "properties" in args:
+        return None
+    prop = args.get("dim_property")
+    if not isinstance(prop, str) or prop.startswith("?"):
+        return None
+    return prop
+
+
+def _size_grid_synth(prop):
+    return {
+        "condition": {"type": "object_size_grid",
+                      "params": {"min_evidence": 2}, "min_evidence": 2},
+        "action": {"dsl": "size_to_grid", "args": {"dim_property": prop}},
+        "concept": "object_size_to_solid_square",
+        "category": "object_size_grid",
+    }
+
+
+#: The lift families, tried in order. ``object_move`` lifts the four placement
+#: readings into ``place_object``; ``object_size_grid`` lifts the canvas-sizing
+#: *dimension property* (object_size, bbox_height, …) into a single
+#: ``size_to_grid`` rule — the first lift family *outside* object_move (R3 on a
+#: fresh concept, raising P3 = au_traced_frac).
+LIFT_FAMILIES = [
+    {
+        "name": "object_move",
+        "category": "object_move",
+        "condition_type": "object_move",
+        "concept": "place_object",
+        "list_key": "readings",
+        "program": _object_move_program,
+        "key": _object_move_key,
+        "synth": _object_move_synth,
+    },
+    {
+        "name": "object_size_grid",
+        "category": "object_size_grid",
+        "condition_type": "object_size_grid",
+        "concept": "object_property_to_solid_square",
+        "list_key": "properties",
+        "program": _size_grid_program,
+        "key": _size_grid_key,
+        "synth": _size_grid_synth,
+    },
+]
+
+
+def family_for_rule(rule: dict):
+    """The lift family a *concrete* rule belongs to, or None. A concrete rule is
+    one whose argument-expression program is defined for some family (an abstract
+    lift, or an unrelated rule, yields None)."""
+    for fam in LIFT_FAMILIES:
+        if fam["program"](rule) is not None:
+            return fam
+    return None
+
+
+def abstract_values(rule: dict, fam: dict) -> list:
+    """The concrete values an abstract rule of family ``fam`` already ranges over
+    (its ``args[list_key]`` list), or ``[]`` when ``rule`` is not that
+    abstraction."""
+    args = rule.get("action", {}).get("args", {})
+    vals = args.get(fam["list_key"])
+    return list(vals) if isinstance(vals, list) else []
+
+
 class AntiUnifyResult:
     """Outcome of :func:`unify` — an abstract rule plus its trace.
 
@@ -297,7 +423,8 @@ class AntiUnifyResult:
             ],
             "skeleton": self.common_skeleton,
         }
-        path = os.path.join(au_dir, "place_object_lift.json")
+        dsl = action.get("dsl", "abstract")
+        path = os.path.join(au_dir, f"{dsl}_lift.json")
         with open(path, "w", encoding="utf-8") as fh:
             json.dump(trace, fh, indent=2)
         self.trace_path = path
@@ -307,16 +434,15 @@ class AntiUnifyResult:
 def _rule_to_program(rule: dict):
     """The liftable argument-expression program for a canonical rule, or None.
 
-    Currently lifts the object-move family: a concrete ``place_object_*`` action
-    becomes a single ``place_object`` line whose ``target`` carries the COMM
-    *reading* that fixes it (§2.5-1). Rules outside a known lift family return
-    None, so :func:`unify` declines (NoCommonSkeleton) rather than force-merging.
+    Dispatches on the rule's lift family (`LIFT_FAMILIES`): a concrete
+    ``place_object_*`` action becomes a ``place_object`` line carrying the COMM
+    *reading* that fixes its target (§2.5-1); a concrete ``size_to_grid`` action
+    becomes a line carrying its *dimension property*. Rules outside every known
+    family return None, so :func:`unify` declines (NoCommonSkeleton) rather than
+    force-merging.
     """
-    act = rule.get("action", {})
-    reading = _OBJECT_MOVE_READING.get(act.get("dsl"))
-    if reading is None:
-        return None
-    return [{"dsl": "place_object", "args": {"target": {"reading": reading}}}]
+    fam = family_for_rule(rule)
+    return fam["program"](rule) if fam is not None else None
 
 
 def unify(rules: list) -> "AntiUnifyResult | None":
@@ -330,12 +456,13 @@ def unify(rules: list) -> "AntiUnifyResult | None":
     if not rules or len(rules) < 2:
         return None
 
-    programs = []
-    for r in rules:
-        prog = _rule_to_program(r)
-        if prog is None:
-            return None  # NoCommonSkeleton — leave inputs unchanged
-        programs.append(prog)
+    fams = [family_for_rule(r) for r in rules]
+    if any(f is None for f in fams):
+        return None  # NoCommonSkeleton — leave inputs unchanged
+    if len({f["name"] for f in fams}) != 1:
+        return None  # mixed families share no skeleton
+    fam = fams[0]
+    programs = [fam["program"](r) for r in rules]
 
     # All sources must share a category for a meaningful umbrella condition.
     categories = {r.get("category") for r in rules}
@@ -349,17 +476,18 @@ def unify(rules: list) -> "AntiUnifyResult | None":
         return AntiUnifyResult(None, {}, rules, [])
 
     # Build the abstract canonical rule. The umbrella condition recognises the
-    # whole family; the action keeps the lifted target-reading variable plus the
-    # concrete fillers it ranges over (so the consumer can resolve it at predict
-    # time from COMM/DIFF — §2.5-2b).
+    # whole family; the action keeps the lifted variable plus the concrete fillers
+    # it ranges over (so the consumer can resolve it at predict time from
+    # COMM/DIFF — §2.5-2b). The family decides which condition type, concept and
+    # `args` slot record the abstraction.
     var_name = next(iter(variables))
-    readings = sorted(variables[var_name])
+    fillers = sorted(variables[var_name])
     line = abstract_lines[0]
     args = dict(line.get("args", {}))
-    args["readings"] = readings
+    args[fam["list_key"]] = fillers
     abstract_rule = {
         "condition": {
-            "type": "object_move",
+            "type": fam["condition_type"],
             "params": {"min_evidence": 2},
             "min_evidence": 2,
         },
@@ -367,7 +495,7 @@ def unify(rules: list) -> "AntiUnifyResult | None":
             "dsl": line["dsl"],
             "args": args,
         },
-        "concept": "place_object",
+        "concept": fam["concept"],
         "category": category,
     }
     return AntiUnifyResult(abstract_rule, variables, rules, abstract_lines)

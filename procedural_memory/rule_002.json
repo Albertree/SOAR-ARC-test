@@ -25,20 +25,20 @@
     }
   },
   "covers": [
+    "madeup_select_border",
+    "madeup_select_largest",
+    "madeup_select_offset",
+    "madeup_select_unique_shape",
     "easy000c",
     "easy000d",
-    "easy000h",
     "easy000e",
     "easy000f",
     "easy000g",
-    "easy000i",
-    "madeup_select_largest",
-    "madeup_select_unique_shape",
-    "madeup_select_border",
-    "madeup_select_offset"
+    "easy000h",
+    "easy000i"
   ],
-  "source_task": "easy000c",
-  "anti_unification_trace": "episodic_memory\\easy000c\\anti_unification\\place_object_lift.json",
-  "created_at": "2026-06-12T18:49:22.122760",
+  "source_task": "madeup_select_border",
+  "anti_unification_trace": "episodic_memory\\madeup_select_border\\anti_unification\\place_object_lift.json",
+  "created_at": "2026-06-12T20:31:57.830444",
   "times_reused": 0
 }
