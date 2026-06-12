@@ -14,7 +14,9 @@ from collections import Counter
 
 from agent.operators import Operator
 from agent.conditions import match as match_condition
-from agent.dsl_expr import objects_of, unique, color_of, size_of, position_of
+from agent.dsl_expr import (
+    objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
+)
 from procedural_memory.DSL.apply import apply_DSL
 from ARCKG.comparison import compare as arckg_compare
 
@@ -255,6 +257,7 @@ class ExtractPatternOperator(Operator):
                 "shape_preserved": False, "moved": False,
                 "target_constant": False, "target_cell": None,
                 "displacement_constant": False, "displacement": None,
+                "corner_constant": False, "corner": None,
                 "outsize_preserved": False, "evidence_count": 0,
             }
 
@@ -291,6 +294,22 @@ class ExtractPatternOperator(Operator):
         )
         displacement = displacements[0] if displacement_constant else None
 
+        # Relative corner: every output object lands on the same grid corner —
+        # the COMM (intersection) of `corners_at(position_of(dst), H, W)` across
+        # pairs, relative to each output grid's own bounds. A corner is invariant
+        # across differently-sized grids where a fixed cell is not (the next
+        # filling, §2.5-2b); disjoint from displacement (a corner tracking the
+        # bounds gives a varying Δ when the grids differ in size).
+        corner_sets = [
+            corners_at(position_of(dst), outsz[0], outsz[1])
+            for _, dst, _, outsz in pairs
+        ] if all_single else []
+        common_corners = (
+            set.intersection(*corner_sets) if corner_sets else set()
+        )
+        corner_constant = bool(common_corners)
+        corner = sorted(common_corners)[0] if common_corners else None
+
         outsize_preserved = all(insz == outsz for _, _, insz, outsz in pairs)
 
         return {
@@ -302,6 +321,8 @@ class ExtractPatternOperator(Operator):
             "target_cell": target_cell,
             "displacement_constant": displacement_constant,
             "displacement": displacement,
+            "corner_constant": corner_constant,
+            "corner": corner,
             "outsize_preserved": outsize_preserved,
             "evidence_count": len(pairs),
         }
@@ -456,6 +477,17 @@ class GeneralizeOperator(Operator):
         elif match_condition("single_object_move_constant_displacement", patterns):
             rule = self._build_place_object_displacement_rule(patterns)
 
+        # R1: the *relative-corner* filling of the same `place_object` skeleton —
+        # every pair lands the object on the same grid corner (the COMM of
+        # `corners_at`), which resolves to a different cell per grid size
+        # (easy000g). Same skeleton as the other two fillings; only the target
+        # function differs (action.args.target_mode="corner") — so save_rule's
+        # subsumption folds it into the existing place_object abstraction rather
+        # than minting a per-task rule (§2.5-2b/§2.5-4). Disjoint from the prior
+        # two branches, so order is immaterial here.
+        elif match_condition("single_object_move_relative_corner", patterns):
+            rule = self._build_place_object_corner_rule(patterns)
+
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -553,6 +585,38 @@ class GeneralizeOperator(Operator):
             "action": {
                 "dsl": "place_object",
                 "args": {"target_mode": "displacement"},
+            },
+            "confidence": 1.0,
+        }
+
+    def _build_place_object_corner_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the
+        relative-corner move subfamily. Same `place_object` recipe as the other
+        fillings — "relocate the single object, erase its source, paint at the
+        target" via `make_grid` ∘ `coloring` — but the target is the grid corner
+        the examples agree on (`action.args.target_mode = "corner"`). Args carry
+        only the filling *mode*, not which corner: the corner id is re-derived as
+        the COMM of `corners_at` over each task's example outputs at apply time
+        (P5: from the example G1s, resolved against the test grid's own bounds),
+        so one rule covers the whole subfamily (easy000g) and never stores a
+        per-task literal (§2.5-2b / §2.5-3)."""
+        transition = patterns.get("object_transition") or {}
+        if not transition.get("corner_constant") or transition.get("corner") is None:
+            return None
+        return {
+            "type": "place_object",               # WM dispatch tag for PredictOperator
+            "concept": "place_cornered_object",
+            "category": "single_object_move",
+            "condition": {
+                # Same parent skeleton as the other fillings (see
+                # _build_place_object_rule); the *only* structural difference is
+                # action.args.target_mode below, which R3 lifts to a variable.
+                "type": "single_object_move",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "place_object",
+                "args": {"target_mode": "corner"},
             },
             "confidence": 1.0,
         }
@@ -668,12 +732,14 @@ class PredictOperator(Operator):
                                     color=common[r][c])
         return out
 
-    def _derive_place_target(self, rule, task, src_pos):
+    def _derive_place_target(self, rule, task, src_pos, grid_dims=None):
         """Compute `place_object`'s target cell for the test object at `src_pos`,
         per the rule's filling mode (`action.args.target_mode`, default "fixed").
-        Returns the (row, col) target or None if the examples do not actually
-        exhibit the mode's invariant. This is the §2.5-2b *target function* — the
-        single point at which the two fillings differ and the variable R3 lifts."""
+        `grid_dims` is the test grid's (height, width), used by size-preserving
+        fillings (e.g. "corner") to resolve a bounds-relative target. Returns the
+        (row, col) target or None if the examples do not actually exhibit the
+        mode's invariant. This is the §2.5-2b *target function* — the single point
+        at which the fillings differ and the variable R3 lifts."""
         mode = ((rule.get("action") or {}).get("args") or {}).get("target_mode", "fixed")
 
         if mode == "fixed":
@@ -707,6 +773,27 @@ class PredictOperator(Operator):
                 return None
             return (src_pos[0] + deltas[0][0], src_pos[1] + deltas[0][1])
 
+        if mode == "corner":
+            # COMM of the per-pair corner the output object lands on (relative to
+            # each output grid's bounds), resolved against the test grid's own
+            # bounds. Value-agnostic: the corner is read from the example outputs,
+            # the cell from the test grid (size preserved across this filling).
+            if grid_dims is None:
+                return None
+            common = None
+            for pair in task.example_pairs:
+                if pair.output_grid is None:
+                    return None
+                o = unique(objects_of(pair.output_grid.raw))
+                if o is None:
+                    return None
+                cs = corners_at(position_of(o),
+                                pair.output_grid.height, pair.output_grid.width)
+                common = cs if common is None else (common & cs)
+            if not common:
+                return None
+            return corner_cell(sorted(common)[0], grid_dims[0], grid_dims[1])
+
         return None
 
     def _render_place_object(self, rule, task, input_grid):
@@ -734,7 +821,13 @@ class PredictOperator(Operator):
         if color is None or src_pos is None:
             return None
 
-        target = self._derive_place_target(rule, task, src_pos)
+        height = len(input_grid.raw)
+        width = len(input_grid.raw[0]) if input_grid.raw else 0
+        if height == 0 or width == 0:
+            return None
+
+        target = self._derive_place_target(rule, task, src_pos,
+                                           grid_dims=(height, width))
         if target is None:
             return None
 
@@ -749,11 +842,6 @@ class PredictOperator(Operator):
         if not flat:
             return None
         background = Counter(flat).most_common(1)[0][0]
-
-        height = len(input_grid.raw)
-        width = len(input_grid.raw[0]) if input_grid.raw else 0
-        if height == 0 or width == 0:
-            return None
 
         # Translate the object's cells so its top-left lands on `target`
         # (handles 1×1 and larger single-colour shapes uniformly).

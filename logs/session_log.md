@@ -654,3 +654,129 @@ target=(H−1,W−1)) and a resized filling (i) each add a new `target_mode`, an
 drives easy_a toward 100% — the graduation milestone — while *strengthening* the
 abstraction. (Latent, unchanged: the fast path reads `entry["rule"]`, absent in
 the new schema, so the abstraction is learned but not yet *reused* — that is R5.)
+
+---
+## Learning Loop -- 2026-06-12 12:41
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_124142.log
+
+---
+## Learning Loop -- 2026-06-12 12:41
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_124144.log
+
+---
+## Learning Loop -- 2026-06-12 12:49
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_124917.log
+
+---
+## Learning Loop -- 2026-06-12 12:49
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_124930.log
+
+---
+## Learning Loop -- 2026-06-12 12:50
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_125015.log
+
+---
+## Iter 7 — 2026-06-12 — branch test31
+
+**Diagnosis**: R0 cleared (iter 2), R3 cleared (iter 6); the lowest unproven work
+is the R1 graduation gap — easy_a stuck at 7/9 with g and i remaining. Inspecting
+the data: easy000g moves the single object onto the **bottom-right corner**
+`(H-1,W-1)` with grid size preserved, across grids of *different* sizes (4×4 /
+3×5 / 6×4) — so the landing *cell* varies (fixed-target declines) and the offset
+Δ varies (displacement declines), leaving it as `identity`. easy000i also lands
+on a corner (top-left) but **resizes** the grid (6×6→5×5), a distinct
+grid-resize capability. The smallest defensible step is the **relative-corner
+filling** for g (size-preserved); i's resize is a larger, separate gap left for
+later. This is the third filling of the *same* `place_object` skeleton, so iter
+6's subsumption auto-folds it into the existing abstraction (rule_002) — covers
+grows, no new rule (the §2.5-4 litmus).
+
+**Change**:
+- `agent/dsl_expr/__init__.py` — grew the argument/relation vocabulary with
+  `corners_at(pos, H, W)` (relation: which grid corners a position coincides
+  with) and `corner_cell(id, H, W)` (its inverse). A corner is kept as an
+  **anchor formula** ("min"/"max" over the bounds), not a concrete cell, so it is
+  value-agnostic — the same `br` resolves to a different cell per grid size
+  (§2.5-2b). Located under `agent/`, not `procedural_memory/DSL/` (F3-safe,
+  §2.5-1).
+- `agent/conditions/single_object_move_relative_corner.py` (new) — third
+  *filling* matcher: fires when every pair lands the object on the same grid
+  corner (the COMM/intersection of `corners_at` across pairs) with size
+  preserved. Disjoint from constant-displacement; *overlaps* fixed-target only in
+  the same-size case (a corner cell is then also a constant cell — easy000c), but
+  GeneralizeOperator checks fixed-target first so that overlap routes to the
+  fixed rule and only the size-varying case (g) reaches this filling. P5 4→5;
+  also the F8 companion for the active_operators edit.
+- `agent/active_operators.py` — (a) `_object_transition` now surfaces
+  `corner_constant` / `corner` (the COMM corner id), via the new vocabulary;
+  (b) `GeneralizeOperator` emits a `place_object` rule with
+  `action.args.target_mode="corner"` when that matcher fires (after the two prior
+  fillings; disjoint/overlap-safe by order); (c) `_derive_place_target` gains a
+  `corner` branch that re-derives the corner from the example outputs and
+  resolves it against the *test* grid's own bounds (P5: never the test G1), now
+  receiving `grid_dims` from `_render_place_object`. The render skeleton (erase
+  source via fresh `make_grid`, paint at `f(target)` via `coloring`) is unchanged
+  and shared across all three fillings; only `f` differs — the R3 variable. No
+  new `_try_*`/`_apply_*`.
+- `procedural_memory/rule_002.json` — the place_object abstraction's `covers`
+  grew `[c,d,e,f,h] → [c,d,e,f,h,g]` by **subsumption** (target_mode="corner"
+  accepted by the `?v1` variable). Rule count stays 2; `target_mode` stays
+  abstract; trace unchanged. Not a new file — the iter-6 machinery folded it.
+- `tests/test_place_object_corner.py` (new) — registry + vocab round-trip + unit
+  (fires only on constant corner + size preserved) + signal (real g) +
+  same-size-overlap-routes-to-fixed (c) + end-to-end (renders exact g output) +
+  subsumption (corner filling folds into the abstraction, no second rule). 14
+  tests. `tests/test_place_object.py` — updated the one now-stale assertion (g is
+  solved; only i is identity). Suite 60/60 pass.
+
+**Probe before**: easy 1/3, easy_a 7/9; rules=2 (covers 6+5); P1=5.5, P2=5.5, P5=4
+**Probe after** : easy 1/3 (unchanged — 0002/0003 out of scope, no false fire),
+easy_a **8/9** (a,b constant_output; c,d,e,f,h,g place_object; only i — the
+resize — remains identity); rules=**2** (covers 6+6); P1=**6.0**, P2=**6.0**, P5=5.
+
+**Invariants**: forbidden=none (F8 companion present: new conditions/ file).
+positives = **P1 +0.5, P2 +0.5, P5 +1** → verdict CLEAN. The §2.5-4 litmus holds:
+covers (P1/P2) rose while rule *count* stayed 2 — generalization via subsumption,
+not accretion. P6 −88 (active_operators grew by the corner signal + render
+branch; allowed — F8 companion present, no `_try_*`). P3/P4 flat.
+
+**Next gap (note for future iter)**: easy_a is one task from the graduation
+milestone — only easy000i remains, and it is **not** another `place_object`
+filling: its output grid is a *different size* from the input (6×6→5×5, object to
+top-left). That needs a grid-**resize** capability — a `make_grid` whose
+dimensions are derived from the examples (here H-1,W-1) rather than copied from
+the input — which the current size-preserving render path cannot express. That is
+the glaring hole: a resize-aware output-dimension derivation, still composed from
+the two frozen primitives but parameterizing `make_grid`'s height/width. (Latent,
+unchanged since iter 4/6: the fast path reads `entry["rule"]`, absent in the new
+schema, so the abstraction is learned but not reused across runs — that is R5.)

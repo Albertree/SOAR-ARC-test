@@ -130,12 +130,13 @@ def test_pipeline_solves_cdh_correctly():
 
 
 def test_pipeline_does_not_place_for_unsupported_members():
-    # g (relative corner) / i (resized): neither the fixed-target nor the
-    # constant-displacement filling applies, so place_object is not emitted
-    # (identity fallback) — their target is still the R3 variable, not a fresh
-    # overfit literal. (e/f are now handled by the constant-displacement filling
-    # — see test_place_object_displacement.py.)
-    for name in ["g", "i"]:
+    # i (resized): its output grid is a different size from the input, which no
+    # current size-preserving filling handles, so place_object is not emitted
+    # (identity fallback) — its target is still the R3 variable, not a fresh
+    # overfit literal. (e/f are handled by the constant-displacement filling, g
+    # by the relative-corner filling — see test_place_object_displacement.py /
+    # test_place_object_corner.py.)
+    for name in ["i"]:
         _, wm = _run_pipeline(_load_task(f"ARC_easy_a/easy000{name}"))
         rule = wm.s1["active-rules"][0]
         assert rule["type"] == "identity", name

@@ -110,3 +110,53 @@ def position_of(obj):
     if not isinstance(obj, dict):
         return None
     return obj.get("position")
+
+
+#: The four grid corners, each named by a stable id and expressed as a pair of
+#: (row, col) *anchors* over the grid bounds — "min" → 0, "max" → dim-1. Keeping
+#: the corner as an anchor formula (not a concrete cell) is what makes it
+#: value-agnostic: the same `br` ("max","max") resolves to a *different* cell in
+#: every differently-sized grid, so a corner-landing rule covers a whole family
+#: without storing any task's literal coordinate (BACKLOG_LOOP.md §2.5-2b).
+_CORNER_ANCHORS = {
+    "tl": ("min", "min"),
+    "tr": ("min", "max"),
+    "bl": ("max", "min"),
+    "br": ("max", "max"),
+}
+
+
+def _anchor_value(anchor, extent):
+    """Resolve an anchor ("min"/"max") to a coordinate in a 0..extent-1 axis."""
+    return 0 if anchor == "min" else extent - 1
+
+
+def corner_cell(corner_id, height, width):
+    """Util: the (row, col) of `corner_id` (tl/tr/bl/br) in a height×width grid.
+
+    The inverse of `corners_at`: given a corner id and concrete grid bounds,
+    resolve the anchor formula to the actual cell. None for an unknown id."""
+    anchors = _CORNER_ANCHORS.get(corner_id)
+    if anchors is None:
+        return None
+    return (_anchor_value(anchors[0], height), _anchor_value(anchors[1], width))
+
+
+def corners_at(pos, height, width):
+    """Relation: the set of corner ids (tl/tr/bl/br) whose cell coincides with
+    `pos` in a height×width grid.
+
+    A relation between an object's position and the grid bounds (BACKLOG_LOOP.md
+    §2.5-1 relation/util vocabulary — argument material, *not* a transformation,
+    so it lives here under `agent/`, not in the frozen `procedural_memory/DSL/`).
+    Returns a (possibly empty) set so callers can intersect it across pairs to
+    find the *common* corner — the value-agnostic COMM the corner-filling rule
+    keys on. Empty when `pos` sits on no corner."""
+    if not pos:
+        return set()
+    r, c = pos
+    return {
+        cid
+        for cid, anchors in _CORNER_ANCHORS.items()
+        if r == _anchor_value(anchors[0], height) and c == _anchor_value(anchors[1], width)
+    }
