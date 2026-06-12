@@ -1,6 +1,75 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 21 — 2026-06-12T22:09 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (ARC-AGI-2 gravity/reflect/line-draw —
+need the absent Slow-path synthesizer, not a single commit). The named, smaller
+gap is the one iter20's Next-gap, iter17/19's notes, and memory
+`canonical_rules_never_persist` all converge on: the learn-save gate
+(`ActiveSoarAgent._rule_matches_examples` → `PredictOperator._apply_rule`)
+validates a discovered rule with the **legacy** applier, which knows only the
+three legacy typed rules and returns `None` for every canonical `{condition,
+action}` rule. So a canonical family rule — even one that perfectly reproduces its
+own train pairs — silently failed the gate and was **never saved**, hence never
+lifted (R3) nor reused (R5): the canonical families (place_object, size_to_grid,
+recolor, …) were an architectural dead-end at the one site that feeds memory.
+This is the second half of iter20's recolor-canonicalization work.
+
+**Change** (gate routes canonical rules through the predict pipeline; legacy path
+untouched):
+- `agent/active_agent.py` — `_rule_matches_examples` now dispatches by rule
+  shape: a canonical rule (has `action.dsl`) is reproduced via new
+  `_canonical_rule_reproduces`, which renders the example pairs through the
+  *same* `PredictOperator.effect` per-family dispatch the predictor uses (a
+  shim points `test_pairs` at the example pairs — the §2.5-2b verify trick from
+  `_reproduces_examples`) and checks every rendered example against its known
+  output. Legacy `{type,…}` rules keep the original `_apply_rule` path verbatim.
+  No `active_operators.py`/`DSL/` edit (no F2/F3/F8 exposure); the canonical save
+  + absorb + AU-lift machinery in `memory.py` was already wired and is now
+  reachable from the Slow-path learn site.
+- `tests/test_canonical_save_gate.py` (new, 4 tests) — pins the legacy applier's
+  `None` (the old gate's blind spot), the canonical gate accepting a reproducing
+  recolor rule (the unblock) and rejecting one whose renderer abstains (no false
+  positive), and that a passing canonical rule persists schema-valid (condition +
+  action, not the legacy `{rule:…}` envelope) into an empty store.
+- Reverted `rule_001/002` `times_reused` probe churn (runtime, not a learned
+  change; iter18 precedent) — procedural_memory back to its committed state.
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10);
+  rules=3; P1=7.67 P2=7.67 P3=0.67 P4=932 P5=9 P6=1407; 107→pre 103 tests.
+**Probe after** : training 0/3 unchanged (canonical families abstain on those
+  tasks → no canonical rule produced → still nothing saved); easy_a 9/9, madeup
+  14/14, **rules 3→3** — the now-savable canonical rules from the non-reused
+  easy000g/i (corner/resize) are *absorbed* by rule_002 (which already ranges over
+  all 5 readings via `_abstract_absorbs`), so the gate-unblock adds **no liftless
+  covers=1 accretion**; P1–P6 all held; 107 tests.
+
+**Invariants**: forbidden=**none** (check_invariants verdict NEUTRAL, no F-flag;
+  F1 frozen diff 0; F2 no new `_try_*`/`_apply_*`; F3 no DSL primitive; F8
+  `active_operators.py`/`DSL/` untouched; no rule saved without a condition — the
+  fix *strengthens* this by making the canonical, condition-bearing path the one
+  that persists). positives=**NEUTRAL on P1–P6** — and that is the correct
+  reading: the snapshot has no signal that measures *whether canonical rules can
+  persist*; the moved signal is the R3/R5 *prerequisite* done-when — a canonical
+  rule that reproduces train now enters the save→absorb→lift machinery instead of
+  being silently dropped, demonstrated by the new tests in a temp store. On the
+  current 23 tasks every such rule absorbs into an existing abstraction, so P1/P2
+  correctly do not move (absorption, not accretion); the unblock matters the
+  moment a *new* family (e.g. recolor) is discovered the intended way.
+
+**Next gap (note for future iter)**: with the gate unblocked, the dominant
+  frontier is unchanged — the **Slow-path program synthesizer** (modules F/G) for
+  unseen training tasks: object-level COMM/DIFF produces no program for
+  same-size recolor/move/gravity tasks, so the canonical families abstain and
+  nothing is there for the now-open gate to save. That is the large gap
+  (`synthesizer_frontier`), needing its own decomposition. A smaller adjacent
+  step: the legacy `_try_recolor_sequential` producer still emits a condition-less
+  `{type:recolor_sequential}` envelope — migrating it to a canonical
+  condition-bearing form (as iter20 did for color_mapping) would let *that* family
+  also persist/lift through the now-open gate.
+
+---
 ## Iter 20 — 2026-06-12T22:01 — branch test32
 
 **Diagnosis**: Training phase, 3 consecutive NEUTRAL reuse iters (stagnation flag
@@ -2250,3 +2319,53 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 5s
 - Log: logs/learn_20260612_220040.log
+
+---
+## Learning Loop -- 2026-06-12 22:03
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_220325.log
+
+---
+## Learning Loop -- 2026-06-12 22:03
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 5s
+- Log: logs/learn_20260612_220329.log
+
+---
+## Learning Loop -- 2026-06-12 22:03
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_220335.log
+
+---
+## Learning Loop -- 2026-06-12 22:08
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_220825.log
+
+---
+## Learning Loop -- 2026-06-12 22:08
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 5s
+- Log: logs/learn_20260612_220828.log

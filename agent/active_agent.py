@@ -289,12 +289,67 @@ class ActiveSoarAgent:
     # ---- helpers --------------------------------------------------------
 
     def _rule_matches_examples(self, rule, task) -> bool:
-        """Check if a rule produces correct output for ALL example pairs."""
+        """Check if a rule reproduces output for ALL example pairs.
+
+        Dispatches by rule shape. A *canonical* ``{condition, action}`` rule is
+        reproduced through the predict pipeline (``_canonical_rule_reproduces``);
+        the legacy ``_apply_rule`` only knows the three legacy typed rules and
+        returns ``None`` for every canonical one, which silently barred every
+        canonical family from the learn-save gate — and so from R3 lift and R5
+        reuse (memory ``canonical_rules_never_persist``). Legacy ``{type, ...}``
+        rules keep the original ``_apply_rule`` path unchanged."""
+        action = rule.get("action") if isinstance(rule, dict) else None
+        if action and action.get("dsl"):
+            return self._canonical_rule_reproduces(rule, task)
         for pair in task.example_pairs:
             if pair.input_grid is None or pair.output_grid is None:
                 continue
             predicted = self._predictor._apply_rule(rule, pair.input_grid)
             if predicted is None or predicted != pair.output_grid.raw:
+                return False
+        return True
+
+    def _canonical_rule_reproduces(self, rule, task) -> bool:
+        """Reproduce a *canonical* ``{condition, action}`` rule against the task's
+        own example pairs **via the predict pipeline** (PredictOperator's
+        per-family renderers), not the legacy ``_apply_rule``.
+
+        Why this exists (BACKLOG_LOOP R3/R5; iter20 Next-gap; memory
+        ``canonical_rules_never_persist``): the learn-save gate validated a
+        discovered rule with ``_apply_rule``, which only knows the three legacy
+        typed rules and returns ``None`` for every canonical rule. So a canonical
+        family rule silently failed the gate and was *never saved* — therefore
+        never lifted by anti-unification (R3) nor reused by the Fast path (R5).
+        Routing the gate through the same renderer the predictor uses lets a
+        canonical rule that genuinely reproduces its train pairs persist (then be
+        absorbed into / lifted with its siblings) the intended way, with no new
+        liftless accretion: a discovered concrete reading is absorbed by the
+        family abstraction it already ranges over (memory.py ``_abstract_absorbs``).
+
+        The render shim points ``test_pairs`` at the example pairs (the §2.5-2b
+        verify trick already used by ``_reproduces_examples``): the renderer learns
+        its parameters from the examples and renders them back, which we check
+        against the known example outputs. Reuses the canonical predict dispatch
+        wholesale (PredictOperator.effect) rather than duplicating it."""
+        action = rule.get("action") if isinstance(rule, dict) else None
+        if not action or not action.get("dsl"):
+            return False
+        examples = [
+            p for p in task.example_pairs
+            if p.input_grid is not None and p.output_grid is not None
+        ]
+        if not examples:
+            return False
+        shim = SimpleNamespace(
+            task_hex=getattr(task, "task_hex", None),
+            example_pairs=examples,
+            test_pairs=examples,
+        )
+        wm = SimpleNamespace(task=shim, s1={"active-rules": [rule]})
+        self._predictor.effect(wm)
+        predictions = wm.s1.get("predictions") or {}
+        for i, pair in enumerate(examples):
+            if predictions.get(f"test_{i}") != pair.output_grid.raw:
                 return False
         return True
 
