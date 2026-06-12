@@ -16,6 +16,7 @@ property R0 requires (one module, many constant outputs).
 from collections import Counter
 
 from procedural_memory.DSL.apply import apply_DSL
+from agent.dsl_expr.selection import GEO_COORD, GEO_DIMS
 
 
 def _background_color(grid: list) -> int:
@@ -198,6 +199,47 @@ def render_object_recolor(grid: list, cells: list, new_color: int) -> list:
         out = apply_DSL("coloring", out,
                         selection=[list(c) for c in cells], color=new_color)
     return out
+
+
+def render_geometric_transform(grid: list, transform: str) -> list:
+    """Produce the geometric transform of `grid` (flip/rotation/transpose) as a
+    `make_grid` + `coloring` composition.
+
+    This is BACKLOG_LOOP §2.5-1's worked example made concrete: a flip/rotation is
+    *not* a new primitive — it is the frozen `coloring` primitive applied at a
+    *transformed coordinate*. We lay a fresh canvas of the transformed dimensions
+    with `make_grid` (its fill is the input background), then paint each non-
+    background input cell at its mapped coordinate, one `coloring` call per colour.
+    Because the coordinate map (`selection.GEO_COORD`) is a bijection onto the
+    canvas, every background position keeps the background fill and every non-
+    background cell lands exactly once, so the result equals
+    `selection.apply_geometric(grid, transform)`. The whole content lives in the
+    *argument* — which coordinate permutation — read off the example COMM and
+    recomputed at predict time (§2.5-1, F3), not in any new transformation.
+
+    Returns a copy of `grid` for an unknown transform or an empty grid.
+    """
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    if transform not in GEO_COORD or H == 0 or W == 0:
+        return [row[:] for row in grid]
+
+    Ho, Wo = GEO_DIMS[transform](H, W)
+    bg = _background_color(grid)
+    cm = GEO_COORD[transform]
+
+    canvas = apply_DSL("make_grid", height=Ho, width=Wo, color=bg)
+    by_color: dict = {}
+    for r in range(H):
+        for c in range(W):
+            v = grid[r][c]
+            if v == bg:
+                continue
+            rr, cc = cm(r, c, H, W)
+            by_color.setdefault(v, []).append((rr, cc))
+    for color, cells in by_color.items():
+        canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
+    return canvas
 
 
 def render_object_at(height: int, width: int, bg: int,

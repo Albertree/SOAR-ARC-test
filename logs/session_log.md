@@ -1,6 +1,71 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 31 — 2026-06-13T00:44 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 18/18 hold. Rather than
+keep growing the recolor family on self-authored madeup tasks (iters 29/30 — the
+swap Next-gap is absorbed by `color_remap`, so it would be spinning), I took §2.2.2's
+preferred path: a **real ARC-AGI-2 training gap with a nameable, general fix**. A
+direct scan of `data/ARC_AGI/training/` found **7 tasks that are pure whole-grid
+geometric transforms** (67a3c6ac flip_h, 68b16354 flip_v, 74dd1130/9dfd6313
+transpose, 3c9b0459/6150a2bd rot180, ed36ccf7 rot270) — all solved `rule=identity`
+INCORRECT today. A flip/rotation is exactly BACKLOG_LOOP §2.5-1's worked example: not
+a new primitive (F3) but the frozen `coloring` primitive applied at a *transformed
+coordinate*. The whole content is *which coordinate permutation* — a single
+value/colour/shape/size-agnostic argument, so **one** rule covers the entire family.
+
+**Change**:
+- `agent/dsl_expr/selection.py`: `GEO_COORD`/`GEO_DIMS` — a small deterministic
+  *coordinate-expression* vocabulary (7 dihedral bijections; the §2.5-1 LHS argument
+  vocab, NOT a transformation primitive), `apply_geometric()` (recognition), and
+  `analyze_geometric_transform()` — learns, by comparison (predicted-output COMM vs
+  actual), the single permutation reproducing *every* pair, requiring a genuine
+  non-identity transform (P3/P4). Inert (transform None) when no one map fits all.
+- `agent/dsl_expr/render.py`: `render_geometric_transform()` — `make_grid` canvas of
+  the transformed dims + one `coloring` call per colour at the mapped coordinate
+  (F3-clean: a flip is `coloring` with a coordinate expression). Shares `GEO_COORD`/
+  `GEO_DIMS` with the analyzer so render≡apply_geometric by construction (verified).
+- `agent/conditions/geometric_transform.py`: new condition matcher (**P5 +1**),
+  min_evidence 2 (a lone symmetric grid satisfies several maps).
+- `agent/active_operators.py`: extract signal + generalize strategy 0a
+  `_geometric_transform_rule` (emits *empty-args* canonical rule, ordered first among
+  the transform strategies — exact full-grid reproduction never collides) + predict
+  path `_geometric_transform_grids` (recomputes the permutation from examples, applies
+  to each test G0 — P5). Empty args ⇒ all 7 tasks **merge into one `rule_009`** by
+  condition+action equivalence, like `copy_common_output`.
+- `procedural_memory/rule_009.json`: born-general value-agnostic rule, **covers=7**
+  (au_trace=null — correct per CLAUDE §3.2 req-3, like the other value-agnostic
+  families; a born-general family needs no AU lift).
+- `tests/test_geometric_transform.py`: 11 tests (vocab bijection invariant,
+  render≡apply, analyzer on all 7 real tasks, identity/no-fit decline, matcher,
+  canonical+mergeable rule, end-to-end predict reproduces every held-out test output).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 18/18; rules=6; P1=5.33 P2=5.33
+  P3=0.5 P5=12. The 7 geometric tasks all ran `rule=identity`/INCORRECT (gap confirmed).
+**Probe after** : the 7 geometric tasks **7/7 CORRECT** the intended way (stored
+  `rule=none` pipeline → learn permutation → render via frozen primitives), merged into
+  one rule. easy_a **9/9**, madeup **18/18**; pytest **158/158**; training 50-sample
+  **0 errors, Rules 7→7 (+0 spurious)** — the family is inert on non-geometric tasks.
+
+**Invariants**: forbidden=**none** (checker verdict CLEAN). positives=**P1 +0.24**
+  (5.33→5.57), **P2 +0.24** (5.33→5.57), **P5 +1** (new matcher). One rule covering
+  7 real ARC-AGI-2 tasks is the §2.5-4 "real progress" shape (covers ≫ rule count),
+  not per-task accretion. P3 0.5→0.43 is the documented arithmetic dip (a born-general
+  value-agnostic rule is correctly au_trace=null, like iters 29/30). P4 unchanged. P6
+  +116 lines (a genuine new family costs lines, like iter29 +126). Reverted the guard
+  runs' `times_reused` churn on rule_001/002 (runtime accounting — iter18..30 precedent).
+
+**Next gap (note for future iter)**: the geometric family is born-general but
+  au_trace=null. The *named* R3 prize remains: getting `anti_unification.unify()` to
+  actually lift two task-specific programs into one `covers>1` abstract rule with a
+  non-null trace (P3-positive) — currently every family is hand-born-general, so AU
+  never fires for the value-agnostic ones. A liftable pair (two genuinely *literal*
+  programs sharing a skeleton) is what would move P3 up. Separately, the large standing
+  frontier is still the general `object_level_lift` for raw-cell line/path tasks
+  (e5790162, c9680e90, 878187ab) behind most failing training tasks.
+
+---
 ## Iter 30 — 2026-06-13T00:17 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 16/16 hold. Iter 29's
@@ -3477,3 +3542,103 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 88s
 - Log: logs/learn_20260613_001544.log
+
+---
+## Learning Loop -- 2026-06-13 00:18
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_001826.log
+
+---
+## Learning Loop -- 2026-06-13 00:18
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 10
+- Time: 8s
+- Log: logs/learn_20260613_001830.log
+
+---
+## Learning Loop -- 2026-06-13 00:18
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_001838.log
+
+---
+## Learning Loop -- 2026-06-13 00:23
+
+- Split: training, Tasks: 80
+- Correct: 1 / 80 (1.2%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 233s
+- Log: logs/learn_20260613_002001.log
+
+---
+## Learning Loop -- 2026-06-13 00:30
+
+- Split: None, Tasks: 7
+- Correct: 0 / 7 (0.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260613_002958.log
+
+---
+## Learning Loop -- 2026-06-13 00:33
+
+- Split: training, Tasks: 80
+- Correct: 1 / 80 (1.2%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 227s
+- Log: logs/learn_20260613_002916.log
+
+---
+## Learning Loop -- 2026-06-13 00:39
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 6 -> 7 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260613_003910.log
+
+---
+## Learning Loop -- 2026-06-13 00:39
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_003927.log
+
+---
+## Learning Loop -- 2026-06-13 00:39
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 9s
+- Log: logs/learn_20260613_003931.log
+
+---
+## Learning Loop -- 2026-06-13 00:42
+
+- Split: training, Tasks: 50
+- Correct: 1 / 50 (2.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 163s
+- Log: logs/learn_20260613_004001.log

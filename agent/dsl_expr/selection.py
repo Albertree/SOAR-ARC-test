@@ -1270,3 +1270,115 @@ def analyze_object_select_recolor(example_pairs: list) -> dict:
         "new_color": constant_new_color,
         "color_reading": color_reading,
     }
+
+
+# ----------------------------------------------------------------------
+# Geometric-transform vocabulary (BACKLOG_LOOP §2.5-1: an *argument expression*
+# tree over the frozen `coloring` primitive, NOT a new transformation primitive).
+#
+# A flip/rotation/transpose is *not* a new DSL primitive (F3 forbids that). It is
+# the frozen `coloring` primitive applied at a *transformed coordinate* — exactly
+# the "rotate/flip = coloring with a coordinate-mapping expression" worked example
+# in BACKLOG_LOOP §2.5-1. The whole content of such a task is which coordinate
+# permutation maps input→output; that permutation is the lifted *argument*, here
+# named in a small deterministic vocabulary the way SELECTOR_VOCAB names object
+# selectors. Each entry is a pure coordinate bijection (input cell -> output cell)
+# plus the output dimensions; recognition and render share these maps, so they can
+# never disagree. `render.render_geometric_transform` composes the chosen map with
+# `make_grid` + `coloring`; this module only *recognises* which one fits.
+# ----------------------------------------------------------------------
+
+#: name -> (row, col, H, W) -> (row', col') output coordinate of an input cell.
+GEO_COORD = {
+    "flip_h": lambda r, c, H, W: (r, W - 1 - c),
+    "flip_v": lambda r, c, H, W: (H - 1 - r, c),
+    "rot180": lambda r, c, H, W: (H - 1 - r, W - 1 - c),
+    "transpose": lambda r, c, H, W: (c, r),
+    "anti_transpose": lambda r, c, H, W: (W - 1 - c, H - 1 - r),
+    "rot90": lambda r, c, H, W: (c, H - 1 - r),
+    "rot270": lambda r, c, H, W: (W - 1 - c, r),
+}
+
+#: name -> (H, W) -> (H', W') output dimensions (transpose/rotations swap axes).
+GEO_DIMS = {
+    "flip_h": lambda H, W: (H, W),
+    "flip_v": lambda H, W: (H, W),
+    "rot180": lambda H, W: (H, W),
+    "transpose": lambda H, W: (W, H),
+    "anti_transpose": lambda H, W: (W, H),
+    "rot90": lambda H, W: (W, H),
+    "rot270": lambda H, W: (W, H),
+}
+
+#: deterministic recognition order (vocab order breaks ties on symmetric grids).
+GEOMETRIC_VOCAB = list(GEO_COORD)
+
+
+def apply_geometric(grid: list, name: str) -> list:
+    """Apply the named coordinate bijection to `grid`, returning a fresh grid.
+
+    Pure recognition helper (no frozen-primitive bookkeeping): every cell is
+    relocated to its mapped coordinate. Because each `GEO_COORD` map is a
+    bijection onto the `GEO_DIMS` output rectangle, every output cell is written
+    exactly once. `render.render_geometric_transform` produces the identical grid
+    via `make_grid` + `coloring`; they share `GEO_COORD`/`GEO_DIMS` so they agree
+    by construction.
+    """
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    if name not in GEO_COORD or H == 0 or W == 0:
+        return [row[:] for row in grid]
+    Ho, Wo = GEO_DIMS[name](H, W)
+    cm = GEO_COORD[name]
+    out = [[0] * Wo for _ in range(Ho)]
+    for r in range(H):
+        for c in range(W):
+            rr, cc = cm(r, c, H, W)
+            out[rr][cc] = grid[r][c]
+    return out
+
+
+def analyze_geometric_transform(example_pairs: list) -> dict:
+    """Whole-grid geometric transform (BACKLOG_LOOP §2.5-1 worked example).
+
+    Fires for: a single named coordinate permutation from `GEOMETRIC_VOCAB`
+    (flip_h/flip_v/rot90/rot180/rot270/transpose/anti_transpose) that reproduces
+    *every* example output from its input exactly, with at least one pair where
+    input ≠ output (a genuine transform, not the identity). The transform name is
+    the lifted *argument* — value-, colour-, shape- and size-agnostic — recomputed
+    at predict time, so one rule covers the whole family rather than one literal
+    rule per task (§2.5-3/4). The transformation bottoms out in the frozen
+    `coloring` primitive applied at the mapped coordinate (§2.5-1, F3): a
+    flip/rotation is `coloring` with a coordinate-mapping expression, not a new
+    primitive.
+
+    Grounded in comparison, never assumed (P3/P4): a transform is admitted only if
+    `apply_geometric(input, name)` equals the output for every pair — the COMM
+    between the predicted and actual output grids. Returns a symbolic dict; the
+    `geometric_transform` matcher (agent/conditions/) decides firing and
+    PredictOperator renders from it. Stays inert (transform None) whenever no single
+    map reproduces all pairs, so it never perturbs the other families.
+    """
+    pairs = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        if a and b:
+            pairs.append((a, b))
+
+    transform = None
+    if pairs and any(a != b for a, b in pairs):
+        for name in GEOMETRIC_VOCAB:
+            if all(apply_geometric(a, name) == b for a, b in pairs):
+                transform = name
+                break
+
+    return {
+        "transform": transform,
+        "valid_all": transform is not None,
+        "evidence": len(pairs),
+    }

@@ -14,6 +14,7 @@ from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
 from agent.conditions import match as match_condition
 from agent.dsl_expr.render import (
+    render_geometric_transform,
     render_grid_via_primitives,
     render_object_at,
     render_object_recolor,
@@ -25,6 +26,7 @@ from agent.dsl_expr.render import (
 from agent.dsl_expr.selection import (
     analyze_canvas_fill,
     analyze_color_remap,
+    analyze_geometric_transform,
     analyze_object_move,
     analyze_object_select_move,
     analyze_object_select_recolor,
@@ -113,6 +115,17 @@ RECOLOR_RANK_DSL = "recolor_by_rank"
 #: (read off the test input — P5), not a literal. Solves the "fill with the
 #: dominant colour" family (5582e5ca) that the 1:1 `color_remap` cannot express.
 CANVAS_FILL_DSL = "fill_canvas"
+
+#: action.dsl for the whole-grid *geometric transform* family (R1 / BACKLOG_LOOP
+#: §2.5-1 worked example) — the input grid flipped / rotated / transposed by a
+#: single learned coordinate permutation (flip_h/flip_v/rot90/rot180/rot270/
+#: transpose/anti_transpose — agent/dsl_expr/selection.GEOMETRIC_VOCAB). The
+#: transformation is the frozen `coloring` primitive applied at the *mapped
+#: coordinate* (render_geometric_transform): a flip/rotation is `coloring` with a
+#: coordinate-mapping expression, not a new primitive (§2.5-1, F3). The whole
+#: content is the *argument* — which permutation, read off the example COMM and
+#: recomputed at predict time — so one value-agnostic rule covers the family.
+GEOMETRIC_TRANSFORM_DSL = "geometric_transform"
 
 
 # ======================================================================
@@ -352,6 +365,16 @@ class ExtractPatternOperator(Operator):
         # vocabulary (agent/dsl_expr/selection), not hand-coded here.
         patterns["canvas_fill"] = analyze_canvas_fill(task.example_pairs)
 
+        # Whole-grid *geometric transform* (R1 / BACKLOG_LOOP §2.5-1 worked
+        # example): the input flipped / rotated / transposed by a single learned
+        # coordinate permutation — a flip/rotation expressed as the frozen
+        # `coloring` primitive at a mapped coordinate, not a new primitive. Inert
+        # (transform None) whenever no single map reproduces all pairs, so it never
+        # perturbs the move / recolor / sizing readings above. Computed via the
+        # §2.5 coordinate vocabulary (agent/dsl_expr/selection), not hand-coded here.
+        patterns["geometric_transform"] = analyze_geometric_transform(
+            task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -479,6 +502,23 @@ class GeneralizeOperator(Operator):
         # frozen primitives. This is recognition-driven, not a hand-coded
         # detector: the decision is delegated to the registered matcher.
         rule = self._constant_output_rule(patterns)
+
+        # Strategy 0a (R1 / BACKLOG_LOOP §2.5-1 worked example): the whole-grid
+        # *geometric transform* family. If the `geometric_transform` matcher fires
+        # (a single learned coordinate permutation — flip/rotation/transpose —
+        # reproduces every example output exactly), emit a canonical {condition,
+        # action} rule carrying *empty* args — the transform name is recomputed at
+        # predict time, so one value-agnostic rule covers the family (it merges by
+        # condition+action equivalence, like `copy_common_output`, rather than
+        # accreting one literal rule per task — §2.5-3/4). Checked first among the
+        # transform strategies: it is an exact full-grid reproduction, so it never
+        # mis-fires for a move / recolor / sizing task (those abstain on a flip,
+        # and a flip abstains unless the whole grid maps), and ordering it ahead
+        # keeps a genuine geometric task from being mis-claimed downstream.
+        # Recognition is delegated to the registered matcher, not a hand-coded
+        # detector.
+        if rule is None:
+            rule = self._geometric_transform_rule(patterns)
 
         # Strategy 0b (R1, BACKLOG_LOOP §3): the constant-target object-move
         # family. If the `object_constant_target` matcher fires (single object
@@ -626,6 +666,44 @@ class GeneralizeOperator(Operator):
             },
             "concept": "copy_common_output",
             "category": "constant_output",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: whole-grid geometric transform (R1) ------------------
+
+    def _geometric_transform_rule(self, patterns):
+        """Emit the canonical whole-grid geometric-transform rule when the
+        `geometric_transform` matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `geometric_transform` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The action carries *empty* args
+        — the learned coordinate permutation (flip_h/flip_v/rot90/rot180/rot270/
+        transpose/anti_transpose — agent/dsl_expr/selection.GEOMETRIC_VOCAB) is
+        recomputed at predict time from the example pairs, so the rule is value-,
+        colour-, shape- and size-agnostic and one rule covers the whole family (it
+        merges by condition+action equivalence, like `copy_common_output`, rather
+        than accreting one literal rule per task — §2.5-3/4). The transformation
+        bottoms out in the frozen `coloring` primitive applied at the mapped
+        coordinate (render_geometric_transform); no new transformation is
+        introduced (§2.5-1, F3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("geometric_transform", patterns, params):
+            return None
+        sig = patterns.get("geometric_transform") or {}
+        evidence = int(sig.get("evidence", 0))
+        return {
+            "condition": {
+                "type": "geometric_transform",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": GEOMETRIC_TRANSFORM_DSL,
+                "args": {},
+            },
+            "concept": "geometric_transform",
+            "category": "geometric_transform",
             "confidence": 1.0,
         }
 
@@ -1133,6 +1211,19 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Whole-grid *geometric transform* (R1 / §2.5-1). Recompute the learned
+        # coordinate permutation from the examples, then for each test pair apply
+        # it to that test input (P5: the transform name is read off the example
+        # COMM, the cells are the test G0) — a flip/rotation rendered as the frozen
+        # `coloring` primitive at the mapped coordinate.
+        if action and action.get("dsl") == GEOMETRIC_TRANSFORM_DSL:
+            for i, grid in self._geometric_transform_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         # Object-property *canvas sizing* (R1 / §2.1). Recompute the learned
         # dimension property from the examples, then for each test pair read that
         # property and the colour off the test object (P5) and render a solid
@@ -1372,6 +1463,31 @@ class PredictOperator(Operator):
             grids[i] = render_object_at(
                 height, width, bg, obj["pixels"], anchor,
             )
+        return grids
+
+    @staticmethod
+    def _geometric_transform_grids(task):
+        """Map test-pair index -> predicted grid for the whole-grid geometric
+        transform family.
+
+        The coordinate permutation (flip/rotation/transpose) is recomputed from the
+        example pairs (the §2.5-1 lifted argument: the single named map that
+        reproduces every example output). For each test pair that map is applied to
+        the test input via render_geometric_transform — `make_grid` + `coloring` at
+        the mapped coordinate (P5: the transform name from the example COMM, the
+        cells from the test G0). Returns {} when the analysis yields no consistent
+        transform."""
+        sig = analyze_geometric_transform(task.example_pairs)
+        transform = sig.get("transform")
+        if transform is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            grids[i] = render_geometric_transform(g0.raw, transform)
         return grids
 
     @staticmethod

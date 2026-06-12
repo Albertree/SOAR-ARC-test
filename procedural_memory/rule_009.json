@@ -1,0 +1,29 @@
+{
+  "id": 9,
+  "concept": "geometric_transform",
+  "category": "geometric_transform",
+  "condition": {
+    "type": "geometric_transform",
+    "params": {
+      "min_evidence": 2
+    },
+    "min_evidence": 4
+  },
+  "action": {
+    "dsl": "geometric_transform",
+    "args": {}
+  },
+  "covers": [
+    "3c9b0459",
+    "6150a2bd",
+    "67a3c6ac",
+    "68b16354",
+    "74dd1130",
+    "9dfd6313",
+    "ed36ccf7"
+  ],
+  "source_task": "3c9b0459",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-13T00:39:10.731882",
+  "times_reused": 0
+}
