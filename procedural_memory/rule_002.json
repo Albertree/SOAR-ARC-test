@@ -34,7 +34,8 @@
     "easy000i",
     "madeup_select_largest",
     "madeup_select_unique_shape",
-    "madeup_select_border"
+    "madeup_select_border",
+    "madeup_select_offset"
   ],
   "source_task": "easy000c",
   "anti_unification_trace": "episodic_memory\\easy000c\\anti_unification\\place_object_lift.json",

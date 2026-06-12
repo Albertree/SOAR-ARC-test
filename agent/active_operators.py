@@ -605,11 +605,12 @@ class GeneralizeOperator(Operator):
         schema-canonical {condition, action} rule. The learned property selector
         (max_size/min_size/unique_color — agent/dsl_expr/selection.SELECTOR_VOCAB)
         is carried in the action args and re-applied at predict time, while the
-        shared target is recomputed from the example outputs, so the rule stays
+        shared placement (a constant target *or* a constant offset of the selected
+        object) is recomputed from the example pairs, so the rule stays
         value-agnostic in colour, source position and the non-selected
         distractors. A sibling of the constant-target/offset/corner/resize
-        readings (it places the *selected* object at a constant target), so it
-        lifts into the same `place_object` abstraction (R3)."""
+        readings (it places the *selected* object by a constant target or offset),
+        so it lifts into the same `place_object` abstraction (R3)."""
         params = {"min_evidence": 2}
         if not match_condition("object_select_target", patterns, params):
             return None
@@ -625,7 +626,7 @@ class GeneralizeOperator(Operator):
                 "dsl": PLACE_OBJECT_SELECT_DSL,
                 "args": {"selector": sel.get("selector")},
             },
-            "concept": "select_object_to_constant_target",
+            "concept": "select_object_constant_move",
             "category": "object_move",
             "confidence": 1.0,
         }
@@ -997,16 +998,20 @@ class PredictOperator(Operator):
         """Map test-pair index -> predicted grid for the multi-object selection
         move.
 
-        The selector name and shared target are recomputed from the example pairs
-        (the §2.5-2b lift: the criterion that consistently picks the preserved
-        object); each test object is *chosen* from its own G0's objects by that
-        selector and rendered at the target (color/shape/background from its own
-        G0 — never a test G1, P5; non-selected objects are not drawn). Returns {}
-        when the analysis yields no consistent selector or target."""
+        The selector name and the shared placement reading are recomputed from the
+        example pairs (the §2.5-2b lift: the criterion that consistently picks the
+        preserved object, plus the cross-pair COMM on its move). Each test object is
+        *chosen* from its own G0's objects by that selector and rendered at the
+        learned placement — a constant absolute target, or its own anchor plus a
+        constant offset when the absolute target varies (mirroring the single-object
+        constant-offset family). color/shape/background come from its own G0 (never
+        a test G1, P5); non-selected objects are not drawn. Returns {} when the
+        analysis yields no consistent selector or placement reading."""
         sel = analyze_object_select_move(task.example_pairs)
         selector_name = sel.get("selector")
         target = sel.get("constant_target")
-        if selector_name is None or target is None:
+        offset = sel.get("constant_offset")
+        if selector_name is None or (target is None and offset is None):
             return {}
         selector = SELECTOR_VOCAB.get(selector_name)
         if selector is None:
@@ -1023,8 +1028,13 @@ class PredictOperator(Operator):
             bg = background_of(g0.raw)
             height = len(g0.raw)
             width = len(g0.raw[0]) if g0.raw else 0
+            if target is not None:
+                anchor = tuple(target)
+            else:
+                r0, c0 = obj["position"]
+                anchor = (r0 + offset[0], c0 + offset[1])
             grids[i] = render_object_at(
-                height, width, bg, obj["pixels"], tuple(target),
+                height, width, bg, obj["pixels"], anchor,
             )
         return grids
 

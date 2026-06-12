@@ -263,12 +263,19 @@ def analyze_object_select_move(example_pairs: list) -> dict:
        `max_size`/`min_size`/`unique_color`) that picks exactly that preserved
        object in *every* pair. That consistent selector is the lifted argument —
        value-agnostic in colour, position and the non-selected distractors.
-    3. The output anchor must be a cross-pair COMM (`constant_target`), reusing
-       the same target reading as the single-object family.
+    3. The placement is a cross-pair COMM on the selected object's move — the
+       *same* readings the single-object family computes (§2.5 structural
+       unification, the converse asymmetry the single-object `analyze_object_move`
+       reads four ways but selection read only one): either a `constant_target`
+       (every example anchors the selected object at the same absolute cell) or a
+       `constant_offset` (every example displaces it by the same vector
+       ``target − source`` while the absolute anchor varies). Reading the *offset*
+       of the *selected* object closes the gap where a multi-object task moves its
+       chosen object by a fixed displacement rather than to a fixed cell.
 
-    A sibling of the object_move readings (it places the *selected* object at a
-    constant target via make_grid ∘ coloring), so it lifts into the same
-    `place_object` abstraction (R3) rather than spawning a per-task family.
+    A sibling of the object_move readings (it places the *selected* object via
+    make_grid ∘ coloring), so it lifts into the same `place_object` abstraction
+    (R3) rather than spawning a per-task family.
 
     Returns a symbolic dict; the `object_select_target` matcher decides firing and
     PredictOperator renders from it. Stays inert (multi_object_all=False) on the
@@ -285,6 +292,7 @@ def analyze_object_select_move(example_pairs: list) -> dict:
         multi = len(in_objs) >= 2 and len(out_objs) == 1
         selected = None
         target = None
+        offset = None
         if multi:
             out_obj = out_objs[0]
             for o in in_objs:
@@ -293,12 +301,16 @@ def analyze_object_select_move(example_pairs: list) -> dict:
                     selected = o
                     break
             target = list(position_of(out_obj))
+            if selected is not None:
+                source = position_of(selected)
+                offset = [target[0] - source[0], target[1] - source[1]]
         per_pair.append({
             "multi": multi,
             "in_objs": in_objs,
             "grid": g0.raw,
             "selected": selected,
             "target": target,
+            "offset": offset,
             "size_preserved": (
                 len(g0.raw) == len(g1.raw)
                 and (len(g0.raw[0]) if g0.raw else 0) == (len(g1.raw[0]) if g1.raw else 0)
@@ -314,6 +326,18 @@ def analyze_object_select_move(example_pairs: list) -> dict:
         list(targets[0])
         if targets and len(targets) == len(per_pair)
         and all(t == targets[0] for t in targets)
+        else None
+    )
+
+    # Constant displacement of the *selected* object — the cross-pair COMM on the
+    # relative move (mirrors analyze_object_move's constant_offset, but on the
+    # chosen object). Meaningful when the absolute anchor varies pair-by-pair but
+    # the move vector does not.
+    offsets = [tuple(p["offset"]) for p in per_pair if p.get("offset") is not None]
+    constant_offset = (
+        list(offsets[0])
+        if offsets and len(offsets) == len(per_pair)
+        and all(o == offsets[0] for o in offsets)
         else None
     )
 
@@ -338,6 +362,7 @@ def analyze_object_select_move(example_pairs: list) -> dict:
         "multi_object_all": multi_all,
         "size_preserved_all": size_all,
         "constant_target": constant_target,
+        "constant_offset": constant_offset,
         "selector": selector,
     }
 

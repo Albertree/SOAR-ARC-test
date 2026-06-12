@@ -28,6 +28,7 @@ from agent.active_operators import PredictOperator
 TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_largest.json")
 SHAPE_TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_unique_shape.json")
 BORDER_TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_border.json")
+OFFSET_TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_offset.json")
 
 
 class _G:
@@ -61,6 +62,11 @@ def _load_shape():
 
 def _load_border():
     with open(BORDER_TASK_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _load_offset():
+    with open(OFFSET_TASK_PATH, encoding="utf-8") as fh:
         return json.load(fh)
 
 
@@ -175,6 +181,36 @@ def test_predict_border_object_places_at_target():
     task = _Task(_load_border())
     grids = PredictOperator._place_object_select_grids(task)
     assert grids[0] == _load_border()["test"][0]["output"]
+
+
+def test_select_move_learns_constant_offset_placement():
+    """The selection path now reads the *same* placement COMMs as the
+    single-object family (§2.5 structural unification): a task whose selected
+    object moves by a fixed displacement (the absolute target varies pair-by-pair)
+    is read as a `constant_offset`, with no `constant_target` — closing the
+    asymmetry where selection could only express a fixed-cell placement."""
+    task = _Task(_load_offset())
+    sel = analyze_object_select_move(task.example_pairs)
+    assert sel["multi_object_all"] is True
+    assert sel["selector"] == "max_size"
+    assert sel["constant_target"] is None
+    assert sel["constant_offset"] == [1, 1]
+
+
+def test_matcher_fires_on_selection_constant_offset():
+    """The matcher fires on a selection-by-offset task (target absent, offset
+    present) — gating on *either* placement reading."""
+    task = _Task(_load_offset())
+    patterns = {"object_select_move": analyze_object_select_move(task.example_pairs)}
+    assert match_condition("object_select_target", patterns, {"min_evidence": 2})
+
+
+def test_predict_select_offset_moves_chosen_object():
+    """End-to-end: the structure selects the largest object on the test grid and
+    displaces it by the learned constant offset, value-agnostically."""
+    task = _Task(_load_offset())
+    grids = PredictOperator._place_object_select_grids(task)
+    assert grids[0] == _load_offset()["test"][0]["output"]
 
 
 def test_single_object_family_inert_for_select():

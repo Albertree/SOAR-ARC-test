@@ -32,8 +32,16 @@ from agent.conditions import register
 def object_select_target(patterns: dict, params: dict | None = None) -> bool:
     """True iff every example holds several objects, the rule keeps exactly one
     (its shape+colour preserved into the single output object), a single named
-    selector picks that object in every pair, and all examples place it at one
-    shared target on a same-size canvas, with enough evidence.
+    selector picks that object in every pair, and all examples place it by one
+    shared placement reading — a constant absolute target *or* a constant
+    displacement of the selected object — on a same-size canvas, with enough
+    evidence.
+
+    The placement reading mirrors the single-object family (§2.5 structural
+    unification): a `constant_target` (selected object anchored at one fixed cell)
+    or a `constant_offset` (selected object displaced by one fixed vector while the
+    absolute anchor varies). Gating on *either* closes the asymmetry where the
+    selection path could only express a fixed-cell placement.
 
     `params.min_evidence` (default 2) guards against committing to a selector from
     a single pair — one example cannot establish that a criterion is *consistent*.
@@ -52,7 +60,7 @@ def object_select_target(patterns: dict, params: dict | None = None) -> bool:
     # resized selection is a later sibling.
     if not sel.get("size_preserved_all"):
         return False
-    if sel.get("constant_target") is None:
+    if sel.get("constant_target") is None and sel.get("constant_offset") is None:
         return False
     if sel.get("selector") is None:
         return False

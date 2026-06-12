@@ -914,3 +914,99 @@ constant_target — a multi-object task whose selected object moves by a constan
 selection path is a structural unification (anti-unification-flavoured, R3) rather
 than another selector. Orthogonally, R5 fast-path *reuse* (Stored hits still 0)
 remains the higher-leverage structural step but reads NEUTRAL on P1–P6.
+
+---
+## Learning Loop -- 2026-06-12 20:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_200012.log
+
+---
+## Learning Loop -- 2026-06-12 20:06
+
+- Split: None, Tasks: 4
+- Correct: 4 / 4 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_200644.log
+
+---
+## Learning Loop -- 2026-06-12 20:06
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_200652.log
+
+## Iter 11 — 2026-06-12T20:07 — branch test32
+
+**Diagnosis**: easy_a is mastered (9/9) so per §2.2/§5 the work is escalation. The
+documented gap (iter-10 "Next gap (b)") is a *structural asymmetry*, not a missing
+selector: the single-object family (`analyze_object_move`) reads its move four ways
+(constant target/offset/corner/resize), but the multi-object *selection* family
+(`analyze_object_select_move`) read placement only one way — `constant_target`. So a
+task whose *selected* object moves by a fixed displacement (absolute target varies)
+falls through every path. Closing this is the §2.5 structural-unification direction
+(make the selection path read the same placement COMMs as the single-object path),
+not another selector clone — the smallest unit of which is adding the *offset*
+reading to the selection path.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — `analyze_object_select_move` now computes the
+  selected object's per-pair source→target displacement and the cross-pair
+  `constant_offset` (mirroring `analyze_object_move`'s offset reading, but on the
+  *chosen* object). New `constant_offset` key in the returned symbolic dict.
+- `agent/conditions/object_select_target.py` — matcher now fires when the selected
+  object has a consistent placement that is a constant target **or** a constant
+  offset (was: target only). Selector-agnostic as before; gates on *either*
+  placement reading. (F8 companion edit for the active_operators change.)
+- `agent/active_operators.py` — `_place_object_select_grids` renders at the constant
+  target when present, else at each test object's own anchor plus the constant
+  offset (mirrors `_place_object_offset_grids`). Rule concept renamed
+  `select_object_to_constant_target` → `select_object_constant_move` to stay honest.
+  Net +10 lines (offset branch); F8 satisfied via the conditions/ edit.
+- `data/ARC_madeup/madeup_select_offset.json` (new, F1-exempt corner) — 3 train + 1
+  test, 5×5 grids each with a 2×2 object (selected by max_size) + a size-1
+  distractor; the selected object moves by a constant offset (+1,+1) while its
+  absolute target varies pair-by-pair, so `constant_target` is None and only
+  `constant_offset` is consistent. Distractor dropped; the selected object is
+  identified by shape+colour COMM with the single output object.
+- `tests/test_select_move.py` — +3 tests: the analysis learns `constant_offset`
+  (target None), the matcher fires on the offset case, and end-to-end render equals
+  expected.
+
+The new reading folds into the existing abstract `place_object` rule (action.dsl
+`place_object_select`, reading `constant_select` already in the abstraction's
+`readings`), so rule count stays at 2 and `covers` auto-grew 10→11 — the §2.5-4
+litmus (rule count flat, covers up ⇒ P1/P2 rise), not a new family.
+
+**Probe before**: easy_a 9/9; rules=2 (place_object covers 10); P1=6.0, P2=6.0,
+  P3=0.5, P5=7
+**Probe after** : easy_a 9/9 (regression guard held) + madeup 4/4; rules=2
+  (place_object covers 11: +madeup_select_offset); P1=6.5, P2=6.5, P3=0.5, P5=7
+
+**Invariants**: forbidden=none (F1 data edit under exempt ARC_madeup/; F2 no new
+_try_/_apply_; F3 no new DSL primitive — placement reading is LHS argument
+vocabulary under agent/; F8 satisfied via agent/conditions/ companion edit);
+positives = P1 +0.5, P2 +0.5. Verdict CLEAN (check_invariants exit 0). 51/51 tests
+pass. Real-progress direction: closed a *structural asymmetry* between the two
+placement-reading paths (selection now reads target+offset like the single-object
+family) by reusing the offset concept inside the existing select rule — covers
+10→11, rule count flat, no new matcher/family.
+
+**Next gap (note for future iter)**: the selection path now reads target+offset but
+still not corner or resize, whereas the single-object family reads all four — the
+remaining halves of the same asymmetry. The deeper structural move is to *collapse*
+`analyze_object_move` and `analyze_object_select_move` into one selector-parameterized
+placement reader (single-object = the `unique`/count==1 selector), which would let
+the selection path inherit corner/resize for free and *remove* the duplicated
+per-pair object/placement logic (a P6-positive refactor) rather than porting each
+reading by hand. Orthogonally, R5 fast-path *reuse* (Stored hits still 0) remains the
+higher-leverage structural step but reads NEUTRAL on P1–P6.
