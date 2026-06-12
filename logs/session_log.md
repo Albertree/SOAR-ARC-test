@@ -1,6 +1,92 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 39 — 2026-06-13T03:33 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 25/25 hold. I took iter
+38's explicitly-named *next* gap — **periodic/translational symmetry repair (tiling
+occlusion)**, the natural complement of the involution (mirror/rotation) symmetries the
+iter-38 `symmetry_repair` family already handles. The involution analyzer reconstructs
+an occluded region from a grid's *mirror* image; it abstains when the visible pattern
+repeats under a *shift* rather than a mirror. A 680-same-size-task census found a clean,
+real cluster (1d0a4b61, 484b58aa, ea959feb, f823c43c) where the hidden cells are rebuilt
+from the *tile* they lie in — all INCORRECT before (no family fires). The gap is general,
+value-agnostic, and folds into the *existing* rule_011 with no new rule/matcher.
+
+**Change** (the lift is in the *argument* layer `agent/dsl_expr/`, F3-exempt — no
+transformation primitive, no new `_try_*`, no new matcher, **no new rule**; a repair is
+still `coloring` at the occluded coordinate with the colour read from the tile phase, on
+a `make_grid` canvas):
+- `agent/dsl_expr/selection.py`: added **`held_periods`** (smallest horizontal/vertical
+  translational period the visible cells satisfy, with a **multi-colour guard** — ≥2
+  distinct witnessed colours — that kills the degenerate "monochrome sprinkle makes every
+  shift vacuously periodic" case, e.g. 9ddd00f0) and **`apply_periodic_repair`** (fill
+  each occluder cell from the unique non-occluder colour in its `(r mod pv, c mod ph)`
+  phase class). Extended `analyze_symmetry_repair` with a **second branch** tried *only
+  after* the involution branch abstains (so a mirror-repair task is never reclassified),
+  and a new `mode` field ("involution" | "periodic" | None) recording which kind the
+  analyzer committed to (verified by exact COMM reproduction across all pairs, P3/P4).
+- `agent/dsl_expr/render.py`: `render_symmetry_repair` gained a `mode` param — for
+  `"periodic"` it composes `held_periods` + `apply_periodic_repair`; shares the
+  phase-class logic with the analyzer so render and recognition agree by construction
+  (like the involution path).
+- `agent/active_operators.py`: `_symmetry_repair_grids` now passes `sig["mode"]` to the
+  renderer (recomputed per *test* G0, P5). (+1 line; F8 companion = the matcher docstring
+  scope update below.)
+- `agent/conditions/symmetry_repair.py`: docstring scope update — the matcher now
+  recognizes **both** symmetry kinds under one condition (it keys on `valid_all`, which
+  the analyzer sets either way); no logic change, the intended one-family-one-matcher
+  shape (F8 companion, iter 37 precedent).
+- `procedural_memory/rule_011.json`: **auto-saved by the pipeline** (merge by
+  condition+action equivalence) — `covers` += 1d0a4b61, 484b58aa, ea959feb, f823c43c (4
+  real ARC-AGI-2 tasks), all **verified CORRECT**. One rule still covers the whole
+  symmetry-repair family (involution + periodic); no accretion.
+- `data/ARC_madeup/madeup_periodic_repair.json`: grounding task (3 value-agnostic tilings,
+  occluder colour 5, different palettes/periods → test) — the §2.1 "complete the periodic
+  pattern" concept, as a madeup regression guard. Solves the intended way.
+- `tests/test_symmetry_repair.py`: +8 tests (period read modulo occluder; multi-colour
+  guard rejects monochrome; phase-class fill; analyzer picks periodic mode; involution
+  preferred over periodic; render == apply; single-pair abstain).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 25/25; rules=9; P1=6.778 P2=6.778
+  P3=0.444 P5=15. The 4 periodic-repair tasks INCORRECT (involution branch abstains on a
+  shift-symmetric pattern).
+**Probe after** : 1d0a4b61 / 484b58aa / ea959feb / f823c43c **CORRECT** via the periodic
+  branch folded into rule_011 (covers 3→7 real tasks). The 3 involution tasks
+  (5751f35e, 9ddd00f0, b8825c91) **unchanged** (mode="involution", never reclassified).
+  Full 680-same-size census: **exactly 7 fires, 0 false positives** (every fire
+  test-correct). madeup **26/26** (periodic_repair solves the intended way); easy_a
+  **9/9**; pytest **227/227** (219+8).
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P1 +0.556**
+  (6.778→7.333), **P2 +0.556** (6.778→7.333) — 4 real tasks folded into the existing
+  rule_011, rule count flat at 9: the §2.5-4 real-progress shape (covers up, rules flat,
+  **P3 held** at 0.444 — no accretion/dilution). P5 unchanged (no new matcher — the
+  periodic branch reuses the existing `symmetry_repair` matcher, the intended
+  one-family-one-matcher shape). P6 +1 (active_operators mode plumbing; F8-clean via the
+  conditions/ docstring companion). Reverted the verification runs' `times_reused` churn
+  on rule_001/002 (runtime accounting — iter18..38 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  periodic vocabulary (`held_periods`, `apply_periodic_repair`) is util/selection
+  (argument-expression) vocabulary under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's
+  "no new DSL def" binds only `procedural_memory/DSL/`). No transformation primitive added;
+  F3 contract intact (a periodic repair bottoms out in `coloring` at the occluded
+  coordinate with the tile-phase colour).
+
+**Next gap (note for future iter)**: rule_011 now covers 7 real tasks across two symmetry
+  kinds (involution + periodic) under one matcher. Remaining covers-headroom in the same
+  family: (a) the *one-sided* mirror-repair tasks (496994bd, f25ffba3) where exactly one
+  symmetric half is fully occluded so the mirror has no positive witness — a relaxed
+  `held_symmetries` admits 496994bd but over-fills f25ffba3's interior occluder-coloured
+  cells (the strict-vs-lax tension iter 38 flagged), needs a per-cell "fill only if a
+  non-occluder image exists" guard, not a global relax; (b) once ≥2 same-size repair
+  *mechanisms* share a skeleton, the R3 prize: `anti_unification.unify()` lifting them.
+  The large standing frontier is unchanged: the general Slow-path synthesizer /
+  `object_level_lift` for raw-cell ray/path/gravity tasks (c9680e90, e5790162, 878187ab),
+  still grounding-blocked.
+
+---
 ## Iter 38 — 2026-06-13T03:18 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 24/24 hold. The
@@ -4911,3 +4997,63 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 13
 - Time: 11s
 - Log: logs/learn_20260613_032035.log
+
+---
+## Learning Loop -- 2026-06-13 03:21
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_032121.log
+
+---
+## Learning Loop -- 2026-06-13 03:21
+
+- Split: None, Tasks: 25
+- Correct: 25 / 25 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_032125.log
+
+---
+## Learning Loop -- 2026-06-13 03:21
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_032136.log
+
+---
+## Learning Loop -- 2026-06-13 03:31
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 80s
+- Log: logs/learn_20260613_033036.log
+
+---
+## Learning Loop -- 2026-06-13 03:32
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 12s
+- Log: logs/learn_20260613_033229.log
+
+---
+## Learning Loop -- 2026-06-13 03:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_033241.log

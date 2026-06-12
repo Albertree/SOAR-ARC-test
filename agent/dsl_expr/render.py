@@ -20,7 +20,9 @@ from agent.dsl_expr.selection import (
     GEO_COORD,
     GEO_DIMS,
     SCALE_BACKMAP,
+    apply_periodic_repair,
     apply_symmetry_repair,
+    held_periods,
     held_symmetries,
 )
 
@@ -289,9 +291,18 @@ def render_scale_transform(grid: list, mode: str, kh: int, kw: int) -> list:
     return canvas
 
 
-def render_symmetry_repair(grid: list, occ: int) -> list:
+def render_symmetry_repair(grid: list, occ: int, mode: str = "involution") -> list:
     """Produce the symmetry repair of `grid` (an occluder region reconstructed
     from the visible symmetric pattern) as a `make_grid` + `coloring` composition.
+
+    `mode` selects the symmetry kind the analyzer committed to for this family:
+    ``"involution"`` (mirror/rotation, via `held_symmetries`/`apply_symmetry_repair`)
+    or ``"periodic"`` (translational tiling, via `held_periods`/`apply_periodic_repair`).
+    Both bottom out in the frozen `coloring` primitive at the occluded coordinate
+    with the colour read from the visible pattern; only the *argument expression*
+    that names the source cell differs (mirror image vs. tile phase). The mode is
+    decided by `selection.analyze_symmetry_repair` (which verified reproduction
+    against the example COMM) and recomputed per test input here (P5).
 
     The repair axis of BACKLOG_LOOP §2.5-1's worked example: a symmetry repair is
     *not* a new primitive — it is the frozen `coloring` primitive applied at the
@@ -314,8 +325,12 @@ def render_symmetry_repair(grid: list, occ: int) -> list:
     if H == 0 or W == 0:
         return [row[:] for row in grid]
 
-    syms = held_symmetries(grid, occ)
-    repaired = apply_symmetry_repair(grid, occ, syms)
+    if mode == "periodic":
+        ph, pv = held_periods(grid, occ)
+        repaired = apply_periodic_repair(grid, occ, ph, pv)
+    else:
+        syms = held_symmetries(grid, occ)
+        repaired = apply_symmetry_repair(grid, occ, syms)
     bg = _background_color(repaired)
 
     canvas = apply_DSL("make_grid", height=H, width=W, color=bg)

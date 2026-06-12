@@ -157,3 +157,86 @@ def test_render_matches_apply():
 
 def test_render_inert_on_empty():
     assert render_symmetry_repair([], 5) == []
+
+
+# ---------------------------------------------------------------------------
+# Periodic (translational/tiling) repair — the complement of involution repair.
+# A monochrome-guarded period read off the visible cells (`held_periods`) lets a
+# tiling-occlusion task be rebuilt from the tile it lies in (`apply_periodic_repair`),
+# folding into the SAME rule (mode="periodic"). Grounds four real ARC-AGI-2 tasks
+# (1d0a4b61, 484b58aa, ea959feb, f823c43c) plus the madeup periodic-repair task.
+# ---------------------------------------------------------------------------
+
+from agent.dsl_expr.selection import held_periods, apply_periodic_repair
+
+# A 4x6 grid tiling a 2x3 block [[1,9,4],[8,2,7]]: horizontal period 3, vertical
+# period 2 (both held uniformly, multi-colour witnessed).
+PERIODIC_FULL = [
+    [1, 9, 4, 1, 9, 4],
+    [8, 2, 7, 8, 2, 7],
+    [1, 9, 4, 1, 9, 4],
+    [8, 2, 7, 8, 2, 7],
+]
+
+
+def test_held_periods_reads_tiling_modulo_occluder():
+    inp = _occlude(PERIODIC_FULL, [(0, 2), (1, 3), (2, 5)])
+    ph, pv = held_periods(inp, 5)
+    assert ph == 3  # smallest horizontal tiling period
+    assert pv == 2  # smallest vertical tiling period
+
+
+def test_held_periods_multicolour_guard_rejects_monochrome():
+    # A single-colour (2) sprinkle on a 0-canvas: every shift is vacuously
+    # consistent, so the multi-colour guard must return no period (else any
+    # monochrome grid would be spuriously "periodic").
+    mono = [
+        [0, 2, 0, 2, 0, 0],
+        [0, 0, 0, 0, 2, 0],
+        [2, 0, 0, 0, 0, 2],
+    ]
+    assert held_periods(mono, 0) == (None, None)
+
+
+def test_apply_periodic_repair_fills_from_tile_phase():
+    inp = _occlude(PERIODIC_FULL, [(0, 2), (1, 3), (2, 5), (3, 1)])
+    ph, pv = held_periods(inp, 5)
+    assert apply_periodic_repair(inp, 5, ph, pv) == PERIODIC_FULL
+
+
+def test_apply_periodic_repair_inert_without_period():
+    g = [[1, 2], [3, 4]]
+    assert apply_periodic_repair(g, 5, None, None) == g
+
+
+def test_analyzer_picks_periodic_mode_when_no_involution():
+    a_in = _occlude(PERIODIC_FULL, [(0, 2), (2, 5)])
+    b_in = _occlude(PERIODIC_FULL, [(1, 3), (3, 1)])
+    sig = analyze_symmetry_repair([
+        _pair(a_in, PERIODIC_FULL), _pair(b_in, PERIODIC_FULL)
+    ])
+    assert sig["valid_all"]
+    assert sig["occluder"] == 5
+    assert sig["mode"] == "periodic"
+
+
+def test_involution_preferred_over_periodic():
+    # SYM_BASE is mirror-symmetric: the analyzer must commit to involution, not
+    # reclassify a mirror-repair task as periodic.
+    a = _occlude(SYM_BASE, [(1, 0)])
+    b = _occlude(SYM_BASE, [(0, 4)])
+    sig = analyze_symmetry_repair([_pair(a, SYM_BASE), _pair(b, SYM_BASE)])
+    assert sig["mode"] == "involution"
+
+
+def test_render_periodic_matches_apply():
+    inp = _occlude(PERIODIC_FULL, [(0, 2), (1, 3), (2, 5), (3, 1)])
+    ph, pv = held_periods(inp, 5)
+    expected = apply_periodic_repair(inp, 5, ph, pv)
+    assert render_symmetry_repair(inp, 5, "periodic") == expected == PERIODIC_FULL
+
+
+def test_analyzer_abstains_single_pair_periodic():
+    inp = _occlude(PERIODIC_FULL, [(0, 2)])
+    sig = analyze_symmetry_repair([_pair(inp, PERIODIC_FULL)])
+    assert not sig["valid_all"]  # one pair cannot establish the constant occluder

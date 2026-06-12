@@ -7,11 +7,15 @@ not a new primitive).
 
 Fires when a single occluder colour (the cross-pair COMM — the same hidden colour
 in every example) plus, read off each input's own visible structure, the
-symmetries that input satisfies (`agent/dsl_expr/selection.held_symmetries`)
-reproduce *every* example output exactly. The occluder colour is the lifted
-*argument* — value- and content-agnostic — and the symmetry set is recomputed per
-test input (P5), so one value-agnostic rule covers the whole symmetry-repair
-family rather than one literal rule per task (the §2.5-3/4 "covers, not accretion"
+symmetries that input satisfies reproduce *every* example output exactly. Two
+symmetry kinds are recognized under one matcher (the analyzer records which in
+`sig["mode"]`): **involution** symmetry — mirror/rotation, via
+`selection.held_symmetries` — and **periodic** symmetry — translational tiling,
+via `selection.held_periods` (a tiling-occlusion task is rebuilt from the tile it
+lies in). The occluder colour is the lifted *argument* — value- and
+content-agnostic — and the symmetry set/period is recomputed per test input (P5),
+so one value-agnostic rule covers the whole symmetry-repair family (both kinds)
+rather than one literal rule per task (the §2.5-3/4 "covers, not accretion"
 shape). Reads the `symmetry_repair` signal surfaced by ExtractPatternOperator
 (computed by agent/dsl_expr/selection.analyze_symmetry_repair), which already
 verified the occluder + visible-symmetry repair against the COMM between predicted

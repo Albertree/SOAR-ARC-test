@@ -1741,13 +1741,14 @@ class PredictOperator(Operator):
         occ = sig.get("occluder")
         if occ is None:
             return {}
+        mode = sig.get("mode") or "involution"
 
         grids = {}
         for i, test_pair in enumerate(task.test_pairs):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            grids[i] = render_symmetry_repair(g0.raw, occ)
+            grids[i] = render_symmetry_repair(g0.raw, occ, mode)
         return grids
 
     @staticmethod

@@ -2017,6 +2017,96 @@ def apply_symmetry_repair(grid: list, occ: int, syms: list) -> list:
     return out
 
 
+def held_periods(grid: list, occ: int) -> tuple:
+    """The smallest translational (periodic/tiling) periods the *visible* cells of
+    `grid` satisfy, as ``(period_h, period_v)`` — each an int or ``None``.
+
+    Translational symmetry is the natural complement of the involution symmetries
+    in `held_symmetries`: instead of a mirror/rotation, the visible pattern repeats
+    under a horizontal/vertical shift, and an occluded region is rebuilt from the
+    tile it lies in. A period ``p`` along an axis is *held* iff wherever two
+    non-occluder cells are ``p`` apart along that axis they carry the same colour,
+    and the agreement is witnessed by **≥2 distinct non-occluder colours** — the
+    multi-colour guard that rules out the degenerate case where a *monochrome*
+    foreground makes every shift vacuously periodic (e.g. a single-colour sprinkle
+    on a 0-canvas). Returns the smallest such ``p`` (``1 ≤ p < axis-length``) per
+    axis.
+
+    Read off the input's own structure (the §2.5-2b lift on the *translational*
+    symmetry axis) and recomputable from a test G0 alone (P5), grounded in the COMM
+    between the grid's repeated tiles (P3/P4)."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    if H == 0 or W == 0:
+        return (None, None)
+
+    def _axis_period(n_outer, n_inner, get):
+        # get(i, j) -> colour of the cell at outer index i, inner index j.
+        for p in range(1, n_inner):
+            ok = True
+            cols = set()
+            for i in range(n_outer):
+                for j in range(n_inner - p):
+                    a = get(i, j)
+                    b = get(i, j + p)
+                    if a == occ or b == occ:
+                        continue
+                    cols.add(a)
+                    if a != b:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if ok and len(cols) >= 2:
+                return p
+        return None
+
+    ph = _axis_period(H, W, lambda r, c: grid[r][c])
+    pv = _axis_period(W, H, lambda c, r: grid[r][c])
+    return (ph, pv)
+
+
+def apply_periodic_repair(grid: list, occ: int, ph, pv) -> list:
+    """Fill every `occ`-coloured cell of `grid` from the unique non-occluder colour
+    in its translational phase class under periods `ph` (horizontal) / `pv`
+    (vertical), returning a fresh grid.
+
+    Pure recognition helper paired with `render.render_periodic_repair`: the phase
+    class of a cell ``(r, c)`` is every cell at the same ``(r mod pv, c mod ph)``
+    offset (the horizontal line, the vertical line, and — when both periods hold —
+    the 2-D lattice). A cell is filled only when its visible phase-class cells agree
+    on a *single* colour, so a genuinely ambiguous or fully-occluded class is left
+    as `occ` (recognition then only admits the repair if it still reproduces the
+    output). They share the phase-class logic so render and recognition agree by
+    construction (like the involution repair)."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    out = [row[:] for row in grid]
+    if H == 0 or W == 0 or (ph is None and pv is None):
+        return out
+    for r in range(H):
+        for c in range(W):
+            if grid[r][c] != occ:
+                continue
+            cs = set()
+            if ph:
+                for c2 in range(c % ph, W, ph):
+                    if grid[r][c2] != occ:
+                        cs.add(grid[r][c2])
+            if pv:
+                for r2 in range(r % pv, H, pv):
+                    if grid[r2][c] != occ:
+                        cs.add(grid[r2][c])
+            if ph and pv:
+                for r2 in range(r % pv, H, pv):
+                    for c2 in range(c % ph, W, ph):
+                        if grid[r2][c2] != occ:
+                            cs.add(grid[r2][c2])
+            if len(cs) == 1:
+                out[r][c] = next(iter(cs))
+    return out
+
+
 def _symmetry_occluder_candidates(pairs: list) -> set:
     """Colours that, in *every* pair, are the single colour of all cells the
     output changes (the cross-pair-constant occluder — the COMM). Empty when any
@@ -2075,8 +2165,12 @@ def analyze_symmetry_repair(example_pairs: list) -> dict:
             pairs.append((a, b))
 
     occluder = None
+    mode = None
     if len(pairs) >= 2:
-        for occ in sorted(_symmetry_occluder_candidates(pairs)):
+        candidates = sorted(_symmetry_occluder_candidates(pairs))
+        # Branch 1 — involution (mirror/rotation) repair. Tried first; the existing
+        # value-agnostic family.
+        for occ in candidates:
             ok = True
             for a, b in pairs:
                 syms = held_symmetries(a, occ)
@@ -2085,10 +2179,30 @@ def analyze_symmetry_repair(example_pairs: list) -> dict:
                     break
             if ok:
                 occluder = occ
+                mode = "involution"
                 break
+        # Branch 2 — translational (periodic/tiling) repair. Tried only when no
+        # involution occluder reproduces, so a mirror-repair task is never
+        # reclassified. Folds tiling-occlusion tasks into the same rule (covers up,
+        # no new rule); the multi-colour-guarded `held_periods` keeps it inert on
+        # the monochrome-sprinkle degeneracy and on every non-periodic task.
+        if occluder is None:
+            for occ in candidates:
+                ok = True
+                for a, b in pairs:
+                    ph, pv = held_periods(a, occ)
+                    if (ph is None and pv is None) or \
+                            apply_periodic_repair(a, occ, ph, pv) != b:
+                        ok = False
+                        break
+                if ok:
+                    occluder = occ
+                    mode = "periodic"
+                    break
 
     return {
         "occluder": occluder,
         "valid_all": occluder is not None,
         "evidence": len(pairs),
+        "mode": mode,
     }
