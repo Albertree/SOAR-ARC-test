@@ -113,17 +113,27 @@ def unique_object(grid: list, background: int | None = None):
 # ---------------------------------------------------------------------------
 
 def analyze_object_move(example_pairs: list) -> dict:
-    """Per-pair object comparison + the cross-pair COMM on the output position.
+    """Per-pair object comparison + two cross-pair COMM readings on position.
 
     The arbor-flow easy000b path expressed symbolically: detect the single
     object in G0 and G1, observe that color and shape are preserved (COMM) while
-    position differs (DIFF), then compare the *output* positions across pairs.
-    When every example puts the object at the *same* output anchor, that anchor
-    is a constant target (the cross-pair COMM). Grid size must be preserved for
-    the same-canvas placement to be well-defined.
+    position differs (DIFF), then compare positions across pairs *two* ways:
 
-    Returns a symbolic dict; the matcher (agent/conditions/object_constant_target)
-    decides whether it fires, and PredictOperator renders from it.
+    - **constant target** — every example puts the object at the *same* output
+      anchor (the cross-pair COMM on the *absolute output position*). Solves the
+      easy000c/d/h family.
+    - **constant offset** — every example moves the object by the *same*
+      displacement ``out_pos − in_pos`` (the cross-pair COMM on the *relative
+      displacement*). Solves the easy000e/f family, where the absolute output
+      anchor varies but the move vector does not.
+
+    These are sibling readings of the same per-pair DIFF: which one is constant
+    is what distinguishes a fixed-target move from a fixed-offset move. Grid size
+    must be preserved for the same-canvas placement to be well-defined.
+
+    Returns a symbolic dict; the matchers (agent/conditions/object_constant_target
+    and object_constant_offset) decide whether they fire, and PredictOperator
+    renders from it.
     """
     per_pair = []
     for pair in example_pairs:
@@ -134,9 +144,18 @@ def analyze_object_move(example_pairs: list) -> dict:
         in_obj = unique_object(g0.raw)
         out_obj = unique_object(g1.raw)
         single = in_obj is not None and out_obj is not None
+        source = list(position_of(in_obj)) if in_obj else None
+        target = list(position_of(out_obj)) if out_obj else None
+        offset = (
+            [target[0] - source[0], target[1] - source[1]]
+            if single and source is not None and target is not None
+            else None
+        )
         per_pair.append({
             "single_object": single,
-            "target": list(position_of(out_obj)) if out_obj else None,
+            "source": source,
+            "target": target,
+            "offset": offset,
             "color_preserved": bool(single and in_obj["colors"] == out_obj["colors"]),
             "shape_preserved": bool(single and normalized_shape(in_obj) == normalized_shape(out_obj)),
             "size_preserved": (
@@ -151,9 +170,17 @@ def analyze_object_move(example_pairs: list) -> dict:
     size_all = bool(per_pair) and all(p["size_preserved"] for p in per_pair)
 
     targets = [tuple(p["target"]) for p in per_pair if p["target"] is not None]
-    constant = (
+    constant_target = (
         list(targets[0])
         if targets and all(t == targets[0] for t in targets)
+        else None
+    )
+
+    offsets = [tuple(p["offset"]) for p in per_pair if p["offset"] is not None]
+    constant_offset = (
+        list(offsets[0])
+        if offsets and len(offsets) == len(per_pair)
+        and all(o == offsets[0] for o in offsets)
         else None
     )
 
@@ -163,5 +190,6 @@ def analyze_object_move(example_pairs: list) -> dict:
         "color_preserved_all": color_all,
         "shape_preserved_all": shape_all,
         "size_preserved_all": size_all,
-        "constant_target": constant,
+        "constant_target": constant_target,
+        "constant_offset": constant_offset,
     }

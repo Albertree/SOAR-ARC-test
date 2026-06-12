@@ -27,6 +27,11 @@ CONSTANT_OUTPUT_DSL = "copy_common_output"
 #: family (R1) — a make_grid ∘ coloring composition rendered at predict time.
 PLACE_OBJECT_DSL = "place_object_constant"
 
+#: action.dsl for the constant-*offset* object move family (R1, easy000e/f) —
+#: same make_grid ∘ coloring composition, but the per-test target is the test
+#: object's own anchor plus the cross-pair constant displacement.
+PLACE_OBJECT_RELATIVE_DSL = "place_object_relative"
+
 
 # ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
@@ -351,6 +356,15 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_constant_target_rule(patterns)
 
+        # Strategy 0c (R1, easy000e/f): the constant-*offset* object-move family.
+        # If the `object_constant_offset` matcher fires (single object moved by
+        # one shared displacement across examples), emit a canonical {condition,
+        # action} rule whose action recomputes the offset at predict time and
+        # adds it to each test object's own anchor — value-agnostic in color and
+        # source position. Recognition is delegated to the registered matcher.
+        if rule is None:
+            rule = self._object_constant_offset_rule(patterns)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -424,6 +438,36 @@ class GeneralizeOperator(Operator):
                 "args": {},
             },
             "concept": "move_object_to_constant_target",
+            "category": "object_move",
+            "confidence": 1.0,
+        }
+
+    def _object_constant_offset_rule(self, patterns):
+        """Emit the canonical constant-offset move rule when the matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the
+        registered `object_constant_offset` matcher (agent/conditions/), and the
+        result is a schema-canonical {condition, action} rule. The constant
+        displacement is recomputed at predict time from the example pairs (so the
+        rule stays value-agnostic and one rule covers easy000e/f), mirroring the
+        constant-target rule but on the *relative* reading of the move DIFF.
+        """
+        params = {"min_evidence": 2}
+        if not match_condition("object_constant_offset", patterns, params):
+            return None
+        move = patterns.get("object_move") or {}
+        evidence = len(move.get("per_pair") or [])
+        return {
+            "condition": {
+                "type": "object_constant_offset",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": PLACE_OBJECT_RELATIVE_DSL,
+                "args": {},
+            },
+            "concept": "move_object_by_constant_offset",
             "category": "object_move",
             "confidence": 1.0,
         }
@@ -595,6 +639,17 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Constant-*offset* object move (R1, easy000e/f). Recompute the shared
+        # displacement from the example pairs, then for each test pair render the
+        # test object onto a fresh canvas at (its own anchor + offset).
+        if action and action.get("dsl") == PLACE_OBJECT_RELATIVE_DSL:
+            for i, grid in self._place_object_offset_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -647,6 +702,37 @@ class PredictOperator(Operator):
             width = len(g0.raw[0]) if g0.raw else 0
             grids[i] = render_object_at(
                 height, width, bg, obj["pixels"], tuple(target),
+            )
+        return grids
+
+    @staticmethod
+    def _place_object_offset_grids(task):
+        """Map test-pair index -> predicted grid for the constant-offset move.
+
+        The displacement is the cross-pair COMM recomputed from the example
+        pairs; each test object's target anchor is its *own* G0 position plus
+        that offset (color/shape/background also from its own G0 — never a test
+        G1, P5). Returns {} when the move analysis yields no constant offset."""
+        move = analyze_object_move(task.example_pairs)
+        offset = move.get("constant_offset")
+        if offset is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            obj = unique_object(g0.raw)
+            if obj is None:
+                continue
+            bg = background_of(g0.raw)
+            height = len(g0.raw)
+            width = len(g0.raw[0]) if g0.raw else 0
+            r0, c0 = obj["position"]
+            target = (r0 + offset[0], c0 + offset[1])
+            grids[i] = render_object_at(
+                height, width, bg, obj["pixels"], target,
             )
         return grids
 

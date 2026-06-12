@@ -246,3 +246,85 @@ grid corner, varies with grid size) then needs a `corner-of-grid` relation;
 easy000i needs grid resize. Also: these c/d/h literal-target-free rules and a
 future relative-move rule share the `place_object_*` skeleton — R3 anti-unification
 should eventually lift them into one parameterized `place_object` (covers↑).
+
+---
+## Learning Loop -- 2026-06-12 18:52
+
+- Split: None, Tasks: 9
+- Correct: 5 / 9 (55.6%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_185207.log
+
+---
+## Learning Loop -- 2026-06-12 18:55
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_185543.log
+
+---
+## Iter 4 — 2026-06-12 — branch test32
+
+**Diagnosis**: Lowest unproven rung is still **R1 (object-level analysis)**;
+iter 3 cleared its constant-*target* sub-family (c/d/h) but left e/f/g/i. The
+probe solved 5/9 — easy000e/f fell to `identity` because the move analysis read
+only the *absolute* output position (constant_target), not the *relative*
+displacement. easy000e (offset (+1,−1)) and easy000f (offset (0,+1)) are exactly
+the iter-3 next-gap note: a single object moved by a **constant displacement**,
+the cross-pair COMM on `out_pos − in_pos`. That is R1's smallest remaining
+defensible entry — one value-agnostic module covering two tasks; g (corner-of-
+grid, varies with size) and i (grid resize) deliberately stay for later rungs.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — `analyze_object_move` now also reads each
+  pair's `source`/`offset` and surfaces `constant_offset` (the cross-pair COMM
+  on the displacement), the sibling of the existing `constant_target`. Same
+  per-pair DIFF, read relatively instead of absolutely.
+- `agent/conditions/object_constant_offset.py` (new) — R1 relative-move matcher.
+  Fires iff every example is a single object moved by one shared displacement
+  (color/shape/size kept, same-size canvas); abstains when `constant_target` is
+  set (sibling claims it first) and on g/i. P5 +1; F8 companion for the
+  active_operators edit.
+- `agent/active_operators.py` — `GeneralizeOperator` consults the new matcher
+  (after constant_target) and emits a canonical `{condition, action}` rule
+  (`action.dsl = place_object_relative`, args={}); `PredictOperator` adds the
+  recomputed offset to each test object's own G0 anchor and renders via the
+  existing `render_object_at` (make_grid ∘ coloring — no new primitive). Helpers
+  `_object_constant_offset_rule`/`_place_object_offset_grids`, not `_try_*`/
+  `_apply_*`; recognition delegated to the matcher.
+
+**Probe before**: easy_a 5/9; rules=2 (covers a,b / c,d,h); P1=2.5, P2=2.5
+**Probe after** : easy_a 7/9 (a,b R0; c,d,h R1-target; e,f R1-offset — all
+  CORRECT); rules=3 (rule_003 object_constant_offset covers=[e,f]); P1=2.33,
+  P2=2.33
+
+**Invariants**: forbidden=none; positives = P5 +1 (2→3). P1/P2 each −0.17 — this
+is **arithmetic, not regression**: the denominator grew 2→3 by adding a genuinely
+new *general* family that covers 2 tasks with one value-agnostic module (covers=2
+> 1, no per-task branch). That is real R1 progress per §2.5-4, not the 168-rule
+accretion failure (which is one *task-specific* rule per task with covers=1). The
+documented saturation effect ([[psignal_saturation_arithmetic]]). 19/19 tests
+pass. Verdict CLEAN.
+
+**RUNG R1 — advanced again, still NOT cleared**: e/f now solve the intended way
+(object detect → per-pair COMM color/shape + cross-pair COMM on *displacement* →
+render via make_grid ∘ coloring; one value-agnostic module, covers=2). R1's
+done-when needs *all* of c–i + easy_a 100%; g (corner target, grid-size-relative)
+and i (grid resize, unequal in/out size) remain — both need vocabulary R1 does
+not have yet, so R1 stays open.
+
+**Next gap (note for future iter)**: easy000g — target = grid's bottom-right
+corner (varies with grid dimensions), so neither `constant_target` nor
+`constant_offset` fires. It needs a `corner-of-grid` relation (R4-flavoured: a
+derived anchor read off the grid, not the object) feeding the same render. After
+that, easy000i needs grid *resize* (output 5×5 from input 6×6 + move to top-left)
+— the first unequal-in/out-size case. Also: rule_002 (`place_object_constant`)
+and rule_003 (`place_object_relative`) now share the `place_object_*` skeleton —
+R3 anti-unification should lift them into one parameterized `place_object`
+(target-expression as the generalization variable), raising covers on a single
+rule instead of adding families.
