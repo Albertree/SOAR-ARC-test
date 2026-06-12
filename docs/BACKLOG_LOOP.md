@@ -83,31 +83,56 @@
 > 규칙"을 찍어내는 쪽으로 흘러가면 안 된다. ARBOR 의 이름(Bottom-up Organized
 > Rules)이 곧 이 원칙이다.
 
-**1. 변환 어휘의 유일한 출처 = 두 primitive 의 조합.**
-손으로 만들 수 있는 transformation 은 `make_grid`·`coloring` **둘뿐이다 (F3,
-영구).** `rotate`·`flip`·`move`·`translate`·`scale`·`copy`·`recolor` … *그 외
-전부*는 새 primitive 도, task 전용 규칙도 아니다. 이들은 두 primitive 의
+**1. 두 면을 구분하라 — 변환(RHS)은 동결, 인자·선택(LHS)은 성장.**
+`arbor-dsl-taxonomy` 의 4종 분리가 이 원칙의 뼈대다. 헷갈리면 안 되는 핵심:
+*frozen 은 transformation 카테고리뿐*이고, 인자를 만드는 어휘는 *비어 있으면
+안 되고 자라야* 한다.
 
-- **순차 조합** (sequential composition): `make_grid(...)` 로 캔버스를 깔고
-  `coloring(...)` 를 *여러 번* 적용하는 *순서 있는 프로그램*, 그리고
-- **args 조합/파라미터화** (argument composition): 각 `coloring` 의
-  `selection`·`color` 인자를 G0 에서 읽은 값의 *함수*로 두는 것
+- **transformation (action/RHS) = `make_grid`·`coloring` 둘뿐, 영구 frozen (F3).**
+  `rotate`·`flip`·`move`·`translate`·`scale`·`copy`·`recolor` … 그 외 전부는
+  새 primitive 가 아니라 이 둘의 **순차 조합** + **인자 표현식**으로 *표현*된다.
+- **property / relation / util / selection (인자·LHS) = 손코딩 *허용·권장*, 자라는
+  어휘.** transformation 의 *인자* 와 condition 의 *술어* 를 만드는 재료다.
+  `position-of`·`color-of`·`size-of`(property), `same-color`·`adjacent`(relation),
+  `objects-of`·`unique`·`argmax`·`filter`·`select`(util/selection).
 
-로 **표현된다**. 예:
-- `move`  = `make_grid(H,W,bg)` ∘ `coloring(target_coords, source_color)`
-  — target_coords 는 source_coords 의 *함수* (예: (r,c)→(5,5)).
-- `flip_h` = source 의 각 셀 (r,c,color) 에 대해 `coloring((r, W-1-c), color)`
-  — 인자에 *좌표 변환식* 을 끼운 coloring 시퀀스.
-- `rotate90` = `coloring((c, H-1-r), color)` 시퀀스.
+> **F3 의 정확한 범위 (taxonomy §3, arbor-signals 정정):** F3 는
+> **transformation 디렉토리(`procedural_memory/DSL/*.py`)에만** 적용된다 —
+> 체커(`scripts/check_invariants.sh:188`)가 거기 새 `def`/`@register` 를 리버트.
+> property/relation/util/selection 함수는 **그 디렉토리에 두지 말 것**(리버트됨);
+> `agent/` 아래(예: `agent/dsl_expr/` 또는 `agent/conditions/` 술어) PROMPT.md §3
+> 허용 위치에 둔다. ⚠️ `CLAUDE.md §6.1`("DSL/ 에 새 def 금지")과
+> `arbor-dsl-taxonomy §3`("property/relation/util 은 허용")은 *충돌*한다 —
+> PROMPT.md §3 Step1.C 대로 **이 충돌을 session_log 에 surface** 하고, 코드 동결
+> 계약(transformation 2개)은 지키되 인자 어휘는 `agent/` 에서 키운다.
 
-즉 새 변환 = **같은 두 primitive + 인자에 끼운 좌표/색 변환식**. 절대 새
+표현 예 (인자가 *표현식 트리* 임에 주목 — AU 의 진짜 입력):
+- `move` = `coloring(position-of(unique-object(in)), background-color(in))`
+  ∘ `coloring(target-position(...), color-of(unique-object(in)))`.
+- `flip_h` = source 각 셀에 `coloring((r, W-1-c), color)` — 좌표 변환식.
+
+즉 새 변환 = **두 frozen primitive + 인자에 끼운 (좌표/색/선택) 표현식**. 절대 새
 `def rotate(...)` 가 아니다 (F3 위반·auto-revert).
 
-**2. 이 조합은 *발견* 되는 데이터다 (손코딩 아님).**
-위 조합 레시피는 사람이 적는 게 아니라 `anti_unification.unify()`(R3)가 2개
-이상의 pair-specific 프로그램에서 *공통 골격* 을 뽑아 **변수화** 해서 만든다.
-결과는 `procedural_memory/rule_NNN.json` 의 **데이터**로 저장된다
-(`action.dsl` = 조합 이름, `action.args` = 일반화 변수). CLAUDE.md §6.2 그대로.
+**2. AU 의 입력은 transformation 트리가 아니라 argument expression tree.**
+`anti_unification.unify()`(R3)는 2개 이상 pair-program 의 *인자 표현식* 에서
+공통 골격을 뽑아 **변수화** 한다. raw 좌표(`coloring([(2,3)],4)`)는 task 마다
+달라 공통 골격이 안 생긴다 — 168-rule 실패의 진짜 원인(taxonomy §4). 좌표가
+`position-of(unique-object(in))` 로 *lift* 돼 있어야 골격이 드러난다. 결과는
+`rule_NNN.json` 데이터(`action.dsl`=조합 이름, `action.args`=일반화 변수,
+`condition.params`=`$expr` 표현식 트리). CLAUDE.md §6.2 / taxonomy §7 그대로.
+
+**2b. AU 결과는 *미완성* — 변수를 채우는 *선택*이 선행돼야 한다.** *(사용자 조언)*
+변수화하면 AU 산물은 *구멍(변수)이 든 불완전한 프로그램*이다. 이를 *완성/인스턴스화*
+하려면 각 구멍을 **무엇으로 채울지 고르는 근거·방법**이 필요하다 — 예: "변하는 그
+object" 라면 *어느 object 인지* 고르는 법(`unique`? `argmax(_, size)`? `filter(_,
+same-color(...))`?)이 transformation 보다 *먼저* 정해져야 한다. 이 선택의 *근거*는
+지어내는 게 아니라 **비교 결과(COMM/DIFF)에서** 온다 (P3·P4: 값보다 이유).
+→ 그래서 `make_grid`·`coloring` 외에 **`select`/`filter`/`unique`/`argmax` 같은
+선택 함수가 단위적으로 자주 등장·재사용**된다 (util/selection 카테고리). 이들은
+transformation 이 아니므로 F3 대상이 아니며, 위 §1 의 위치 규칙대로 `agent/` 에서
+키운다. selection 어휘 없이는 AU 산물이 영영 미완성으로 남아 결국 task-overfit
+리터럴로 되돌아간다 — 즉 selection 재료의 부재가 누적 실패의 뿌리다.
 
 **3. overfit 은 *재료* 로만 허용 — *축적* 은 실패다.**
 한 pair 를 리터럴로 푸는 *pair-specific 프로그램* 은 **anti-unification 의
