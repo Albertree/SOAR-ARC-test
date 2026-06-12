@@ -10,13 +10,12 @@ Pipeline operators (all fire in S2, read/write S1):
   SubmitOperator        -> write prediction to output-link, satisfy goal
 """
 
-from collections import Counter
-
 from agent.operators import Operator
 from agent.conditions import match as match_condition
 from agent.dsl_expr import (
     objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
     output_dims, argmax, arg_extreme, cells_of, most_frequent_color,
+    background_color,
 )
 from agent.variable_resolution import resolve_variable
 from procedural_memory.DSL.apply import apply_DSL
@@ -388,8 +387,7 @@ def _object_keyed_parts(raw):
     marker_color = color_of(marker)
     if marker_color is None:
         return None
-    flat = [cell for row in raw for cell in row]
-    background = Counter(flat).most_common(1)[0][0]
+    background = background_color(raw)
     return body_cells, marker_cells, marker_color, background
 
 
@@ -1676,8 +1674,7 @@ class PredictOperator(Operator):
             return None
 
         # Background = the most frequent color → fewest `coloring` strokes.
-        flat = [cell for row in common for cell in row]
-        background = Counter(flat).most_common(1)[0][0]
+        background = background_color(common)
 
         # make_grid(background) ∘ coloring(non-background cells).
         out = apply_DSL("make_grid", None, height=height, width=width,
@@ -1911,16 +1908,18 @@ class PredictOperator(Operator):
             return None
 
         # Background = most-frequent colour across the example outputs (their
-        # shared fill), so the source cells are erased by the fresh canvas.
-        flat = [
-            cell
+        # shared fill), so the source cells are erased by the fresh canvas. The
+        # outputs' rows are pooled into one cell multiset (background_color
+        # flattens whatever rows it is given), so this is the most-frequent
+        # colour across all example outputs.
+        output_rows = [
+            row
             for pair in task.example_pairs if pair.output_grid is not None
             for row in pair.output_grid.raw
-            for cell in row
         ]
-        if not flat:
+        background = background_color(output_rows)
+        if background is None:
             return None
-        background = Counter(flat).most_common(1)[0][0]
 
         # Translate the object's cells so its top-left lands on `target`
         # (handles 1×1 and larger single-colour shapes uniformly).
@@ -2087,8 +2086,7 @@ class PredictOperator(Operator):
 
         # Background = most frequent input colour → fewest `coloring` strokes (the
         # block of a background cell is already filled by make_grid).
-        flat = [cell for row in raw for cell in row]
-        background = Counter(flat).most_common(1)[0][0]
+        background = background_color(raw)
 
         out = apply_DSL("make_grid", None, height=height, width=width,
                         color=background)

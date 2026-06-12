@@ -32,6 +32,8 @@ Everything here is deterministic and side-effect-free (P7: symbolic dicts only,
 no vectors/embeddings).
 """
 
+from collections import Counter
+
 from ARCKG.hodel import hodel_objects
 
 #: Canonical foreground interpretation used by `objects_of`. One stable reading
@@ -201,6 +203,44 @@ def most_frequent_color(grid):
     if len(winners) != 1:
         return None
     return winners[0]
+
+
+def background_color(grid):
+    """Property: the grid's background colour — its single most-frequent colour
+    (ties broken deterministically by first appearance in row-major order), or
+    None for an empty grid.
+
+    Conceptually the same "most frequent colour" comparison as
+    `most_frequent_color`, but with the *opposite tie discipline*, because the
+    two serve opposite purposes:
+
+      - `most_frequent_color` is a value-agnostic mask *key* (which colour the
+        copy keys on); picking the wrong colour on a tie yields a wrong output,
+        so it must **abstain** (return None) when the maximum is tied.
+      - `background_color` names a *canvas fill* — the `make_grid` background
+        chosen so the fewest `coloring` strokes are needed (every non-background
+        cell is then painted explicitly). On a tie *either* most-frequent colour
+        fills equally well and the rendered grid is identical, so abstaining
+        would wrongly stall an otherwise-valid render. Hence it always returns a
+        colour for a non-empty grid; the tie-break is fixed (first-seen) only to
+        stay deterministic and replay-stable (P7).
+
+    This is a property read of the grid (the taxonomy *property* category), so —
+    like the rest of this package — it lives in the growing argument vocabulary
+    under `agent/`, not in the frozen transformation DSL (BACKLOG_LOOP.md
+    §2.5-1). Lifting it out of the inline `Counter(...).most_common` idiom that
+    several renderers repeated makes "the grid's background" one named,
+    reusable expression rather than duplicated boilerplate.
+
+    `grid` is a raw 2D list/tuple of colour ints (or any iterable of rows whose
+    cells should be pooled — e.g. several example outputs concatenated, where
+    the background is the most-frequent colour across them all)."""
+    if not grid or not grid[0]:
+        return None
+    flat = [cell for row in grid for cell in row]
+    if not flat:
+        return None
+    return Counter(flat).most_common(1)[0][0]
 
 
 def cells_of(obj):

@@ -1,6 +1,63 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 24 — 2026-06-12T16:41 — branch test31
+
+**Diagnosis**: Iters 21 & 23 (both no-ops) proved P1/P2 are arithmetically pinned
+(17 tasks / 3 rules = 5.67; no new family covers ≥6, and the §6.2-vs-P1/P2 design
+tension that would unblock the structural fix is a *user* decision, surfaced
+already). Iter 23 left exactly one non-gated, non-spinning move on the table: its
+named option (ii), a **genuine P6 reduction** — consolidate machinery duplicated
+across the accreted in-code families. I took the smallest defensible slice of it:
+the "background colour" property (`Counter(flat).most_common(1)[0][0]`) was inlined
+verbatim at 4 renderer sites. That is a *property read* that §2.5-1 says belongs in
+the growing `agent/dsl_expr/` argument vocabulary, not duplicated boilerplate in
+`active_operators.py`. (Also re-verified the easy gate: easy0002/0003 have identical
+train inputs → different outputs — genuinely ill-posed, so the easy→training
+graduation stays structurally unsatisfiable, as recorded; work remains rung-agnostic.)
+
+**Change**:
+- `agent/dsl_expr/__init__.py` — new property `background_color(grid)`: the grid's
+  most-frequent colour, **always returning** a colour for a non-empty grid (tie
+  broken first-seen, deterministic). Documented as the deliberate *dual* of
+  `most_frequent_color`: the latter is a mask *key* that must **abstain** on a tie
+  (wrong pick → wrong output); `background_color` names a *canvas fill* where either
+  most-frequent colour fills equally (non-bg cells are painted explicitly), so
+  abstaining would wrongly stall a valid render. Grows the property vocabulary in
+  the blessed `agent/` location (§2.5-1), not the frozen DSL.
+- `agent/active_operators.py` — replaced the 4 inline `Counter(...).most_common`
+  background computations (`_object_keyed_parts`, `_render_constant_output`,
+  `_render_place_object`, `_render_integer_scale`) with `background_color(...)`
+  calls; removed the now-dead `from collections import Counter` import. Pure
+  refactor, **net-negative lines** (F8-exempt deletion/refactor). Behaviour is
+  byte-identical: the helper uses the same `Counter(...).most_common(1)[0][0]`
+  internally, and the multi-output site pools the same cell multiset.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate), easy_a 9/9; rules=3
+(covers 6+9+2=17); P1=5.67 P2=5.67 P3=0.67 P5=10 P6(lines)=2231.
+**Probe after** : easy 1/3, easy_a 9/9 (**identical** — behaviour preserved);
+rules=3 unchanged; P1=5.67 P2=5.67 P3=0.67 P5=10 P6(lines)=2229 (−2). 162/162
+pytest pass. (Deleted a `rule_004` integer_scale artifact a `c59eb873` investigation
+run auto-persisted — covers=1/au_trace=null, the iter-23-documented accretion
+artifact; never part of this change.)
+
+**Invariants**: forbidden=**none** (refactor touches `active_operators.py` net-
+negative — F8 deletion exemption; new code is a property in `agent/dsl_expr/`, not
+`procedural_memory/DSL/`, so F3 N/A; no `_try_*`/`_apply_*` added, F2 clean).
+positives=**P6 +2 lines removed** (the strongest architectural signal per
+INVARIANTS §2); P4 +37 (episodic writer alive across probe runs); P1/P2/P3/P5 flat.
+Verdict: **CLEAN**.
+
+**Next gap (note for future iter)**: P6 has more headroom — the duplicated
+`pairs = [(pair.input_grid, pair.output_grid) for pair in task.example_pairs if …]`
+comprehension recurs ~12× in `active_operators.py` and could be lifted to one
+module-level `_example_pairs(task)` helper (another net-negative refactor, no
+capability change). The *structural* fix (route one in-code family through
+`anti_unification.unify()` into a persisted `covers>1` data rule, accepting the
+§6.2-intended P1/P2 covers-dip) still awaits the user's resolution of the
+P1/P2-reward ↔ §6.2-data-mandate tension surfaced in iters 21/23.
+
+---
 ## Iter 23 — 2026-06-12T16:33 — branch test31 — NO-OP (analysis only)
 
 **Iter 23: no defensible step found — analysis only.** Commit no code change
@@ -2898,3 +2955,53 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 0
 - Time: 109s
 - Log: logs/learn_20260612_162935.log
+
+---
+## Learning Loop -- 2026-06-12 16:35
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_163544.log
+
+---
+## Learning Loop -- 2026-06-12 16:35
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_163546.log
+
+---
+## Learning Loop -- 2026-06-12 16:40
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_164050.log
+
+---
+## Learning Loop -- 2026-06-12 16:40
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_164051.log
+
+---
+## Learning Loop -- 2026-06-12 16:41
+
+- Split: training, Tasks: 20
+- Correct: 1 / 20 (5.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 0
+- Time: 53s
+- Log: logs/learn_20260612_164100.log
