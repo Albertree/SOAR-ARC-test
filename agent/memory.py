@@ -28,7 +28,12 @@ import json
 import os
 from datetime import datetime
 
+from program.anti_unification import NoCommonSkeleton, unify
+
 PROCEDURAL_MEMORY_ROOT = "procedural_memory"
+
+# A param/arg position absent from a rule, distinct from any real value.
+_MISSING = object()
 
 
 class RuleSchemaError(ValueError):
@@ -80,9 +85,14 @@ def save_rule(rule_obj: dict, task_hex: str, related_rules=None,
         a whole family (P1/P2 rise) rather than spawning one rule per task.
 
     It is also the designated single anti-unification call site (CLAUDE.md §8).
-    The hook is marked below; AU lift across *different* skeletons is wired in
-    R3 (BACKLOG_LOOP.md). Keeping the call site here — and only here — ensures it
-    never multiplies.
+    When the new rule shares a *skeleton* (same condition.type + action.dsl) with
+    concrete sibling rules but differs in a param/arg, `program.anti_unification.
+    unify()` lifts them into one `covers>1` abstraction whose differing positions
+    are variables (R3, BACKLOG_LOOP.md); the abstraction replaces the siblings.
+    Once an abstraction exists, later concrete instances it *subsumes* are folded
+    into its `covers` rather than re-lifted, so repeated runs converge instead of
+    churning. Keeping the call site here — and only here — ensures it never
+    multiplies.
     """
     cond = rule_obj.get("condition")
     act = rule_obj.get("action")
@@ -91,39 +101,10 @@ def save_rule(rule_obj: dict, task_hex: str, related_rules=None,
             f"save_rule requires condition+action; got keys={sorted(rule_obj)}")
 
     os.makedirs(procedural_memory_root, exist_ok=True)
-    existing = sorted(
-        f for f in os.listdir(procedural_memory_root)
-        if f.startswith("rule_") and f.endswith(".json")
-    )
+    existing = _load_existing_rules(procedural_memory_root)  # [(path, dict)]
 
-    # Dedup — extend covers of an equivalent rule instead of duplicating.
-    for fname in existing:
-        path = os.path.join(procedural_memory_root, fname)
-        try:
-            with open(path, encoding="utf-8") as fh:
-                stored = json.load(fh)
-        except (json.JSONDecodeError, IOError):
-            continue
-        if _condition_action_equiv(stored, rule_obj):
-            covers = stored.get("covers") or [stored.get("source_task", "")]
-            if task_hex not in covers:
-                covers.append(task_hex)
-                stored["covers"] = covers
-                validate_rule(stored)
-                with open(path, "w", encoding="utf-8") as fh:
-                    json.dump(stored, fh, indent=2)
-            return path
-
-    # --- anti-unification hook (CLAUDE.md §8 — single call site) -------------
-    # R3 wires program.anti_unification here to lift `related_rules + [rule_obj]`
-    # sharing a skeleton into one covers>1 abstraction. Inert until R3: the
-    # constant-output family already converges to one rule via the dedup above,
-    # so there is no liftable cross-skeleton pair yet.
-    _ = related_rules  # reserved for the R3 AU call
-
-    next_id = len(existing) + 1
     entry = {
-        "id": next_id,
+        "id": len(existing) + 1,
         "concept": rule_obj.get("concept") or cond.get("type"),
         "category": rule_obj.get("category") or "other",
         "condition": cond,
@@ -135,9 +116,151 @@ def save_rule(rule_obj: dict, task_hex: str, related_rules=None,
         "times_reused": 0,
     }
     validate_rule(entry)
-    path = os.path.join(procedural_memory_root, f"rule_{next_id:03d}.json")
+
+    # (a) Subsumption — an already-lifted abstraction whose variables accept this
+    #     concrete instance absorbs it: just grow its covers. This is what makes
+    #     repeated runs converge (a concrete instance is never re-lifted once its
+    #     abstraction exists), the §2.5-3 "material for R3, not a per-task literal"
+    #     contract holding across passes.
+    for path, stored in existing:
+        if _is_abstract(stored) and _subsumes(stored, entry):
+            _merge_covers(stored, entry["covers"], path)
+            return path
+
+    # (b) Exact dedup — same condition.type + action ⇒ extend covers in place.
+    for path, stored in existing:
+        if _condition_action_equiv(stored, rule_obj):
+            covers = stored.get("covers") or [stored.get("source_task", "")]
+            if task_hex not in covers:
+                covers.append(task_hex)
+                stored["covers"] = covers
+                validate_rule(stored)
+                _write_json(path, stored)
+            return path
+
+    # (c) Anti-unification (CLAUDE.md §8 — the single call site). Concrete
+    #     siblings sharing this rule's skeleton but differing in a param/arg are
+    #     lifted into one covers>1 abstraction; it replaces them on disk (R3).
+    if related_rules is not None:
+        related = [(None, r) for r in related_rules]
+    else:
+        related = [
+            (path, stored) for path, stored in existing
+            if not _is_abstract(stored)
+            and _same_skeleton(stored, entry)
+            and not _condition_action_equiv(stored, rule_obj)
+        ]
+    if related:
+        try:
+            au = unify([s for _, s in related] + [entry])
+        except NoCommonSkeleton:
+            au = None
+        if au is not None and au.is_more_general():
+            return _persist_abstract(
+                au.abstract_rule, related, procedural_memory_root)
+
+    # (d) New source rule.
+    path = os.path.join(procedural_memory_root, f"rule_{entry['id']:03d}.json")
+    _write_json(path, entry)
+    return path
+
+
+# ---- save_rule internals --------------------------------------------------
+
+def _load_existing_rules(root: str):
+    """Return `[(path, rule_dict)]` for every well-formed rule file, sorted by
+    filename so id/path selection is deterministic."""
+    out = []
+    if not os.path.isdir(root):
+        return out
+    for fname in sorted(os.listdir(root)):
+        if not (fname.startswith("rule_") and fname.endswith(".json")):
+            continue
+        path = os.path.join(root, fname)
+        try:
+            with open(path, encoding="utf-8") as fh:
+                out.append((path, json.load(fh)))
+        except (json.JSONDecodeError, IOError):
+            continue
+    return out
+
+
+def _write_json(path: str, obj: dict) -> None:
     with open(path, "w", encoding="utf-8") as fh:
-        json.dump(entry, fh, indent=2)
+        json.dump(obj, fh, indent=2)
+
+
+def _is_abstract(rule: dict) -> bool:
+    """An abstraction is a rule carrying an `anti_unification_trace` (it was
+    produced by `unify`, so its params/args may hold `?vN` variables)."""
+    return bool(rule.get("anti_unification_trace"))
+
+
+def _same_skeleton(a: dict, b: dict) -> bool:
+    """Two rules share a skeleton iff their condition.type and action.dsl match
+    — the unifiability test of docs/ANTI_UNIFICATION.md §2."""
+    ca, cb = a.get("condition") or {}, b.get("condition") or {}
+    aa, ab = a.get("action") or {}, b.get("action") or {}
+    return ca.get("type") == cb.get("type") and aa.get("dsl") == ab.get("dsl")
+
+
+def _subsumes(abstract: dict, entry: dict) -> bool:
+    """True iff `abstract` (a variable-bearing rule) generalizes the concrete
+    `entry`: same skeleton, and every abstract param/arg position is either a
+    `?` variable (accepts anything) or equals the entry's value."""
+    if not _same_skeleton(abstract, entry):
+        return False
+    a_args = (abstract.get("action") or {}).get("args") or {}
+    e_args = (entry.get("action") or {}).get("args") or {}
+    a_par = (abstract.get("condition") or {}).get("params") or {}
+    e_par = (entry.get("condition") or {}).get("params") or {}
+    return _dict_subsumes(a_args, e_args) and _dict_subsumes(a_par, e_par)
+
+
+def _dict_subsumes(general: dict, specific: dict) -> bool:
+    for k in set(general) | set(specific):
+        gv = general.get(k, _MISSING)
+        if isinstance(gv, str) and gv.startswith("?"):
+            continue                      # variable accepts any value (or absence)
+        if k == "min_evidence":
+            continue                      # generalization is at least as strict
+        if gv != specific.get(k, _MISSING):
+            return False
+    return True
+
+
+def _merge_covers(stored: dict, new_covers, path: str) -> None:
+    covers = stored.get("covers") or [stored.get("source_task", "")]
+    changed = False
+    for t in new_covers or []:
+        if t not in covers:
+            covers.append(t)
+            changed = True
+    if changed:
+        stored["covers"] = covers
+        validate_rule(stored)
+        _write_json(path, stored)
+
+
+def _persist_abstract(abstract: dict, related, procedural_memory_root: str) -> str:
+    """Write the lifted abstraction, reusing the lowest-id related rule's file
+    (and id) and deleting the other now-redundant sibling files. When the
+    related rules were supplied directly (no on-disk path), write a fresh file."""
+    on_disk = [(p, s) for p, s in related if p is not None]
+    if on_disk:
+        keep_path, keep_rule = min(on_disk, key=lambda ps: ps[1].get("id", 1 << 30))
+        abstract["id"] = keep_rule.get("id")
+        for p, _ in on_disk:
+            if p != keep_path and os.path.exists(p):
+                os.remove(p)
+        validate_rule(abstract)
+        _write_json(keep_path, abstract)
+        return keep_path
+    existing = _load_existing_rules(procedural_memory_root)
+    abstract["id"] = len(existing) + 1
+    path = os.path.join(procedural_memory_root, f"rule_{abstract['id']:03d}.json")
+    validate_rule(abstract)
+    _write_json(path, abstract)
     return path
 
 

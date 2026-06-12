@@ -518,3 +518,139 @@ highest-value step (R3, the "★ 최우선 큰-틀 보상"). Alternatively, stil
 R1, the relative-corner filling (g: target=(H−1,W−1)) is a third member of the
 same skeleton; but adding a *third* literal filling before R3 lifts the first
 two would be accretion-shaped — prefer wiring R3 next.
+
+---
+## Learning Loop -- 2026-06-12 12:20
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_122057.log
+
+---
+## Learning Loop -- 2026-06-12 12:21
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_122059.log
+
+---
+## Learning Loop -- 2026-06-12 12:37
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 1 -> 2 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_123738.log
+
+---
+## Learning Loop -- 2026-06-12 12:38
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_123759.log
+
+---
+## Learning Loop -- 2026-06-12 12:38
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_123832.log
+
+---
+## Iter 6 — 2026-06-12 — branch test31
+
+**Diagnosis**: Iter 5 left **two coexisting `place_object` fillings** (rule_002
+fixed-cell, rule_003 constant-Δ) and named R3 (anti-unification) as the highest-
+value step. Reading `docs/ANTI_UNIFICATION.md` (pre-written for "iter 6") exposed
+the *real* blocker: `unify()` did not exist at all — `program/` failed to import
+(`program/__init__.py` imported a non-existent `anti_unify`), so AU had **never**
+been wired (P3=0). And the two fillings could not be lifted even once `unify()`
+existed, because the spec's skeleton = `condition.type` + `action.dsl` must be
+*identical*, yet the fillings carried two *different* condition.types (their
+dispatch matchers). The smallest defensible R3 step is therefore: implement
+`unify()` to the doc contract, give the two fillings a **shared parent
+condition.type** (`single_object_move`, an already-registered matcher — the
+filling distinction lives only in `action.args.target_mode`), and wire the single
+AU call site so the pair lifts into one `covers>1` abstraction.
+
+**Change**:
+- `program/anti_unification.py` — implemented the public API to
+  `docs/ANTI_UNIFICATION.md` §1–§3: `unify(rules)`, `UnifyResult`
+  (`is_more_general`), `NoCommonSkeleton`. Leaf-case field-wise anti-unification
+  over `condition.params`/`action.args` (shared values pass through, disagreements
+  lift to `?vN`; `min_evidence` takes the max, never lifts), order-preserving
+  `covers` union, and an immutable audit trace written under
+  `episodic_memory/<source_task>/anti_unification/au_NNN.json`. The original-intent
+  term-tree stubs are retained as documented future work.
+- `program/__init__.py` — exported the real API (`unify`/`UnifyResult`/
+  `NoCommonSkeleton`); the package now imports (it didn't before — the dangling
+  `anti_unify` import is *why* AU saw no traffic).
+- `agent/active_operators.py` — the two `_build_place_object_*` methods now emit
+  the **parent** `condition.type="single_object_move"` instead of their dispatch-
+  time filling matchers, so the two fillings share a skeleton (differ *only* in
+  `action.args.target_mode`). Dispatch in `effect()` still uses the specific
+  matchers; the render path keys on `target_mode`, untouched. No new `_try_*`.
+- `agent/memory.py:save_rule` — wired the single AU call site (CLAUDE.md §8):
+  (a) **subsumption** — a concrete instance an existing abstraction's variables
+  accept is folded into its `covers`, never re-lifted (repeated runs converge);
+  (b) exact dedup (unchanged); (c) **AU lift** — concrete siblings sharing a
+  skeleton but differing in a param/arg are `unify()`-ed into one abstraction that
+  *replaces* them on disk; (d) new source rule. Helpers `_subsumes`/`_same_skeleton`/
+  `_persist_abstract` added; `NoCommonSkeleton` is caught (not `RuleSchemaError`,
+  so F7 is not engaged).
+- `procedural_memory/rule_002.json` (now the abstraction) + `rule_003.json`
+  (deleted) — the two fillings lifted into ONE `place_object` rule:
+  `action.args.target_mode="?v1"`, `covers=[c,d,e,f,h]`, `anti_unification_trace`
+  → `episodic_memory/easy000e/anti_unification/au_001.json`. Rule count 3→2.
+- `tests/test_anti_unification.py` (new) — 9 tests: unify unit (lift, covers
+  union, min_evidence max, trace shape, `is_more_general`/`NoCommonSkeleton`) +
+  save_rule integration (two fillings → one abstraction) + convergence (a
+  subsumed instance grows covers, spawns no rule, writes no second trace). Suite
+  47→47 (was 38; +9 new), all green.
+
+**Probe before**: easy 1/3, easy_a 7/9; rules=3 (covers 6+3+2); P1=3.67, P2=3.67, P3=0.0
+**Probe after** : easy 1/3 (unchanged), easy_a **7/9** (unregressed — a,b
+constant_output; c,d,e,f,h place_object; g,i correctly identity); rules=**2**
+(covers 6+5); P1=**5.5**, P2=**5.5**, P3=**0.5**.
+
+**Invariants**: forbidden=none (F8 companion present: memory.py +
+anti_unification.py accompany the active_operators edit). positives = **P1 +1.83,
+P2 +1.83, P3 +0.5 (all three together)** → verdict CLEAN. This is the §2.5-4
+litmus: rule *count* fell (3→2) while coverage *rose* — generalization, not
+accretion. P6 +9 (active_operators comments documenting the skeleton-share). P4/P5 flat.
+
+### RUNG R3 CLEARED — anti-unification fires end-to-end
+
+R3's done-when ("최소 한 쌍이 lift 되어 covers>1 + anti_unification_trace 기록")
+is met, against the four observation criteria (§5):
+1. **작동**: `unify()` runs error-free; the lift produces a schema-valid
+   abstraction; convergence (subsumption) holds across repeated runs (verified:
+   2nd run_learn stays 2→2, +0 learned, one trace).
+2. **모듈 통일성**: the two `place_object` fillings — once overfit *material*
+   (§2.5-3) — now resolve through **one** abstraction whose differing target
+   function is a single variable `?v1`. No per-task rule accretion.
+3. **정답 접근**: easy_a 7/9 maintained; the family solves the intended way.
+4. **탐색 건전성**: deterministic, bounded; the trace is a forensic audit.
+Signals moved exactly as the rung predicts: **P1·P2·P3 rose together**.
+
+**Next gap (note for future iter)**: with the lift+subsumption machinery proven,
+the remaining R1 members are now *cheap* — a relative-corner filling (g:
+target=(H−1,W−1)) and a resized filling (i) each add a new `target_mode`, and
+`save_rule`'s subsumption **auto-folds** them into the existing abstraction's
+`covers` (no new rule, P1/P2 keep rising) instead of spawning literals. That
+drives easy_a toward 100% — the graduation milestone — while *strengthening* the
+abstraction. (Latent, unchanged: the fast path reads `entry["rule"]`, absent in
+the new schema, so the abstraction is learned but not yet *reused* — that is R5.)

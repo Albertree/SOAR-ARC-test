@@ -509,7 +509,13 @@ class GeneralizeOperator(Operator):
             "concept": "place_moved_object",
             "category": "single_object_move",
             "condition": {
-                "type": "single_object_move_fixed_target",
+                # Persisted condition.type is the *parent* matcher (the move
+                # family), not the dispatch-time filling matcher. The two
+                # fillings (fixed / displacement) therefore share a skeleton
+                # (same condition.type + action.dsl), differing only in
+                # action.args.target_mode — exactly the position R3's
+                # anti_unification.unify() lifts to one variable (§2.5-2b).
+                "type": "single_object_move",
                 "params": {"min_evidence": 2},
             },
             "action": {
@@ -538,7 +544,10 @@ class GeneralizeOperator(Operator):
             "concept": "place_displaced_object",
             "category": "single_object_move",
             "condition": {
-                "type": "single_object_move_constant_displacement",
+                # Same parent skeleton as the fixed-target filling (see
+                # _build_place_object_rule); the *only* structural difference is
+                # action.args.target_mode below, which R3 lifts to a variable.
+                "type": "single_object_move",
                 "params": {"min_evidence": 2},
             },
             "action": {

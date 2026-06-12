@@ -1,24 +1,28 @@
 {
   "id": 2,
-  "concept": "place_moved_object",
+  "concept": "place_displaced_object",
   "category": "single_object_move",
   "condition": {
-    "type": "single_object_move_fixed_target",
+    "type": "single_object_move",
     "params": {
       "min_evidence": 2
     }
   },
   "action": {
     "dsl": "place_object",
-    "args": {}
+    "args": {
+      "target_mode": "?v1"
+    }
   },
   "covers": [
     "easy000c",
     "easy000d",
+    "easy000e",
+    "easy000f",
     "easy000h"
   ],
-  "source_task": "easy000c",
-  "anti_unification_trace": null,
-  "created_at": "2026-06-12T12:08:16.325341",
+  "source_task": "easy000e",
+  "anti_unification_trace": "episodic_memory/easy000e/anti_unification/au_001.json",
+  "created_at": "2026-06-12T12:37:41.030814",
   "times_reused": 0
 }
