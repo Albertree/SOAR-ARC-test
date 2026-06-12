@@ -129,14 +129,20 @@ def test_pipeline_solves_cdh_correctly():
         assert preds["test_0"] == expected, name
 
 
-def test_pipeline_does_not_place_for_unsupported_members():
-    # i (resized): its output grid is a different size from the input, which no
-    # current size-preserving filling handles, so place_object is not emitted
-    # (identity fallback) — its target is still the R3 variable, not a fresh
-    # overfit literal. (e/f are handled by the constant-displacement filling, g
-    # by the relative-corner filling — see test_place_object_displacement.py /
-    # test_place_object_corner.py.)
-    for name in ["i"]:
-        _, wm = _run_pipeline(_load_task(f"ARC_easy_a/easy000{name}"))
-        rule = wm.s1["active-rules"][0]
-        assert rule["type"] == "identity", name
+def test_pipeline_solves_resized_corner_i():
+    # i (resized): the output grid is a *different size* from the input
+    # (6×6 -> 5×5), object to the top-left corner. The corner filling now derives
+    # the output dims value-agnostically (dsl_expr.output_dims: constant example-
+    # output size) and resolves the corner against those bounds, so it renders
+    # via the same make_grid ∘ coloring skeleton — no new filling, no overfit
+    # literal (target stays the R3 variable; the rule folds into the place_object
+    # abstraction). This is the easy_a 9/9 graduation member.
+    task = _load_task("ARC_easy_a/easy000i")
+    _, wm = _run_pipeline(task)
+    rule = wm.s1["active-rules"][0]
+    assert rule["type"] == "place_object"
+    assert (rule.get("action") or {}).get("args", {}).get("target_mode") == "corner"
+    preds = wm.s1.get("predictions") or {}
+    assert "test_0" in preds
+    expected = task.test_pairs[0].output_grid.raw
+    assert preds["test_0"] == expected

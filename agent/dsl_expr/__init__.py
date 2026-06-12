@@ -142,6 +142,40 @@ def corner_cell(corner_id, height, width):
     return (_anchor_value(anchors[0], height), _anchor_value(anchors[1], width))
 
 
+def output_dims(pair_dims, test_in_dims):
+    """Relation: derive the test output grid's (height, width) from how the
+    example pairs' output dimensions relate to their input dimensions.
+
+    `pair_dims` is a list of `((in_h, in_w), (out_h, out_w))` for each example
+    pair; `test_in_dims` is the test input's `(height, width)`. The derivation is
+    value-agnostic — it reads only the COMM/DIFF of the example dims (P3/P4), not
+    any task's literal size. Two relations are recognized, the more general one
+    first:
+
+      - **size-preserved**: every output equals its own input → the test output
+        tracks the test input (return `test_in_dims`). This is the relation
+        "out == in" and holds even when the grids differ in size across pairs
+        (easy000g: 4×4 / 3×5 / 6×4) where *no single dimension* is constant.
+      - **constant output size**: every output shares one `(h, w)` → that
+        constant is the test output size (return it), even when the inputs differ
+        (easy000i: 6×6 inputs collapse to 5×5 outputs).
+
+    Returns None when neither relation holds — the resize is not yet derivable, so
+    no guess is made (the caller falls back to identity). The two relations agree
+    when the inputs are also constant, so size-preserved is checked first as the
+    more general reading. This is argument material (a relation between input and
+    output grid bounds), so it lives here under `agent/`, not in the frozen
+    `procedural_memory/DSL/` (BACKLOG_LOOP.md §2.5-1)."""
+    if not pair_dims:
+        return None
+    if all(ind == outd for ind, outd in pair_dims):
+        return test_in_dims
+    out_set = {outd for _, outd in pair_dims}
+    if len(out_set) == 1:
+        return next(iter(out_set))
+    return None
+
+
 def corners_at(pos, height, width):
     """Relation: the set of corner ids (tl/tr/bl/br) whose cell coincides with
     `pos` in a height×width grid.

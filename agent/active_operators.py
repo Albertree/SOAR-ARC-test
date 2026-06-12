@@ -16,6 +16,7 @@ from agent.operators import Operator
 from agent.conditions import match as match_condition
 from agent.dsl_expr import (
     objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
+    output_dims,
 )
 from procedural_memory.DSL.apply import apply_DSL
 from ARCKG.comparison import compare as arckg_compare
@@ -258,7 +259,8 @@ class ExtractPatternOperator(Operator):
                 "target_constant": False, "target_cell": None,
                 "displacement_constant": False, "displacement": None,
                 "corner_constant": False, "corner": None,
-                "outsize_preserved": False, "evidence_count": 0,
+                "outsize_preserved": False, "outsize_constant": False,
+                "outsize": None, "evidence_count": 0,
             }
 
         all_single = all(src is not None and dst is not None for src, dst, _, _ in pairs)
@@ -312,6 +314,18 @@ class ExtractPatternOperator(Operator):
 
         outsize_preserved = all(insz == outsz for _, _, insz, outsz in pairs)
 
+        # Constant output size: every output grid shares one (h, w) — the COMM of
+        # the example output dims — even when the inputs differ in size (the
+        # resize filling, §2.5-1: make_grid's dimensions parameterized from the
+        # examples rather than copied from the input, easy000i 6×6->5×5). Disjoint
+        # neither way from outsize_preserved: when sizes are preserved *and* the
+        # inputs are constant both hold; that overlap is harmless (the corner
+        # matcher's disjunction). The actual dims are re-derived value-agnostically
+        # at apply time via dsl_expr.output_dims, never stored in the rule.
+        out_sizes = {outsz for _, _, _, outsz in pairs}
+        outsize_constant = len(out_sizes) == 1
+        outsize = next(iter(out_sizes)) if outsize_constant else None
+
         return {
             "all_single": all_single,
             "color_preserved": color_preserved,
@@ -324,6 +338,8 @@ class ExtractPatternOperator(Operator):
             "corner_constant": corner_constant,
             "corner": corner,
             "outsize_preserved": outsize_preserved,
+            "outsize_constant": outsize_constant,
+            "outsize": outsize,
             "evidence_count": len(pairs),
         }
 
@@ -597,9 +613,11 @@ class GeneralizeOperator(Operator):
         the examples agree on (`action.args.target_mode = "corner"`). Args carry
         only the filling *mode*, not which corner: the corner id is re-derived as
         the COMM of `corners_at` over each task's example outputs at apply time
-        (P5: from the example G1s, resolved against the test grid's own bounds),
-        so one rule covers the whole subfamily (easy000g) and never stores a
-        per-task literal (§2.5-2b / §2.5-3)."""
+        (P5: from the example G1s, resolved against the *derived output* bounds —
+        the input size when preserved, the constant example-output size when
+        resized), so one rule covers the whole subfamily — both the size-preserved
+        corner movers (easy000g) and the resized one (easy000i 6×6->5×5) — and
+        never stores a per-task literal (§2.5-2b / §2.5-3)."""
         transition = patterns.get("object_transition") or {}
         if not transition.get("corner_constant") or transition.get("corner") is None:
             return None
@@ -805,10 +823,19 @@ class PredictOperator(Operator):
         target) is shared across fillings; only the *target function* differs,
         selected by `action.args.target_mode` (the §2.5-2b variable R3 will
         abstract): "fixed" → the COMM of the example output positions;
-        "displacement" → the test object's position offset by the COMM Δ. Both
+        "displacement" → the test object's position offset by the COMM Δ;
+        "corner" → the COMM grid corner resolved against the *output* bounds. Both
         derive the target value-agnostically from the example pairs and read the
         object's colour/cells from the *test G0* (never its absent G1, P5);
-        nothing is hard-coded."""
+        nothing is hard-coded.
+
+        The output canvas dimensions are themselves derived value-agnostically
+        (`dsl_expr.output_dims`): the same input size when the examples preserve
+        size, or the constant example-output size when they resize (easy000i
+        6×6->5×5). make_grid's height/width are thus an *argument expression* over
+        the examples (§2.5-1), not copied from the input — and the corner target
+        is resolved against those derived bounds so a resized corner lands
+        correctly."""
         if task is None or input_grid is None:
             return None
 
@@ -821,10 +848,23 @@ class PredictOperator(Operator):
         if color is None or src_pos is None:
             return None
 
-        height = len(input_grid.raw)
-        width = len(input_grid.raw[0]) if input_grid.raw else 0
-        if height == 0 or width == 0:
+        in_h = len(input_grid.raw)
+        in_w = len(input_grid.raw[0]) if input_grid.raw else 0
+        if in_h == 0 or in_w == 0:
             return None
+
+        # Derive the output canvas size from how the example outputs relate to
+        # their inputs (size-preserved → track the input; constant → that size).
+        pair_dims = [
+            ((pair.input_grid.height, pair.input_grid.width),
+             (pair.output_grid.height, pair.output_grid.width))
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        dims = output_dims(pair_dims, (in_h, in_w))
+        if dims is None:
+            return None
+        height, width = dims
 
         target = self._derive_place_target(rule, task, src_pos,
                                            grid_dims=(height, width))

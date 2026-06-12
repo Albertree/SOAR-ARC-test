@@ -51,7 +51,19 @@ from agent.conditions import register
 @register("single_object_move_relative_corner")
 def single_object_move_relative_corner(patterns: dict, params: dict | None = None) -> bool:
     """True iff every example pair relocates a single colour/shape-preserved
-    object onto the *same grid corner*, with the grid size preserved.
+    object onto the *same grid corner*, with a derivable output grid size.
+
+    The corner is resolved against each output grid's own bounds, so it stays
+    invariant whether the output keeps the input's size (`outsize_preserved`,
+    easy000g) **or** the output resizes to a constant size (`outsize_constant`,
+    easy000i 6×6->5×5). Both readings let the render re-derive the output dims
+    value-agnostically (`dsl_expr.output_dims`) and resolve the corner against
+    *those* bounds; the resize is therefore the same corner filling, not a new
+    one — it folds into `place_object`'s `?v1` abstraction exactly as the
+    size-preserved corner did (covers grows, no new rule, §2.5-4). The size-
+    varying-but-preserved case and the resized-but-constant case are the two
+    disjuncts; a task with neither (output dims neither preserved nor constant)
+    is not yet derivable and correctly declines.
 
     `params.min_evidence` (default 2) guards against firing on a single example —
     one pair cannot establish "the object always lands on corner X" as the rule.
@@ -72,5 +84,5 @@ def single_object_move_relative_corner(patterns: dict, params: dict | None = Non
         and transition.get("shape_preserved")
         and transition.get("moved")
         and transition.get("corner_constant")
-        and transition.get("outsize_preserved")
+        and (transition.get("outsize_preserved") or transition.get("outsize_constant"))
     )

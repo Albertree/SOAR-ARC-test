@@ -32,12 +32,34 @@ import tempfile
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.conditions import CONDITION_REGISTRY, get_matcher, match  # noqa: E402
-from agent.dsl_expr import corners_at, corner_cell  # noqa: E402
+from agent.dsl_expr import corners_at, corner_cell, output_dims  # noqa: E402
 
 
 # ── registry ──────────────────────────────────────────────────────────
 def test_corner_matcher_is_registered():
     assert "single_object_move_relative_corner" in CONDITION_REGISTRY
+
+
+# ── vocab: output_dims derives the canvas size value-agnostically ──────
+def test_output_dims_size_preserved_tracks_input():
+    # Every output equals its own input (sizes vary across pairs, easy000g) —
+    # the relation "out == in" holds, so the test output tracks the test input.
+    pair_dims = [((4, 4), (4, 4)), ((3, 5), (3, 5)), ((6, 4), (6, 4))]
+    assert output_dims(pair_dims, (3, 5)) == (3, 5)
+
+
+def test_output_dims_constant_resize():
+    # Inputs differ from outputs but every output shares one size (easy000i
+    # 6×6 -> 5×5): the constant example-output size is the derived test output.
+    pair_dims = [((6, 6), (5, 5)), ((6, 6), (5, 5))]
+    assert output_dims(pair_dims, (6, 6)) == (5, 5)
+
+
+def test_output_dims_undecidable_returns_none():
+    # Neither preserved nor constant → not derivable; no guess.
+    pair_dims = [((6, 6), (5, 5)), ((6, 6), (4, 4))]
+    assert output_dims(pair_dims, (6, 6)) is None
+    assert output_dims([], (6, 6)) is None
     assert get_matcher("single_object_move_relative_corner") is not None
 
 
@@ -140,11 +162,14 @@ def test_signal_declines_non_corner_movers():
     for name in ["d", "e", "f", "h"]:
         patterns = _run_pipeline(_load_task(f"ARC_easy_a/easy000{name}"))[0]
         assert match("single_object_move_relative_corner", patterns) is False, name
-    # i lands on a corner (top-left) but resizes the grid → declined here
-    # (outsize not preserved); i belongs to a later, grid-resize capability.
+    # i lands on a corner (top-left) and resizes the grid (6×6 -> 5×5). The
+    # corner is invariant against either reading of the output bounds, so the
+    # matcher now fires via the constant-output-size disjunct (outsize_preserved
+    # is False, outsize_constant is True) — the resize is the same corner filling.
     patterns = _run_pipeline(_load_task("ARC_easy_a/easy000i"))[0]
     assert patterns["object_transition"]["outsize_preserved"] is False
-    assert match("single_object_move_relative_corner", patterns) is False
+    assert patterns["object_transition"]["outsize_constant"] is True
+    assert match("single_object_move_relative_corner", patterns) is True
 
 
 def test_same_size_corner_overlap_routes_to_fixed():

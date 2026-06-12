@@ -1,6 +1,86 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 8 — 2026-06-12 — branch test31
+
+**Diagnosis**: easy_a stood at 8/9 — only easy000i remained, named by iter 7 as
+the last R1 graduation member. It is the same top-left *corner* placement the
+corner filling already handles, differing in exactly one thing: the output grid
+**resizes** (6×6→5×5), which the size-preserving render path could not express
+(`make_grid` copied the input dims). The smallest defensible step is to make
+`make_grid`'s height/width an *argument expression* derived value-agnostically
+from the examples (§2.5-1), so the existing corner filling — not a new one —
+covers the resized member.
+
+**Change**:
+- `agent/dsl_expr/__init__.py` — new relation `output_dims(pair_dims,
+  test_in_dims)`: derive the test output canvas size from how the example
+  outputs relate to their inputs — *size-preserved* (out==in per pair → track the
+  test input, handles size-varying easy000g) or *constant output size* (all
+  outputs one size → that size, handles easy000i 6×6→5×5). None when neither
+  relation holds (no guess). Read from COMM/DIFF of dims (P3/P4); argument
+  material, so under `agent/`, not `procedural_memory/DSL/` (F3-safe, §2.5-1).
+- `agent/active_operators.py` — (a) `_object_transition` surfaces
+  `outsize_constant`/`outsize` (the COMM of example output dims) alongside
+  `outsize_preserved`; (b) `_render_place_object` now derives the output canvas
+  size via `output_dims` and uses it for `make_grid`, the bounds check, *and* the
+  grid_dims passed to the corner target derivation — so a resized corner resolves
+  against the *output* bounds. Size-preserved tasks derive their own input dims →
+  behavior unchanged. The render skeleton (erase via fresh `make_grid`, paint at
+  `f(target)` via `coloring`) is unchanged; only the *canvas dimensions* became a
+  derived argument. No new `_try_*`/`_apply_*`.
+- `agent/conditions/single_object_move_relative_corner.py` — relaxed the
+  size-preservation guard from `outsize_preserved` to `outsize_preserved OR
+  outsize_constant`. The corner is invariant against either reading of the
+  output bounds, so the resize is the *same* corner filling — it folds into
+  `place_object`'s `?v1` abstraction (covers grows, no new rule, §2.5-4). No new
+  matcher (P5 unchanged); this is the F8 companion for the active_operators edit.
+- `procedural_memory/rule_002.json` — the place_object abstraction's `covers`
+  grew `[c,d,e,f,h,g] → [+i]` by subsumption (target_mode="corner", `?v1`). Rule
+  count stays 2; trace unchanged. Not a new file — iter-6's AU machinery folded it.
+- `tests/test_place_object.py` / `tests/test_place_object_corner.py` — converted
+  the two now-stale "i is unsupported / declines" assertions into positive
+  coverage (i fires the corner matcher via `outsize_constant`; renders the exact
+  5×5 output end-to-end) + 3 `output_dims` unit cases (preserved / constant /
+  undecidable). Suite 63/63 pass.
+
+**Probe before**: easy 1/3, easy_a **8/9**; rules=2 (covers 6); P1=6.0, P2=6.0
+**Probe after** : easy 1/3 (unchanged — easy0001 CORRECT; easy0002/0003 are
+genuinely ambiguous, output not a deterministic function of input, correctly left
+identity), easy_a **9/9** (a,b constant_output; c–i all one place_object
+abstraction); rules=**2** (covers **7**); P1=**6.5**, P2=**6.5**
+
+**Invariants**: forbidden=none (F8 companion present: conditions/ + dsl_expr/
+edits). positives = **P1 +0.5, P2 +0.5** → verdict CLEAN. §2.5-4 litmus holds:
+covers rose while rule *count* stayed 2 — generalization by subsumption, not
+accretion. P5 flat (relaxed an existing matcher, did not add one). P6 −40
+(active_operators grew by the outsize signal + dims derivation; allowed, F8
+companion present). P3/P4 flat.
+
+**RUNG R1 CLEARED** (BACKLOG_LOOP §5):
+- (1) *works*: pipeline runs error-free; easy_a 9/9, easy000c–i all solved.
+- (2) *module uniformity*: c–i are handled by **one** `place_object` rule
+  (covers=7), the three fillings (fixed/displacement/corner) differing *only* in
+  `action.args.target_mode` — the single R3 variable — with **no per-task
+  branches**. The resize did not add a filling; it became a derived `make_grid`
+  argument shared by all corner members.
+- (3) *approaches answer*: predictions equal the known outputs exactly.
+- (4) *search sanity*: deterministic, no brute force.
+- Signals moved: easy_a 7/9→9/9 over iters 7–8; P1/P2 6.0→6.5; rule count held
+  at 2 throughout. The easy_a graduation milestone (R1 done-when) is met.
+- Next rung premise: R1's object-level analysis + the §2.5-2b selection/dimension
+  vocabulary are now in place, so R2 (episodic-writer verification) / R4 (2nd-order
+  relation) become the lowest unproven work.
+
+**Next gap (note for future iter)**: R1 is cleared; re-diagnose to the next
+lowest-unproven rung. P4 already reads 247 episodic entries, so R2's writer may
+already be wired — verify it emits exactly one attempt folder per solve (the
+BACKLOG R2 done-when) rather than assuming. The latent R5 issue persists
+(unchanged since iter 4/6): the fast path reads `entry["rule"]`, absent in the
+new schema, so abstractions are learned but not reused across runs — that is the
+R5 (skill reuse) gap, not R1.
+
+---
 ## Iter 1 — 2026-06-12 — branch test31
 
 **Diagnosis**: Lowest unproven rung is **R0 (GRID-level COMM-copy)** — this is a
@@ -780,3 +860,63 @@ the glaring hole: a resize-aware output-dimension derivation, still composed fro
 the two frozen primitives but parameterizing `make_grid`'s height/width. (Latent,
 unchanged since iter 4/6: the fast path reads `entry["rule"]`, absent in the new
 schema, so the abstraction is learned but not reused across runs — that is R5.)
+
+---
+## Learning Loop -- 2026-06-12 12:52
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_125159.log
+
+---
+## Learning Loop -- 2026-06-12 12:52
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_125201.log
+
+---
+## Learning Loop -- 2026-06-12 12:59
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_125921.log
+
+---
+## Learning Loop -- 2026-06-12 12:59
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 9s
+- Log: logs/learn_20260612_125930.log
+
+---
+## Learning Loop -- 2026-06-12 12:59
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_125949.log
+
+---
+## Learning Loop -- 2026-06-12 13:00
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_130004.log
