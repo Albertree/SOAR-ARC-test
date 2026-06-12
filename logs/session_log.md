@@ -1,6 +1,81 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 30 — 2026-06-12T17:35 — branch test31
+
+**Diagnosis**: iter-29 named the training frontier precisely — the
+synthesize→AU→bind→instantiate→run chain (iters 26→29) is complete but has a
+*pixel-level* producer (`program_synthesis` emits raw literal cell-lists), which
+"destroys the object→transform structure at synthesis time, so no binder origin
+recovers it" (the measured 0/120 on ARC-AGI-2 training). Every iter 26→29 built a
+*consumer-side* stage; none made the **producer** object-aware. That is the one
+distinct missing piece, and it is route (a) — object-level synthesis — verbatim:
+"emit selections as object-relational expressions (`cells_of(select(objects,
+predicate))`)". I took its smallest real half: the single-object **recolour** case,
+where the changed cells are exactly one object's cells and the selector that picks
+it is the **cross-pair COMM** (§2.5-2b: the hole's filling is *selected from the
+comparison evidence*, not invented).
+
+**Change**:
+- `agent/object_synthesis.py` (new) — `synthesize_object_recolor(pairs)` emits an
+  *object-relational* program `coloring({"select":"argmax","key":"size_of",...},
+  v)` — the `selection` is a symbolic expression tree over the existing
+  `agent/dsl_expr` seed vocabulary (`objects_of`/`unique`/`argmax`/`argmin`/
+  `cells_of`/`size_of`), never raw cells. The selector is derived as the single
+  seed selector consistent across *every* pair (largest→`argmax(size_of)`,
+  smallest→`argmin(size_of)`, one-object→`unique`, preferred), in preference
+  order; declines (None) when no selector is cross-pair-consistent, the new colour
+  varies per pair (an origin-bound hole, out of scope), or the change is not a
+  whole-object recolour — no guessing (P3/P4). Plus `resolve_selection(expr, grid)`
+  (the producer/executor inverse, resolved on the **test G0**, never an output —
+  P5) and `run_object_program` (resolves selections then dispatches the frozen
+  `coloring`). Lives under `agent/` (§2.5-1 argument-vocabulary location), adds **no**
+  transformation primitive (F3 N/A). The proven pixel chain is left untouched
+  (additive) — zero regression surface.
+- `tests/test_object_synthesis.py` (new, 10 tests) — ground is the strongest
+  available short of wiring: synthesize from the *train* pairs of
+  `largest_recolor`/`smallest_recolor` and run the result on the **held-out test
+  input**, asserting == the held-out test output, for *both* directions/colours
+  via the *same* mechanism (criterion 2, value-agnostic). Plus the precise
+  frontier proof through the **existing** `anti_unify_pair_programs` consumer: the
+  object-level programs lift with the selector kept a COMM **literal** (no `?vN`,
+  directly instantiable `covers>1`), whereas the pixel programs for the same pairs
+  lift the selection to a `?vN` hole — exactly the structure loss this closes.
+  Plus 4 honest-decline cases + resolve/candidate round-trip symmetry.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate, [[graduation_gate_unsatisfiable]]),
+easy_a 9/9; rules=3 (covers 6+9+2=17); P1=P2=5.67, P3=0.67, P5=10, P6=2229.
+**Probe after** : identical solve behaviour (producer is off the live solve path
+by design — no GeneralizeOperator change). 198/198 pytest pass (+10 new).
+check_invariants verdict **CLEAN** (P4 +5 incidental).
+
+**Invariants**: forbidden=**none** — F1 (no frozen-file edit; new files under
+`agent/`+`tests/`), F2 (no `_try_`/`_apply_`), F3 (no DSL primitive — synthesizer
+in `agent/`, only *reads* via `dsl_expr` + dispatches the two frozen primitives),
+F4/F5/F6/F7 N/A, F8 N/A (`active_operators.py` untouched). positives=**P4 +5**
+(incidental probe writes); P1/P2/P3/P5/P6 Δ=0 — the documented
+[[synthesizer_frontier]]/[[reuse_signal_blindspot]] blind spot (no P-signal
+measures pre-wiring solve-path substrate). **Not spinning** (PROMPT.md §4): this is
+*not* a 5th near-duplicate consumer brick — iters 26→29 were all pixel-level /
+consumer-side; this is the first **producer object-level** stage, the route-(a)
+frontier iter-29 named, and it is grounded on the held-out **test answer** of two
+real tasks (not a round-trip), with a contrast test that *demonstrates* the
+object structure now survives the lift the pixel path destroys. The same recolour
+tasks now have a general-synthesis path, not only the in-code `_object_ranking`
+family (criterion-2 module-uniformity gain, even at 0 new score).
+
+**Next gap (note for future iter)**: the object-level producer can now solve
+`largest_recolor`/`smallest_recolor` end-to-end through the **general** chain. The
+sharp next step is to **wire it as `GeneralizeOperator`'s `identity` fallback and
+then remove the `_object_ranking`/`_build_recolor_extreme_rule` in-code family it
+subsumes** — a §5.1-blessed *removal* that would finally move P6 **down** (lines
+removed = positive) and prove the discovered-layer-is-data path replaces a
+hand-built family (the §6.2 intent), guarded by the easy_a regression. That
+touches the live path (F8: co-touch `memory.py`/`conditions/`) so it wants its own
+iter. Broaden the seed selector set (`argmax` by colour-count, `filter` by
+colour) only as a *failing* task demands — not pre-emptively.
+
+---
 ## Iter 29 — 2026-06-12T17:25 — branch test31
 
 **Diagnosis**: Before touching anything I **ran the now-complete iter-26→28
@@ -3476,3 +3551,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 4s
 - Log: logs/learn_20260612_171527.log
+
+---
+## Learning Loop -- 2026-06-12 17:30
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_173030.log
+
+---
+## Learning Loop -- 2026-06-12 17:30
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_173032.log
