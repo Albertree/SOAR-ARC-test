@@ -398,6 +398,39 @@ def _has_unresolved_var(args: dict) -> bool:
                for v in (args or {}).values())
 
 
+# Recipes whose anti-unification variable the *render path* fills at apply time
+# by bounded, example-grounded selection (agent.variable_resolution, §2.5-2b),
+# mapped to the arg name(s) it can resolve. A rule whose only unresolved `?vN`
+# holes are in this set is no longer "incomplete" for replay — the hole is
+# filled from the examples (selection, not invention), so the fast path may
+# reuse the lifted abstraction directly. Any *other* unresolved variable (an
+# unknown arg, or a recipe not listed here) is still non-replayable and the slow
+# path re-derives it. This is the lockstep companion to PLACE_OBJECT_FILLINGS in
+# active_operators.py; both grow only when a genuinely new resolvable hole exists.
+_RUNTIME_RESOLVABLE = {
+    "place_object": {"target_mode"},
+}
+
+
+def _unresolved_vars(args: dict) -> set:
+    """Names of the action args still holding a `?v…` placeholder."""
+    return {k for k, v in (args or {}).items()
+            if isinstance(v, str) and v.startswith("?")}
+
+
+def _is_runtime_resolvable(entry: dict) -> bool:
+    """True iff `entry`'s only unresolved anti-unification holes are ones the
+    render path fills by example-grounded selection (`_RUNTIME_RESOLVABLE`). The
+    fast path may then reuse the lifted abstraction; resolution happens at render
+    time, grounded in the examples, never by storing a per-task literal."""
+    action = (entry or {}).get("action") or {}
+    resolvable = _RUNTIME_RESOLVABLE.get(action.get("dsl"))
+    if not resolvable:
+        return False
+    unresolved = _unresolved_vars(action.get("args"))
+    return bool(unresolved) and unresolved <= resolvable
+
+
 def applicable_rule(entry: dict):
     """Reconstruct a PredictOperator-applicable prediction-rule from a persisted
     {condition, action} rule, or return None if it cannot be replayed as-is.
@@ -410,18 +443,23 @@ def applicable_rule(entry: dict):
     Returns None when either:
       (a) `action.dsl` names an unknown recipe (no dispatch tag) — nothing to
           replay; or
-      (b) the action still carries an unresolved anti-unification variable
-          (a `?v…` placeholder, e.g. rule_002's `target_mode="?v1"`). Such an
-          abstract rule is *incomplete* until its variable is filled — selecting
-          that filling is the §2.5-2b / open-question Q-B4 problem and is out of
-          scope for direct replay. Skipping it here means the slow path re-derives
-          the concrete filling instead of the fast path applying a false reuse.
+      (b) the action carries an unresolved anti-unification variable (a `?v…`
+          placeholder, e.g. rule_002's `target_mode="?v1"`) that the render path
+          *cannot* fill. An abstract rule is incomplete until its hole is filled;
+          when the hole is in `_RUNTIME_RESOLVABLE` the render path fills it at
+          apply time by bounded, example-grounded selection (§2.5-2b), so the
+          rule **is** replayable and passes through — the fast path can reuse the
+          lifted abstraction. A hole outside that set (an unknown arg, or a recipe
+          with no resolver) stays non-replayable: returning None lets the slow
+          path re-derive the concrete filling instead of applying a false reuse.
+          Inventing a *new* filling for the hole remains the open Q-B3/Q-B4 and is
+          not done here — selection over a known set is not invention.
     """
     action = (entry or {}).get("action") or {}
     dispatch = _DSL_TO_DISPATCH.get(action.get("dsl"))
     if dispatch is None:
         return None
-    if _has_unresolved_var(action.get("args")):
+    if _has_unresolved_var(action.get("args")) and not _is_runtime_resolvable(entry):
         return None
     rule = dict(entry)
     rule["type"] = dispatch

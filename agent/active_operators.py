@@ -18,8 +18,34 @@ from agent.dsl_expr import (
     objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
     output_dims,
 )
+from agent.variable_resolution import resolve_variable
 from procedural_memory.DSL.apply import apply_DSL
 from ARCKG.comparison import compare as arckg_compare
+
+
+# The bounded, already-known domain of `place_object` target fillings (§2.5-2b).
+# When an anti-unification-lifted place_object rule reaches apply time with its
+# target_mode still an unresolved `?vN` hole, the render path fills it by
+# selecting the first of these that reproduces the examples — NOT by inventing a
+# new filling (that is the open Q-B3/Q-B4). Order = the slow-path build priority
+# (GeneralizeOperator.effect), so a self-applied abstraction and a freshly-built
+# concrete rule resolve identically. Each filling's invariant is checked inside
+# `_derive_place_target`, so a non-matching filling renders None and is rejected.
+PLACE_OBJECT_FILLINGS = ("fixed", "displacement", "corner")
+
+
+def _with_target_mode(rule, mode):
+    """Return a shallow copy of `rule` with `action.args.target_mode` set to
+    `mode` (the concrete filling chosen for an abstract rule's `?vN` hole). The
+    nested action/args dicts are copied so the stored abstract rule is left
+    untouched — instantiation produces a fresh concrete rule, never a mutation."""
+    new = dict(rule)
+    action = dict(new.get("action") or {})
+    args = dict(action.get("args") or {})
+    args["target_mode"] = mode
+    action["args"] = args
+    new["action"] = action
+    return new
 
 
 # ======================================================================
@@ -835,9 +861,34 @@ class PredictOperator(Operator):
         6×6->5×5). make_grid's height/width are thus an *argument expression* over
         the examples (§2.5-1), not copied from the input — and the corner target
         is resolved against those derived bounds so a resized corner lands
-        correctly."""
+        correctly.
+
+        If `target_mode` is still an unresolved anti-unification hole (a `?vN`,
+        as on the disk-stored abstract rule that R3 lifted), it is *filled* here
+        before rendering, by bounded example-grounded selection over
+        `PLACE_OBJECT_FILLINGS` (`variable_resolution.resolve_variable`, §2.5-2b):
+        the first filling that reproduces every example output is chosen. This is
+        what makes the lifted abstraction *self-applying* (the fast path can reuse
+        it) instead of a dead, incomplete rule — selection, not invention (the
+        candidate set is the already-known fillings; inventing a new one is the
+        open Q-B3/Q-B4, out of scope)."""
         if task is None or input_grid is None:
             return None
+
+        # Fill an unresolved target_mode hole by example-grounded selection over
+        # the bounded known fillings. resolve_variable invokes this render only
+        # with concrete (already-substituted) modes, so it does not recurse.
+        mode = ((rule.get("action") or {}).get("args") or {}).get("target_mode", "fixed")
+        if isinstance(mode, str) and mode.startswith("?"):
+            resolved = resolve_variable(
+                task,
+                PLACE_OBJECT_FILLINGS,
+                lambda m: _with_target_mode(rule, m),
+                self._render_place_object,
+            )
+            if resolved is None:
+                return None
+            rule = _with_target_mode(rule, resolved)
 
         # Read the test object via the seed selection/property vocabulary.
         obj = unique(objects_of(input_grid.raw))

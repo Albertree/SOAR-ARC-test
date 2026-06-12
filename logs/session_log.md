@@ -1,6 +1,97 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 11 — 2026-06-12T13:44 — branch test31
+
+**Diagnosis**: R0/R1/R3 cleared and iter 10 revived the Fast path, but the
+lifted abstraction `rule_002` (place_object, `target_mode="?v1"`) still could
+**not be reused** — `applicable_rule` deliberately skipped it because its
+anti-unification hole was unfilled, so easy_a c–i fell to the Slow path every
+run (Reused 2/9). This is the §2.5-2b gap named by iter 9 **and** iter 10: "an
+AU product is incomplete until its variable is *filled* — by a *selection*
+grounded in comparison, not invented." The smallest defensible step is to fill
+the hole over the **bounded, already-known** filling domain {fixed, displacement,
+corner} by example-reproduction — explicitly NOT inventing a new derive-expression
+(that is the held open question Q-B3/Q-B4), so the rung stays on the defensible
+side iter 10 vetted.
+
+**Change**:
+- `agent/variable_resolution.py` (new) — `resolve_variable(task, candidates,
+  instantiate, render)`: selects the first candidate filling (priority-ordered,
+  bounded domain) whose instantiated rule **reproduces every example output**.
+  The choice is grounded in the example comparisons (P3/P4), never invented; a
+  task supporting no candidate yields None (so the rule is *not* falsely reused).
+  Selection vocabulary → lives under `agent/`, not `procedural_memory/DSL/`
+  (§2.5-1, F3-safe). It does NOT invent a new filling — that's Q-B3/Q-B4.
+- `agent/active_operators.py` — `_render_place_object` now fills an unresolved
+  `target_mode="?vN"` hole via `resolve_variable` over `PLACE_OBJECT_FILLINGS`
+  (order = slow-path build priority, so a self-applied abstraction and a freshly
+  built concrete rule resolve identically) before rendering. `resolve_variable`
+  invokes the render only with concrete modes → no recursion. New module helper
+  `_with_target_mode` instantiates a candidate without mutating the stored rule.
+  No new `_try_*`/`_apply_*`; net +51 lines (the resolution wiring), F8 companion
+  = `agent/memory.py`.
+- `agent/memory.py` — `applicable_rule` now *admits* a runtime-resolvable
+  abstraction: a `?vN` hole listed in `_RUNTIME_RESOLVABLE` ({place_object:
+  {target_mode}}) is filled at render time, so the rule passes the fast path with
+  its dispatch type stamped (hole left in place — resolution stays at apply time,
+  never baked into a per-task literal). Holes with no resolver still return None
+  (slow path re-derives; the open-Q "invent a filling" case stays held).
+- `agent/active_agent.py` — fast path now **prefers a concrete rule over a
+  runtime-resolved abstraction** (stable sort on "has unresolved var"). Required:
+  a constant-output task's examples are *also* consistent with "move the single
+  object to a fixed cell" (genuine ambiguity), so without this the abstract
+  place_object rule preempted `constant_output` and mispredicted the test
+  (regressing seed-42 easy0001 1/3→0/3). Occam / P1: don't descend to the
+  object-level filling when a grid-level rule already explains the task.
+- `tests/test_variable_resolution.py` (new, 5) — resolver unit cases: picks the
+  reproducing candidate; None when none reproduce; deterministic priority on a
+  genuine tie; None on empty examples; ignores half-missing pairs.
+- `tests/test_fast_path_reuse.py` — updated the two tests my change re-aimed
+  (the abstract rule now *self-applies* instead of falling through), added a
+  skip-test for a hole with no resolver and a no-false-reuse test (easy0005
+  supports no filling → declines to Slow path). Suite 72→**79** pass.
+
+**Probe before**: easy 1/3, easy_a 9/9 (**Reused 2**), full easy 6/16 (Reused 4);
+rules=2 (covers 6+9); P1=7.5 P2=7.5 P3=0.5 P4=247 P5=5
+**Probe after** : easy 1/3 (**no regression** — easy0001 still correct via
+`constant_output`, 0002/0003 ill-posed → correct abstain), easy_a 9/9 (**Reused
+2→9** — c–i now reuse the *abstract* `place_object` rule via `stored(easy000e)`,
+the lifted abstraction self-applying across all three fillings), full easy 6/16
+(**Reused 4→6**, correctness identical); rules=2 unchanged; P1–P5 unchanged.
+
+**Invariants**: forbidden=**none** (F1/F2/F3 clean; F8 companion present —
+active_operators +51 accompanied by memory.py). positives = all flat → verdict
+**NEUTRAL** (checker exit 2). This is the INVARIANTS §3 case again: P1–P6 has
+**no signal measuring reuse rate**, so making the AU-lifted abstraction
+*self-applying* (its whole purpose) — observable only as easy_a Reused 2→9 —
+scores neutral despite being the central §2.5-2b / R5 work. Correctness is
+preserved everywhere (verified against a pristine-tree baseline before/after).
+
+**RUNG R5 (variable-resolution half) — evidence**: per BACKLOG §5 (4 criteria):
+(1) *works*: pipeline + fast path run error-free; easy_a 9/9. (2) *module
+uniformity*: c–i are now reused through **one** abstract rule (covers=9) whose
+single variable is filled by **one** selection mechanism — no per-task branch,
+no per-filling rule; the {fixed, displacement, corner} fillings are *selected*,
+not hand-dispatched. (3) *approaches answer*: predictions equal known outputs
+exactly. (4) *search sanity*: bounded 3-candidate selection, deterministic.
+R5's done-when ("stored-rule hit generalizes across *structurally different*
+tasks, not literal reuse") is met for the move family — the abstraction reused
+across three structural variants. The *other* R5 half (Q-B3 "invent a new
+derive-expression", e.g. easy0007/0008 target==2·colour) remains held/surfaced,
+untouched.
+
+**Next gap (note for future iter)**: the abstraction now self-applies, so the
+remaining functional easy failures (0007/0008/0010/0011/0015/0016) are the pure
+**variable-origin invention** case (Q-B3/Q-B4) — out of bounded scope. Two
+defensible non-open routes remain: (a) R4 — author a `data/ARC_madeup/` task
+needing 2nd-order (edge-of-edge) compare, which would also move P5; or (b)
+surface a *design proposal* for variable-origin resolution to the user (per
+BACKLOG §5, do not silently invent). Also worth noting: no P-signal measures
+reuse, so two reuse-enabling iters (10, 11) both read neutral — if the user wants
+reuse rewarded, a P7 (stored-hit rate / covers-via-reuse) would capture it.
+
+---
 ## Iter 8 — 2026-06-12 — branch test31
 
 **Diagnosis**: easy_a stood at 8/9 — only easy000i remained, named by iter 7 as

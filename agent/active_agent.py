@@ -17,6 +17,7 @@ from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import (
     load_all_rules, save_rule, increment_reuse_count, applicable_rule,
+    _has_unresolved_var,
 )
 from agent.wm_logger import reset_wm_snapshot
 
@@ -67,6 +68,16 @@ class ActiveSoarAgent:
         # current task off the predictor, so seed it before replay.
         self._predictor._task = task
         stored_rules = load_all_rules(self.procedural_memory_root)
+        # Prefer a *concrete* rule over a runtime-resolved abstraction. When both
+        # reproduce the examples (a genuine ambiguity — e.g. a constant-output
+        # task is also consistent with "move the single object to a fixed cell"),
+        # the rule that needed a `?v` hole *filled* to fit is the weaker
+        # commitment; the fully-determined reading wins. This is Occam, and P1
+        # (descend to the object-level filling only when a grid-level rule does
+        # not already explain the task). Stable sort keeps the load order
+        # (times_reused desc) within each group.
+        stored_rules.sort(
+            key=lambda e: _has_unresolved_var((e.get("action") or {}).get("args")))
         for entry in stored_rules:
             rule = applicable_rule(entry)
             if rule is None:
