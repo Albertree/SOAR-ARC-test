@@ -1,6 +1,69 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 21 — 2026-06-12T16:05 — branch test31 — NO-OP (analysis only)
+
+**Iter 21: no defensible step found — analysis only.** Commit no code change
+(PROMPT.md §5.3). Reasoning below.
+
+**Diagnosis**: R0–R6 mechanisms are all cleared. Iters 14–20 each added one
+*bespoke perception+render family triple* to `active_operators.py`
+(`_derive_X` + `_X` producer + `_build_X_rule` + `_render_X`) for a distinct ARC
+transformation type — recolor variants, `color_map`, `integer_scale`, `self_tile`
+— growing the file 1704→2126 lines. Across all 7 of those iters **P1/P2/P3 are
+dead-flat at 5.67 / 5.67 / 0.67**, and each iter's own log admits the same latent
+note: no P-signal rewards reuse, so a proven capability is invisible until a
+matching task recurs. The "next gap" iter 20 named (`27f8ce4f`, derived-key-colour
+self-tile) is structurally an **8th family triple** — the most incremental yet
+(reuses the self-tile canvas, only swaps the mask predicate). Implementing it is
+the near-duplicate accretion PROMPT.md §4 / BACKLOG §2.5-4 most want gone.
+
+**Why no commit (the real finding — reward saturation, not a missing detector)**:
+I tested whether *any* small code change could raise P1/P2/P3 *together* (the
+§2.5-4 litmus for genuine progress). **None can.** With 17 solved tasks under 3
+rules, the means are high *precisely because* few rules cover many tasks. Any
+new-family rule necessarily starts at low covers and drags the means down:
+persisting e.g. `integer_scale` (covers 3) → P1 17/3=5.67 → 20/4=**5.0** (down),
+P2 5.67→**5.0** (down), P3 0.67→0.75 (up) — mixed, fails the "rise together"
+litmus. The reward is **saturated at the current capability set**; further
+capability additions are invisible-to-negative on it by construction. This is the
+inflection the loop has circled for ~5 iters without naming.
+
+**Open design tension surfaced (for the user — §5 stop-on-design-decision)**:
+the genuine forward step is *structural* — route families through the intended
+pair-program → `anti_unification.unify()` → persisted `covers>1` **data** rule
+(CLAUDE.md §6.2 "discovered layer is data, not code"; §8) — instead of
+hand-coding each family as *code* in `active_operators.py`. But that move
+**lowers P1/P2** (the covers-dip above), so the P-signal definition (which rewards
+few-rules-many-covers) and the §6.2 data-rule mandate currently *contradict* each
+other. Resolving that — e.g. a reuse-rate signal, or redefining P1/P2 to not
+penalise a fresh value-agnostic rule — is an `arbor-open-questions`-class design
+decision. Per BACKLOG §5 I surface it rather than invent an answer or game the
+checker by adding a self-serving signal.
+
+**Not termination**: `27f8ce4f` remains a nameable (if signal-invisible) gap, so
+`_LOOP_COMPLETE.md` would be premature/false (BACKLOG §7 condition 1 unmet). The
+loop continues; this iter sets up a sharper test (§2.2) rather than spinning.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed — identical inputs→different
+outputs, graduation gate unsatisfiable), easy_a 9/9; rules=3 (covers 6+9+2=17);
+P1=5.67 P2=5.67 P3=0.67 P4=676 P5=10 P6=2126.
+**Probe after** : identical — no code change. Checker verdict: **NEUTRAL**.
+
+**Invariants**: forbidden=**none** (no files changed beyond this log entry);
+positives=**none** (intentional no-op; a wrong/spinning commit would pollute the
+P-baseline — PROMPT.md §5).
+
+**Next gap (note for future iter)**: the binding gap is no longer "which ARC
+family is unrecognised" — it is the **P-signal/§6.2 contradiction** above. Until
+that design decision is made, every new capability either (a) lives as code and is
+signal-invisible, or (b) persists as a data rule and *lowers* P1/P2. A future iter
+that wants real motion should either (i) take the structural step of moving ONE
+family from code to a persisted `covers>1` data rule and accept/justify the
+covers-dip as the §6.2-intended cost, or (ii) wait for the user to resolve the
+reward definition. Adding an 8th `_derive_X`/`_render_X` family is not motion.
+
+---
 ## Iter 20 — 2026-06-12T16:01 — branch test31
 
 **Diagnosis**: R0–R6 mechanisms are cleared; iter 19 added `integer_scale` (the
@@ -2563,3 +2626,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 1
 - Time: 6s
 - Log: logs/learn_20260612_160148.log
+
+---
+## Learning Loop -- 2026-06-12 16:04
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_160446.log
+
+---
+## Learning Loop -- 2026-06-12 16:04
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_160447.log
