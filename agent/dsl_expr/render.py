@@ -51,3 +51,30 @@ def render_grid_via_primitives(grid: list) -> list:
         canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
 
     return canvas
+
+
+def render_object_at(height: int, width: int, bg: int,
+                     pixels: list, target: tuple) -> list:
+    """Place an object (its `pixels` = list of (row, col, color)) on a fresh
+    `bg` canvas with the object's top-left anchor moved to `target`.
+
+    This is "move the object to a constant position" expressed in the two frozen
+    primitives: `make_grid` lays the background, then one `coloring` call per
+    color paints the translated cells (BACKLOG_LOOP §2.5-1 — a move is not a new
+    primitive, it is `make_grid` ∘ `coloring` with a translated coordinate
+    expression). The variable origin is G0 only (P5): `pixels`/`bg` come from the
+    test input, `target` is the cross-pair COMM of the example outputs.
+    """
+    if not pixels:
+        return apply_DSL("make_grid", height=height, width=width, color=bg)
+    r0 = min(r for r, _c, _v in pixels)
+    c0 = min(c for _r, c, _v in pixels)
+    tr, tc = target
+
+    canvas = apply_DSL("make_grid", height=height, width=width, color=bg)
+    by_color: dict = {}
+    for r, c, color in pixels:
+        by_color.setdefault(color, []).append((r - r0 + tr, c - c0 + tc))
+    for color, cells in by_color.items():
+        canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
+    return canvas

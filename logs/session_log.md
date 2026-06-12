@@ -156,3 +156,93 @@ must descend to OBJECT level; easy000c (single pixel → fixed corner, color kep
 is the smallest entry. Also: the fast path (`active_agent` `entry.get("rule")`)
 cannot yet reuse canonical rules, so reuse (P-reuse/R5) stays 0 until that lookup
 is taught the `{condition, action}` shape.
+
+---
+## Learning Loop -- 2026-06-12 18:43
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_184325.log
+
+---
+## Learning Loop -- 2026-06-12 18:49
+
+- Split: None, Tasks: 9
+- Correct: 5 / 9 (55.6%)
+- Rules: 1 -> 2 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_184920.log
+
+---
+## Iter 3 — 2026-06-12 — branch test32
+
+**Diagnosis**: R0 cleared last iter; lowest unproven rung is now **R1
+(object-level analysis)**. The probe solved 2/9 — easy000a/b via R0's
+constant_output (whole-grid COMM), but easy000c–i fell to `identity` because the
+pipeline had no OBJECT-level vocabulary at all. easy000c/d/h share one skeleton:
+a single object *moved* to a **constant** target anchor (color+shape preserved),
+which is R0's COMM-copy lifted one level — the *output object position* is the
+cross-pair COMM, value-agnostic in color and source position. That is R1's
+smallest defensible entry (the next-gap note from iter 2). e/f/g (relative/
+corner-relative target) and i (grid resize) are deliberately left for later
+rungs/relations.
+
+**Change**:
+- `agent/dsl_expr/selection.py` (new) — the §2.5 selection/property vocabulary
+  home under `agent/` (NOT frozen DSL dir, so no F3): `objects_of`/`unique_object`
+  (object detection via the frozen `ARCKG.hodel` port), `position_of`/`color_of`/
+  `size_of`/`normalized_shape` (properties), and `analyze_object_move` (per-pair
+  object COMM/DIFF + the cross-pair constant-target COMM). This is R1's real
+  product: the *lift of selection* (§2.5-2b) so a program names "the object"
+  symbolically instead of a literal coordinate — the prerequisite for R3 lifting.
+- `agent/conditions/object_constant_target.py` (new) — R1 recognition matcher.
+  Fires iff every example is a single object moved to one shared anchor on a
+  same-size canvas (color+shape kept). Abstains on e/f/g (non-constant target)
+  and i (size changes). P5 +1; also the F8 companion for the active_operators edit.
+- `agent/dsl_expr/render.py` — added `render_object_at`: place an object on a
+  fresh `make_grid` canvas with its anchor translated to a target, via one
+  `coloring` call per color. A "move" expressed in the two frozen primitives
+  (§2.5-1), not a new primitive.
+- `agent/active_operators.py` — `ExtractPatternOperator` now surfaces
+  `patterns["object_move"]` (object-level descent, R1); `GeneralizeOperator`
+  consults the `object_constant_target` matcher and emits a canonical
+  `{condition, action}` rule (`action.dsl = place_object_constant`, args={}),
+  value-agnostic so one rule covers c/d/h; `PredictOperator` recomputes the
+  constant target from the example outputs and renders each test object at it
+  (`_place_object_grids` — not a `_try_*`/`_apply_*`; recognition delegated to
+  the matcher). No new `_try_*`/`_apply_*` method.
+- `tests/` — covered by existing suite (19 pass); the new mechanism is exercised
+  end-to-end by the probe.
+
+**Probe before**: easy_a 2/9; rules=1 (constant_output, covers=[a,b]); P1=2.0, P2=2.0
+**Probe after** : easy_a 5/9 (a,b via R0; c,d,h via R1, all CORRECT); rules=2
+  (rule_002 object_constant_target covers=[c,d,h]); P1=2.5, P2=2.5
+
+**Invariants**: forbidden=none; positives = P1 +0.5 (2.0→2.5), P2 +0.5 (2.0→2.5),
+P5 +1 (1→2). Verdict CLEAN. 19/19 tests pass.
+
+**Note (PROMPT Step1.C conflict surfaced, already on record)**: CLAUDE.md §6.1
+("no new def under DSL/") vs arbor-dsl-taxonomy §3 ("property/relation/util/
+selection allowed") — resolved per BACKLOG §2.5-1 by placing the new selection
+vocabulary under `agent/dsl_expr/`, leaving the transformation DSL frozen at two.
+
+**RUNG R1 — partially advanced, NOT yet cleared**: the constant-target sub-family
+(c/d/h) now solves the intended way (object detect → per-pair COMM color/shape +
+cross-pair COMM target → render via make_grid∘coloring; one value-agnostic
+module, covers=3, no per-task branch). But R1's done-when requires *all* of
+easy000c–i + easy_a 100%; e/f/g (relative/corner target) and i (resize) remain.
+So R1 stays open — not a RUNG CLEARED block yet.
+
+**Next gap (note for future iter)**: easy000f is the smallest remaining — target
+= source + constant offset (a *relative* move: the per-pair DIFF in position is
+itself constant across pairs, vs c/d/h where the output position is constant).
+That needs the analysis to also compute the cross-pair COMM on the *displacement*
+(out_pos − in_pos), and a `place_object_relative` render. easy000g (target =
+grid corner, varies with grid size) then needs a `corner-of-grid` relation;
+easy000i needs grid resize. Also: these c/d/h literal-target-free rules and a
+future relative-move rule share the `place_object_*` skeleton — R3 anti-unification
+should eventually lift them into one parameterized `place_object` (covers↑).
