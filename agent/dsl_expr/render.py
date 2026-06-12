@@ -179,6 +179,27 @@ def render_recolor_rank(grid: list, sort_key: str, start_color: int,
     return out
 
 
+def render_object_recolor(grid: list, cells: list, new_color: int) -> list:
+    """Repaint exactly ``cells`` (a *selected* object's cells) to ``new_color``,
+    leaving the rest of ``grid`` untouched.
+
+    This is the object-selective recolor's transformation bottoming out in the
+    frozen `coloring` primitive (BACKLOG_LOOP §2.5-1, F3): a single `coloring`
+    call paints the chosen object's cells; geometry is preserved (no `make_grid`
+    resize), every other object kept. The whole content lives in the *argument* —
+    *which* cells (the object a learned selector picks) and *what* colour (the
+    cross-pair COMM on the recolored object's output colour) — not in any new
+    primitive. The converse of :func:`render_recolor`: that repaints by a global
+    colour map (every cell of a colour); this repaints exactly one object's cells,
+    so two same-coloured objects can diverge (only the selected one changes).
+    """
+    out = [row[:] for row in grid]
+    if cells:
+        out = apply_DSL("coloring", out,
+                        selection=[list(c) for c in cells], color=new_color)
+    return out
+
+
 def render_object_at(height: int, width: int, bg: int,
                      pixels: list, target: tuple) -> list:
     """Place an object (its `pixels` = list of (row, col, color)) on a fresh

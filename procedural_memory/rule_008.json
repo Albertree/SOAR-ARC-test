@@ -1,0 +1,24 @@
+{
+  "id": 8,
+  "concept": "recolor_selected_object",
+  "category": "object_select_recolor",
+  "condition": {
+    "type": "object_select_recolor",
+    "params": {
+      "min_evidence": 2
+    },
+    "min_evidence": 3
+  },
+  "action": {
+    "dsl": "recolor_selected_object",
+    "args": {}
+  },
+  "covers": [
+    "madeup_recolor_largest",
+    "madeup_recolor_smallest"
+  ],
+  "source_task": "madeup_recolor_largest",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-13T00:02:22.943845",
+  "times_reused": 0
+}

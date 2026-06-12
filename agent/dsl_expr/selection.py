@@ -1102,3 +1102,137 @@ def analyze_recolor_rank(example_pairs: list) -> dict:
         "consistent": consistent and sort_key is not None,
         "evidence": len([p for p in per_pair if p is not None]),
     }
+
+
+# ---------------------------------------------------------------------------
+# selection vocabulary: multi-object *selective* recolor (the §2.5-2b selection
+# lift, on the recolor axis)
+# ---------------------------------------------------------------------------
+#
+# This composes the two grown vocabularies the way `analyze_object_size_grid`'s
+# selected-object branch does, but on the *recolor* transformation rather than
+# canvas sizing. It is the recolor-axis sibling of `analyze_object_select_move`
+# (move → recolor) and the multi-object converse of `analyze_color_remap`:
+#
+#   * `analyze_color_remap` reads a *global* 1:1 colour map — every cell of a
+#     source colour is repainted. It structurally CANNOT express "recolour only
+#     *one* of two same-coloured objects": that source colour would map to two
+#     different output colours, so the map is not a function and color_remap
+#     abstains (the matcher's own `consistent` gate). The selective recolor lives
+#     exactly in that blind spot.
+#   * The crux is therefore *which* object is repainted — the §2.1 "multi-object
+#     selection" concept, whose content is the *selector* (`max_size`/`min_size`/
+#     `unique_color`/`unique_shape`/`border_object` — the shared SELECTOR_VOCAB).
+#     The selector is *learned from comparison* (which object's cells changed),
+#     never assumed (P3/P4).
+#
+# Value-agnostic at predict: the selector and the new colour are recomputed from
+# the example pairs, so the emitted rule carries empty action args and one rule
+# covers the whole family (it merges by condition+action equivalence, like
+# `place_object_constant`, rather than accreting one literal rule per task —
+# §2.5-3/4). The transformation bottoms out in a single frozen `coloring` call
+# (render.render_object_recolor); no new transformation is introduced (F3).
+
+def analyze_object_select_recolor(example_pairs: list) -> dict:
+    """Multi-object selective recolor (BACKLOG_LOOP §2.5-2b / §2.1 multi-object
+    selection, R1).
+
+    Fires for: a *same-size* grid holding several objects in which exactly **one**
+    input object's cells are repainted to a single new colour, that object being
+    the one a learned `SELECTOR_VOCAB` criterion consistently picks across every
+    pair, and the new colour being constant across pairs (the cross-pair COMM on
+    the recolored object's output colour). The selected object's *shape and
+    position* are unchanged — only its colour — so this is disjoint from the move
+    families (which displace) and from `color_remap` (which would repaint every
+    same-coloured cell).
+
+    Grounded in comparison, never assumed (P3/P4):
+
+    1. Per pair, the changed cells are computed (input↔output DIFF) and must equal
+       the cells of exactly one input object — *which* object was recolored,
+       identified by comparison.
+    2. Across pairs, the first named selector that picks that recolored object in
+       *every* pair is the lifted argument (value-agnostic in colour, position and
+       the non-selected distractors).
+    3. The new colour must be the same in every pair (a cross-pair COMM); it is
+       recomputed at predict time, so the rule is value-agnostic in the actual
+       colour.
+
+    Returns a symbolic dict; the `object_select_recolor` matcher (agent/conditions/)
+    decides firing and PredictOperator renders from it. Stays inert (valid_all
+    False / selector None) on single-object grids and on global-recolor grids, so
+    it never perturbs the other families.
+    """
+    per_pair = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        same = (len(a) == len(b)
+                and all(len(a[r]) == len(b[r]) for r in range(len(a)))
+                and len(a) > 0)
+        objs = objects_of(a) if same else []
+        recolored = None
+        new_color = None
+        ok = False
+        if same and len(objs) >= 2:
+            changed = {
+                (r, c)
+                for r in range(len(a))
+                for c in range(len(a[r]))
+                if a[r][c] != b[r][c]
+            }
+            new_cols = {b[r][c] for (r, c) in changed}
+            if changed and len(new_cols) == 1:
+                nc = next(iter(new_cols))
+                target = next(
+                    (o for o in objs if set(map(tuple, o["cells"])) == changed),
+                    None,
+                )
+                if target is not None:
+                    recolored = target
+                    new_color = nc
+                    ok = True
+        per_pair.append({
+            "ok": ok,
+            "objs": objs,
+            "grid": a,
+            "recolored": recolored,
+            "new_color": new_color,
+        })
+
+    valid = bool(per_pair) and all(p["ok"] for p in per_pair)
+
+    # The new colour as a cross-pair COMM: the same colour in every pair, else the
+    # reading is not value-agnostically learnable and the family abstains.
+    new_colors = [p["new_color"] for p in per_pair if p["new_color"] is not None]
+    constant_new_color = (
+        new_colors[0]
+        if valid and new_colors and all(nc == new_colors[0] for nc in new_colors)
+        else None
+    )
+
+    # Learn the selector: the first named criterion that picks the recolored object
+    # in every pair (grounded in step 1's comparison, never assumed).
+    selector = None
+    if valid:
+        for name, fn in SELECTOR_VOCAB.items():
+            ok_sel = True
+            for p in per_pair:
+                chosen = fn(p["objs"], p["grid"])
+                if chosen is None or chosen["cells"] != p["recolored"]["cells"]:
+                    ok_sel = False
+                    break
+            if ok_sel:
+                selector = name
+                break
+
+    return {
+        "per_pair": per_pair,
+        "valid_all": valid,
+        "selector": selector,
+        "new_color": constant_new_color,
+    }

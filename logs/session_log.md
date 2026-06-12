@@ -1,6 +1,74 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 29 — 2026-06-13T00:05 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. Iter 28
+concluded "no defensible grounding task exists — every object-recolor task is
+already swallowed by `color_remap`." I **refuted that empirically**: a grid with
+**two same-coloured objects where only one is recolored** is precisely the
+`color_remap` *blind spot* — the shared source colour would have to map to two
+output colours, so the global 1:1 map is not a function and `color_remap` abstains
+(verified: such a task ran `rule=none`, INCORRECT). This is the §2.1 "multi-object
+selection" concept on the *recolor* axis — the smallest unfilled R1 selection-lift
+gap, and the live grounding the off-path `synthesize_object_recolor_program`
+producer has lacked since iter23.
+
+**Change**: wired a new **value-agnostic** generalize family — the recolor-axis
+sibling of `object_select_move` and the multi-object converse of `color_remap`:
+- `agent/dsl_expr/selection.py`: `analyze_object_select_recolor()` — learns, from
+  comparison (which object's cells changed), the `SELECTOR_VOCAB` criterion that
+  consistently picks the recolored object across pairs + the constant new colour.
+  Reuses the existing selector vocabulary (max_size/min_size/unique_color/
+  unique_shape/border_object) — **no new selection concept invented**.
+- `agent/dsl_expr/render.py`: `render_object_recolor()` — repaints exactly the
+  selected object's cells via **one frozen `coloring` call** (F3-clean); same
+  colour, two objects can diverge — what a global map cannot do.
+- `agent/conditions/object_select_recolor.py`: new condition matcher (**P5 +1**).
+- `agent/active_operators.py`: extract signal + generalize strategy
+  `_object_select_recolor_rule` (emits empty-args canonical rule, so the family
+  merges by condition+action equivalence — one rule, many tasks, like
+  `place_object_constant`) + predict path. Ordered **after `color_remap`** (a
+  genuine unique-colour global map keeps its reading) but **before `recolor_rank`**
+  (so a single changed group is not mis-claimed by the rank family, whose render
+  would repaint the untouched distractor too).
+- `data/ARC_madeup/madeup_recolor_largest.json` (selector=max_size),
+  `madeup_recolor_smallest.json` (selector=min_size) — two tasks, **two different
+  selectors**, both in the `color_remap` blind spot.
+- `procedural_memory/rule_008.json`: the saved canonical rule, **covers=2** across
+  both selectors (au_trace=null — correct: a born-general value-agnostic family
+  needs no AU lift, like `copy_common_output`/`canvas_fill`).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 14/14; rules=5; P1=5.6 P2=5.6
+  P3=0.6 P5=11. The two new tasks: INCORRECT (rule=none), confirming the gap.
+**Probe after** : madeup **16/16** (the 2 new solved the intended way, via stored
+  `rule=none` pipeline → selector-recolor); easy_a 9/9; pytest 147/147; training
+  40-sample 0 errors (family stays inert on real tasks, no regression/no spurious
+  rule). rules=6; **P5=12**.
+
+**Invariants**: forbidden=**none** (checker verdict CLEAN). positives=**P5 +1**
+  (new condition matcher). P1 5.6→5.0, P2 5.6→5.0, P3 0.6→0.5 are the documented
+  *arithmetic pinning* (`psignal_saturation_arithmetic`): the existing rules
+  average covers ~10, so any new family seeds below the mean and dilutes it — but
+  the new rule itself is **covers=2** (one value-agnostic rule, two selectors),
+  squarely on the right side of the §2.5-4 litmus (lift, not per-task accretion).
+  P3's dip is *structural and correct*: this family is born maximally general
+  (empty args, selector recomputed at predict), so it never needs an AU trace —
+  `au_trace=null` is the right value (CLAUDE §3.2 req-3), exactly as for the other
+  two value-agnostic families. P6 +126 lines (a genuine new family costs lines).
+  Reverted the guard runs' `times_reused` churn on rule_001/002 (runtime
+  accounting — iter18/21/23/24/25/26/27/28 precedent).
+
+**Next gap (note for future iter)**: the object-selective recolor only learns a
+  *constant* new colour. The natural next sibling is a **selected-object recolor
+  whose new colour is itself a reading** (e.g. swap two objects' colours, or paint
+  the selected object the colour of another) — the colour-argument analogue of the
+  selector lift, which would compose `COLOR_READING_VOCAB`-style readings with the
+  selection. Separately, the general `object_level_lift` for *raw-cell* line/path
+  tasks (e5790162) remains the large, genuinely-hard frontier behind most failing
+  training tasks.
+
+---
 ## Iter 28 — 2026-06-12T23:48 — branch test32 — **no defensible step found (analysis only)**
 
 **Diagnosis**: Training phase, probe 0/3 (`c9680e90` / `878187ab` / `e5790162`);
@@ -3199,3 +3267,83 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 0s
 - Log: logs/learn_20260612_234739.log
+
+---
+## Learning Loop -- 2026-06-12 23:51
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_235152.log
+
+---
+## Learning Loop -- 2026-06-12 23:52
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_235156.log
+
+---
+## Learning Loop -- 2026-06-12 23:52
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_235202.log
+
+---
+## Learning Loop -- 2026-06-12 23:54
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_235412.log
+
+---
+## Learning Loop -- 2026-06-12 23:59
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260612_235958.log
+
+---
+## Learning Loop -- 2026-06-13 00:02
+
+- Split: None, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 5 -> 6 (+1 learned)
+- Stored rule hits: 10
+- Time: 7s
+- Log: logs/learn_20260613_000219.log
+
+---
+## Learning Loop -- 2026-06-13 00:02
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_000241.log
+
+---
+## Learning Loop -- 2026-06-13 00:05
+
+- Split: training, Tasks: 40
+- Correct: 1 / 40 (2.5%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 117s
+- Log: logs/learn_20260613_000356.log

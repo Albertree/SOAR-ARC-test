@@ -16,6 +16,7 @@ from agent.conditions import match as match_condition
 from agent.dsl_expr.render import (
     render_grid_via_primitives,
     render_object_at,
+    render_object_recolor,
     render_recolor,
     render_recolor_rank,
     render_solid_rect,
@@ -26,6 +27,7 @@ from agent.dsl_expr.selection import (
     analyze_color_remap,
     analyze_object_move,
     analyze_object_select_move,
+    analyze_object_select_recolor,
     analyze_object_size_grid,
     analyze_recolor_rank,
     background_of,
@@ -69,6 +71,16 @@ PLACE_OBJECT_RESIZE_DSL = "place_object_resize"
 #: property selector (max_size/min_size/unique_color) picks out of several, the
 #: non-selected distractors simply not drawn. The selector is the §2.5-2b lift.
 PLACE_OBJECT_SELECT_DSL = "place_object_select"
+
+#: action.dsl for the multi-object *selective recolor* family (R1 / §2.5-2b) — a
+#: same-size grid in which exactly one object (the one a learned selector picks)
+#: is repainted to a new colour while every other object is left untouched. The
+#: transformation is a single `coloring` call on the selected object's cells; the
+#: whole content is the *argument* (the selector + the new colour, read off the
+#: example DIFF and recomputed at predict time), so one value-agnostic rule covers
+#: the family. The recolor-axis sibling of PLACE_OBJECT_SELECT_DSL and the
+#: multi-object converse of RECOLOR_DSL (which a global 1:1 map cannot express).
+OBJECT_SELECT_RECOLOR_DSL = "recolor_selected_object"
 
 #: action.dsl for the object-property *canvas-sizing* family (R1 / §2.1 "grid
 #: size is a function of an object's property") — the output is a solid square
@@ -294,6 +306,16 @@ class ExtractPatternOperator(Operator):
         # family, so it never perturbs the readings above. Computed via the §2.5
         # selection vocabulary, not hand-coded here.
         patterns["object_select_move"] = analyze_object_select_move(task.example_pairs)
+
+        # Multi-object *selective recolor* (R1 / §2.5-2b, the recolor-axis sibling
+        # of object_select_move and the multi-object converse of color_remap):
+        # several objects present, exactly one repainted to a new colour by a
+        # learned selector, the rest untouched — the blind spot a global 1:1
+        # colour map cannot express. Inert (valid_all False) on single-object and
+        # global-recolor grids, so it never perturbs the readings above. Computed
+        # via the §2.5 selection vocabulary, not hand-coded here.
+        patterns["object_select_recolor"] = analyze_object_select_recolor(
+            task.example_pairs)
 
         # Object-property *canvas sizing* (R1 / §2.1 "grid size is a function of
         # an object's property"): the orthogonal axis where the output's
@@ -531,6 +553,22 @@ class GeneralizeOperator(Operator):
         # legacy condition-less `{type: color_mapping}` envelope it replaces.
         if rule is None:
             rule = self._color_remap_rule(patterns)
+
+        # Strategy 0i (R1 / §2.5-2b selection lift): multi-object *selective
+        # recolor*. If the `object_select_recolor` matcher fires (several objects
+        # present, exactly one repainted to a new colour by a learned selector,
+        # the rest untouched), emit a canonical {condition, action} rule whose
+        # action carries empty args — the selector and new colour are recomputed at
+        # predict time, so one value-agnostic rule covers the whole family. Checked
+        # *after* `color_remap` so a genuine global 1:1 map (e.g. a unique-coloured
+        # object) keeps its `color_remap` reading, but *before* `recolor_rank` so a
+        # single changed group is not mis-claimed by the rank family (whose render
+        # would repaint *all* same-coloured cells, including the untouched
+        # distractor). This fires only in the blind spot a global map cannot express
+        # (one of two same-coloured objects recolored). Recognition is delegated to
+        # the registered matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._object_select_recolor_rule(patterns)
 
         # Strategy 1 (R1 / §2.5-2b ranking selector): rank-based sequential
         # recolor. If the `recolor_rank` matcher fires (changed groups repainted a
@@ -840,6 +878,46 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: multi-object selective recolor (§2.5-2b) -------------
+
+    def _object_select_recolor_rule(self, patterns):
+        """Emit the canonical multi-object selective-recolor rule when the
+        `object_select_recolor` matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `object_select_recolor` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The action carries *empty* args
+        — the learned selector (max_size/min_size/unique_color/unique_shape/
+        border_object — agent/dsl_expr/selection.SELECTOR_VOCAB) and the new colour
+        are both recomputed at predict time from the example pairs, so the rule is
+        value-agnostic in colour, position and the non-selected distractors and one
+        rule covers the whole family (it merges by condition+action equivalence,
+        like `place_object_constant`, rather than accreting one literal rule per
+        task — §2.5-3/4). The recolor-axis sibling of `_object_select_target_rule`
+        and the multi-object converse of `_color_remap_rule`: it repaints the
+        *selected* object's cells (one frozen `coloring` call) where a global 1:1
+        map cannot (two same-coloured objects must diverge). Recognition is
+        delegated to the registered matcher, not a hand-coded detector."""
+        params = {"min_evidence": 2}
+        if not match_condition("object_select_recolor", patterns, params):
+            return None
+        sig = patterns.get("object_select_recolor") or {}
+        evidence = len(sig.get("per_pair") or [])
+        return {
+            "condition": {
+                "type": "object_select_recolor",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": OBJECT_SELECT_RECOLOR_DSL,
+                "args": {},
+            },
+            "concept": "recolor_selected_object",
+            "category": "object_select_recolor",
+            "confidence": 1.0,
+        }
+
     # ---- strategy: recolor by 1:1 colour map (canonical) ----------------
 
     def _color_remap_rule(self, patterns):
@@ -1035,6 +1113,20 @@ class PredictOperator(Operator):
         # from G0 — P5; the distractors are simply not drawn).
         if action and action.get("dsl") == PLACE_OBJECT_SELECT_DSL:
             for i, grid in self._place_object_select_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
+        # Multi-object *selective recolor* (R1 / §2.5-2b). Recompute the learned
+        # selector and constant new colour from the examples, then for each test
+        # pair pick the object the selector names out of that test input's objects
+        # and repaint only its cells to the new colour via one `coloring` call
+        # (the rest of the grid, including same-coloured distractors, untouched —
+        # P5: selector/colour from the example DIFF, geometry from the test G0).
+        if action and action.get("dsl") == OBJECT_SELECT_RECOLOR_DSL:
+            for i, grid in self._object_select_recolor_grids(task).items():
                 key = f"test_{i}"
                 if key not in predictions and grid is not None:
                     predictions[key] = grid
@@ -1280,6 +1372,40 @@ class PredictOperator(Operator):
             grids[i] = render_object_at(
                 height, width, bg, obj["pixels"], anchor,
             )
+        return grids
+
+    @staticmethod
+    def _object_select_recolor_grids(task):
+        """Map test-pair index -> predicted grid for the multi-object selective
+        recolor family.
+
+        The selector name and the constant new colour are recomputed from the
+        example pairs (the §2.5-2b lift: the criterion that consistently picks the
+        recolored object, plus the cross-pair COMM on its new colour). For each
+        test pair the selector chooses one object out of that test input's own
+        objects, and only its cells are repainted to the new colour via one frozen
+        `coloring` call — every other object (including a same-coloured distractor)
+        is left untouched, which is precisely what a global 1:1 map cannot do.
+        Geometry comes from the test G0 (P5). Returns {} when the analysis yields no
+        consistent selector or new colour."""
+        sig = analyze_object_select_recolor(task.example_pairs)
+        selector_name = sig.get("selector")
+        new_color = sig.get("new_color")
+        if selector_name is None or new_color is None:
+            return {}
+        selector = SELECTOR_VOCAB.get(selector_name)
+        if selector is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            obj = selector(objects_of(g0.raw), g0.raw)
+            if obj is None:
+                continue
+            grids[i] = render_object_recolor(g0.raw, obj["cells"], new_color)
         return grids
 
     @staticmethod
