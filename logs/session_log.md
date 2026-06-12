@@ -727,3 +727,90 @@ as the next `data/ARC_madeup/` task. Each should fold into place_object the same
 way. Orthogonally, R5 (fast-path *reuse* — Stored hits still 0; the abstract rule
 is re-derived each run via the slow path rather than activated from storage)
 remains the higher-leverage structural step but reads NEUTRAL on P1–P6.
+
+---
+## Learning Loop -- 2026-06-12 19:46
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_194634.log
+
+---
+## Learning Loop -- 2026-06-12 19:50
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_195013.log
+
+---
+## Learning Loop -- 2026-06-12 19:50
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_195021.log
+
+## Iter 9 — 2026-06-12T19:51 — branch test32
+
+**Diagnosis**: easy_a is mastered (9/9, clean-streak 2/5) so per PROMPT §2.2/§5
+the work is to escalate via a `data/ARC_madeup/` task that exposes a real gap.
+iter8's selection vocabulary keys only on *size* and *colour* (`max_size`,
+`min_size`, `unique_color`); a multi-object task whose discriminating feature is
+**shape-uniqueness** — objects of equal size and colour, one with a distinct form
+— makes *every* existing selector abstain, so the structure cannot name which
+object to keep. That is the smallest nameable gap, and its fix is one new selector
+along a property axis (form) the vocabulary doesn't yet have.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — added `select_unique_shape` (the shape-axis
+  analogue of `select_unique_color`, keyed on `normalized_shape`) and registered
+  `"unique_shape"` in `SELECTOR_VOCAB` (appended last, so existing tasks still
+  resolve to their earlier selector first). Grows the §2.5-1 LHS selection
+  vocabulary — a new way to *name* an object, not a new transformation (F3-exempt,
+  lives under `agent/`).
+- `data/ARC_madeup/madeup_select_unique_shape.json` (new, F1-exempt corner) —
+  3 train + 1 test, three same-colour same-size (3-cell) trominoes per grid; two
+  share a shape, the odd-shape one is kept and placed top-left. Colours, positions
+  and which shape is odd all vary across pairs, so size/colour selectors tie or
+  abstain and only `unique_shape` discriminates. Verified: max_size/min_size/
+  unique_color → None on every pair, unique_shape picks the output-matching object.
+- `tests/test_select_move.py` — +3 tests: `select_unique_shape` odd-one-out and
+  the no-singleton (None) case; the task learns `unique_shape` (not a size/colour
+  selector); end-to-end value-agnostic render equals the expected output.
+
+No operator, matcher, or memory edits: the `object_select_target` matcher and the
+`_place_object_select_grids` renderer are already selector-name-driven, so the new
+selector wires in as pure data. The reading folds into the existing abstract
+`place_object` rule (rule count held at 2; `covers` auto-grew 8→9), not a new
+family — the §2.5-4 accretion litmus (rule count flat, covers up ⇒ P1/P2 rise).
+
+**Probe before**: easy_a 9/9; rules=2 (place_object covers 8: c–i + select_largest);
+  P1=5.0, P2=5.0, P3=0.5, P5=7
+**Probe after** : easy_a 9/9 (regression guard held) + madeup 2/2; rules=2
+  (place_object covers 9: + madeup_select_unique_shape); P1=5.5, P2=5.5, P3=0.5, P5=7
+
+**Invariants**: forbidden=none (F1 frozen-diff=0, data edit is under the exempt
+ARC_madeup/; F2 no new _try_/_apply_; F3 no new DSL primitive — selector is LHS
+vocabulary under agent/; F8 N/A — no active_operators.py edit); positives = P1
++0.5, P2 +0.5. Verdict CLEAN. 45/45 tests pass. Real-progress direction: a
+genuinely new selection *axis* (form) folded into the existing place_object
+abstraction (covers 8→9) instead of a new detector — P1/P2 rose, rule count flat.
+
+**Next gap (note for future iter)**: the selection vocabulary now spans size,
+colour and shape, all picking *one* object placed at a *constant target*. The next
+escalations (still §2.5-2b) are either (a) a selector the vocabulary still can't
+express — e.g. argmax over a *relation* ("the object touching the border",
+count-of-neighbours), where the criterion is not an intrinsic single-object
+property; or (b) selection composed with a *non-constant* placement (offset/
+corner/resize), which `analyze_object_select_move` doesn't yet read. Orthogonally,
+R5 fast-path *reuse* (Stored hits still 0; the abstract rule is re-derived each run
+rather than activated from storage) remains the higher-leverage structural step but
+reads NEUTRAL on P1–P6.

@@ -185,14 +185,30 @@ def select_unique_color(objects: list):
     return uniques[0] if len(uniques) == 1 else None
 
 
+def select_unique_shape(objects: list):
+    """The single object whose (normalized) shape is shared by no other — the
+    "odd shape out". The shape-axis analogue of `select_unique_color`: where that
+    keys on colour, this keys on `normalized_shape` (position-invariant cell set),
+    so it discriminates a task whose objects share size *and* colour but differ in
+    form. Returns None when zero or several objects qualify."""
+    shapes = [normalized_shape(o) for o in objects]
+    counts = Counter(shapes)
+    uniques = [o for o, s in zip(objects, shapes) if counts[s] == 1]
+    return uniques[0] if len(uniques) == 1 else None
+
+
 #: Named property-selectors, tried in this deterministic order when *learning*
 #: which one a task uses (the first that consistently picks the preserved object
 #: across every example pair wins). Adding a named selector grows the LHS
 #: argument vocabulary — it introduces no new transformation (F3-exempt).
+#: `unique_shape` keys on a different property *axis* (form) from the size- and
+#: colour-based selectors above, so it names objects none of them can — but it
+#: still lifts into the same `place_object` abstraction, not a new family.
 SELECTOR_VOCAB = {
     "max_size": lambda objs: select_extreme(objs, size_of, "max"),
     "min_size": lambda objs: select_extreme(objs, size_of, "min"),
     "unique_color": select_unique_color,
+    "unique_shape": select_unique_shape,
 }
 
 

@@ -17,6 +17,7 @@ from agent.dsl_expr.selection import (
     objects_of,
     select_extreme,
     select_unique_color,
+    select_unique_shape,
     size_of,
     SELECTOR_VOCAB,
 )
@@ -24,6 +25,7 @@ from agent.conditions import match as match_condition
 from agent.active_operators import PredictOperator
 
 TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_largest.json")
+SHAPE_TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_unique_shape.json")
 
 
 class _G:
@@ -50,6 +52,11 @@ def _load():
         return json.load(fh)
 
 
+def _load_shape():
+    with open(SHAPE_TASK_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
 # ---- selection vocabulary --------------------------------------------------
 
 def test_select_extreme_argmax_and_ties():
@@ -68,6 +75,18 @@ def test_select_unique_color_odd_one_out():
     assert select_unique_color([{"color": 1}, {"color": 2}]) is None
 
 
+def test_select_unique_shape_odd_one_out():
+    """The shape-axis selector keys on form, ignoring size and colour: two
+    objects share a shape and one differs -> the odd-shape one is picked."""
+    i_horiz_a = {"position": (0, 0), "cells": [(0, 0), (0, 1), (0, 2)]}
+    i_horiz_b = {"position": (3, 0), "cells": [(3, 0), (3, 1), (3, 2)]}
+    l_shape = {"position": (1, 4), "cells": [(1, 4), (2, 4), (2, 5)]}
+    objs = [i_horiz_a, i_horiz_b, l_shape]
+    assert select_unique_shape(objs) is l_shape
+    # no singleton shape (all share) -> ambiguous -> None
+    assert select_unique_shape([i_horiz_a, i_horiz_b]) is None
+
+
 # ---- the analysis ----------------------------------------------------------
 
 def test_select_move_learns_max_size_selector():
@@ -77,6 +96,24 @@ def test_select_move_learns_max_size_selector():
     assert sel["size_preserved_all"] is True
     assert sel["constant_target"] == [0, 0]
     assert sel["selector"] == "max_size"
+
+
+def test_select_move_learns_unique_shape_selector():
+    """A task whose objects share size and colour but differ in form must fall
+    through the size/colour selectors and be learned as `unique_shape` — the gap
+    no existing selector could express."""
+    task = _Task(_load_shape())
+    sel = analyze_object_select_move(task.example_pairs)
+    assert sel["multi_object_all"] is True
+    assert sel["constant_target"] == [0, 0]
+    assert sel["selector"] == "unique_shape"
+
+
+def test_predict_unique_shape_places_at_target():
+    """End-to-end: the structure renders the odd-shape object value-agnostically."""
+    task = _Task(_load_shape())
+    grids = PredictOperator._place_object_select_grids(task)
+    assert grids[0] == _load_shape()["test"][0]["output"]
 
 
 def test_single_object_family_inert_for_select():
