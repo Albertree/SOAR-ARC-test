@@ -22,7 +22,7 @@ background excluded), so no new detection code is introduced here.
 
 from collections import Counter
 
-from ARCKG.hodel import hodel_objects
+from ARCKG.hodel import hodel_objects, _allneighbors, _dneighbors, _mostcolor
 
 
 # ---------------------------------------------------------------------------
@@ -30,9 +30,21 @@ from ARCKG.hodel import hodel_objects
 # ---------------------------------------------------------------------------
 
 def background_of(grid: list) -> int:
-    """Most frequent color (ties → smallest). The canvas/background color."""
+    """The canvas/background color.
+
+    ARC's near-universal convention is that color **0 is the canvas**, so when 0
+    is present it is the background *regardless of frequency*. The plain
+    most-frequent heuristic violates this whenever a foreground shape outnumbers
+    the 0-canvas (e.g. a coloured blob covering >half a small grid): it then
+    flips, mis-segmenting the 0-holes as the object and the shape as background —
+    silently corrupting every object-level reading (size/count/selection/recolor)
+    on such a grid (real task d631b094, whose test input has more foreground than
+    canvas cells). Honour 0 when present; fall back to most-frequent (ties →
+    smallest) only for grids with no 0 at all (a genuine non-zero canvas)."""
     counts = Counter(cell for row in grid for cell in row)
     if not counts:
+        return 0
+    if 0 in counts:
         return 0
     most = max(counts.values())
     return min(c for c, n in counts.items() if n == most)
@@ -107,6 +119,32 @@ def bbox_extent_of(obj: dict):
     return extent_of(obj)
 
 
+def count_bar_h_of(obj: dict):
+    """The object's cell count laid out as a *horizontal* ``1 × size`` strip — a
+    `RECT_DIM_VOCAB` reading whose two axes are a *constant* (1) and a *scalar*
+    property (`size_of`), not the object's spatial extent.
+
+    `bbox_extent_of` reads the object's bounding box, so it only reproduces a
+    rectangle the object already *is*. A count-bar instead reads the object's
+    **size** (cell count) and renders it as a one-row bar — the §2.1 "grid size =
+    f(object property)" concept when the property is the count and the layout is a
+    line, not a square or the bbox (real task d631b094: a scattered N-pixel object
+    becomes a 1×N strip of its colour). It composes the two frozen primitives
+    identically (a uniform `make_grid` fill); only the *argument* — here
+    ``(1, size_of(obj))`` — is new (§2.5-1, F3-exempt). As one named reading it
+    folds into the existing `size_to_grid` abstraction (one more value the
+    dimension variable ranges over, like `bbox_extent`), so covers rises while the
+    rule count holds (§2.5-4)."""
+    return (1, size_of(obj))
+
+
+def count_bar_v_of(obj: dict):
+    """The vertical companion of `count_bar_h_of`: the cell count as a ``size × 1``
+    column strip. Named for orientation-symmetry so the learner can pick whichever
+    axis reproduces the output; folds into the same `size_to_grid` family."""
+    return (size_of(obj), 1)
+
+
 # ---------------------------------------------------------------------------
 # relation vocabulary: grid-relative position (a corner of the canvas)
 # ---------------------------------------------------------------------------
@@ -141,6 +179,40 @@ def corners_matching(anchor, height: int, width: int,
 # selection vocabulary (pick objects out of a grid)
 # ---------------------------------------------------------------------------
 
+def _components_excluding(grid: tuple, background: int) -> "frozenset":
+    """8-connected, multivalued connected components excluding ``background``.
+
+    A faithful re-expression of hodel's ``hodel_objects(univalued=False,
+    diagonal=True, without_bg=True)`` pass with one difference: the excluded
+    colour is the *given* ``background`` (ARC's 0-canvas) rather than the grid's
+    most-frequent colour. Used only when those two disagree (foreground-majority
+    grids), so the frozen hodel port stays the source of truth everywhere else.
+    Returns the same ``frozenset[frozenset[(color, (r, c))]]`` shape hodel does."""
+    h, w = len(grid), len(grid[0]) if grid else 0
+    objs = set()
+    occupied = set()
+    for sr in range(h):
+        for sc in range(w):
+            if (sr, sc) in occupied or grid[sr][sc] == background:
+                continue
+            obj = set()
+            cands = {(sr, sc)}
+            while cands:
+                nxt = set()
+                for cand in cands:
+                    v = grid[cand[0]][cand[1]]
+                    if v != background and cand not in occupied:
+                        obj.add((v, cand))
+                        occupied.add(cand)
+                        for nb in _allneighbors(cand):
+                            if 0 <= nb[0] < h and 0 <= nb[1] < w and nb not in occupied:
+                                nxt.add(nb)
+                cands = nxt
+            if obj:
+                objs.add(frozenset(obj))
+    return frozenset(objs)
+
+
 def objects_of(grid: list, background: int | None = None) -> list:
     """Connected components (8-connected, background excluded), one dict each.
 
@@ -152,7 +224,18 @@ def objects_of(grid: list, background: int | None = None) -> list:
     if background is None:
         background = background_of(grid)
     g = tuple(tuple(row) for row in grid)
-    raw_objs = hodel_objects(g, univalued=False, diagonal=True, without_bg=True)
+    if background == _mostcolor(g):
+        # Common case: the 0-aware background *is* the grid's most-frequent colour,
+        # so the frozen hodel port (which excludes the most-frequent colour) already
+        # excludes the right cells — used verbatim, no behaviour change.
+        raw_objs = hodel_objects(g, univalued=False, diagonal=True, without_bg=True)
+    else:
+        # The foreground outnumbers the 0-canvas (`background_of` honours 0): hodel
+        # would exclude the *foreground* majority and mis-segment the 0-holes as the
+        # object. Detect 8-connected multivalued components excluding *our*
+        # background instead — same connectivity/grouping as the `(False, True,
+        # True)` hodel pass `objects_of` uses, only the excluded colour differs.
+        raw_objs = _components_excluding(g, background)
 
     result = []
     for obj in raw_objs:
@@ -450,6 +533,8 @@ DIM_PROPERTY_VOCAB = {
 # half). Each function takes one object and returns ``(h, w)``.
 RECT_DIM_VOCAB = {
     "bbox_extent": bbox_extent_of,
+    "count_bar_h": count_bar_h_of,
+    "count_bar_v": count_bar_v_of,
 }
 
 
@@ -824,10 +909,16 @@ def analyze_object_move(example_pairs: list) -> dict:
 
 def most_frequent_color(grid: list) -> int:
     """The grid's most-frequent colour (ties → smallest) — the seed colour
-    reading. Identical to `background_of`; named separately so it reads as a
-    *colour argument* (`most_frequent_color(in)`) wherever a transformation needs
-    a colour, not a canvas background."""
-    return background_of(grid)
+    reading. A *true* frequency reading: unlike `background_of` (which honours
+    ARC's 0-is-canvas convention) this always returns the literally most-common
+    colour, because as a fill *argument* "the dominant colour" means exactly that
+    even when it is 0. Kept independent of `background_of` for that reason (they
+    were aliased while `background_of` was a plain most-frequent count)."""
+    counts = Counter(cell for row in grid for cell in row)
+    if not counts:
+        return 0
+    most = max(counts.values())
+    return min(c for c, n in counts.items() if n == most)
 
 
 def least_frequent_color(grid: list) -> int:

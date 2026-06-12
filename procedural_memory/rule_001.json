@@ -17,7 +17,9 @@
         "bbox_extent",
         "bbox_height",
         "object_count",
-        "object_size"
+        "object_size",
+        "count_bar_h",
+        "count_bar_v"
       ]
     }
   },
@@ -31,7 +33,9 @@
     "madeup_select_size_to_square",
     "madeup_select_size_to_square_b",
     "madeup_bbox_extent_to_rect",
-    "madeup_bbox_extent_to_rect_b"
+    "madeup_bbox_extent_to_rect_b",
+    "madeup_count_bar_strip",
+    "d631b094"
   ],
   "source_task": "madeup_bbox_height_to_square",
   "anti_unification_trace": "episodic_memory\\madeup_bbox_height_to_square\\anti_unification\\size_to_grid_lift.json",

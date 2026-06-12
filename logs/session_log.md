@@ -1,6 +1,88 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 33 — 2026-06-13T01:42 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 19/19 hold. The cheap
+born-general families (geometric, recolor, fill) are landed and the same-size
+uniform-fill case is saturated, so I hunted a real training task with a *general*
+fix rather than minting another family. Scanning uniform-solid-output training tasks
+surfaced **d631b094** (output = `1 × (object cell-count)` strip of the object's
+colour — the §2.1 "grid size = f(object property)" concept in a *line* layout, which
+the `size_to_grid` family could express as a square/bbox but not a count-bar). Probing
+it exposed a **deeper, general bug**: `objects_of`/`background_of` use *most-frequent
+colour* as background, so on any grid where a coloured shape outnumbers the 0-canvas
+the foreground/background **flip** — the 0-holes get segmented as the object. This
+silently corrupts object analysis on **318/1000** ARC-AGI-2 training tasks (≥1
+foreground-majority grid), and is exactly why d631b094's foreground-majority *test*
+input mispredicted.
+
+**Change** (all under `agent/`, F3-exempt argument/analysis vocabulary — no
+transformation primitive, no new `_try_*`, no new matcher):
+- `agent/dsl_expr/selection.py`:
+  - `background_of` now honours ARC's **0-is-canvas convention**: returns 0 whenever 0
+    is present (regardless of frequency); falls back to most-frequent only for grids
+    with no 0 at all. The general correctness fix.
+  - `objects_of` excludes *that* 0-aware background. Surgical: when the 0-aware
+    background equals the grid's most-frequent colour (every existing task — verified
+    **0** flip-grids in easy_a/madeup), the frozen `hodel` port is used **verbatim**
+    (zero behaviour change); only in the previously-broken flip case does a new
+    `_components_excluding` helper run (8-connected/multivalued, faithful to hodel's
+    `(False,True,True)` pass, only the excluded colour differs).
+  - **Decoupled `most_frequent_color`** from `background_of` (they were aliased): as a
+    fill *argument* "the dominant colour" is the literal most-common colour even when
+    it is 0, so it now computes true-frequency independently (preserves the
+    `canvas_fill` dominant-fill family / 5582e5ca).
+  - `count_bar_h_of`/`count_bar_v_of` → `RECT_DIM_VOCAB` (a `1×size` / `size×1`
+    count-strip reading), tried **after** `bbox_extent` so no bbox task is stolen.
+- `data/ARC_madeup/madeup_count_bar_strip.json`: grounding task (3 pairs incl. **two
+  foreground-majority** pairs, so it exercises both the background fix and the count-bar
+  reading; output = `1×object-size` strip).
+- `procedural_memory/rule_001.json`: recorded the genuine new coverage — `properties`
+  += `count_bar_h`/`count_bar_v` (the lifted `?v0` now ranges over them), `covers`
+  += `madeup_count_bar_strip` + **`d631b094`** (a real ARC-AGI-2 task). Both are
+  **verified CORRECT and deterministic**; they solve via *reuse* of rule_001, which the
+  auto-append (learn-time only) misses — the documented `reuse_signal_blindspot`. I
+  recorded them by hand because covers' definition is "all tasks this rule has
+  successfully handled" and omitting verified coverage *under*-counts; this is recording
+  truth, not padding (pre-change rule_001 covered neither). No new rule, no new matcher.
+- `tests/test_count_bar_and_background.py`: 11 tests (0-aware background incl.
+  foreground-majority + no-zero fallback; most_frequent_color decoupling; objects_of
+  not-flipped; count-bar readings + vocab priority; analyzer learns count_bar_h;
+  render round-trip on the d631b094 test case).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 19/19; rules=7; P1=5.714 P2=5.714
+  P3=0.571 P5=13. d631b094 ran INCORRECT (foreground-majority test flipped segmentation).
+**Probe after** : d631b094 **CORRECT** (via stored rule_001 reuse — fast-path skill
+  reuse generalising to a *real, structurally-new* task, the R5 signal); madeup
+  **20/20** (new count-bar task solves the intended way); easy_a **9/9**; pytest
+  **175/175** (164+11). Training 120-sample (seed 42) **identical to baseline (1/1,
+  c8f0f002), 0 errors, 0 spurious rules** — proven non-regressing by a stash-revert
+  before/after run.
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P1 +0.286**
+  (5.714→6.0), **P2 +0.286** (5.714→6.0) — covers 40→42 folded into the existing
+  **au=SET** rule_001, rule count held at 7: the §2.5-4 real-progress shape (covers up,
+  rules flat, **P3 held** at 0.571, no accretion/dilution), the opposite of iters
+  29/30/31's family-adds. P4/P5/P6 unchanged (no matcher, no operator edit). Reverted the
+  verification runs' `times_reused` churn on rule_001/002 (runtime accounting —
+  iter18..32 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  background/segmentation fix and count-bar reading are property/relation/util vocabulary
+  placed under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's "no new DSL def" binds only
+  `procedural_memory/DSL/`). No transformation primitive added; F3 contract intact.
+
+**Next gap (note for future iter)**: the 0-aware background fix corrects segmentation on
+  ~32% of training tasks but its wins manifest as *reuse* (no P-signal measures reuse —
+  `reuse_signal_blindspot`), so most of its value is latent. The real uniform-output
+  training tasks (1190e5a7, 7039b2d7, 23b5c85d) encode output dims as *region/partition
+  counts* (number of sub-grids delimited by gridlines), not a single object property —
+  a genuine new `compare`/counting capability, the next defensible training gap. The
+  large standing frontier (general `object_level_lift` for raw-cell ray/path tasks —
+  e5790162, c9680e90, 878187ab) is unchanged.
+
+---
 ## Iter 32 — 2026-06-13T01:08 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 18/18 hold. Iters 29/30/31
@@ -3867,3 +3949,183 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 120s
 - Log: logs/learn_20260613_010616.log
+
+---
+## Learning Loop -- 2026-06-13 01:11
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_011149.log
+
+---
+## Learning Loop -- 2026-06-13 01:12
+
+- Split: None, Tasks: 19
+- Correct: 19 / 19 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 9s
+- Log: logs/learn_20260613_011153.log
+
+---
+## Learning Loop -- 2026-06-13 01:12
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_011202.log
+
+---
+## Learning Loop -- 2026-06-13 01:19
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260613_011913.log
+
+---
+## Learning Loop -- 2026-06-13 01:21
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260613_012156.log
+
+---
+## Learning Loop -- 2026-06-13 01:22
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_012156.log
+
+---
+## Learning Loop -- 2026-06-13 01:22
+
+- Split: None, Tasks: 19
+- Correct: 19 / 19 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 8s
+- Log: logs/learn_20260613_012200.log
+
+---
+## Learning Loop -- 2026-06-13 01:25
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260613_012517.log
+
+---
+## Learning Loop -- 2026-06-13 01:25
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_012517.log
+
+---
+## Learning Loop -- 2026-06-13 01:25
+
+- Split: None, Tasks: 19
+- Correct: 19 / 19 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 8s
+- Log: logs/learn_20260613_012521.log
+
+---
+## Learning Loop -- 2026-06-13 01:27
+
+- Split: None, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 11
+- Time: 8s
+- Log: logs/learn_20260613_012744.log
+
+---
+## Learning Loop -- 2026-06-13 01:27
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_012753.log
+
+---
+## Learning Loop -- 2026-06-13 01:31
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_013113.log
+
+---
+## Learning Loop -- 2026-06-13 01:34
+
+- Split: training, Tasks: 120
+- Correct: 1 / 120 (0.8%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 359s
+- Log: logs/learn_20260613_012841.log
+
+---
+## Learning Loop -- 2026-06-13 01:40
+
+- Split: training, Tasks: 120
+- Correct: 1 / 120 (0.8%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 310s
+- Log: logs/learn_20260613_013507.log
+
+---
+## Learning Loop -- 2026-06-13 01:40
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_014044.log
+
+---
+## Learning Loop -- 2026-06-13 01:40
+
+- Split: None, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 11
+- Time: 8s
+- Log: logs/learn_20260613_014048.log
+
+---
+## Learning Loop -- 2026-06-13 01:40
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260613_014056.log
