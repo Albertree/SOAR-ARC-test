@@ -1,6 +1,60 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 18 — 2026-06-12 — branch test32
+
+**Diagnosis**: First iter of the **training** phase (graduated from madeup this
+iter). Running the training probe (`--split training --limit 12 --shuffle --seed
+42`) scored 0/12 — expected for ARC-AGI-2 — but it also **spawned 3 new rules
+(rules 3→6) on a 0%-correct run**. Inspection: those rules (`rule_006/007/008`)
+are legacy `{rule:…}` envelopes with **no `condition` key**, `covers=1`, and they
+do **not even reproduce their own train examples** (verified: all three
+`reproduces_train=False`). They were persisted by `active_agent.py:solve`, whose
+save was gated only on `rule_type != "identity"` — *not* on whether the discovered
+program is valid. That is the 168-rule accretion failure mode (§2.5-3/4, F2 spirit)
+leaking through the training path: a best-effort `recolor_sequential`/`color_mapping`
+guess on a hard task gets frozen as a condition-less, covers=1 rule that bypasses
+the canonical/AU machinery and can therefore *never* be lifted. Smallest defensible
+fix: gate the save on the program reproducing its own train pairs — an overfit
+program is legitimate anti-unification *material* (§2.5-3) only when it does.
+
+**Change**:
+- `agent/active_agent.py` — the learn-save at the end of `solve()` now also
+  requires `self._rule_matches_examples(active_rules[0], task)` (a gate that
+  already existed, previously unused at this site). Uses *train* reproduction
+  (available at solve time), never test correctness, so it is honest, not
+  score-gaming. No `active_operators.py`/`DSL/` edit (no F2/F3/F8 exposure).
+- `tests/test_save_gate.py` (new, 3 tests) — the gate rejects a rule that does
+  not reproduce its train pairs and accepts one that does; an integration test
+  solves the previously-polluting training task `e5790162` in a temp
+  procedural_memory and asserts **no junk rule is written**.
+- Removed `rule_006/007/008.json` (the junk my diagnostic probe created) and
+  reverted `rule_001.json` `times_reused` churn — procedural_memory back to 3.
+
+**Probe before**: training 0/12; the probe **persisted 3 condition-less covers=1
+  rules** (rules 3→6) ⇒ would have dropped P1 7.67→4.33, P2 7.67→4.33, P3
+  0.67→0.33 on this single run. 88 tests.
+**Probe after** : training 0/12, **Rules 3→3 (+0 saved)** — the gate declines all
+  three non-reproducing guesses; P1/P2/P3 held at 7.67/7.67/0.67. 91 tests.
+
+**Invariants**: forbidden=none (F1 frozen diff 0; F2/F8 `active_operators.py` and
+  `DSL/` untouched; F3 no DSL primitive; no rule saved without a condition — the
+  fix *strengthens* this). positives=**NEUTRAL on the clean-state delta** — but
+  this is a **preventive** fix: P1/P2/P3 are documented (INVARIANTS §2) to *drop*
+  "when a fresh rule is created per task (the 168-rule failure mode)", which this
+  gate now blocks on every training run. The defended drop is −3.34 (P1), −3.34
+  (P2), −0.33 (P3) per 12-task probe.
+
+**Next gap (note for future iter)**: training is 0/N — the *intended* path produces
+  no rule for these tasks (object-level COMM/DIFF doesn't fire). The first
+  defensible additive step is a single ARC-AGI-2 task whose solution is a
+  *general* mechanism (a new `compare` capability or condition matcher that also
+  helps the next task) — pick one failing task whose gap can be *named*, not a
+  bespoke detector. The legacy `recolor_sequential`/`color_mapping` `_try_*`
+  family is also a migration candidate: it still emits condition-less `{rule:…}`
+  envelopes, which are dead-ends for AU even when they *do* reproduce train.
+
+---
 ## Iter 17 — 2026-06-12 — branch test32
 
 **Diagnosis**: The madeup probe was 14/14 the intended way, but it also showed
@@ -1863,3 +1917,68 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_212101.log
+
+---
+## Learning Loop -- 2026-06-12 21:26
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_212626.log
+
+---
+## Learning Loop -- 2026-06-12 21:26
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_212629.log
+
+> **PHASE GRADUATION** at iter 18 — madeup → training.
+> data/ARC_madeup/ (14 tasks) + easy_a solved 100% for 5 consecutive iters (K=5).
+> The structure now expresses task-specific rules for beginner concepts unaided.
+> Probe now samples data/ARC_AGI/training/ (ARC-AGI-2). easy_a + madeup kept as regression guard.
+
+---
+## Learning Loop -- 2026-06-12 21:27
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 6 (+3 learned)
+- Stored rule hits: 0
+- Time: 29s
+- Log: logs/learn_20260612_212709.log
+
+---
+## Learning Loop -- 2026-06-12 21:32
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 28s
+- Log: logs/learn_20260612_213144.log
+
+---
+## Learning Loop -- 2026-06-12 21:34
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_213408.log
+
+---
+## Learning Loop -- 2026-06-12 21:34
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_213411.log

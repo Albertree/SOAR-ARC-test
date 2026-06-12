@@ -145,8 +145,17 @@ class ActiveSoarAgent:
             "steps": result["steps_taken"],
         })
 
-        # --- Learn: save new rule if pipeline discovered one ---
-        if active_rules and rule_type != "identity":
+        # --- Learn: save new rule only if the discovered program reproduces
+        #     the train examples it was derived from. An overfit pair-specific
+        #     program is legitimate anti-unification *material* (BACKLOG §2.5-3)
+        #     only when it actually reproduces its own train pairs; a non-identity
+        #     guess that fits neither train nor test is noise. Persisting it spawns
+        #     a condition-less, covers=1 rule that can never be lifted — the
+        #     168-rule accretion failure mode (§2.5-4, F2 spirit). The check uses
+        #     *train* reproduction (available at solve time), never test
+        #     correctness, so it is honest, not score-gaming.
+        if (active_rules and rule_type != "identity"
+                and self._rule_matches_examples(active_rules[0], task)):
             save_rule_to_ltm(
                 active_rules[0], task.task_hex,
                 self.procedural_memory_root,
