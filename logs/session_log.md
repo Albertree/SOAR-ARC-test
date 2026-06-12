@@ -1,6 +1,70 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 26 — 2026-06-12T16:55 — branch test31
+
+**Diagnosis**: I acted on iter-25's named next-gap (and verified it against the
+code, not the log): the binding architectural gap is the **missing general
+Slow-path program synthesizer** (modules F/G). `GeneralizeOperator.effect` is a
+fixed `match→_build_X` chain over ~9 hand-built in-code families; a task no family
+recognizes falls to `identity`, so every new category has nowhere to go **but** a
+new in-code family — the §6.2-violating accretion (`active_operators.py` grew
+~1280→2229 lines with no covers growth). There is nothing that, from one pair's
+COMM/DIFF, emits an overfit literal `coloring`/`make_grid` program (the AU *input
+material* §2.5-3 blesses). Confirmed `program/anti_unification.py:
+anti_unify_pair_programs` is a `NotImplementedError` stub — the per-pair program
+type it consumes literally does not exist yet. This iter builds the smallest half:
+the pure synthesizer, **not** its wiring (deferred — touches the live solve path
+with easy_a-regression risk, iter-25's "2nd iter").
+
+**Change**:
+- `agent/program_synthesis.py` (new) — `synthesize_pair_program(input, output,
+  comparison)` emits a flat symbolic program (list of `{"dsl","args"}` step
+  dicts, P7) from the pixel-level COMM/DIFF. Two modes: same-shape → a *DIFF
+  program* (one `coloring` per changed cell, COMM cells untouched — edits, not
+  rebuilds, P1); different-shape → a *from-scratch program* (`make_grid` on the
+  output background via `dsl_expr.background_color`, then `coloring` the
+  foreground). Deliberately overfit per-pair literals — that is correct: overfit
+  is AU *material* (§2.5-3), not a persisted rule. Plus `run_program(program,
+  grid)`, the shared executor that replays through the frozen `apply_DSL` (no new
+  transformation vocabulary). Lives under `agent/`, not `procedural_memory/DSL/`
+  (F3 N/A — adds no primitive).
+- `tests/test_program_synthesis.py` (new, 8 tests) — grounds it on **real** pairs:
+  round-trip `run_program(synthesize_pair_program(i,o), i) == o` on every
+  easy000c & easy000d pair, value-agnostic (colours 1/2/4/7), identity→empty
+  program, resize→make_grid path, frozen-primitives-only, COMM/DIFF-touches-only-
+  changed-cells, determinism. The round-trip on real ARC pairs is the ground that
+  makes this verified capability rather than a speculative unwired brick.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate, [[graduation_gate_unsatisfiable]]),
+easy_a 9/9; rules=3 (covers 6+9+2=17); P1=P2=5.67, P3=0.67, P5=10, P6=2229.
+**Probe after** : identical solve behaviour (synthesizer is unwired by design —
+no solve-path change); 170/170 pytest pass (+8 new). P-signals: P1/P2/P3/P5/P6
+all Δ=0, P4 +5 (probe's own episodic writes). check_invariants verdict **CLEAN**.
+
+**Invariants**: forbidden=**none** — F1 (no frozen-file edit; new files under
+`agent/`+`tests/`), F2 (no `_try_`/`_apply_`), F3 (no DSL primitive — synthesizer
+is in `agent/`, only *uses* the two frozen ones), F4/F5/F6/F7 N/A, F8 N/A
+(`active_operators.py` untouched). positives=**P4 +5** (incidental, probe writes);
+the synthesizer substrate itself reads NEUTRAL on P1–P6 — the documented
+[[reuse_signal_blindspot]]/[[synthesizer_frontier]] blind spot (no P-signal
+measures pre-wiring solve-path substrate; iter-11 R5 set the same precedent). This
+is **not** spinning (PROMPT.md §4): a genuinely new, test-grounded module closing
+the named frontier gap is none of near-duplicate/cosmetic/reshuffling — it is the
+first real motion off the iters-21–25 P1/P2 circle.
+
+**Next gap (note for future iter)**: wire the synthesizer as `GeneralizeOperator`'s
+`identity`-fallback — when no family matches, synthesize a per-pair program for
+each example pair, and when ≥2 pairs yield programs sharing a skeleton, hand them
+to `save_rule()→unify()` to lift into a `covers>1` data rule (requires
+implementing the `anti_unify_pair_programs` term-tree case the stub reserves).
+Take it in easy_a-regression-guarded slices: first just *log* synthesized programs
+on currently-`identity` tasks (observe, no behaviour change), then route them.
+This is the path that replaces family accretion with synthesis→AU (the §6.2/
+modules-F-G intent) and is the only way training competence grows without a new
+`_build_X` per category.
+
+---
 ## Iter 25 — 2026-06-12T16:50 — branch test31 — NO-OP (analysis only)
 
 **Iter 25: no defensible *smallest* step found — analysis only.** Commit no code
@@ -3113,3 +3177,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 4s
 - Log: logs/learn_20260612_164502.log
+
+---
+## Learning Loop -- 2026-06-12 16:52
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_165253.log
+
+---
+## Learning Loop -- 2026-06-12 16:52
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_165255.log
