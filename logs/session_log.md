@@ -1,6 +1,72 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 23 — 2026-06-12T22:30 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (c9680e90 gravity, 878187ab
+reflect+resize, e5790162 line-draw — all same-size object transforms; verified the
+pair sizes directly). iters 20/21/22 *fully closed the producer side* of arbor.md
+진단 #4: every `GeneralizeOperator` family is now canonical and condition-bearing,
+the save gate is unblocked (iter21), and there is no remaining condition-less
+producer to migrate — so a 4th producer-canonicalization would be spinning. The
+unanimous Next-gap across those three iters is the **Slow-path program synthesizer**
+(`arbor-modules.md` Gap rows F/G): a task no family recognizes falls straight to the
+`identity` fallback. The *consumer* of that synthesizer already exists and is tested
+(`program/anti_unification.anti_unify_pair_programs`), but **nothing produces the
+per-pair programs it consumes** — that missing producer is the smallest defensible
+first half iter22 explicitly teed up.
+
+**Change** (producer-only substrate, off the live path — no operator/predict/save
+edit, so no F2/F3/F8 exposure):
+- `agent/program_synthesis.py` (new) — `synthesize_pair_program(input, output)`
+  emits a *literal* program reproducing one pair through the two frozen primitives:
+  same-size → one `coloring` line per changed-cell **colour group** (input is the
+  canvas); resize → `make_grid(H,W,bg)` (bg = output's most-common colour) + one
+  `coloring` per non-bg colour group. `run_program` executes a program line-by-line
+  via `apply_DSL` (bottoms out in `coloring`/`make_grid`, F3-safe; never mutates the
+  input); `program_reproduces` is the round-trip predicate. This is the per-pair
+  **overfit material** BACKLOG_LOOP §2.5-3 blesses *as anti-unification input*, not a
+  saveable rule — the cells are still raw coordinates; lifting them to object-level
+  selectors (`cells_of(select(objects, predicate))`, §2.5-2b / R1) so the skeleton
+  generalizes is the explicitly-larger *next* slice, deliberately not done here.
+- `tests/test_program_synthesis.py` (new, 8 tests) — round-trip reproduction grounded
+  on **real** pairs (easy000c same-size, easy000i resize), the empty-program identity
+  case, colour-grouping shape + determinism, resize canvas = output background, no
+  input mutation, and that ≥2 synthesized programs flow into
+  `anti_unify_pair_programs` preserving the skeleton (lift *quality* asserted nowhere —
+  that is the later object-level slice).
+
+**Probe before**: training 0/3 (`e5790162: rule=none`); easy_a 9/9 (Reused 5), madeup
+  14/14 (Reused 10); rules=3; P1=7.67 P2=7.67 P3=0.67 P4=932 P5=10 P6=1457; 118 tests.
+**Probe after** : training 0/3 unchanged (producer is off the live path — it does not
+  yet feed `GeneralizeOperator`, by design, to protect the mastered easy_a/madeup
+  guards); easy_a 9/9, madeup 14/14 untouched; rules 3→3; P1–P6 all flat; 126 tests
+  (+8).
+
+**Invariants**: forbidden=**none** (check_invariants verdict NEUTRAL; F1 frozen diff
+  0 — only new files under `agent/`+`tests/`; F2/F3/F8 N/A — `active_operators.py` and
+  `procedural_memory/DSL/` untouched; no rule saved without a condition — no rule saved
+  at all). positives=**NEUTRAL on P1–P6**, the correct reading for off-live-path
+  substrate (INVARIANTS §3: "scaffolding whose payoff lands in a later iter"). The
+  snapshot has no signal that measures *whether a per-pair synthesizer exists*; the
+  moved thing is the F/G-module prerequisite — the AU consumer now has a producer to
+  feed it, grounded by round-trip tests on real data. (Reverted the `rule_001/002`
+  `times_reused` probe churn — runtime accounting, not a learned change; iter18/21
+  precedent.)
+
+**Next gap (note for future iter)**: the producer→consumer link exists but two known
+  walls stand between it and a saved `covers>1` rule (per `synthesizer_frontier`
+  memory, a prior lineage that walked this): (a) raw-cell programs share no liftable
+  skeleton across tasks → the producer must emit **object-level** selections
+  (`select(objects, predicate)`) — a LARGE step, the training frontier; (b) the lifted
+  program has G0-fill **holes** needing a binder (§2.5-2b), and the displacement/
+  corner origins hit `arbor-open-questions` (user design decision — surface, don't
+  invent). The smallest next half is the **object-level recolor producer** (single-
+  object `argmax/argmin/unique` selection as cross-pair COMM), which lifts cleanly and
+  avoids the open-question origins; wiring as the `identity`-fallback is a later,
+  easy_a-guarded slice.
+
+---
 ## Iter 22 — 2026-06-12T22:23 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3 (the same ARC-AGI-2 gravity/reflect/
@@ -2511,3 +2577,33 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 5s
 - Log: logs/learn_20260612_222239.log
+
+---
+## Learning Loop -- 2026-06-12 22:26
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_222620.log
+
+---
+## Learning Loop -- 2026-06-12 22:26
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 5s
+- Log: logs/learn_20260612_222623.log
+
+---
+## Learning Loop -- 2026-06-12 22:26
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_222629.log

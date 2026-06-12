@@ -36,5 +36,5 @@
   "source_task": "madeup_bbox_height_to_square",
   "anti_unification_trace": "episodic_memory\\madeup_bbox_height_to_square\\anti_unification\\size_to_grid_lift.json",
   "created_at": "2026-06-12T20:31:56.992120",
-  "times_reused": 2
+  "times_reused": 4
 }
