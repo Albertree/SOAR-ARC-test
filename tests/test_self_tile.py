@@ -80,6 +80,23 @@ def _self_tile(raw, empty):
     return out
 
 
+def _self_tile_onkey(raw, key, fill):
+    """Reference *on-keyed* fractal self-tile: block (r, c) is a copy of the input
+    where input[r][c] == key, else a solid block of `fill`. The dual of
+    `_self_tile`, for multi-colour grids whose live mask is one colour but whose
+    off cells are many (so no single off colour exists)."""
+    H, W = len(raw), len(raw[0])
+    out = [[fill] * (W * W) for _ in range(H * H)]
+    for r in range(H):
+        for c in range(W):
+            if raw[r][c] != key:
+                continue
+            for a in range(H):
+                for b in range(W):
+                    out[r * H + a][c * W + b] = raw[a][b]
+    return out
+
+
 def _solid_upscale(raw, kh, kw):
     """Reference *solid* block upscale (the integer_scale family) — used as a
     negative: a self-tile matcher must decline on it."""
@@ -146,6 +163,69 @@ def test_matcher_declines_on_solid_upscale():
     assert match("self_tile", patterns) is False
     # ...and integer_scale claims it instead.
     assert match("integer_scale", patterns) is True
+
+
+# ── on-keyed (multi-colour) mask generalization (27f8ce4f) ────────────
+def test_signal_on_keyed_multicolor_self_tile():
+    # A multi-colour grid whose live mask is "the most-frequent colour" (here 8,
+    # which the off colour `e` cannot express because the off cells are 1/6/4/9 —
+    # many colours). The off-keyed derivation returns ∅, so the on-keyed form must
+    # claim it: live where input==most-frequent, off blocks filled with 0.
+    a = [[8, 8, 1], [8, 6, 1], [4, 9, 6]]   # most-frequent = 8 (×3)
+    b = [[7, 7, 1], [4, 7, 1], [3, 3, 7]]   # most-frequent = 7 (×4)
+    task = _task_with_pairs([(a, _self_tile_onkey(a, 8, 0)),
+                             (b, _self_tile_onkey(b, 7, 0))])
+    patterns = _run_pipeline(task)[0]
+    sig = patterns["self_tile"]
+    assert sig["consistent"] is True
+    assert sig["spec"] == {"mode": "on", "fill": 0}
+    assert sig["empty"] is None             # on-keyed: no single off colour
+    assert match("self_tile", patterns) is True
+
+
+def test_on_keyed_solves_with_per_input_key_selection():
+    # The live key is re-selected per input (8, then 7), never stored — a test
+    # grid whose most-frequent colour is a *third* value (5) still tiles correctly.
+    a = [[8, 8, 1], [8, 6, 1], [4, 9, 6]]
+    b = [[7, 7, 1], [4, 7, 1], [3, 3, 7]]
+    test_in = [[5, 5, 2], [5, 1, 2], [3, 9, 1]]   # most-frequent = 5 (×3)
+    task = _task_with_pairs(
+        [(a, _self_tile_onkey(a, 8, 0)), (b, _self_tile_onkey(b, 7, 0))],
+        test=[(test_in, _self_tile_onkey(test_in, 5, 0))],
+    )
+    _, wm = _run_pipeline(task)
+    preds = wm.s1.get("predictions") or {}
+    assert preds.get("test_0") == _self_tile_onkey(test_in, 5, 0)
+
+
+def test_off_keyed_two_colour_still_prefers_off_mode():
+    # A two-colour grid satisfies both keyings; the off-keyed reading is preferred
+    # so 007bbfb7-style tasks keep their existing `e`-keyed spec (no regression).
+    a = [[0, 7], [7, 7]]
+    b = [[0, 0], [3, 0]]
+    task = _task_with_pairs([(a, _self_tile(a, 0)), (b, _self_tile(b, 0))])
+    sig = _run_pipeline(task)[0]["self_tile"]
+    assert sig["spec"] == {"mode": "off", "empty": 0}
+    assert sig["empty"] == 0
+
+
+def test_pipeline_solves_real_27f8ce4f():
+    # The real ARC-AGI-2 training task that motivated the on-keyed generalization
+    # (iter 20/21 named it the "next gap"): a multi-colour fractal self-tile keyed
+    # on the most-frequent colour. The agent returned identity before this iter.
+    try:
+        task = _load_task("ARC_AGI/training/27f8ce4f")
+    except Exception:
+        return  # dataset layout differs on this machine; skip gracefully
+    _, wm = _run_pipeline(task)
+    rule = wm.s1["active-rules"][0]
+    assert rule["type"] == "self_tile", "27f8ce4f: expected self_tile rule"
+    preds = wm.s1.get("predictions") or {}
+    for i, tp in enumerate(task.test_pairs):
+        if tp.output_grid is None:
+            continue
+        assert preds.get(f"test_{i}") == tp.output_grid.raw, \
+            f"27f8ce4f: test_{i} mismatch"
 
 
 # ── end-to-end pipeline ───────────────────────────────────────────────

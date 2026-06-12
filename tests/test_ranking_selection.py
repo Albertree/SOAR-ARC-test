@@ -21,8 +21,26 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.conditions import CONDITION_REGISTRY, get_matcher, match  # noqa: E402
 from agent.dsl_expr import (  # noqa: E402
-    arg_extreme, argmax, argmin, cells_of, objects_of, size_of,
+    arg_extreme, argmax, argmin, cells_of, most_frequent_color, objects_of, size_of,
 )
+
+
+# ── colour-frequency selection (the mask key for on-keyed self-tiles) ──
+def test_most_frequent_color_selects_the_majority_colour():
+    grid = [[8, 8, 1], [8, 6, 1], [4, 9, 6]]   # 8 occurs 3×, more than any other
+    assert most_frequent_color(grid) == 8
+
+
+def test_most_frequent_color_abstains_on_a_tie():
+    # 4 and 5 both occur twice: "the most-frequent colour" is ambiguous → None
+    # (the same determinism-over-guessing discipline argmax/unique apply, P7).
+    grid = [[4, 5], [5, 4]]
+    assert most_frequent_color(grid) is None
+
+
+def test_most_frequent_color_empty_grid():
+    assert most_frequent_color([]) is None
+    assert most_frequent_color([[]]) is None
 
 
 # ── seed vocabulary: ranking selection over real grids ────────────────

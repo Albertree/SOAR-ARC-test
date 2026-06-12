@@ -16,7 +16,7 @@ from agent.operators import Operator
 from agent.conditions import match as match_condition
 from agent.dsl_expr import (
     objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
-    output_dims, argmax, arg_extreme, cells_of,
+    output_dims, argmax, arg_extreme, cells_of, most_frequent_color,
 )
 from agent.variable_resolution import resolve_variable
 from procedural_memory.DSL.apply import apply_DSL
@@ -239,37 +239,123 @@ def _self_tile_empties(raw_in, raw_out):
     return empties
 
 
+def _self_tile_onkey(raw_in, raw_out):
+    """The `(key, fill)` of an *on-keyed* masked self-tile, or None.
+
+    The dual of `_self_tile_empties`. There the mask's *off* set is a single
+    colour `e` (live = "not e"); here the mask's *on* set is a single **key**
+    colour `k` selected by `most_frequent_color` (live = "== k"), and the off
+    blocks are a separate solid *fill* colour `f`. This is the formulation a
+    multi-colour grid needs (27f8ce4f): its live cells are one colour (the most
+    frequent) but its off cells are *many* colours, so no single off colour `e`
+    exists and `_self_tile_empties` correctly returns ∅ — the copy must instead be
+    keyed on the one *live* colour. For a two-colour grid the two formulations
+    coincide (off `e` ≡ on "the other colour"), so off-keying — tried first in
+    `_derive_self_tile` — still claims 007bbfb7/5b6cbef5 unchanged.
+
+    `k` is `most_frequent_color(raw_in)` (a selection over a derived colour
+    property, §2.5-2b — re-computed per input, not a stored literal; it varies
+    pair to pair, e.g. 8/7/5 across 27f8ce4f's examples). `f` is read from the
+    output's off blocks. Returns `(k, f)` iff the `H*H x W*W` layout holds with
+    block `(r,c)` an exact input copy where `raw_in[r][c]==k` and a single solid
+    colour `f` everywhere else; None otherwise (wrong shape, ambiguous key,
+    non-uniform off block, or an off colour that disagrees across blocks)."""
+    ih = len(raw_in)
+    iw = len(raw_in[0]) if ih else 0
+    oh = len(raw_out)
+    ow = len(raw_out[0]) if oh else 0
+    if ih == 0 or iw == 0:
+        return None
+    if oh != ih * ih or ow != iw * iw:
+        return None
+    k = most_frequent_color(raw_in)
+    if k is None:
+        return None
+    copy_block = [raw_in[a][b] for a in range(ih) for b in range(iw)]
+    fill = None
+    for r in range(ih):
+        for c in range(iw):
+            block = [raw_out[r * ih + dr][c * iw + dc]
+                     for dr in range(ih) for dc in range(iw)]
+            if raw_in[r][c] == k:
+                if block != copy_block:
+                    return None
+            else:
+                if len(set(block)) != 1:
+                    return None        # off block must be one solid colour
+                f = block[0]
+                if fill is None:
+                    fill = f
+                elif f != fill:
+                    return None        # off blocks disagree on the fill colour
+    if fill is None:
+        return None                    # no off block ⇒ a pure tiling, not masked
+    return (k, fill)
+
+
 def _derive_self_tile(pairs):
-    """Derive the single empty colour `e` the example pairs agree on for a fractal
-    self-tile, or None when they do not define one (R6 self-tile family).
+    """Derive the mask *spec* the example pairs agree on for a fractal self-tile,
+    or None when they do not define one (R6 self-tile family).
 
-    `pairs` is a list of `(g0, g1)` ARCKG grids. For each pair, `_self_tile_empties`
-    gives the colours under which the output is a masked self-tile of the input;
-    the answer is the *intersection* across every pair (the COMM — one rule can
-    carry only one empty colour). Returns that colour iff the intersection is a
-    single colour (an ambiguous pair, with two viable empties, declines rather
-    than guesses — search sanity, BACKLOG_LOOP.md §5 criterion 4), and None when
-    any pair is not a self-tile, the pairs disagree, or the answer is ambiguous.
+    `pairs` is a list of `(g0, g1)` ARCKG grids. A masked self-tile keys its copy
+    blocks on a single colour, in one of two dual ways; this tries the more
+    established **off-keyed** form first (the COMM *off* colour `e`, every live
+    block = "input cell ≠ e"), and only if no consistent `e` exists falls back to
+    the **on-keyed** form (live block = "input cell == `most_frequent_color`",
+    off blocks a solid fill `f`) needed by multi-colour grids like 27f8ce4f. The
+    return is one of::
 
-    Value-agnostic and symbolic (P7): nothing is stored per task — the renderer
-    re-derives this colour from each task's own examples, so one rule covers the
-    whole family. This single definition is shared by the `self_tile` producer
-    (signal) and renderer (apply), so the same notion of "is this a masked
-    self-tile" gates recognition and execution (module uniformity,
-    BACKLOG_LOOP.md §5 criterion 2)."""
+        {"mode": "off", "empty": e}        # e = COMM off colour across pairs
+        {"mode": "on",  "fill":  f}        # f = COMM solid fill across pairs;
+                                           #     key re-selected per input at apply
+        None                               # not a self-tile / pairs disagree
+
+    Off-keying is preferred when both could apply (a two-colour grid satisfies
+    both) so 007bbfb7/5b6cbef5 keep their existing `e`-keyed reading exactly —
+    no regression. Value-agnostic and symbolic (P7): nothing is stored per task —
+    the renderer re-derives this spec from each task's own examples, so one rule
+    covers the whole family (and now both mask-keyings of it). This single
+    definition is shared by the `self_tile` producer (signal) and renderer
+    (apply), so the same notion of "is this a masked self-tile" gates recognition
+    and execution (module uniformity, BACKLOG_LOOP.md §5 criterion 2)."""
     if not pairs:
         return None
+
+    # (a) Off-keyed — the COMM off colour, intersected across every pair. One rule
+    #     carries one off colour; an ambiguous pair (two viable empties) declines
+    #     rather than guesses (search sanity, BACKLOG_LOOP.md §5 criterion 4).
     inter = None
     for g0, g1 in pairs:
         if g0 is None or g1 is None:
             return None
         empties = _self_tile_empties(g0.raw, g1.raw)
-        if not empties:
-            return None
-        inter = empties if inter is None else (inter & empties)
+        if empties:
+            inter = empties if inter is None else (inter & empties)
+        else:
+            inter = set()
         if not inter:
+            break
+    if inter and len(inter) == 1:
+        return {"mode": "off", "empty": next(iter(inter))}
+
+    # (b) On-keyed — every pair an on-keyed self-tile (live = most-frequent colour)
+    #     with one COMM solid fill colour across all pairs (the key itself varies
+    #     per input; only the fill is shared, §2.5-2b).
+    fill = None
+    for g0, g1 in pairs:
+        if g0 is None or g1 is None:
             return None
-    return next(iter(inter)) if len(inter) == 1 else None
+        res = _self_tile_onkey(g0.raw, g1.raw)
+        if res is None:
+            return None
+        _, f = res
+        if fill is None:
+            fill = f
+        elif f != fill:
+            return None
+    if fill is not None:
+        return {"mode": "on", "fill": fill}
+    return None
 
 
 def _object_keyed_parts(raw):
@@ -660,9 +746,11 @@ class ExtractPatternOperator(Operator):
         Returns::
 
             {
-              "consistent":     bool,      # one empty colour `e` makes every pair
-                                           #   an H*H × W*W masked self-tile
-              "empty":          int|None,  # the derived empty colour (None if not)
+              "consistent":     bool,       # a consistent mask spec makes every
+                                            #   pair an H*H × W*W masked self-tile
+              "spec":           dict|None,  # the derived mask spec (off/on keyed)
+              "empty":          int|None,   # off-keyed off colour (None for on-key),
+                                            #   kept for back-compat with callers
               "evidence_count": int,
             }
         """
@@ -671,10 +759,11 @@ class ExtractPatternOperator(Operator):
             for pair in task.example_pairs
             if pair.input_grid is not None and pair.output_grid is not None
         ]
-        empty = _derive_self_tile(pairs)
+        spec = _derive_self_tile(pairs)
         return {
-            "consistent": empty is not None,
-            "empty": empty,
+            "consistent": spec is not None,
+            "spec": spec,
+            "empty": spec.get("empty") if spec and spec.get("mode") == "off" else None,
             "evidence_count": len(pairs),
         }
 
@@ -1462,7 +1551,7 @@ class GeneralizeOperator(Operator):
         whole family (§2.5-3) and generalises to unseen self-tile tasks rather
         than minting one detector per task."""
         sig = patterns.get("self_tile") or {}
-        if not sig.get("consistent") or sig.get("empty") is None:
+        if not sig.get("consistent") or sig.get("spec") is None:
             return None
         return {
             "type": "self_tile",                  # WM dispatch tag for PredictOperator
@@ -1474,7 +1563,7 @@ class GeneralizeOperator(Operator):
             },
             "action": {
                 "dsl": "self_tile",
-                "args": {},                       # empty colour re-derived per task at apply time
+                "args": {},                       # mask spec re-derived per task at apply time
             },
             "confidence": 1.0,
         }
@@ -2042,8 +2131,8 @@ class PredictOperator(Operator):
             for pair in task.example_pairs
             if pair.input_grid is not None and pair.output_grid is not None
         ]
-        empty = _derive_self_tile(pairs)
-        if empty is None:
+        spec = _derive_self_tile(pairs)
+        if spec is None:
             return None
 
         raw = input_grid.raw
@@ -2051,21 +2140,37 @@ class PredictOperator(Operator):
         in_w = len(raw[0]) if in_h else 0
         if in_h == 0 or in_w == 0:
             return None
-        height, width = in_h * in_h, in_w * in_w
 
-        out = apply_DSL("make_grid", None, height=height, width=width,
-                        color=empty)
+        # The mask spec (re-derived per task, never stored) names *which* input
+        # cells get a copy and *which* colour fills the rest. Off-keyed: live =
+        # "cell ≠ off colour", fill = that off colour. On-keyed (multi-colour
+        # grids): live = "cell == most-frequent colour" — re-selected per input
+        # via the selection vocabulary (§2.5-2b) — fill = the COMM solid colour.
+        if spec.get("mode") == "off":
+            fill = spec["empty"]
+            def is_live(cell):
+                return cell != fill
+        else:  # "on"
+            key = most_frequent_color(raw)
+            if key is None:
+                return None       # ambiguous key on this input ⇒ decline, no guess
+            fill = spec["fill"]
+            def is_live(cell):
+                return cell == key
+
+        height, width = in_h * in_h, in_w * in_w
+        out = apply_DSL("make_grid", None, height=height, width=width, color=fill)
         for r in range(in_h):
             for c in range(in_w):
-                if raw[r][c] == empty:
-                    continue  # off block stays the empty colour the canvas filled
+                if not is_live(raw[r][c]):
+                    continue  # off block stays the fill colour the canvas filled
                 # Live block (r, c): copy the whole input into the macro-block,
-                # painting only its non-empty cells (the empty ones already match
-                # the canvas), so the block is a faithful copy of the input.
+                # painting only the cells that differ from the fill (the rest
+                # already match the canvas), so the block is a faithful copy.
                 for a in range(in_h):
                     for b in range(in_w):
                         color = raw[a][b]
-                        if color == empty:
+                        if color == fill:
                             continue
                         out = apply_DSL("coloring", out,
                                         selection=[(r * in_h + a, c * in_w + b)],

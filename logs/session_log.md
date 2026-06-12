@@ -1,6 +1,93 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 22 — 2026-06-12T16:24 — branch test31
+
+**Diagnosis**: Iters 20 & 21 both named `27f8ce4f` as the "next gap" and both
+framed it as an **8th family triple** (a new `_derive_/_build_/_render_` set) —
+which iter 21 then (rightly) refused to add as near-duplicate accretion, declaring
+reward saturation. That framing was wrong. `27f8ce4f` is **not** a new family: it
+is the *existing* `self_tile` whose mask is keyed differently. Current self_tile
+keys on a single **off** colour `e` (live = `in != e`), which only works for
+two-colour grids (007bbfb7/5b6cbef5). `27f8ce4f` is multi-colour — its live cells
+are one colour (the most-frequent: 8, then 7, then 5 across pairs) but its *off*
+cells are *many* colours, so no single `e` exists. The smallest defensible step is
+therefore a **selection-vocabulary lift** (§2.5-2b), not a family: derive *which*
+of the two dual mask-keyings the examples support, the copy keyed on a selected
+colour. This is the documented root-cause fix (selection material), generalises
+the family instead of accreting onto it, and adds no `_try_*` / DSL primitive.
+
+**Change**:
+- `agent/dsl_expr/__init__.py` — new selector `most_frequent_color(grid)`: the
+  single most-frequent colour, abstaining on a tie (P7, same discipline as
+  `argmax`/`unique`). Selection-vocabulary growth in the blessed `agent/` location
+  (§2.5-1), the §2.5-2b "pick which colour the mask keys on".
+- `agent/active_operators.py` — module-level `_self_tile_onkey(raw_in, raw_out)`
+  (the dual of `_self_tile_empties`: live where `in == most_frequent`, off blocks a
+  solid COMM fill `f`); `_derive_self_tile` now returns a mask **spec**
+  (`{mode:"off",empty:e}` | `{mode:"on",fill:f}` | None), trying off-keying *first*
+  so two-colour grids keep their exact existing reading (no regression), falling to
+  on-keying only when no single off colour exists. `_self_tile` signal exposes the
+  spec; `_render_self_tile` branches on mode, re-selecting the key per input at
+  apply time (value-agnostic — key varies pair-to-pair, never stored). Same
+  value-agnostic `self_tile` rule (empty args) covers both keyings — one rule, a
+  strictly larger family, not one detector per task.
+- `agent/conditions/self_tile.py` — matcher now keys on `spec` not `empty`
+  (on-keyed tasks have no single off colour); docstrings updated for the two
+  mask modes. (F8 companion edit alongside the `active_operators.py` growth.)
+- `tests/test_self_tile.py` (+4) — on-keyed signal/matcher, per-input key
+  re-selection with an *unseen* test key colour, off-keyed two-colour still prefers
+  off-mode (regression pin), and an **exact solve of the real `27f8ce4f`**.
+- `tests/test_ranking_selection.py` (+3) — `most_frequent_color` majority / tie-
+  abstain / empty-grid.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate), easy_a 9/9; `27f8ce4f` =
+identity (multi-colour self-tile unrecognised); rules=3 (covers 6+9+2=17);
+P1=5.67 P2=5.67 P3=0.67 P5=10 P6=2126; suite 155.
+**Probe after** : easy 1/3, easy_a 9/9 (regression intact — self_tile stays
+dormant on every easy/easy_a task; rules unchanged at 3, none persisted). The real
+`27f8ce4f` now solves **exactly** end-to-end via the generalised pipeline, and
+007bbfb7/5b6cbef5 still solve unchanged (off-mode preferred). P1/P2/P3 flat (no
+per-task rule persisted — capability proven in code + 162 tests; persisting a
+covers≤1 rule would *drop* P1/P2, the documented §6.2 covers-dip, so the loop
+persists organically when matching tasks recur). P6 +105 (the on-keyed dual +
+branching). Suite 155→**162**. P4 +26 (probes exercised the episodic writer).
+Checker verdict: **CLEAN**.
+
+**Invariants**: forbidden=**none** — F1 no frozen edit; F2 no new `_try_*`/`_apply_*`
+(generalised existing methods + a selector + a matcher tweak); F3 no DSL primitive
+(still `make_grid`∘`coloring`, `most_frequent_color` is a *selector* under `agent/`,
+not a transformation in `DSL/`); F4 no rule persisted (built rule carries a
+condition anyway); F8 `active_operators.py` grew **and** `agent/conditions/` +
+`agent/dsl_expr/` touched ⇒ satisfied. positives = **P6 capability/coverage
+broadened (general, not accretive); suite +7; P4 +26**.
+
+### Observation criteria (BACKLOG §5) — R6 general mechanism, generalised not accreted
+1. **Works**: derivation/matcher/renderer run error-free; `27f8ce4f` + the two
+   two-colour tasks all solve; declines cleanly (None) on inconsistent / same-shape
+   / solid-upscale grids and on an ambiguous (tied) most-frequent key.
+2. **Module uniformity**: **one** value-agnostic `self_tile` rule covers the family
+   under *both* mask-keyings — recognition and execution share the single
+   `_derive_self_tile` spec; no per-task branch; off-keying preferred so prior
+   members are unchanged; disjoint from `integer_scale` (its solid-block check fails
+   on a copy block) preserved.
+3. **Approaches the answer**: exact output via the two frozen primitives; the mask
+   key (most-frequent colour) and fill are the COMM/DIFF of the examples (P3/P4),
+   re-derived per task and re-selected per input, never stored.
+4. **Search sanity**: deterministic; abstains (no guess) on a tied key and on any
+   task without one consistent masked self-tile.
+
+**Next gap (note for future iter)**: this refutes iter 21's "only an 8th family
+remains" — the real remaining motion is *generalising* existing families via the
+selection vocabulary, not adding families. The latent reward tension iter 21 named
+still holds (P1/P2/P3 don't reward an in-code capability until a matching task
+recurs and a rule persists). A candidate next generalisation: the on-keyed mask
+currently hard-codes the `most_frequent_color` selector — a self-tile whose key is
+the *least*-frequent or a relational property would need the derivation to *choose*
+among a small selector set (the same §2.5-2b lift, one level up). Author a
+`data/ARC_madeup/` task to expose it before building.
+
+---
 ## Iter 21 — 2026-06-12T16:05 — branch test31 — NO-OP (analysis only)
 
 **Iter 21: no defensible step found — analysis only.** Commit no code change
@@ -2646,3 +2733,53 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 4s
 - Log: logs/learn_20260612_160447.log
+
+---
+## Learning Loop -- 2026-06-12 16:10
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_161043.log
+
+---
+## Learning Loop -- 2026-06-12 16:10
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_161045.log
+
+---
+## Learning Loop -- 2026-06-12 16:24
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_162405.log
+
+---
+## Learning Loop -- 2026-06-12 16:24
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_162408.log
+
+---
+## Learning Loop -- 2026-06-12 16:24
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_162422.log

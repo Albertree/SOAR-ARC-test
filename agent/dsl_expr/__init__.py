@@ -169,6 +169,40 @@ def argmin(objs, key):
     return arg_extreme(objs, key, "min")
 
 
+def most_frequent_color(grid):
+    """Selection over a derived colour property: the single colour that occurs
+    most often in `grid`, or None when the grid is empty or the maximum is tied.
+
+    Where `argmax(objects_of(G), size_of)` selects *which object* by comparing
+    objects to each other, this selects *which colour* by comparing the colours'
+    frequencies — the §2.5-2b "pick which colour the mask keys on" the user's raw
+    prose reaches for when a transform acts on "the main colour". It is the
+    value-agnostic selector a masked self-tile uses to decide which input cells
+    are "live" when the mask cannot be read as a single *off* colour (007bbfb7's
+    two-colour grids let "live = non-background" stand in, but a multi-colour grid
+    like 27f8ce4f keys the copy on the most-frequent colour, with the remaining
+    colours all "off"). The comparison (frequency) is the only information source
+    (P4) and the selection its result, not a stored literal (P3).
+
+    `grid` is a raw 2D list/tuple of colour ints. Abstains (returns None) on a
+    tie — "the most frequent colour" is then ambiguous, so a value-agnostic rule
+    must decline rather than pick arbitrarily (the same discipline `argmax`/
+    `unique` apply; determinism over guessing, P7)."""
+    if not grid or not grid[0]:
+        return None
+    counts = {}
+    for row in grid:
+        for cell in row:
+            counts[cell] = counts.get(cell, 0) + 1
+    if not counts:
+        return None
+    top = max(counts.values())
+    winners = [c for c, n in counts.items() if n == top]
+    if len(winners) != 1:
+        return None
+    return winners[0]
+
+
 def cells_of(obj):
     """Property: the object's absolute cell coordinates as a frozenset.
 

@@ -23,13 +23,16 @@ test grid, §2.5-1) and whose block *content* is a copy of the input — a
 self-referential composition new to the system, distinct from the constant-factor
 enlargement of `integer_scale`.
 
-The empty colour `e` is a comparison result (P3/P4), not a stored literal: for
-each pair it is the colour present in the input for which every macro-block obeys
-the self-tile law (`input[r][c]==e ⇒ block is all e`, else `block == input`).
-When one such `e` is the *same* across every example pair (a COMM over the pairs)
-the task is a self-tile; that single colour is re-derived from each task's own
-examples at apply time, so one value-agnostic `self_tile` rule covers the whole
-family rather than one detector per task (§2.5-3).
+The mask that decides which blocks copy is a comparison result (P3/P4), not a
+stored literal. It is keyed on a single colour in one of two dual ways, derived
+from the examples (`_derive_self_tile`): **off-keyed** — the copy happens where
+`input[r][c] != e` for a COMM off colour `e` (two-colour grids like 007bbfb7); or
+**on-keyed** — the copy happens where `input[r][c] == most_frequent_color(input)`,
+re-selected per input, with a COMM solid fill elsewhere (multi-colour grids like
+27f8ce4f, whose off cells are too many colours for a single `e`). Either way the
+mask spec is re-derived from each task's own examples at apply time, so one
+value-agnostic `self_tile` rule covers the whole family — now both keyings of it —
+rather than one detector per task (§2.5-2b/§2.5-3).
 
 This is recognition-vocabulary growth (P5), the dimension CLAUDE.md §6.3
 blesses; it introduces no new way of *doing* a transformation (the tiling is the
@@ -38,9 +41,10 @@ frozen `make_grid` canvas painted by the frozen `coloring` per live block).
 Reads the `self_tile` signal `ExtractPatternOperator` surfaces:
 
     patterns["self_tile"] = {
-        "consistent":     bool,      # one empty colour `e` makes every pair a
-                                     #   H*H × W*W masked self-tile
-        "empty":          int|None,  # the derived empty colour (None if not)
+        "consistent":     bool,       # a consistent mask spec makes every pair a
+                                      #   H*H × W*W masked self-tile
+        "spec":           dict|None,  # the derived mask spec (off/on keyed)
+        "empty":          int|None,   # off-keyed off colour (None for on-keyed)
         "evidence_count": int,
     }
 
@@ -73,4 +77,4 @@ def self_tile(patterns: dict, params: dict | None = None) -> bool:
         return False
     if sig.get("evidence_count", 0) < min_evidence:
         return False
-    return bool(sig.get("consistent") and sig.get("empty") is not None)
+    return bool(sig.get("consistent") and sig.get("spec") is not None)
