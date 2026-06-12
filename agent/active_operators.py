@@ -139,6 +139,66 @@ def _color_map_determines(mapping, grids):
     return all(_grid_colors(g.raw) <= domain for g in grids if g is not None)
 
 
+def _block_upscale_factor(raw_in, raw_out):
+    """The constant integer `(kh, kw)` by which `raw_out` is a pure block-upscale
+    of `raw_in`, or None. `raw_out` must be exactly `raw_in` with every cell
+    expanded into a `kh x kw` block (`out[R][C] == in[R // kh][C // kw]`), with
+    `kh, kw >= 1` and the factor a genuine enlargement (not `(1, 1)`)."""
+    ih = len(raw_in)
+    iw = len(raw_in[0]) if ih else 0
+    oh = len(raw_out)
+    ow = len(raw_out[0]) if oh else 0
+    if ih == 0 or iw == 0 or oh == 0 or ow == 0:
+        return None
+    if oh % ih or ow % iw:
+        return None
+    kh, kw = oh // ih, ow // iw
+    if kh < 1 or kw < 1 or (kh == 1 and kw == 1):
+        return None
+    for R in range(oh):
+        out_row, in_row = raw_out[R], raw_in[R // kh]
+        for C in range(ow):
+            if out_row[C] != in_row[C // kw]:
+                return None
+    return (kh, kw)
+
+
+def _derive_scale_factor(pairs):
+    """Derive the constant integer upscale factor `(kh, kw)` the example pairs
+    agree on, or None when they do not define one (R6 integer-scale family).
+
+    `pairs` is a list of `(g0, g1)` ARCKG grids. The factor is a comparison
+    result (P3/P4): for each pair, the `(out_h / in_h, out_w / in_w)` by which the
+    output is a *pure block upscale* of the input (`_block_upscale_factor`).
+    Returns the `(kh, kw)` iff
+
+      * every pair is a genuine block enlargement (divisible dims, factor != (1,1),
+        each output cell equals its source input cell), and
+      * the factor is the *same* across every pair (the COMM — a single rule can
+        only carry one factor; a per-pair-varying factor is a different family).
+
+    Returns None otherwise. Value-agnostic and symbolic (P7): nothing is stored
+    per task — the renderer re-derives this factor from each task's own examples,
+    so one rule covers the whole family. This single definition is shared by the
+    `integer_scale` producer (signal) and renderer (apply), so the same notion of
+    "is this a constant block upscale" gates recognition and execution (module
+    uniformity, BACKLOG_LOOP.md §5 criterion 2)."""
+    if not pairs:
+        return None
+    factor = None
+    for g0, g1 in pairs:
+        if g0 is None or g1 is None:
+            return None
+        f = _block_upscale_factor(g0.raw, g1.raw)
+        if f is None:
+            return None
+        if factor is None:
+            factor = f
+        elif f != factor:
+            return None
+    return factor
+
+
 def _object_keyed_parts(raw):
     """Select the (body, marker) objects of a two-object grid and read the
     marker's color and the grid background — the argument material an
@@ -443,6 +503,17 @@ class ExtractPatternOperator(Operator):
         # COMM/DIFF, never a stored literal (P3/P4), so one rule covers the family.
         patterns["object_keyed_recolor"] = self._object_keyed_recolor(task)
 
+        # Integer block-upscale signal (R6, BACKLOG_LOOP.md "training escalation").
+        # When every example output is the same input "zoomed in" by one constant
+        # integer factor (kh, kw) — each input cell expanded into a kh×kw block —
+        # the task is a whole-grid enlargement, a class none of the recolor / move
+        # / constant-output families express (they keep the grid's shape or move a
+        # single object). Surfaced here as the `integer_scale` signal the matcher of
+        # the same name keys on; the factor is derived value-agnostically from the
+        # example COMM/DIFF (the shared out/in dimension ratio), never a stored
+        # literal (P3/P4), so one rule covers the whole family.
+        patterns["integer_scale"] = self._integer_scale(task)
+
         wm.s1["patterns"] = patterns
 
     def _object_keyed_recolor(self, task):
@@ -465,6 +536,33 @@ class ExtractPatternOperator(Operator):
         ]
         return {
             "consistent": _object_keyed_recolor_holds(pairs),
+            "evidence_count": len(pairs),
+        }
+
+    def _integer_scale(self, task):
+        """Surface the constant block-upscale signal (R6) the `integer_scale`
+        matcher reads. Delegates the actual derivation to the module-level
+        `_derive_scale_factor` so recognition and rendering share one definition
+        (module uniformity).
+
+        Returns::
+
+            {
+              "consistent":     bool,            # one constant (kh, kw) >= (1,1),
+                                                 #   != (1,1), upscales every pair
+              "factor":         (int, int)|None, # the derived (kh, kw) (None if not)
+              "evidence_count": int,
+            }
+        """
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        factor = _derive_scale_factor(pairs)
+        return {
+            "consistent": factor is not None,
+            "factor": factor,
             "evidence_count": len(pairs),
         }
 
@@ -948,6 +1046,21 @@ class GeneralizeOperator(Operator):
         elif match_condition("color_map", patterns):
             rule = self._build_color_map_rule(patterns)
 
+        # R6: recognise an *integer block-upscale* — every example output is the
+        # input enlarged by one constant factor (kh, kw), each input cell expanded
+        # into a kh×kw block of its own colour. Disjoint from every branch above:
+        # it is the only one whose output is *larger* than its input by a pure
+        # tiling (constant_output keeps shape, the move/recolor families gate on a
+        # single object or a same-shape recolor), so order is immaterial; placed
+        # last so the established families keep their paths. One value-agnostic
+        # `integer_scale` rule covers the whole family — the factor is re-derived
+        # from each task's own examples at apply time, never stored (§2.5-3). This
+        # is the first family to build a *derived-dimension* `make_grid` canvas
+        # (the output bounds are an argument expression over the examples, §2.5-1),
+        # rather than recolor cells in place.
+        elif match_condition("integer_scale", patterns):
+            rule = self._build_integer_scale_rule(patterns)
+
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -1178,6 +1291,37 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- R6: integer block-upscale rule construction --------------------
+
+    def _build_integer_scale_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the integer
+        block-upscale family. The action is the *recipe* `integer_scale` —
+        "enlarge the grid by the constant factor (kh, kw) the examples agree on,
+        expanding every input cell into a kh×kw block" — replayed at apply time as
+        a `make_grid` canvas (its height/width an argument expression `in_h*kh ×
+        in_w*kw`, §2.5-1) painted by `coloring` per source cell. Args are empty:
+        the factor itself is re-derived from each task's example pairs at apply
+        time (the COMM of their out/in dimension ratio, P3/P4), never stored here —
+        so one rule covers the whole family (§2.5-3) and generalises to unseen
+        upscale tasks rather than minting one detector per task."""
+        sig = patterns.get("integer_scale") or {}
+        if not sig.get("consistent") or not sig.get("factor"):
+            return None
+        return {
+            "type": "integer_scale",              # WM dispatch tag for PredictOperator
+            "concept": "upscale_block",
+            "category": "scale",
+            "condition": {
+                "type": "integer_scale",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "integer_scale",
+                "args": {},                       # factor re-derived per task at apply time
+            },
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -1255,6 +1399,8 @@ class PredictOperator(Operator):
             return self._render_color_map(rule, self._task, input_grid)
         if rule_type == "object_keyed_recolor":
             return self._render_object_keyed_recolor(rule, self._task, input_grid)
+        if rule_type == "integer_scale":
+            return self._render_integer_scale(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1648,6 +1794,64 @@ class PredictOperator(Operator):
                         color=marker_color)
         out = apply_DSL("coloring", out, selection=sorted(marker_cells),
                         color=background)
+        return out
+
+    def _render_integer_scale(self, rule, task, input_grid):
+        """Render the R6 `integer_scale` action: enlarge the test grid by the
+        constant factor `(kh, kw)` the examples agree on, expanding every input
+        cell into a `kh x kw` block of its own colour, via the two frozen
+        primitives (`make_grid` ∘ `coloring`).
+
+        The factor is re-derived value-agnostically from the example pairs
+        (`_derive_scale_factor`, the *same* definition the `integer_scale`
+        producer/matcher use, P5 module uniformity) — never read from the test
+        pair's absent output (P5) and never stored in the rule. The output canvas
+        is `make_grid(in_h*kh, in_w*kw, background)`: its dimensions are an
+        *argument expression* over the examples (the derived factor times the test
+        input's own size, §2.5-1), not copied from any task. Each input cell whose
+        colour differs from the background is then painted as its `kh x kw` block
+        by `coloring`; the background fills the rest, so the strokes are minimised.
+
+        Declines (returns None) — never raises — when the examples do not define a
+        consistent block-upscale factor (varying factors, non-divisible or
+        same-shape dimensions). This matters because a *stored* integer_scale rule
+        (empty args ⇒ runtime-replayable) is tried against every task on the fast
+        path: it must cleanly decline on a non-scale task, not crash (the
+        speculative-apply discipline, INVARIANTS / iter 16)."""
+        if task is None or input_grid is None:
+            return None
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        factor = _derive_scale_factor(pairs)
+        if factor is None:
+            return None
+        kh, kw = factor
+
+        raw = input_grid.raw
+        in_h = len(raw)
+        in_w = len(raw[0]) if in_h else 0
+        if in_h == 0 or in_w == 0:
+            return None
+        height, width = in_h * kh, in_w * kw
+
+        # Background = most frequent input colour → fewest `coloring` strokes (the
+        # block of a background cell is already filled by make_grid).
+        flat = [cell for row in raw for cell in row]
+        background = Counter(flat).most_common(1)[0][0]
+
+        out = apply_DSL("make_grid", None, height=height, width=width,
+                        color=background)
+        for r in range(in_h):
+            for c in range(in_w):
+                color = raw[r][c]
+                if color == background:
+                    continue
+                block = [(r * kh + dr, c * kw + dc)
+                         for dr in range(kh) for dc in range(kw)]
+                out = apply_DSL("coloring", out, selection=block, color=color)
         return out
 
 

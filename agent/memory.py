@@ -392,6 +392,7 @@ _DSL_TO_DISPATCH = {
     "recolor_extreme": "recolor_extreme",
     "color_map": "color_map",
     "object_keyed_recolor": "object_keyed_recolor",
+    "integer_scale": "integer_scale",
 }
 
 
