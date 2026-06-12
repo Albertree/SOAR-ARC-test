@@ -69,6 +69,21 @@ def render_solid_square(side: int, color: int) -> list:
     return apply_DSL("make_grid", height=side, width=side, color=color)
 
 
+def render_solid_rect(height: int, width: int, color: int) -> list:
+    """A ``height × width`` canvas filled with ``color`` — the non-square sibling
+    of :func:`render_solid_square`.
+
+    Same frozen-primitive bottom-out: a uniform fill is a *single* `make_grid`
+    call (the `coloring` half elided, no non-background cell). The whole content
+    lives in the *argument* — here ``(height, width)`` is `bbox_extent(unique_object
+    (in))`, an extent *pair* read off the test object (P5) — not in any new
+    transformation (§2.5-1, F3). Returns an empty canvas when either dimension < 1.
+    """
+    if height < 1 or width < 1:
+        return apply_DSL("make_grid", height=0, width=0, color=color)
+    return apply_DSL("make_grid", height=height, width=width, color=color)
+
+
 def render_object_at(height: int, width: int, bg: int,
                      pixels: list, target: tuple) -> list:
     """Place an object (its `pixels` = list of (row, col, color)) on a fresh

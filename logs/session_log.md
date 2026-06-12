@@ -1,6 +1,95 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 16 — 2026-06-12 — branch test32
+
+**Diagnosis**: madeup probe was 12/12, but every output the size-grid family sizes
+is a **square** — one scalar reading reused for both axes. The thrice-deferred
+"Next gap" (iters 13/14/15) is a *non-square* output whose height and width are
+read independently off the object (h=bbox_height, w=bbox_width). The full version
+needs the AU `unify` to range over an independent (h_prop, w_prop) pair — a
+two-variable cross-product lift. PROMPT.md §2 says do the *smaller half* first: a
+single named **rectangular reading** (`bbox_extent` → `(bbox_height, bbox_width)`)
+generalizes the representation from "scalar property → square" to "dimension
+reading → (h,w)" (scalar readings = the square special case), isolating iter15's
+exact example *without* the cross-product lift. Authored two non-square tasks,
+confirmed 12/14 INCORRECT→identity before the fix.
+
+**Change**:
+- `data/ARC_madeup/madeup_bbox_extent_to_rect.json` + `..._b.json` (new,
+  F1-exempt) — single-object tasks whose output is a solid **rectangle** sized to
+  the object's bbox extent `(h, w)` with `h ≠ w` in every pair (L-shaped objects,
+  varied orientation/size/colour/position), so no scalar square reading can match
+  (the analysis re-imposes squareness per scalar path). Two tasks (5×5 / 8×8
+  canvases, both orientations) so `bbox_extent` is value-agnostic (covers 2), not
+  a per-task literal (§2.5-3).
+- `agent/dsl_expr/selection.py` — `bbox_width_of` + `bbox_extent_of(obj)→(h,w)` +
+  new `RECT_DIM_VOCAB` (a *rectangular* dimension reading yielding both axes at
+  once). `analyze_object_size_grid` now (a) drops the global square requirement
+  from `solid_output_all` (a per-pair `out_square` guard is re-imposed on each
+  scalar path, so square tasks classify byte-identically) and (b) after the three
+  square subjects fail, tries the rect reading: the named reading whose `(h,w)`
+  reproduces `(out_h, out_w)` in every pair wins, colour grounding on the object's
+  COMM. §2.5-1 *argument*-vocabulary growth — the `make_grid` dimension argument
+  can now be an extent *pair* `bbox_extent(unique_object(in))`; the transformation
+  stays the frozen `make_grid`.
+- `agent/dsl_expr/render.py` — `render_solid_rect(h, w, color)`, the non-square
+  sibling of `render_solid_square`; still a single `make_grid` fill (the
+  `coloring` half elided), the content all in the extent-pair argument (§2.5-1).
+- `agent/active_operators.py` — `_place_size_grid_grids` dispatches a `rect_prop`
+  branch: read the test object's bbox extent + colour, render an `h × w` rect. The
+  scalar/grid/selected branches are unchanged. F8 satisfied via the
+  agent/conditions/ companion edit.
+- `agent/conditions/object_size_grid.py` — widened the matcher's contract from
+  "solid **square**" to "solid **fill**" (the analysis re-imposes squareness per
+  scalar reading; only `bbox_extent` admits h≠w, so widening does not bleed into
+  the scalar readings or the move families). Functional admission of the rect case
+  + F8 companion edit.
+- `program/anti_unification.py` / `agent/memory.py` — **unchanged**: `bbox_extent`
+  is one more *string* value the existing `dim_property` lift variable ranges over
+  (the §2.5-2b "which subject / how many dimensions" axis), so it folds into
+  rule_001 via the existing string-keyed `object_size_grid` family — exactly the
+  iter14 `object_count` pattern. The fully-general two-independent-properties
+  cross-product lift (which *does* need a multi-variable `unify`) remains the next,
+  larger half.
+- `tests/test_rect_grid.py` (new, 10 tests) — bbox_extent reads the pair; analysis
+  learns `bbox_extent` on both tasks; square tasks keep their scalar reading
+  (object_size/bbox_height/object_count, no perturbation); inert on a move task;
+  matcher fires/abstains; render shape (incl. degenerate dims → empty, no crash);
+  end-to-end render equals the expected non-square rectangle.
+
+**Probe before**: easy_a 9/9; madeup 12/12 (rect tasks did not exist → INCORRECT
+  identity once authored); rules=3 (place_object covers 11, size_to_grid covers 8
+  [object_size+bbox_height+object_count, AU-traced], copy_common covers 2); 21
+  tasks / 3 rules; P1=7.0, P2=7.0, P3=0.67.
+**Probe after** : easy_a 9/9 (regression guard held); madeup 14/14; rules=3
+  (place_object covers 11, **size_to_grid covers 10 — object_size+bbox_height+
+  object_count+bbox_extent, the dimension variable now ranging over a non-square
+  extent-pair reading too**, copy_common covers 2); 23 tasks / 3 rules; P1=7.67,
+  P2=7.67, P3=0.67. 83/83 tests pass.
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN). F1 data edits under
+  exempt ARC_madeup/; F2 no new `_try_*`/`_apply_*`; F3 no new DSL primitive (the
+  rect reading is LHS argument vocabulary under agent/, the action is the frozen
+  `make_grid`); F8 satisfied (agent/conditions/ companion edit). positives:
+  **P1 +0.67, P2 +0.67** — covers rises while rule count holds, the §2.5-4
+  definition of real progress (a non-square dimension *reading* absorbed into the
+  one abstraction, not a fourth standalone rule). P3 flat because `bbox_extent`
+  folded into the already-traced rule_001 rather than creating a new traced rule —
+  honest: no *new* unification episode, the existing abstraction's reach widened.
+
+**Next gap (note for future iter)**: the size-grid family now sizes a square (scalar
+  reading) *or* a rectangle (the `bbox_extent` pair reading), but the rectangle is
+  still **one named reading** — both axes come from the same object's bbox. The
+  genuinely uncovered axis is the *fully independent* non-square output where height
+  comes from property A and width from an *unrelated* property B (e.g.
+  h=object_count, w=bbox_width), a cross-product the single named reading cannot
+  express. That needs the AU `unify` to record **all** variables, not just the
+  first (`program/anti_unification.py:unify` currently keeps only
+  `next(iter(variables))`) — the first place the lift machinery itself, not just the
+  argument vocabulary, must grow. This iter did the smaller half; that is the larger.
+
+---
 ## Iter 15 — 2026-06-12 — branch test32
 
 **Diagnosis**: madeup probe was 10/10, but every subject the size-grid family
@@ -1581,3 +1670,43 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_205451.log
+
+---
+## Learning Loop -- 2026-06-12 20:56
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_205652.log
+
+---
+## Learning Loop -- 2026-06-12 20:57
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_205656.log
+
+---
+## Learning Loop -- 2026-06-12 21:06
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_210609.log
+
+---
+## Learning Loop -- 2026-06-12 21:06
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_210614.log

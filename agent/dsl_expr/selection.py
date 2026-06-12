@@ -81,6 +81,32 @@ def bbox_height_of(obj: dict) -> int:
     return extent_of(obj)[0]
 
 
+def bbox_width_of(obj: dict) -> int:
+    """The object's bounding-box width in cells — the column analogue of
+    `bbox_height_of`. Named for symmetry / readability; `bbox_extent_of` reads
+    both at once for the non-square (`h × w`) sizing reading."""
+    return extent_of(obj)[1]
+
+
+def bbox_extent_of(obj: dict):
+    """The object's bounding box as a ``(height, width)`` *pair* — a single named
+    dimension *reading* that yields two canvas dimensions at once (`RECT_DIM_VOCAB`).
+
+    Where the scalar properties (`size_of`, `bbox_height_of`) each size a *square*
+    (one value reused for both axes), this is the smallest step into a *non-square*
+    output: a rectangle whose height is the object's bbox height and whose width is
+    its bbox width (BACKLOG_LOOP §2.1 "grid size = f(object property)", the
+    h=bbox_height / w=bbox_width case the size-grid family could not yet express).
+    It composes the two frozen primitives identically (a uniform `make_grid` fill);
+    only the *argument* — now an extent pair instead of a scalar — is richer
+    (§2.5-1, F3-exempt). Treating the pair as **one** named reading lets it fold
+    into the existing `size_to_grid` abstraction as one more value its dimension
+    variable ranges over (like `object_count`), so covers rises while the rule
+    count holds — without the fully-general two-independent-properties cross-product
+    lift, which remains the next, larger half (§2 "do the smaller half first")."""
+    return extent_of(obj)
+
+
 # ---------------------------------------------------------------------------
 # relation vocabulary: grid-relative position (a corner of the canvas)
 # ---------------------------------------------------------------------------
@@ -410,6 +436,24 @@ DIM_PROPERTY_VOCAB = {
 
 
 # ---------------------------------------------------------------------------
+# property vocabulary: a *rectangular* dimension reading (h, w) off one object
+# ---------------------------------------------------------------------------
+#
+# The scalar `DIM_PROPERTY_VOCAB` above each size a *square* — one value reused
+# for both canvas axes (`out_h == out_w`). The §2.1 concept also admits a
+# *non-square* output whose height and width are read independently off the
+# object. The smallest step into that is a single named reading that returns the
+# whole ``(height, width)`` *pair* at once (`bbox_extent`), so the rectangle is
+# named by one expression rather than two independent ones — keeping it a single
+# lifted value that folds into the existing `size_to_grid` abstraction (like
+# `object_count`), not a two-variable cross-product lift (the larger, deferred
+# half). Each function takes one object and returns ``(h, w)``.
+RECT_DIM_VOCAB = {
+    "bbox_extent": bbox_extent_of,
+}
+
+
+# ---------------------------------------------------------------------------
 # property vocabulary: scalar *grid-level* features that can size a canvas
 # ---------------------------------------------------------------------------
 #
@@ -513,8 +557,15 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
         })
 
     single_all = bool(per_pair) and all(p["single_object"] for p in per_pair)
-    solid_all = bool(per_pair) and all(
-        p["out_solid"] and p["out_square"] for p in per_pair)
+    # A *solid* (single-colour) fill in every pair — the degenerate make_grid-only
+    # render. The output need no longer be *square*: a scalar dimension reading
+    # sizes a square (guarded per-pair by `out_square` below), while the
+    # rectangular reading (`RECT_DIM_VOCAB`) sizes an `h × w` rectangle. Dropping
+    # the square requirement here only *admits* the rectangle case; the scalar
+    # paths re-impose `out_square` so an existing square task is classified exactly
+    # as before.
+    solid_all = bool(per_pair) and all(p["out_solid"] for p in per_pair)
+    square_all = bool(per_pair) and all(p["out_square"] for p in per_pair)
     # The subject-COMM colour grounding (object-set COMM, collapsing to the single
     # object's colour). Holds for the single-object and the multi-object (count)
     # cases; for a single object subj_color == obj_color, so single-object
@@ -545,42 +596,65 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
     # its plain object property (count there is always 1, the selector is never
     # reached); the selector path fires only when a single subject does not
     # account for the size, i.e. genuinely-multi-object tasks.
+    # The first three subjects size a *square* (so they additionally require the
+    # output to be square — `square_all` / the per-pair `out_square` guard). If
+    # none accounts for the size, a fourth reading is tried: a *rectangular*
+    # reading off the single object (`RECT_DIM_VOCAB`), whose value is the whole
+    # ``(h, w)`` pair and which therefore admits a non-square output. It is tried
+    # last so a square task keeps resolving to its scalar property (§2.5-2b "which
+    # subject feeds the dimension argument", here extended to "and how many
+    # dimensions it yields").
     dim_property = None
     selector = None
     color_all = False
     if solid_all:
-        for name, fn in DIM_PROPERTY_VOCAB.items():
-            if all(
-                p["obj"] is not None and fn(p["obj"]) == p["out_h"]
-                for p in per_pair
-            ):
-                dim_property = name
-                color_all = subj_color_all
-                break
-        if dim_property is None:
-            for name, fn in GRID_DIM_PROPERTY_VOCAB.items():
-                if all(fn(p["objs"]) == p["out_h"] for p in per_pair):
+        if square_all:
+            for name, fn in DIM_PROPERTY_VOCAB.items():
+                if all(
+                    p["obj"] is not None and fn(p["obj"]) == p["out_h"]
+                    for p in per_pair
+                ):
                     dim_property = name
                     color_all = subj_color_all
                     break
-        if dim_property is None:
-            for sel_name, sel_fn in SELECTOR_VOCAB.items():
-                for prop_name, prop_fn in DIM_PROPERTY_VOCAB.items():
-                    ok = True
-                    for p in per_pair:
-                        chosen = sel_fn(p["objs"], p["grid"])
-                        if (chosen is None
-                                or color_of(chosen) is None
-                                or prop_fn(chosen) != p["out_h"]
-                                or color_of(chosen) != p["out_color"]):
-                            ok = False
-                            break
-                    if ok:
-                        dim_property = prop_name
-                        selector = sel_name
-                        color_all = True  # grounded on the selected object's colour
+            if dim_property is None:
+                for name, fn in GRID_DIM_PROPERTY_VOCAB.items():
+                    if all(fn(p["objs"]) == p["out_h"] for p in per_pair):
+                        dim_property = name
+                        color_all = subj_color_all
                         break
-                if selector is not None:
+            if dim_property is None:
+                for sel_name, sel_fn in SELECTOR_VOCAB.items():
+                    for prop_name, prop_fn in DIM_PROPERTY_VOCAB.items():
+                        ok = True
+                        for p in per_pair:
+                            chosen = sel_fn(p["objs"], p["grid"])
+                            if (chosen is None
+                                    or color_of(chosen) is None
+                                    or prop_fn(chosen) != p["out_h"]
+                                    or color_of(chosen) != p["out_color"]):
+                                ok = False
+                                break
+                        if ok:
+                            dim_property = prop_name
+                            selector = sel_name
+                            color_all = True  # off the selected object's colour
+                            break
+                    if selector is not None:
+                        break
+        if dim_property is None:
+            # Rectangular reading: the canvas is the object's bbox extent
+            # ``(h, w)``. Reproduces a *non-square* output (h ≠ w) that no scalar
+            # square reading can. Colour grounds on the single object's colour
+            # (the subject COMM), like the per-object scalar path.
+            for name, fn in RECT_DIM_VOCAB.items():
+                if all(
+                    p["obj"] is not None
+                    and tuple(fn(p["obj"])) == (p["out_h"], p["out_w"])
+                    for p in per_pair
+                ):
+                    dim_property = name
+                    color_all = subj_color_all
                     break
 
     return {

@@ -4,18 +4,23 @@ an object's property" concept (BACKLOG_LOOP.md R1, madeup phase).
 
 The orthogonal sibling of the object-move matchers. Those all *keep* the object's
 shape and key on *where* it lands (constant target/offset/corner/resize). This
-one fires for the converse axis: the output is a **solid square** whose side is a
-*scalar property of an input object* (its cell-count) and whose colour is the
-object's colour. The learned argument is the *property expression* feeding the
-frozen `make_grid` dimension (`size_of(unique_object(in))`), not a literal — so
-the rule stays value-agnostic in the object's colour, size, shape and position.
+one fires for the converse axis: the output is a **solid fill** whose dimensions
+are a *property of an input object* and whose colour is the object's colour. The
+learned argument is the *property expression* feeding the frozen `make_grid`
+dimension(s) — a scalar reading sizes a *square* (`size_of(unique_object(in))`),
+the rectangular reading sizes an `h × w` *rectangle* (`bbox_extent(unique_object
+(in))`, the §2.1 non-square case) — not a literal, so the rule stays
+value-agnostic in the object's colour, size, shape and position.
 
 It abstains unless the analysis (agent/dsl_expr/selection.analyze_object_size_grid)
-found a consistent dimension property across every pair, the output is a solid
-square in every pair, and the output colour matches the object's colour — keeping
-it disjoint from the move readings (whose outputs are not solid fills). Adding a
-matcher grows the *recognition* vocabulary only (P5); it introduces no new
-transformation (F3-exempt).
+found a consistent dimension reading across every pair, the output is a solid
+fill in every pair, and the output colour matches the object's colour — keeping
+it disjoint from the move readings (whose outputs are not solid fills). The output
+need no longer be *square*: the analysis re-imposes squareness per scalar reading
+and only the rectangular `bbox_extent` reading admits `h ≠ w`, so widening the
+matcher to solid (not solid-square) fills does not bleed into the scalar readings.
+Adding a matcher grows the *recognition* vocabulary only (P5); it introduces no
+new transformation (F3-exempt).
 """
 
 from agent.conditions import register

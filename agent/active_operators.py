@@ -16,6 +16,7 @@ from agent.conditions import match as match_condition
 from agent.dsl_expr.render import (
     render_grid_via_primitives,
     render_object_at,
+    render_solid_rect,
     render_solid_square,
 )
 from agent.dsl_expr.selection import (
@@ -30,6 +31,7 @@ from agent.dsl_expr.selection import (
     unique_object,
     DIM_PROPERTY_VOCAB,
     GRID_DIM_PROPERTY_VOCAB,
+    RECT_DIM_VOCAB,
     SELECTOR_VOCAB,
 )
 
@@ -1147,7 +1149,8 @@ class PredictOperator(Operator):
         selector_name = sz.get("selector")
         obj_prop = DIM_PROPERTY_VOCAB.get(prop_name)
         grid_prop = GRID_DIM_PROPERTY_VOCAB.get(prop_name)
-        if obj_prop is None and grid_prop is None:
+        rect_prop = RECT_DIM_VOCAB.get(prop_name)
+        if obj_prop is None and grid_prop is None and rect_prop is None:
             return {}
         select_fn = SELECTOR_VOCAB.get(selector_name) if selector_name else None
         if selector_name is not None and select_fn is None:
@@ -1157,6 +1160,20 @@ class PredictOperator(Operator):
         for i, test_pair in enumerate(task.test_pairs):
             g0 = test_pair.input_grid
             if g0 is None:
+                continue
+            if rect_prop is not None:
+                # Rectangular reading (§2.1 non-square): the canvas is the single
+                # test object's bbox extent ``(h, w)``, colour its own colour —
+                # value-agnostic in the object's colour, size, shape and position
+                # (P5). A single make_grid fill, no square assumption.
+                obj = unique_object(g0.raw)
+                if obj is None:
+                    continue
+                color = color_of(obj)
+                h, w = rect_prop(obj)
+                if color is None or h < 1 or w < 1:
+                    continue
+                grids[i] = render_solid_rect(h, w, color)
                 continue
             if select_fn is not None:
                 # Selected-object subject (§2.5-2b): among several test objects,
