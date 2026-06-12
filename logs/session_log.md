@@ -920,3 +920,94 @@ schema, so the abstraction is learned but not reused across runs — that is R5.
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260612_130004.log
+
+---
+## Learning Loop -- 2026-06-12 13:02
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_130202.log
+
+---
+## Learning Loop -- 2026-06-12 13:02
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_130204.log
+
+---
+## Learning Loop -- 2026-06-12 13:08
+
+- Split: None, Tasks: 16
+- Correct: 6 / 16 (37.5%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260612_130846.log
+
+---
+## Iter 9 — 2026-06-12 — branch test31
+
+**Diagnosis**: easy_a is mastered (R1 cleared iter 8) and R0–R3 mechanisms work
+(rule_001 constant_output covers 6; rule_002 place_object covers 7, AU-traced).
+The easy probe (seed42 → easy0001/0002/0003) sits at 1/3 not from a capability
+gap but because **easy0002/0003/0004 are ill-posed**: their two training pairs
+have *identical inputs mapping to different outputs* (e.g. easy0002:
+2@(1,1)→2@(5,5) and 2@(1,1)→1@(5,5)) — non-functional, so the agent correctly
+abstains (identity) per P3 (reasons over values, no DIFF can justify a unique
+answer). The graduation gate is therefore mis-calibrated against contradictory
+probe tasks, not blocked by a missing capability. The *functional* failing
+members (easy0007/0008/0010/0011/0015/0016) all need the target cell / output
+colour derived as a **relation on the moving object's property** (easy0008:
+target == (2·colour, 2·colour)) — variable-origin derivation, which is
+arbor-open-questions **Q-B3/Q-B4** + the §2.5-2b "AU product is incomplete until
+its variable is filled" gap. Per BACKLOG_LOOP §5 that rung is **held and
+surfaced, not invented**.
+
+The smallest defensible step that moves a positive signal *without* touching the
+open question or hand-coding a detector: harvest the genuine generalization the
+existing place_object abstraction already has over the easy slice, and lock the
+intended behaviour with tests.
+
+**Change**:
+- `procedural_memory/rule_002.json` — running the full easy slice
+  (`run_learn.py --task-dir data/ARC_easy`) grew `covers` from the 7 easy_a
+  movers to **+easy0006, +easy0014** (the easy-slice members whose rule is
+  "relocate single object onto a constant cell, colour preserved" — the same
+  fixed-target filling). Rule count stays 2; one general rule absorbs more of
+  the family by subsumption (§2.5-4 litmus: covers↑ with rule count flat =
+  generalization, not accretion). No new rule file, no new detector.
+- `tests/test_easy_slice_family.py` (new, 6 tests) — pins three facts:
+  (1) place_object solves easy0006/0014 the intended way (generalization
+  guard); (2) the agent abstains (identity, no fabricated rule) on the
+  contradictory easy0002/0003/0004 (P3 guard — prevents a future iter from
+  "solving" them by guessing); (3) the property-relation targets
+  easy0007/0008 abstain pending the variable-origin open question (locks the
+  held rung against a premature score-chasing fix).
+
+**Probe before**: easy 1/3, easy_a 9/9; rules=2 (covers 6+7); P1=6.5, P2=6.5, P5=5
+**Probe after** : easy 1/3 (unchanged — 0002/0003 ill-posed, correct abstain;
+no regression), easy_a 9/9; rules=2 (covers 6+9); P1=**7.5**, P2=**7.5**, P5=5
+
+**Invariants**: forbidden=none (active_operators.py untouched → F8 N/A; no new
+`_try_*`/`_apply_*`; DSL unchanged; no frozen-file edit). positives = **P1 +1.0,
+P2 +1.0**; P3/P4/P5/P6 flat → verdict CLEAN.
+
+**Next gap (note for future iter)**: the wall is now explicit and singular —
+**variable-origin derivation** (target/colour as a relation on an object
+property). It is needed by every remaining functional easy task (0007/0008/0010/
+0011/0015/0016) *and* is what would complete the AU product rule_002's `?v1`
+into a self-applying abstraction (the R5 fast-path can't reuse rule_002 directly
+because `target_mode="?v1"` is unresolved — §2.5-2b). But it is **open-question
+territory (Q-B3/Q-B4)**: how to *invent/select* the derive-expression for a
+variable is the user's explicit "(아직 모르겠어)". Per BACKLOG_LOOP §5 the next
+iter should either (a) make a *design proposal* for variable-origin resolution
+and surface it for the user, or (b) route to a different rung — R4 (2nd-order
+edge-of-edge compare) via an authored `data/ARC_madeup/` task — rather than
+inventing a 2-point relation fitter that would overfit.

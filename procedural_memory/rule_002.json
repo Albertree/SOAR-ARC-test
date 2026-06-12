@@ -21,7 +21,9 @@
     "easy000f",
     "easy000h",
     "easy000g",
-    "easy000i"
+    "easy000i",
+    "easy0006",
+    "easy0014"
   ],
   "source_task": "easy000e",
   "anti_unification_trace": "episodic_memory/easy000e/anti_unification/au_001.json",
