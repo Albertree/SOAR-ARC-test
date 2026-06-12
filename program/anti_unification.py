@@ -394,6 +394,52 @@ def _color_remap_synth(canon):
     }
 
 
+# ---- canvas_fill family (value-agnostic solid-canvas fill — R3 on the colour
+#      reading) ----------------------------------------------------------------
+#
+# `canvas_fill` fills a same-size solid canvas with a *colour reading* of the
+# input (`COLOR_READING_VOCAB`: `most_frequent_color` for the dominant-fill family
+# 5582e5ca, `least_frequent_color` for the minority/foreground-fill family). Like
+# `color_remap`, the family is value-agnostic at predict — PredictOperator
+# recomputes the reading off each test input (`_canvas_fill_grids`) and ignores
+# the literal `fill_reading` carried in action.args. So that literal is pure
+# self-description and, left un-lifted, every distinct reading accretes its own
+# `covers>=1` rule (the 168-rule shape, §2.5-3). The concrete members share one
+# dsl (`fill_canvas`) and differ only in the `fill_reading` argument — exactly the
+# object-expression difference §2.5-2 says anti-unification should abstract — so
+# the lift collapses them into one `fill_canvas` rule whose `fill_reading` is
+# `?v0`, ranging over the readings, with an anti_unification_trace (P3 rises; rule
+# count falls while covers rises, §2.5-4). The lift key is the reading name string
+# (sortable / hashable, as the fillers list and `sorted()` in unify require).
+
+def _canvas_fill_program(rule):
+    act = rule.get("action", {})
+    if act.get("dsl") != "fill_canvas":
+        return None
+    args = act.get("args", {})
+    if "fill_readings" in args:          # already an abstract lift, not a source
+        return None
+    reading = args.get("fill_reading")
+    if not isinstance(reading, str) or reading.startswith("?"):
+        return None                      # variable / missing — not a concrete source
+    return [{"dsl": "fill_canvas", "args": {"fill_reading": reading}}]
+
+
+def _canvas_fill_key(rule):
+    prog = _canvas_fill_program(rule)
+    return prog[0]["args"]["fill_reading"] if prog is not None else None
+
+
+def _canvas_fill_synth(reading):
+    return {
+        "condition": {"type": "canvas_fill",
+                      "params": {"min_evidence": 2}, "min_evidence": 2},
+        "action": {"dsl": "fill_canvas", "args": {"fill_reading": reading}},
+        "concept": "fill_canvas_with_color_reading",
+        "category": "canvas_fill",
+    }
+
+
 #: The lift families, tried in order. ``object_move`` lifts the four placement
 #: readings into ``place_object``; ``object_size_grid`` lifts the canvas-sizing
 #: *dimension property* (object_size, bbox_height, …) into a single
@@ -431,6 +477,16 @@ LIFT_FAMILIES = [
         "program": _color_remap_program,
         "key": _color_remap_key,
         "synth": _color_remap_synth,
+    },
+    {
+        "name": "canvas_fill",
+        "category": "canvas_fill",
+        "condition_type": "canvas_fill",
+        "concept": "fill_canvas_with_color_reading",
+        "list_key": "fill_readings",
+        "program": _canvas_fill_program,
+        "key": _canvas_fill_key,
+        "synth": _canvas_fill_synth,
     },
 ]
 

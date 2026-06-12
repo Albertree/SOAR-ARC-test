@@ -610,7 +610,27 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_select_recolor_rule(patterns)
 
-        # Strategy 1 (R1 / §2.5-2b ranking selector): rank-based sequential
+        # Strategy 1 (R1 / §2.5-2b colour reading): solid-canvas colour fill. If
+        # the `canvas_fill` matcher fires (every example output is a solid canvas
+        # at the input's own size whose colour a learned grid colour-reading
+        # reproduces), emit a canonical {condition, action} rule carrying the
+        # reading name — the colour analogue of the object-property canvas sizing
+        # (Strategy 0g). The reading is recomputed at predict time off each test
+        # input, so the rule is value-agnostic in the actual fill colour. Checked
+        # *before* `recolor_rank`: a uniform single-colour output is more
+        # specifically a *fill* than a rank-recolor, and on a background-dominant
+        # grid `recolor_rank` would otherwise misclaim it (reading the lone
+        # background region as a ranked group and painting a literal start colour).
+        # `canvas_fill` only matches when *every* output is a same-size solid
+        # colour, which a genuine rank-recolor (multi-colour output) never is, so
+        # taking precedence here cannot steal a task `recolor_rank` solves
+        # correctly. Covers the minority-fill family (madeup_fill_foreground_color,
+        # least_frequent_color) and the dominant-fill family (5582e5ca,
+        # most_frequent_color), lifted into one rule by R3 anti-unification.
+        if rule is None:
+            rule = self._canvas_fill_rule(patterns)
+
+        # Strategy 2 (R1 / §2.5-2b ranking selector): rank-based sequential
         # recolor. If the `recolor_rank` matcher fires (changed groups repainted a
         # contiguous colour run ordered by a consistent position key), emit a
         # canonical {condition, action} rule carrying the ordering key — the
@@ -618,19 +638,6 @@ class GeneralizeOperator(Operator):
         # `_try_recolor_sequential` producer (dropped this iter, §5.1-allowed).
         if rule is None:
             rule = self._recolor_rank_rule(patterns)
-
-        # Strategy 2 (R1 / §2.5-2b colour reading): solid-canvas colour fill. If
-        # the `canvas_fill` matcher fires (every example output is a solid canvas
-        # at the input's own size whose colour a learned grid colour-reading
-        # reproduces), emit a canonical {condition, action} rule carrying the
-        # reading name — the colour analogue of the object-property canvas sizing
-        # (Strategy 0g). The reading is recomputed at predict time off each test
-        # input, so the rule is value-agnostic in the actual fill colour. Checked
-        # *after* the recolor families so any task an earlier family already
-        # explains keeps its reading; this fires only on the otherwise-unsolved
-        # "fill with the dominant colour" family (5582e5ca).
-        if rule is None:
-            rule = self._canvas_fill_rule(patterns)
 
         # Fallback: identity (copy input as output)
         if rule is None:

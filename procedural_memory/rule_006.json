@@ -7,19 +7,24 @@
     "params": {
       "min_evidence": 2
     },
-    "min_evidence": 3
+    "min_evidence": 2
   },
   "action": {
     "dsl": "fill_canvas",
     "args": {
-      "fill_reading": "most_frequent_color"
+      "fill_reading": "?v0",
+      "fill_readings": [
+        "least_frequent_color",
+        "most_frequent_color"
+      ]
     }
   },
   "covers": [
-    "5582e5ca"
+    "5582e5ca",
+    "madeup_fill_foreground_color"
   ],
   "source_task": "5582e5ca",
-  "anti_unification_trace": null,
+  "anti_unification_trace": "episodic_memory\\5582e5ca\\anti_unification\\fill_canvas_lift.json",
   "created_at": "2026-06-12T22:55:05.629408",
   "times_reused": 0
 }

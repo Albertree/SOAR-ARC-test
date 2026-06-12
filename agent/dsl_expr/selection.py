@@ -830,13 +830,32 @@ def most_frequent_color(grid: list) -> int:
     return background_of(grid)
 
 
+def least_frequent_color(grid: list) -> int:
+    """The grid's least-frequent colour (ties → smallest) — the minority /
+    foreground reading, the converse of `most_frequent_color`. On a grid with a
+    single small object on a dominant background this is exactly the object's
+    colour; it is the colour argument a transformation needs to say "fill with the
+    odd-one-out colour" without a literal. Like its converse it lives under
+    agent/ (LHS argument vocabulary), introduces no transformation (F3-exempt),
+    and a task whose fill is the minority colour selects it because
+    `most_frequent_color` (tried first) reproduces only the background."""
+    counts = Counter(cell for row in grid for cell in row)
+    if not counts:
+        return 0
+    fewest = min(counts.values())
+    return min(c for c, n in counts.items() if n == fewest)
+
+
 #: name -> fn(grid) -> int. A named *colour reading* off a whole grid, usable
 #: wherever a transformation argument is a colour. Tried in this deterministic
 #: order when *learning* which reading a task uses (the first whose value
-#: reproduces the output colour in every pair wins). Adding one grows the LHS
-#: argument vocabulary; it introduces no new transformation (F3-exempt).
+#: reproduces the output colour in every pair wins) — so `most_frequent_color`
+#: keeps priority and the dominant-fill family (5582e5ca) is unchanged; the
+#: minority-fill family resolves to `least_frequent_color`. Adding one grows the
+#: LHS argument vocabulary; it introduces no new transformation (F3-exempt).
 COLOR_READING_VOCAB = {
     "most_frequent_color": most_frequent_color,
+    "least_frequent_color": least_frequent_color,
 }
 
 

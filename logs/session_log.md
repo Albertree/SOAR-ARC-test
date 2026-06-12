@@ -1,6 +1,81 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 32 — 2026-06-13T01:08 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 18/18 hold. Iters 29/30/31
+each *added a born-general family*, which raised P1/P2 but **dropped P3** (every
+born-general rule is `au_trace=null`) — the family-accretion shape the §2.5-4 litmus
+warns against, edging toward spinning. Instead I took the most-named standing prize
+(R3, in every recent Next-gap): **make `anti_unification.unify()` actually fire to
+lift two genuinely-differing literal argument expressions into one `covers>1` rule
+with a non-null trace.** A direct probe found a real, grounded gap on that axis: the
+`canvas_fill` family's colour-reading vocabulary (`COLOR_READING_VOCAB`) had **only
+`most_frequent_color`**, so the very common ARC shape "output = solid canvas, same
+size as input, filled with the *minority/foreground* colour" was unsolvable — and
+`canvas_fill` was **not a registered AU lift family**, so two readings would never
+collapse.
+
+**Change**:
+- `agent/dsl_expr/selection.py`: added `least_frequent_color` (minority/foreground
+  reading, converse of `most_frequent_color`; ties→smallest) to `COLOR_READING_VOCAB`
+  — pure §2.5-2b *argument-vocabulary* growth under `agent/` (F3-exempt, not a
+  transformation, not a new matcher). Ordered *after* `most_frequent_color` so the
+  dominant-fill family (5582e5ca) is untouched (most_frequent tried first).
+- `program/anti_unification.py`: registered **`canvas_fill` as a `LIFT_FAMILY`**
+  (`_canvas_fill_program`/`_canvas_fill_key`/`_canvas_fill_synth`, `list_key=
+  fill_readings`), keyed on the `fill_reading` name — so two concrete `fill_canvas`
+  rules differing only in their reading lift into one `fill_canvas` rule with
+  `fill_reading=?v0`, the readings recorded in `fill_readings`, value-agnostic at
+  predict (the reading is recomputed per test input). The §8 call site is unchanged
+  (`save_rule()`→`unify()`); `_consolidate_all` folds the new family like the others.
+- `agent/active_operators.py`: **reordered** generalize so `_canvas_fill_rule` is
+  checked **before** `_recolor_rank_rule`. A uniform single-colour output is more
+  specifically a *fill*; on a background-dominant grid `recolor_rank` was *misclaiming*
+  it (reading the lone background region as a ranked group, painting a literal start
+  colour — verified: it produced an all-`5` grid with the test foreground preserved).
+  `canvas_fill` matches only when *every* output is a same-size solid colour, which a
+  genuine (multi-colour) rank-recolor never is, so precedence here cannot steal a task
+  `recolor_rank` solves correctly (easy_a/madeup/training all unregressed).
+- `data/ARC_madeup/madeup_fill_foreground_color.json`: grounding task (3 pairs,
+  minority colour fill, different colour/size each pair) — the real need for the new
+  reading, not speculative.
+- `tests/test_canvas_fill_lift.py`: 7 tests (reading semantics, vocab priority,
+  unify lifts two readings, declines vs unrelated, save-time consolidation + stable
+  absorb, abstract-rule validation).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 18/18; rules=7; P1=5.571 P2=5.571
+  **P3=0.429** P5=13. `rule_006` = `fill_canvas`/`most_frequent_color`, **covers=1,
+  au=null**. The minority-fill task ran INCORRECT (recolor_rank misclaim), gap confirmed.
+**Probe after** : madeup **19/19** (new task solved the intended way — stored `rule=none`
+  pipeline → `canvas_fill` → `least_frequent_color` recomputed per test input → frozen
+  `make_grid` fill); easy_a **9/9**; pytest **164/164**; training 40-sample **0 errors,
+  Rules 7→7 (+0 spurious)** (family inert on non-fill tasks). 5582e5ca still CORRECT.
+  `rule_006` now `fill_reading=?v0`, `fill_readings=[least,most]`, **covers=2**
+  (5582e5ca + madeup_fill_foreground_color), **au_trace set** — rule count held at 7
+  (the new concrete merged, no accretion).
+
+**Invariants**: forbidden=**none** (checker verdict CLEAN). positives=**P1 +0.14**
+  (5.571→5.714), **P2 +0.14** (5.571→5.714), **P3 +0.14** (0.429→0.571) — all three
+  rising **together**, the §2.5-4 "real progress" shape and the opposite of iters
+  29/30/31's P3 dilution, because this iter made AU *lift* rather than adding a
+  born-general family. P4/P5 unchanged (no new matcher — this is argument-vocab + a
+  lift family, deliberately *not* a new family). P6 +7 lines on active_operators.py
+  (the precedence reorder; F8-clean — also touched anti_unification.py). Reverted the
+  guard runs' `times_reused` churn on rule_001/002 (runtime accounting — iter18..31
+  precedent).
+
+**Next gap (note for future iter)**: `COLOR_READING_VOCAB` now has 2 readings and lifts
+  cleanly; a third grid colour-reading (e.g. a *corner* or *centre* colour, or "the
+  colour absent from the input") would fold into the same `fill_canvas` abstraction
+  (covers up, P-signals up) if a real task needs it — but author only on genuine need,
+  not to pad. The large standing frontier is unchanged: the general Slow-path
+  synthesizer / `object_level_lift` for *raw-cell* line/path tasks (e5790162, c9680e90,
+  878187ab) behind most failing training tasks — the off-path `agent/program_synthesis.py`
+  producer still has no live grounding because the born-general families greedily cover
+  every clean single-object case.
+
+---
 ## Iter 31 — 2026-06-13T00:44 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 18/18 hold. Rather than
@@ -3642,3 +3717,153 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 163s
 - Log: logs/learn_20260613_004001.log
+
+---
+## Learning Loop -- 2026-06-13 00:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_004706.log
+
+---
+## Learning Loop -- 2026-06-13 00:47
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 8s
+- Log: logs/learn_20260613_004710.log
+
+---
+## Learning Loop -- 2026-06-13 00:47
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_004719.log
+
+---
+## Learning Loop -- 2026-06-13 00:51
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_005131.log
+
+---
+## Learning Loop -- 2026-06-13 00:52
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_005210.log
+
+---
+## Learning Loop -- 2026-06-13 00:55
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_005548.log
+
+---
+## Learning Loop -- 2026-06-13 01:01
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_010115.log
+
+---
+## Learning Loop -- 2026-06-13 01:03
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_010320.log
+
+---
+## Learning Loop -- 2026-06-13 01:03
+
+- Split: None, Tasks: 19
+- Correct: 19 / 19 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 10s
+- Log: logs/learn_20260613_010339.log
+
+---
+## Learning Loop -- 2026-06-13 01:04
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_010401.log
+
+---
+## Learning Loop -- 2026-06-13 01:04
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_010406.log
+
+---
+## Learning Loop -- 2026-06-13 01:04
+
+- Split: None, Tasks: 19
+- Correct: 19 / 19 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 10
+- Time: 10s
+- Log: logs/learn_20260613_010410.log
+
+---
+## Learning Loop -- 2026-06-13 01:05
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_010545.log
+
+---
+## Learning Loop -- 2026-06-13 01:06
+
+- Split: training, Tasks: 40
+- Correct: 0 / 40 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 126s
+- Log: logs/learn_20260613_010420.log
+
+---
+## Learning Loop -- 2026-06-13 01:08
+
+- Split: training, Tasks: 40
+- Correct: 0 / 40 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 120s
+- Log: logs/learn_20260613_010616.log
