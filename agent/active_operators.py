@@ -37,6 +37,7 @@ from agent.dsl_expr.selection import (
     corner_anchor,
     extent_of,
     objects_of,
+    objects_by_color,
     unique_object,
     most_frequent_color,
     COLOR_READING_VOCAB,
@@ -1581,11 +1582,22 @@ class PredictOperator(Operator):
             if g0 is None:
                 continue
             if rect_prop is not None:
-                # Rectangular reading (§2.1 non-square): the canvas is the single
-                # test object's bbox extent ``(h, w)``, colour its own colour —
-                # value-agnostic in the object's colour, size, shape and position
-                # (P5). A single make_grid fill, no square assumption.
-                obj = unique_object(g0.raw)
+                # Rectangular reading (§2.1 non-square): the canvas is an object's
+                # bbox extent ``(h, w)``, colour its own colour — value-agnostic in
+                # the object's colour, size, shape and position (P5). A single
+                # make_grid fill, no square assumption.
+                if select_fn is not None:
+                    # Selected-object subject (§2.5-2b): among several test objects
+                    # the selector picks the one whose extent sizes the canvas, read
+                    # off the analysis's learned segmentation (per-colour when nested
+                    # coloured regions must be separated). value-agnostic in the
+                    # distractors, colours, sizes and positions (P5).
+                    seg = sz.get("segmentation", "connected")
+                    objs = (objects_by_color(g0.raw) if seg == "by_color"
+                            else objects_of(g0.raw))
+                    obj = select_fn(objs, g0.raw)
+                else:
+                    obj = unique_object(g0.raw)
                 if obj is None:
                     continue
                 color = color_of(obj)

@@ -37,9 +37,11 @@
     "madeup_bbox_extent_to_rect_b",
     "madeup_count_bar_strip",
     "madeup_partition_bands",
+    "madeup_select_min_rect",
     "d631b094",
     "1190e5a7",
-    "7039b2d7"
+    "7039b2d7",
+    "23b5c85d"
   ],
   "source_task": "madeup_bbox_height_to_square",
   "anti_unification_trace": "episodic_memory\\madeup_bbox_height_to_square\\anti_unification\\size_to_grid_lift.json",

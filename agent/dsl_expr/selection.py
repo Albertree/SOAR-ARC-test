@@ -213,6 +213,29 @@ def _components_excluding(grid: tuple, background: int) -> "frozenset":
     return frozenset(objs)
 
 
+def _objs_to_dicts(raw_objs) -> list:
+    """Turn hodel-shaped ``frozenset[frozenset[(color, (r, c))]]`` components into
+    the object dicts the rest of the vocabulary consumes, in a deterministic order
+    (by top-left anchor). Shared by every segmentation (`objects_of`,
+    `objects_by_color`) so they emit the identical dict shape."""
+    result = []
+    for obj in raw_objs:
+        pixels = sorted((r, c, v) for (v, (r, c)) in obj)
+        cells = [(r, c) for (r, c, _v) in pixels]
+        colors = sorted({v for (_r, _c, v) in pixels})
+        top = (min(r for r, c in cells), min(c for r, c in cells))
+        result.append({
+            "cells": cells,
+            "pixels": pixels,
+            "colors": colors,
+            "color": colors[0] if len(colors) == 1 else None,
+            "size": len(cells),
+            "position": top,
+        })
+    result.sort(key=lambda o: o["position"])
+    return result
+
+
 def objects_of(grid: list, background: int | None = None) -> list:
     """Connected components (8-connected, background excluded), one dict each.
 
@@ -236,23 +259,74 @@ def objects_of(grid: list, background: int | None = None) -> list:
         # background instead — same connectivity/grouping as the `(False, True,
         # True)` hodel pass `objects_of` uses, only the excluded colour differs.
         raw_objs = _components_excluding(g, background)
+    return _objs_to_dicts(raw_objs)
 
-    result = []
-    for obj in raw_objs:
-        pixels = sorted((r, c, v) for (v, (r, c)) in obj)
-        cells = [(r, c) for (r, c, _v) in pixels]
-        colors = sorted({v for (_r, _c, v) in pixels})
-        top = (min(r for r, c in cells), min(c for r, c in cells))
-        result.append({
-            "cells": cells,
-            "pixels": pixels,
-            "colors": colors,
-            "color": colors[0] if len(colors) == 1 else None,
-            "size": len(cells),
-            "position": top,
-        })
-    result.sort(key=lambda o: o["position"])
-    return result
+
+def _components_by_color(grid: tuple, background: int) -> "frozenset":
+    """8-connected, **univalued** connected components excluding ``background``.
+
+    The per-colour analogue of `_components_excluding`: a component groups only
+    same-colour cells, so two regions of *different* colours that touch (or nest,
+    one inside the other) are kept as *separate* objects instead of being merged
+    into one multicoloured blob. This is the standard ARC object model for grids
+    whose shapes are nested/overlapping coloured regions; it returns the same
+    ``frozenset[frozenset[(color, (r, c))]]`` shape hodel does. Used as a fallback
+    segmentation when `_components_by_color`'s 0-aware background disagrees with the
+    grid's most-frequent colour (foreground-majority grids), mirroring
+    `objects_of`/`_components_excluding`."""
+    h, w = len(grid), len(grid[0]) if grid else 0
+    objs = set()
+    occupied = set()
+    for sr in range(h):
+        for sc in range(w):
+            if (sr, sc) in occupied:
+                continue
+            color = grid[sr][sc]
+            if color == background:
+                continue
+            obj = set()
+            cands = {(sr, sc)}
+            while cands:
+                nxt = set()
+                for cand in cands:
+                    if cand in occupied:
+                        continue
+                    if grid[cand[0]][cand[1]] != color:
+                        continue
+                    obj.add((color, cand))
+                    occupied.add(cand)
+                    for nb in _allneighbors(cand):
+                        if 0 <= nb[0] < h and 0 <= nb[1] < w and nb not in occupied:
+                            nxt.add(nb)
+                cands = nxt
+            if obj:
+                objs.add(frozenset(obj))
+    return frozenset(objs)
+
+
+def objects_by_color(grid: list, background: int | None = None) -> list:
+    """Per-colour (univalued) 8-connected components, one object dict each.
+
+    The §2.5 selection-vocabulary alternative segmentation to `objects_of`: where
+    that merges every touching non-background cell into one (possibly
+    multicoloured) component, this keeps **each colour's** region a distinct
+    object. That is the object model a task needs when its shapes *nest* — a small
+    coloured box drawn inside a larger box of another colour — where connectivity
+    alone would fuse them and hide the inner shape. Same dict shape and ordering as
+    `objects_of`; F3-exempt util/selection vocabulary (no transformation)."""
+    if background is None:
+        background = background_of(grid)
+    g = tuple(tuple(row) for row in grid)
+    if background == _mostcolor(g):
+        # Common case: the 0-aware background *is* the most-frequent colour, so the
+        # frozen hodel port (univalued pass, excludes the most-frequent colour)
+        # excludes the right cells — used verbatim.
+        raw_objs = hodel_objects(g, univalued=True, diagonal=True, without_bg=True)
+    else:
+        # Foreground-majority grid: exclude *our* 0-aware background, same univalued
+        # connectivity as the hodel pass, only the excluded colour differs.
+        raw_objs = _components_by_color(g, background)
+    return _objs_to_dicts(raw_objs)
 
 
 def unique_object(grid: list, background: int | None = None):
@@ -784,6 +858,7 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
     # dimensions it yields").
     dim_property = None
     selector = None
+    segmentation = "connected"
     color_all = False
     if solid_all:
         if square_all:
@@ -835,6 +910,44 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
                     color_all = subj_color_all
                     break
         if dim_property is None:
+            # Selected-object *rectangular* reading: among several objects a learned
+            # selector picks one and the canvas is *its* bbox extent ``(h, w)``,
+            # filled with *its* own colour. Composes the two grown vocabularies
+            # (SELECTOR_VOCAB × RECT_DIM_VOCAB) on the non-square axis — the §2.5-2b
+            # selection-lift applied to the rectangular reading (the selector path
+            # above does it for the scalar/square readings). Two segmentations are
+            # tried: ordinary connectivity first, then per-colour (`objects_by_color`)
+            # so nested coloured regions — a small box inside a larger box of another
+            # colour, which connectivity fuses into one blob — are separable and the
+            # smallest distinct-colour region becomes nameable. by_color is tried
+            # *last* so no task an earlier (connected) reading already resolves is
+            # reclassified. Colour grounds on the *selected* object's colour (P3/P4).
+            for seg_name, seg_fn in (("connected", None), ("by_color", objects_by_color)):
+                found = None
+                for sel_name, sel_fn in SELECTOR_VOCAB.items():
+                    for prop_name, prop_fn in RECT_DIM_VOCAB.items():
+                        ok = True
+                        for p in per_pair:
+                            objs_seg = (p["objs"] if seg_fn is None
+                                        else seg_fn(p["grid"]))
+                            chosen = sel_fn(objs_seg, p["grid"])
+                            if (chosen is None
+                                    or color_of(chosen) is None
+                                    or tuple(prop_fn(chosen)) != (p["out_h"], p["out_w"])
+                                    or color_of(chosen) != p["out_color"]):
+                                ok = False
+                                break
+                        if ok:
+                            found = (sel_name, prop_name)
+                            break
+                    if found is not None:
+                        break
+                if found is not None:
+                    selector, dim_property = found
+                    segmentation = seg_name
+                    color_all = True  # off the selected object's colour
+                    break
+        if dim_property is None:
             # Grid-level *rectangular* reading: the canvas dimensions count the
             # input's separator-delimited partition bands (rowbands × colbands),
             # the §2.1 "grid size = f(input structure)" concept at *grid* level
@@ -862,6 +975,7 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
         "color_preserved_all": color_all,
         "dim_property": dim_property,
         "selector": selector,
+        "segmentation": segmentation,
     }
 
 

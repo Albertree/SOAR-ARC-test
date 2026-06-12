@@ -1,6 +1,90 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 35 — 2026-06-13T02:25 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 21/21 hold. I took
+iter 34's explicitly-named *next* gap — **23b5c85d** (output = a solid rectangle of
+the *smallest distinct-colour region's* bbox extent, in that region's colour). It
+exposed a precise, general blind spot: the size-grid family had a SELECTOR×scalar
+(square) path and a single-object RECT (non-square) path, but **no SELECTOR×RECT**
+composition — and, deeper, its only segmentation (`objects_of`, multivalued
+connectivity) **fuses nested coloured regions into one multicolour blob**, so a
+small box drawn inside a larger box of another colour is unnameable (its colour
+reads None). Both are needed: per-colour segmentation to *see* the inner region,
+the SELECTOR×RECT composition to *size+colour* the canvas off it.
+
+**Change** (general mechanism in `agent/dsl_expr/`, F3-exempt argument/analysis
+vocabulary — no transformation primitive, no new `_try_*`, no new matcher, no new
+rule):
+- `agent/dsl_expr/selection.py`: added **`objects_by_color`** — per-colour
+  (univalued) 8-connected segmentation, the standard ARC object model for
+  nested/overlapping coloured regions (uses the frozen hodel univalued pass when
+  background==most-frequent, a new `_components_by_color` helper only in the
+  0-aware foreground-majority case, mirroring iter33's `objects_of`). Factored the
+  raw-component→dict conversion into a shared `_objs_to_dicts` so both
+  segmentations emit the identical shape. Added a **SELECTOR_VOCAB × RECT_DIM_VOCAB**
+  branch to `analyze_object_size_grid` (the §2.5-2b selection-lift on the
+  non-square axis): it tries ordinary connectivity first, then per-colour
+  segmentation **last** so no task an earlier reading resolves is reclassified;
+  colour grounds on the *selected* object's own colour (P3/P4). Records the learned
+  `segmentation` ("connected"|"by_color") in the analysis dict.
+- `agent/active_operators.py`: the rect-reading render branch in
+  `_place_size_grid_grids` now handles a learned selector + segmentation — picks the
+  object off the test input's own per-colour (or connected) objects and fills a solid
+  rect via the frozen `make_grid`; value-agnostic in distractors, colours, sizes,
+  positions, grid size (P5). (+12 net; F8 companion = the matcher doc edit below.)
+- `agent/conditions/object_size_grid.py`: docstring accuracy fix — the matcher now
+  admits a **fifth** dimension subject (a selected object's rectangular extent via
+  per-colour segmentation). Genuine recognition-scope update + F8 companion.
+- `procedural_memory/rule_001.json`: recorded the genuine new coverage — `covers`
+  += `madeup_select_min_rect` + **`23b5c85d`** (a real ARC-AGI-2 task). Both
+  **verified CORRECT** and solve via *reuse* of rule_001 (stored-rule hit) — the
+  `reuse_signal_blindspot` the learn-time auto-append misses; recorded by hand
+  because covers means "all tasks this rule has handled". No new rule, no new
+  matcher; `bbox_extent`+`min_size` already in the vocabs, so this is a pure
+  composition, not a new property.
+- `data/ARC_madeup/madeup_select_min_rect.json`: grounding task (3 pairs, nested
+  outer/inner coloured boxes, different sizes/colours each → output = inner box's
+  bbox rect in its colour; value-agnostic) + a 6×6 test pair.
+- `tests/test_select_min_rect.py`: 7 tests (by_color separates nested boxes;
+  agrees with objects_of when not nested; foreground-majority excludes 0; analyzer
+  learns min_size×bbox_extent×by_color on madeup + real 23b5c85d; single-object rect
+  path unchanged/connected; segmentation defaults connected when inert).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 21/21; rules=7; P1=6.43 P2=6.43
+  P3=0.571 P5=13. 23b5c85d ran INCORRECT (no per-colour segmentation + no
+  selector×rect reading).
+**Probe after** : 23b5c85d **CORRECT** (via stored rule_001 reuse — fast-path skill
+  reuse generalising to a real, structurally-new nested-region task, the R5 signal);
+  madeup **22/22** (new select-min-rect task solves the intended way); easy_a **9/9**;
+  pytest **190/190** (183+7); training 30-sample (seed 42) **0 errors, Rules 7→7
+  (+0 spurious), 0 discovered** — the new reading is inert on non-matching tasks.
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P1 +0.286**
+  (6.43→6.71), **P2 +0.286** (6.43→6.71) — covers 45→47 folded into the existing
+  **au=SET** rule_001, rule count held at 7: the §2.5-4 real-progress shape (covers
+  up, rules flat, **P3 held** at 0.571 — no accretion/dilution). P4/P5 unchanged (no
+  matcher). P6 −12 (active_operators +12 for the selector/segmentation render branch;
+  F8-clean via the conditions/ companion). Reset the verification runs' `times_reused`
+  churn on rule_001/002 (runtime accounting — iter18..34 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  per-colour segmentation + selector×rect reading are property/relation/util/selection
+  vocabulary placed under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's "no new DSL
+  def" binds only `procedural_memory/DSL/`). No transformation primitive added; F3
+  contract intact.
+
+**Next gap (note for future iter)**: per-colour segmentation (`objects_by_color`) is
+  now available but only wired into the size-grid selector×rect path; the move/recolor
+  families still use connected segmentation only, so nested-region *move/recolor* tasks
+  remain out of reach — wiring `objects_by_color` as a learnable segmentation choice
+  into those analyzers is a defensible next step. The large standing frontier is
+  unchanged: the general Slow-path synthesizer / `object_level_lift` for *raw-cell*
+  ray/path tasks (e5790162, c9680e90, 878187ab) behind most failing training tasks,
+  still grounding-blocked.
+
+---
 ## Iter 34 — 2026-06-13T02:05 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 20/20 hold. The probe's
@@ -4274,3 +4358,93 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 310s
 - Log: logs/learn_20260613_015959.log
+
+---
+## Learning Loop -- 2026-06-13 02:13
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_021257.log
+
+---
+## Learning Loop -- 2026-06-13 02:13
+
+- Split: None, Tasks: 21
+- Correct: 21 / 21 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 12
+- Time: 9s
+- Log: logs/learn_20260613_021301.log
+
+---
+## Learning Loop -- 2026-06-13 02:13
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_021311.log
+
+---
+## Learning Loop -- 2026-06-13 02:19
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 1
+- Time: 3s
+- Log: logs/learn_20260613_021936.log
+
+---
+## Learning Loop -- 2026-06-13 02:20
+
+- Split: None, Tasks: 22
+- Correct: 22 / 22 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 13
+- Time: 10s
+- Log: logs/learn_20260613_022008.log
+
+---
+## Learning Loop -- 2026-06-13 02:20
+
+- Split: None, Tasks: 22
+- Correct: 22 / 22 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 13
+- Time: 9s
+- Log: logs/learn_20260613_022022.log
+
+---
+## Learning Loop -- 2026-06-13 02:22
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_022224.log
+
+---
+## Learning Loop -- 2026-06-13 02:22
+
+- Split: None, Tasks: 22
+- Correct: 22 / 22 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 13
+- Time: 9s
+- Log: logs/learn_20260613_022228.log
+
+---
+## Learning Loop -- 2026-06-13 02:24
+
+- Split: training, Tasks: 30
+- Correct: 0 / 30 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 83s
+- Log: logs/learn_20260613_022237.log
