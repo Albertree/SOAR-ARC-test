@@ -1,6 +1,89 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 42 — 2026-06-13T04:22 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 26/26 hold. Iters 40/41 were
+no-ops that concluded the *same-size structural families are mined out* and the residue
+needs reference-composing selectors (open question). Rather than re-run that census a third
+time (spinning), I opened a **fresh axis the system had no family for at all**: *object
+extraction* — output = the minimal subgrid bounding **one selected object** (crop-to-object).
+A whole-corpus census (real 8-connected object model + the existing `SELECTOR_VOCAB`) found
+**exactly 4** tasks where some selector's chosen-object bbox crop reproduces every train
+output with a genuine shrink, and **zero** false positives across all 1000: **1cf80156,
+1f85a75f, be94b721** (max_size) and **88a62173** (unique_shape) — all INCORRECT before
+(rule=identity, no family fires). The gap is general, value-agnostic, reuses the *existing*
+selection vocabulary, and folds into one new born-general rule.
+
+**Change** (a born-general new family via the frozen primitives — no transformation
+primitive, no new `_try_*`; an extract is `coloring` at each cell of the object's bbox window
+on a `make_grid` canvas, i.e. `render_grid_via_primitives` of the crop; F8 companion = the
+new `agent/conditions/object_extract.py`):
+- `agent/dsl_expr/selection.py`: added **`bbox_subgrid`** (inclusive bbox crop — the crop
+  argument expression) and **`analyze_object_extract`** — searches `SELECTOR_VOCAB` in vocab
+  order for the *first* selector whose chosen object's bbox crop equals **every** example
+  output exactly, requiring ≥2 pairs and a genuine shrink (so it is inert on every same-size
+  / identity / non-crop task). The selector is the §2.5-2b lift; the transformation is the
+  two frozen primitives.
+- `agent/conditions/object_extract.py`: **new condition matcher** (P5 +1) — fires only on a
+  genuine selector + crop with ≥`min_evidence` pairs.
+- `agent/active_operators.py`: wired the family in symmetrically — `analyze_object_extract`
+  in ExtractPattern; `_object_extract_rule` emit (empty args — selector recomputed at predict
+  so one rule covers the family); checked **last** among the strategies (a size-changing exact
+  reproduction → can only claim a task no earlier family solved, guaranteeing no regression);
+  PredictOperator dispatch + `_object_extract_grids` (selects the object out of each *test*
+  input's own objects, crops, renders via primitives; **abstains** — leaves the pair
+  unpredicted — when the selector is ambiguous at the extreme rather than emitting a wrong
+  crop). (+134; F8-clean via the new conditions/ file.)
+- `procedural_memory/rule_012.json`: **auto-saved by the pipeline** — one value-agnostic
+  rule, `covers` = [1cf80156, 1f85a75f, be94b721, 88a62173]. (covers reflects *train*
+  reproduction per the codebase save-gate; 1f85a75f's **test** has two objects tied for
+  largest, so the family honestly **abstains** there — 3 of the 4 solve at test, no wrong
+  answer on the 4th.)
+- `data/ARC_madeup/madeup_extract_largest.json`: grounding task (2 value-agnostic
+  largest-object extractions, different palettes/sizes → test) — the §2.1 "multi-object
+  selection" + "grid size changes" concepts on the extract axis. Solves the intended way.
+- `tests/test_object_extract.py`: +9 tests (bbox crop; analyzer learns max_size; matcher
+  fires; render == selected-object bbox; abstains on single-pair / identity / same-size
+  recolor / ambiguous extreme).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 26/26; rules=9; P1=7.333 P2=7.333
+  P3=0.444 P5=15. The 4 extract tasks INCORRECT (no family fires).
+**Probe after** : 1cf80156 / be94b721 / 88a62173 **CORRECT** via the new family (one rule,
+  covers=4); 1f85a75f honestly abstains at test (ambiguous largest). madeup **27/27**
+  (extract_largest solves the intended way; verified); easy_a **9/9**; pytest **236/236**
+  (227+9). Training 120-sample (seed 42): **3/120**, **0 errors**, **Rules 10→10 (+0
+  spurious)**, 0 discovered — the family is inert on every non-extract task (zero false
+  positives, no crashes).
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P5 +1** (15→16,
+  the new `object_extract` matcher). P1 7.333→7.0, P2 7.333→7.0, P3 0.444→0.4 dip is the
+  **born-general-family debut** shape (identical to symmetry_repair's iter-38 debut and
+  scale_transform's iter-36 debut): a brand-new family starts a fresh non-AU rule, so the
+  means dip even though total covered tasks rose **66→70 (+4)** — *not* liftless per-task
+  accretion (one rule covers 4 distinct tasks via one mechanism, with clear covers headroom:
+  the other extract-selector variants are the named next gap, exactly how scale_transform grew
+  5→10 the iter after its debut). P4 flat 932; P6 active_operators +134 (F8-clean companion).
+  Reverted the verification runs' `times_reused` churn on rule_001/002 (runtime accounting —
+  iter18..41 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  extract vocabulary (`bbox_subgrid`, `analyze_object_extract`) is util/selection
+  (argument-expression) vocabulary under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's "no new
+  DSL def" binds only `procedural_memory/DSL/`). No transformation primitive added; F3 contract
+  intact (an extract bottoms out in `coloring` at each cell of the bbox window on a `make_grid`
+  canvas — `render_grid_via_primitives` of the crop).
+
+**Next gap (note for future iter)**: rule_012 covers 4 tasks on the extract axis but only via
+  *intrinsic* selectors (max_size / unique_shape). The immediate covers-headroom is 1f85a75f
+  and its kin, where the largest object is **ambiguous** and the extracted object is named by a
+  **relational** criterion (the odd-one-out / the distinct one *relative to the others*) — the
+  same reference-composing-selection open question iter 41 pinned, now reached from the extract
+  axis too. The other live direction: once ≥2 families share an extract/place skeleton, the R3
+  prize (`anti_unification.unify()` lifting them). The raw-cell ray/path/gravity synthesizer
+  frontier (c9680e90, e5790162, 878187ab) is unchanged and still grounding-blocked.
+
+---
 ## Iter 41 — 2026-06-13T03:50 — branch test32 — NO-OP (analysis only, open question pinned)
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 26/26 hold. Rather than
@@ -5273,3 +5356,83 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 6s
 - Log: logs/learn_20260613_034703.log
+
+---
+## Learning Loop -- 2026-06-13 04:02
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_040221.log
+
+---
+## Learning Loop -- 2026-06-13 04:02
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_040225.log
+
+---
+## Learning Loop -- 2026-06-13 04:02
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_040237.log
+
+---
+## Learning Loop -- 2026-06-13 04:12
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_041207.log
+
+---
+## Learning Loop -- 2026-06-13 04:12
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_041211.log
+
+---
+## Learning Loop -- 2026-06-13 04:17
+
+- Split: training, Tasks: 120
+- Correct: 3 / 120 (2.5%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 309s
+- Log: logs/learn_20260613_041234.log
+
+---
+## Learning Loop -- 2026-06-13 04:21
+
+- Split: training, Tasks: 120
+- Correct: 3 / 120 (2.5%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 308s
+- Log: logs/learn_20260613_041639.log
+
+---
+## Learning Loop -- 2026-06-13 04:23
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 14
+- Time: 12s
+- Log: logs/learn_20260613_042315.log

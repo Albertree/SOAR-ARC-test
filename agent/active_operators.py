@@ -29,6 +29,7 @@ from agent.dsl_expr.selection import (
     analyze_canvas_fill,
     analyze_color_remap,
     analyze_geometric_transform,
+    analyze_object_extract,
     analyze_object_move,
     analyze_object_select_move,
     analyze_object_select_recolor,
@@ -37,6 +38,7 @@ from agent.dsl_expr.selection import (
     analyze_scale_transform,
     analyze_symmetry_repair,
     background_of,
+    bbox_subgrid,
     color_of,
     corner_anchor,
     extent_of,
@@ -157,6 +159,18 @@ SCALE_TRANSFORM_DSL = "scale_transform"
 #: COMM) and the per-input symmetry set (read off each input's own structure, P5),
 #: recomputed at predict time — so one value-agnostic rule covers the family.
 SYMMETRY_REPAIR_DSL = "symmetry_repair"
+
+#: action.dsl for the *object-extract* family (R1 / BACKLOG_LOOP §2.5-1 worked
+#: example, the extract axis) — the output is the minimal subgrid bounding *one
+#: selected object*. The transformation is the frozen `coloring` primitive applied
+#: at each cell of that bbox window on a `make_grid` canvas
+#: (render_grid_via_primitives of the cropped window): an extract is `coloring`
+#: driven by a selection+crop expression, not a new `crop` primitive (§2.5-1, F3).
+#: The whole content is one *argument* — *which* object the window is drawn around,
+#: named by SELECTOR_VOCAB and recomputed off each test input's own objects at
+#: predict time (P5, the §2.5-2b selection lift) — so one value-agnostic rule
+#: covers the family.
+OBJECT_EXTRACT_DSL = "object_extract"
 
 
 # ======================================================================
@@ -426,6 +440,19 @@ class ExtractPatternOperator(Operator):
         # the readings above. Computed via the §2.5 symmetry vocabulary
         # (agent/dsl_expr/selection), not hand-coded here.
         patterns["symmetry_repair"] = analyze_symmetry_repair(task.example_pairs)
+
+        # *Object extraction* (R1 / BACKLOG_LOOP §2.5-1 worked example, extract
+        # axis; §2.5-2b selection lift): the output is the minimal subgrid bounding
+        # *one selected object* — the input cropped to the object a learned
+        # SELECTOR_VOCAB criterion (max_size / unique_shape / …) picks. The crop is
+        # the frozen `coloring` primitive applied at each cell of the bbox window on
+        # a `make_grid` canvas, not a new primitive; the whole content is the
+        # *selector* (which object), recomputed off each test input at predict time.
+        # Inert (selector None) whenever no single selector reproduces all pairs
+        # with a genuine crop (in particular on every same-size task), so it never
+        # perturbs the readings above. Computed via the §2.5 selection vocabulary
+        # (agent/dsl_expr/selection), not hand-coded here.
+        patterns["object_extract"] = analyze_object_extract(task.example_pairs)
 
         wm.s1["patterns"] = patterns
 
@@ -723,6 +750,22 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._symmetry_repair_rule(patterns)
 
+        # Strategy 4 (R1 / §2.5-1 extract axis, §2.5-2b selection lift):
+        # object extraction (crop-to-object). If the `object_extract` matcher fires
+        # (a single SELECTOR_VOCAB criterion picks, in every example, the object
+        # whose bounding-box subgrid equals the output exactly, with a genuine
+        # crop), emit a canonical {condition, action} rule carrying empty args — the
+        # selector is recomputed at predict time off each test input's own objects,
+        # so one value-agnostic rule covers the family (it merges by condition+action
+        # equivalence, like the geometric/scale/symmetry families, rather than
+        # accreting one literal rule per task — §2.5-3/4). Checked *last* (a
+        # size-changing exact reproduction): it only fires on a task whose output is
+        # exactly one object's bbox, which no earlier family claims, so ordering it
+        # last guarantees no regression. Recognition is delegated to the registered
+        # matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._object_extract_rule(patterns)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -871,6 +914,45 @@ class GeneralizeOperator(Operator):
             },
             "concept": "symmetry_repair",
             "category": "symmetry_repair",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: object extraction / crop-to-object (R1) --------------
+
+    def _object_extract_rule(self, patterns):
+        """Emit the canonical object-extract rule when the `object_extract`
+        matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `object_extract` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The action carries *empty* args
+        — the learned selector (which object the crop window is drawn around —
+        agent/dsl_expr/selection.SELECTOR_VOCAB) is recomputed at predict time off
+        each test input's own objects, so the rule is value-, colour-, shape- and
+        size-agnostic and one rule covers the whole family (it merges by
+        condition+action equivalence, like the geometric/scale/symmetry families,
+        rather than accreting one literal rule per task — §2.5-3/4). The
+        transformation bottoms out in the frozen `coloring` primitive applied at
+        each cell of the object's bbox window on a `make_grid` canvas
+        (render_grid_via_primitives of the cropped window); no new transformation is
+        introduced (§2.5-1, F3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("object_extract", patterns, params):
+            return None
+        sig = patterns.get("object_extract") or {}
+        evidence = int(sig.get("evidence", 0))
+        return {
+            "condition": {
+                "type": "object_extract",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": OBJECT_EXTRACT_DSL,
+                "args": {},
+            },
+            "concept": "object_extract",
+            "category": "object_extract",
             "confidence": 1.0,
         }
 
@@ -1419,6 +1501,20 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # *Object extraction* (R1 / §2.5-1 extract axis). Recompute the learned
+        # selector from the examples, then for each test pair pick that object out
+        # of the test input's own objects, crop the input to its bbox window and
+        # render that window (P5: the selector read off the example COMM, the object
+        # and cells from the test G0) — an extract rendered as the frozen `coloring`
+        # primitive at each cell of the bbox window on a `make_grid` canvas.
+        if action and action.get("dsl") == OBJECT_EXTRACT_DSL:
+            for i, grid in self._object_extract_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         # Object-property *canvas sizing* (R1 / §2.1). Recompute the learned
         # dimension property from the examples, then for each test pair read that
         # property and the colour off the test object (P5) and render a solid
@@ -1749,6 +1845,44 @@ class PredictOperator(Operator):
             if g0 is None:
                 continue
             grids[i] = render_symmetry_repair(g0.raw, occ, mode)
+        return grids
+
+    @staticmethod
+    def _object_extract_grids(task):
+        """Map test-pair index -> predicted grid for the object-extract family.
+
+        The selector (which object the crop window is drawn around) is recomputed
+        from the example pairs (the §2.5-2b lift: the SELECTOR_VOCAB criterion that
+        consistently picks the extracted object). For each test pair the selector
+        chooses one object out of that test input's *own* objects, the input is
+        cropped to that object's inclusive bbox, and the window is rendered via
+        `make_grid` + `coloring` (render_grid_via_primitives) — P5: the selector
+        from the example COMM, the object and cells from the test G0. A test input
+        on which the selector is ambiguous (a tie at the extreme → selector returns
+        None) is left unpredicted rather than guessed, so the family abstains
+        honestly instead of emitting a wrong crop. Returns {} when the analysis
+        yields no consistent selector."""
+        sig = analyze_object_extract(task.example_pairs)
+        selector_name = sig.get("selector")
+        if selector_name is None:
+            return {}
+        selector = SELECTOR_VOCAB.get(selector_name)
+        if selector is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            objs = objects_of(g0.raw)
+            obj = selector(objs, g0.raw)
+            if obj is None:
+                continue
+            window = bbox_subgrid(g0.raw, obj["cells"])
+            if window is None:
+                continue
+            grids[i] = render_grid_via_primitives(window)
         return grids
 
     @staticmethod

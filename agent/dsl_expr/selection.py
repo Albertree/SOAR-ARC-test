@@ -2206,3 +2206,104 @@ def analyze_symmetry_repair(example_pairs: list) -> dict:
         "evidence": len(pairs),
         "mode": mode,
     }
+
+
+# ----------------------------------------------------------------------
+# Object extraction (crop-to-object) vocabulary (BACKLOG_LOOP §2.5-1 /
+# §2.5-2b: an *argument expression* over the frozen `make_grid` + `coloring`
+# primitives, NOT a new transformation primitive).
+#
+# "Extract the object" — output the minimal subgrid bounding *one selected
+# object* — is not a new `crop` primitive (F3 forbids that). It is the frozen
+# `coloring` primitive applied at each cell of a *bbox window* on a `make_grid`
+# canvas (render.render_grid_via_primitives of the cropped window). The whole
+# content of such a task is *which* object the window is drawn around — the
+# §2.5-2b selection lift — named by the existing SELECTOR_VOCAB (max_size /
+# min_size / unique_color / unique_shape / border_object). The selector is the
+# lifted argument, recomputed off each test input's own objects at predict time
+# (P5), so one value-agnostic rule covers the whole extract family rather than
+# one literal rule per task (§2.5-3/4).
+# ----------------------------------------------------------------------
+
+def bbox_subgrid(grid: list, cells: list):
+    """The minimal axis-aligned subgrid of `grid` covering `cells` (inclusive
+    bounding box), content preserved. Returns None for an empty cell set.
+
+    The *crop* argument expression for the object-extract family: `coloring`
+    reads each cell of this window onto a `make_grid` canvas
+    (render_grid_via_primitives), so an extract bottoms out in the two frozen
+    primitives, not a new `crop` transformation (§2.5-1, F3)."""
+    if not cells:
+        return None
+    rows = [r for r, _c in cells]
+    cols = [c for _r, c in cells]
+    r0, r1 = min(rows), max(rows)
+    c0, c1 = min(cols), max(cols)
+    return [row[c0:c1 + 1] for row in grid[r0:r1 + 1]]
+
+
+def analyze_object_extract(example_pairs: list) -> dict:
+    """Object extraction — crop the grid to one selected object's bbox.
+
+    Fires for: a single named selector from `SELECTOR_VOCAB` (max_size / min_size
+    / unique_color / unique_shape / border_object) such that, in *every* example,
+    the inclusive bounding-box subgrid of the object that selector picks equals the
+    output exactly, with at least one pair where the output is strictly smaller
+    than the input (a genuine crop, not the identity). The selector name is the
+    lifted *argument* — value-, colour-, shape- and size-agnostic — recomputed at
+    predict time off each test input's own objects, so one rule covers the whole
+    family rather than one literal rule per task (§2.5-3/4). The transformation
+    bottoms out in the frozen `coloring` primitive applied at each cell of the
+    bbox window on a `make_grid` canvas (render_grid_via_primitives, §2.5-1, F3):
+    an extract is `coloring` driven by a selection+crop expression, not a new
+    primitive.
+
+    Grounded in comparison, never assumed (P3/P4): a selector is admitted only if
+    `bbox_subgrid(input, selector(objects(input)).cells)` equals the output for
+    every pair — the COMM between the predicted and actual output grids. The
+    selectors return None on a tie at the extreme, so the analyzer only commits to
+    one that names *exactly one* object in every example (no ambiguous crop).
+    Returns a symbolic dict; the `object_extract` matcher (agent/conditions/)
+    decides firing and PredictOperator renders from it. Stays inert (selector
+    None) whenever no single selector reproduces all pairs with a genuine crop, so
+    it never perturbs the same-size / scale / move families.
+    """
+    pairs = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        if a and b and a[0] and b[0]:
+            pairs.append((a, b))
+
+    selector = None
+    if len(pairs) >= 2:
+        for name, fn in SELECTOR_VOCAB.items():
+            ok = True
+            shrink = False
+            for a, b in pairs:
+                objs = objects_of(a)
+                if not objs:
+                    ok = False
+                    break
+                obj = fn(objs, a)
+                if obj is None:
+                    ok = False
+                    break
+                if bbox_subgrid(a, obj["cells"]) != b:
+                    ok = False
+                    break
+                if len(b) < len(a) or len(b[0]) < len(a[0]):
+                    shrink = True
+            if ok and shrink:
+                selector = name
+                break
+
+    return {
+        "selector": selector,
+        "valid_all": selector is not None,
+        "evidence": len(pairs),
+    }
