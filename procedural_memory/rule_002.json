@@ -18,6 +18,7 @@
       "readings": [
         "constant_corner",
         "constant_offset",
+        "constant_resize",
         "constant_target"
       ]
     }
@@ -28,7 +29,8 @@
     "easy000h",
     "easy000e",
     "easy000f",
-    "easy000g"
+    "easy000g",
+    "easy000i"
   ],
   "source_task": "easy000c",
   "anti_unification_trace": "episodic_memory\\easy000c\\anti_unification\\place_object_lift.json",

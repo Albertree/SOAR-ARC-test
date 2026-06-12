@@ -537,3 +537,95 @@ argument-vocabulary axis (size-of / output-dims), still R1, and once present
 easy000i should fold into place_object as a fourth reading the same way g did.
 Alternatively R5 (teach the fast path to *reuse* the stored abstract rule —
 Stored hits still 0) remains the higher-leverage long-term step.
+
+---
+## Learning Loop -- 2026-06-12 19:25
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_192518.log
+
+---
+## Learning Loop -- 2026-06-12 19:30
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_193028.log
+## Iter 7 — 2026-06-12T19:30 — branch test32
+
+**Diagnosis**: R1 was the lowest *unproven* rung (done-when: easy000c–i + easy_a
+100%); the probe showed 8/9 with only easy000i open. easy000i is a single object
+moved onto a **constant-sized output canvas that *resizes* from the input** (6×6
+in → 5×5 out) at a constant target (0,0). All three existing move matchers gate on
+`size_preserved_all`, so every one abstained — the missing piece was an
+*output-dimensions* reading (a cross-pair COMM on the output canvas size), the
+exact iter-6 next-gap note. This is argument-vocabulary growth (§2.5-1), not a new
+transformation or a `_try_*`.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — `analyze_object_move` now surfaces `output_dims`
+  (cross-pair COMM on output (h,w); per-pair `out_dim` added), the learnable
+  canvas size that lets `make_grid` size a *resized* output rather than copy the
+  input. Sibling of the existing target/offset/corner readings; read alongside
+  `size_preserved_all` (meaningful precisely when size is *not* preserved).
+- `agent/conditions/object_resize_target.py` (new matcher) — fires when every
+  example is a single object (color+shape kept) moved onto a constant output size
+  that *differs* from the input, at one shared target. Abstains when size IS
+  preserved (the three size-preserving siblings claim those), keeping the four
+  readings disjoint. Registered → P5 +1 (5→6). F8 companion for active_operators.
+- `agent/active_operators.py` — `_object_resize_target_rule` GeneralizeOperator
+  strategy (0e; emits canonical `place_object_resize` rule, recognition delegated
+  to the matcher — *not* a `_try_*`/`_apply_*`, F2-clean) + PredictOperator branch
+  + `_place_object_resize_grids` (renders the test object onto a make_grid canvas
+  of the learned output dims at the constant target; color/shape/bg from G0 — P5;
+  make_grid ∘ coloring only, F3-clean).
+- `program/anti_unification.py` — registered `place_object_resize →
+  constant_resize` in `_OBJECT_MOVE_READING`, so the resize move is a liftable
+  object-move sibling. `agent/memory.py:_consolidate_object_move` re-lift (built
+  iter 6) folds it automatically — no memory.py edit needed.
+- `procedural_memory/rule_002.json` — now `readings`=[constant_corner,
+  constant_offset, constant_resize, constant_target], `covers`=7 (added easy000i).
+- `tests/test_resize_move.py` (new) — 6 tests: output-dims surfaced only on
+  resize, matcher fires while size-preserving siblings abstain, matcher abstains
+  on same-size move, render places on resized canvas value-agnostically, the
+  resize reading re-lifts into place_object (covers up, no new family), unify
+  lifts all four readings.
+
+**Probe before**: easy_a 8/9; rules=2 (a,b / place_object covers c,d,h,e,f,g);
+  P1=4.0, P2=4.0, P3=0.5, P5=5
+**Probe after** : easy_a 9/9 (easy000i now CORRECT); rules=2 (a,b / place_object
+  covers c,d,h,e,f,g,i); P1=4.5, P2=4.5, P3=0.5, P5=6
+
+**Invariants**: forbidden=none (F1 frozen-diff=0; F2 no new _try_/_apply_; F3 no
+new DSL primitive; F8 satisfied via agent/conditions/); positives = P1 +0.5,
+P2 +0.5, P5 +1. Verdict CLEAN (3 positive deltas). 35/35 tests pass. §2.5-4
+real-progress direction: a new capability *folded into* the existing abstraction
+(covers 6→7) rather than adding a family — rule count held at 2.
+
+**RUNG R1 — CLEARED.** R1's done-when ("easy000c–i 가 4 관찰 기준으로 풀림 +
+easy_a 100%") is now met: easy_a is 9/9 and every easy000c–i solves the intended
+way. 4 observation criteria: (1) *works* — pipeline runs error-free, easy000i
+solves, consolidation idempotent. (2) *module uniformity* — c–i are ALL solved by
+ONE abstraction (`place_object`, four COMM readings: target/offset/corner/resize),
+the lift *discovered* by `unify()` not hand-merged, no per-task branch; the
+size-preserving vs resize split lives in the matchers, not in task-specific
+detectors. (3) *approaches answer* — every prediction is rendered from G0 object +
+cross-pair output COMM via make_grid ∘ coloring (never test G1 — P5). (4) *search
+sanity* — 14 cycle steps/task, deterministic. Signals moved: P1/P2 4.0→4.5, P5
+5→6, place_object covers 6→7. easy_a now holds 100%, so the loop's K-consecutive
+graduation clock toward the `madeup` phase begins.
+
+**Next gap (note for future iter)**: easy_a is mastered — the next defensible work
+is the `madeup` phase (PROMPT §2.1/§2.2): author a minimal task isolating a concept
+the structure cannot yet express (object size≠1, object count≠1, multi-object
+*selection* — the real §2.5-2b selector-lift work — etc.) and make the structure
+solve it via a lifted selector, not a detector. Alternatively R5 (teach the fast
+path to *reuse* the stored abstract place_object rule — Stored hits still 0) is the
+higher-leverage long-term step, and the abstract rule now spans four readings ready
+to be driven. The loop manages the easy_a→madeup graduation; do not skip ahead.

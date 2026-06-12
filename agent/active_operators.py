@@ -39,6 +39,12 @@ PLACE_OBJECT_RELATIVE_DSL = "place_object_relative"
 #: grid-relative corner anchor recomputed against each test grid's own size.
 PLACE_OBJECT_CORNER_DSL = "place_object_corner"
 
+#: action.dsl for the grid-*resize* object move family (R1, easy000i) — same
+#: make_grid ∘ coloring composition, but make_grid sizes a *constant resized*
+#: canvas (the cross-pair COMM on the output dimensions) instead of copying the
+#: input size, and the object is placed at the constant target on it.
+PLACE_OBJECT_RESIZE_DSL = "place_object_resize"
+
 
 # ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
@@ -383,6 +389,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_corner_target_rule(patterns)
 
+        # Strategy 0e (R1, easy000i): the grid-*resize* object-move family. If
+        # the `object_resize_target` matcher fires (single object moved onto a
+        # constant-sized output canvas that differs from the input size, at one
+        # shared target), emit a canonical {condition, action} rule whose action
+        # sizes the canvas from the cross-pair output-dimension COMM and places
+        # the test object at the recomputed target — value-agnostic in color,
+        # source position, and input size. Recognition is delegated to the
+        # registered matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._object_resize_target_rule(patterns)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -517,6 +534,37 @@ class GeneralizeOperator(Operator):
                 "args": {"corner": move.get("constant_corner")},
             },
             "concept": "move_object_to_grid_corner",
+            "category": "object_move",
+            "confidence": 1.0,
+        }
+
+    def _object_resize_target_rule(self, patterns):
+        """Emit the canonical grid-resize move rule when the matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the
+        registered `object_resize_target` matcher (agent/conditions/), and the
+        result is a schema-canonical {condition, action} rule. The output canvas
+        size and the target anchor are cross-pair COMMs recomputed at predict
+        time from the example outputs (so the rule stays value-agnostic in the
+        object's color, source position, and the input size, and one rule covers
+        the whole resize family). A sibling of the constant-target/offset/corner
+        readings, so it lifts into the same `place_object` abstraction (R3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("object_resize_target", patterns, params):
+            return None
+        move = patterns.get("object_move") or {}
+        evidence = len(move.get("per_pair") or [])
+        return {
+            "condition": {
+                "type": "object_resize_target",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": PLACE_OBJECT_RESIZE_DSL,
+                "args": {},
+            },
+            "concept": "move_object_onto_resized_canvas",
             "category": "object_move",
             "confidence": 1.0,
         }
@@ -710,6 +758,18 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Grid-*resize* object move (R1, easy000i). Recompute the constant output
+        # dimensions and the shared target from the example outputs, then for each
+        # test pair render the test object onto a fresh canvas of those
+        # dimensions (color/shape/background from G0 — P5) at that target.
+        if action and action.get("dsl") == PLACE_OBJECT_RESIZE_DSL:
+            for i, grid in self._place_object_resize_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -825,6 +885,36 @@ class PredictOperator(Operator):
             target = corner_anchor(corner, height, width, obj_h, obj_w)
             grids[i] = render_object_at(
                 height, width, bg, obj["pixels"], target,
+            )
+        return grids
+
+    @staticmethod
+    def _place_object_resize_grids(task):
+        """Map test-pair index -> predicted grid for the grid-resize move.
+
+        The output canvas size and the target anchor are cross-pair COMMs
+        recomputed from the example outputs; each test object's color/shape/
+        background come from its own G0 (never a test G1 — P5), but the canvas is
+        sized by the learned output dimensions rather than the input. Returns {}
+        when the move analysis yields no constant output size or target."""
+        move = analyze_object_move(task.example_pairs)
+        output_dims = move.get("output_dims")
+        target = move.get("constant_target")
+        if output_dims is None or target is None:
+            return {}
+
+        out_h, out_w = output_dims
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            obj = unique_object(g0.raw)
+            if obj is None:
+                continue
+            bg = background_of(g0.raw)
+            grids[i] = render_object_at(
+                out_h, out_w, bg, obj["pixels"], tuple(target),
             )
         return grids
 

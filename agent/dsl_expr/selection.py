@@ -168,6 +168,11 @@ def analyze_object_move(example_pairs: list) -> dict:
       grid corner (a *grid-relative* COMM: the absolute anchor varies, but it is
       always e.g. the bottom-right corner). Solves easy000g, where neither the
       absolute target nor the offset is constant but the corner is.
+    - **output_dims** — every example's output grid has the *same* dimensions,
+      a cross-pair COMM on the output canvas size. When that size *differs* from
+      the input (size is *not* preserved), it is the learned argument that lets
+      `make_grid` size a resized canvas (easy000i: 6×6 in → constant 5×5 out,
+      object placed at a constant target on the resized canvas).
 
     These are sibling readings of the same per-pair DIFF: which one is constant
     is what distinguishes a fixed-target / fixed-offset / fixed-corner move. Grid
@@ -198,12 +203,17 @@ def analyze_object_move(example_pairs: list) -> dict:
             oh, ow = extent_of(out_obj)
             out_corners = corners_matching(
                 target, len(g1.raw), len(g1.raw[0]), oh, ow)
+        out_dim = (
+            [len(g1.raw), len(g1.raw[0]) if g1.raw else 0]
+            if g1.raw is not None else None
+        )
         per_pair.append({
             "single_object": single,
             "source": source,
             "target": target,
             "offset": offset,
             "out_corners": out_corners,
+            "out_dim": out_dim,
             "color_preserved": bool(single and in_obj["colors"] == out_obj["colors"]),
             "shape_preserved": bool(single and normalized_shape(in_obj) == normalized_shape(out_obj)),
             "size_preserved": (
@@ -242,6 +252,20 @@ def analyze_object_move(example_pairs: list) -> dict:
         if common:
             constant_corner = sorted(common)[0]
 
+    # Output canvas size as a cross-pair COMM. When every example's output grid
+    # has the *same* dimensions, that constant size is itself a learnable argument
+    # (a function of the example outputs, not of the test input) — the missing
+    # piece for grids that *resize* between input and output (easy000i: 6×6 → a
+    # constant 5×5). Read alongside (not instead of) size_preserved_all: the
+    # resize reading is meaningful precisely when the size is *not* preserved.
+    out_dims = [tuple(p["out_dim"]) for p in per_pair if p.get("out_dim")]
+    output_dims = (
+        list(out_dims[0])
+        if out_dims and len(out_dims) == len(per_pair)
+        and all(d == out_dims[0] for d in out_dims)
+        else None
+    )
+
     return {
         "per_pair": per_pair,
         "single_object_all": single_all,
@@ -251,4 +275,5 @@ def analyze_object_move(example_pairs: list) -> dict:
         "constant_target": constant_target,
         "constant_offset": constant_offset,
         "constant_corner": constant_corner,
+        "output_dims": output_dims,
     }
