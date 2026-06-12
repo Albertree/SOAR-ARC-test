@@ -705,3 +705,6 @@ The episodic writer (P4) is a small, self-contained next step.
 - Stored rule hits: 2
 - Time: 3s
 - Log: logs/learn_20260611_213639.log
+
+> **LOOP COMPLETE** after iter 8 — sentinel logs/_LOOP_COMPLETE.md present.
+> The loop stopped itself; see that file for the justification.
