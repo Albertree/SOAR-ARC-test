@@ -1,6 +1,82 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 41 — 2026-06-13T03:50 — branch test32 — NO-OP (analysis only, open question pinned)
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 26/26 hold. Rather than
+re-run iter-40's symmetry census, I attacked the *other* live family from a fresh angle:
+the **object-select-recolor** path (rule_008). A new census over all 1000 training tasks
+for *clean whole-object single-recolor* pairs (changed cells == exactly one input
+object's cells, all → one colour, every pair) found **exactly 2** such tasks unhandled —
+**54db823b** and **63613498** — and confirmed (via `analyze_object_select_recolor`) that
+**both are recognized as valid recolor *structure* (`valid_all=True`) but fail only at the
+selector (`selector=None`)**. The gap is therefore *precisely* the object-selection
+vocabulary, not the recolor mechanism — but the selectors these real tasks need are
+**reference-composing** (a second selection), which is an unresolved design question, not a
+smallest step. **No defensible smallest gap → no commit** (PROMPT §5.3).
+
+**Investigation (evidence, throwaway census scripts only — no repo change)**:
+- **63613498** (recolor target → 5): the selected object is the one **shape-congruent to a
+  key/legend object** in a gray-`5`-marked corner region. Naming it requires (a) sub-selecting
+  the *reference* (the legend) and (b) a shape-congruence *relation* against it — a
+  **two-level selector** (`select(congruent_to(reference_select(...)))`). The reference
+  sub-selection has no value-agnostic G0 criterion I could justify without inventing one
+  for this task (= a bespoke detector, F2-spirit / §2.5-3).
+- **54db823b** (recolor target → 0, i.e. *erase* the object): target is an "odd-one-out",
+  but **shape-multiplicity does not identify it** — across the 4 pairs the target's
+  normalized-shape count is `1,2,1,2` and in pair2 *every* object's shape is unique
+  (`all_mults=[1,1,1,1,1,1]`). So `unique_shape` (already in `SELECTOR_VOCAB`) and every
+  other intrinsic criterion (`max/min_size`, `unique_color`, `border_object`) miss it; the
+  real selector is some higher relation I could not pin to a value-agnostic G0 reading.
+- **Why not just add a selector**: a selector with no task that needs it is manufactured
+  busywork (PROMPT §2.2 "authoring a challenge you can already pass … is spinning"). The
+  two tasks that *would* exercise a new selector both need **reference-composing** selection,
+  whose design is the open question below — adding a one-off heuristic for either is the
+  §2.5-3/4 accretion this loop exists to prevent.
+- **Grid-level families**: confirmed mined-out (iter 40); no fresh same-size cluster.
+- **Probe path/gravity tasks** (c9680e90 reflect-across-divider, e5790162 ray-casting,
+  878187ab): the standing grounding-blocked geometric-synthesis frontier — multi-iter,
+  not a smallest step.
+
+**OPEN QUESTION surfaced (BACKLOG §5 "open-question 에 닿으면 멈춘다")**: *how does
+object-selection compose a reference?* The `SELECTOR_VOCAB` criteria are all **intrinsic**
+(read one object in isolation: size/colour/shape/border). The next real-task selectors
+(`congruent-to(legend)`, "odd-one-out relative to the others") are **relational** — they
+name an object by comparison to a *second* object that is itself selected. Lifting that
+(a second selection feeding the first, value-agnostic at predict) is the unresolved
+object-level "정렬·범위·선택적 확인" design decision (`arbor-open-questions.md` ~line 34).
+This pins the same frontier iter 40 hit (then framed as symmetry-completion ambiguity) to
+its **root form on the selection axis**: ARBOR has intrinsic selection but no
+*reference-composing* selection, and inventing one per task is forbidden accretion. Per §5
+I defer this rung corner and made no commit rather than hand-code a reference selector.
+
+**Change**: none (no code, no rule, no data). Reverted the probe runs' `times_reused`
+churn on rule_001/002 (runtime accounting — iter18..40 precedent). Appended this entry.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 26/26; rules=9; P1=7.333 P2=7.333
+  P3=0.444 P5=15.
+**Probe after** : identical (no change made). easy_a 9/9, madeup 26/26 (regression guards
+  intact — nothing touched).
+
+**Invariants**: forbidden=**none** (checker verdict **NEUTRAL**, exit 2 — no diff to any
+  tracked file). positives=**all unchanged** — a deliberate no-op (PROMPT §5.3): a
+  reference-composing selector hand-built for 63613498/54db823b would be a per-task detector
+  that pollutes the P1–P6 baseline, worse than no commit. Not termination (§2.2/§7):
+  nameable gaps remain (the relational-selector frontier), blocked on an open design
+  decision, not closable as a smallest step today.
+
+**Next gap (note for future iter)**: the object-select-recolor family is *structurally*
+  complete (it recognizes every clean whole-object recolor in the corpus) and **bottlenecked
+  purely on selection** — the only two un-folded real tasks both need a **reference-composing
+  selector** (`congruent-to(reference)` / relational odd-one-out). The defensible next step
+  is *not* another grid-level family but a design decision on how a second selection composes
+  into the first (value-agnostic at predict, grounded in COMM/DIFF) — or a real/madeup task
+  where the needed selector is *intrinsic* (single-object), which the census shows the corpus
+  does not currently offer beyond what `SELECTOR_VOCAB` already names. The raw-cell
+  path/gravity synthesizer frontier (c9680e90, e5790162, 878187ab) is unchanged and still
+  grounding-blocked.
+
+---
 ## Iter 40 — 2026-06-13T03:40 — branch test32 — NO-OP (analysis only, open question surfaced)
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 26/26 hold. I took
@@ -5167,3 +5243,33 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 6s
 - Log: logs/learn_20260613_033627.log
+
+---
+## Learning Loop -- 2026-06-13 03:46
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_034647.log
+
+---
+## Learning Loop -- 2026-06-13 03:47
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 12s
+- Log: logs/learn_20260613_034651.log
+
+---
+## Learning Loop -- 2026-06-13 03:47
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_034703.log
