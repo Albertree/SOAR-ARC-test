@@ -178,14 +178,20 @@ covers)·P3(au_traced_frac) 가 *함께* 오르는 방향만 진짜 전진이다
 
 - 역량: G0 의 객체를 검출·기술하고, "입력 객체를 고정/상대 위치에 색 보존
   배치" 류를 푼다. `easy000c` = (r,c) 단일 픽셀 → (5,5) 로 이동, 색 유지.
-- 모듈: `ARCKG/object.py`(존재) + **D(property/util) 를 object level 로 확장**
-  + **C(compare) 를 OBJECT level 로**. 새 condition matcher 1종.
+- 모듈: `ARCKG/object.py`(존재) + **property/relation/util/selection 씨앗 어휘
+  구축** (`position-of`·`color-of`·`size-of`·`objects-of`·`unique`·`argmax`·
+  `filter`·`select` — taxonomy §8 씨앗 set) + **C(compare) 를 OBJECT level 로**.
+  새 condition matcher 1종. **위치: 이 어휘는 `procedural_memory/DSL/` 가 아니라
+  `agent/` 아래** (F3 리버트 회피, §2.5-1).
+- 핵심(§2.5-2b): 이 rung 의 진짜 산물은 *선택의 lift* 다. raw 좌표 대신 객체를
+  `unique`/`argmax`/`filter` 로 *고르고* `position-of`/`color-of` 로 *읽어*
+  `coloring` 인자에 끼운다 — 그래야 R3 의 AU 가 공통 골격을 뽑을 수 있다.
 - Gap 출처: `arbor-modules §2`("anti-unification 이 객체 수준에서 동작 미검증"),
-  `§6 Gap`(property 의 condition 분리). *이전 Slice 1 §9 가 금지했던 바로 그것.*
+  `§6 Gap`(property 의 condition 분리), `arbor-dsl-taxonomy §4`(재료 부재 진단).
 - 제약: transformation DSL 은 여전히 `make_grid`/`coloring` 둘뿐 — 이동/배치는
-  `make_grid(bg)` ∘ `coloring(target, source_color)` 처럼 **인자에 좌표/색
-  변환식을 끼운 조합**으로 (§2.5-1, F3). object property(area/coordinate/color/
-  shape)는 손코딩 허용 (`arbor-dsl-taxonomy`).
+  `coloring(position-of(unique-object(in)), bg)` ∘
+  `coloring(target-position(...), color-of(unique-object(in)))` 처럼 **인자에
+  선택·좌표·색 표현식을 끼운 조합**으로 (§2.5-1, F3).
 - done-when: easy000c–i 가 4 관찰 기준으로 풀림 + easy_a 100% 도달 (graduation
   교착의 해소 지점). easy000c–i 의 pair-program 들은 같은 골격(코너 이동)을
   공유하므로 **R3 로 lift 되어 covers>1 의 `place_object` 조합 1개로 수렴**해야
@@ -276,9 +282,12 @@ covers)·P3(au_traced_frac) 가 *함께* 오르는 방향만 진짜 전진이다
 
 ### 그대로 유지 (PROMPT.md / INVARIANTS.md 에서 승계 — 큰 틀과 무관하게 불변)
 
-- **F3**: transformation DSL 은 `make_grid`/`coloring` 둘뿐. 세 번째 손코딩 영구 금지.
-  `rotate`/`flip`/`move` 등은 두 primitive 의 *순차 조합 + 인자 변환식* 으로만
-  표현·발견된다 (**§2.5** — 이 래더의 방향).
+- **F3 (정확한 범위)**: *transformation* DSL 만 `make_grid`/`coloring` 둘로 영구
+  동결 — 체커는 `procedural_memory/DSL/*.py` 의 새 `def`/`@register` 만 리버트.
+  `rotate`/`flip`/`move` 등은 두 primitive 의 *순차 조합 + 인자 표현식* 으로만
+  표현·발견된다 (**§2.5**). **property/relation/util/selection 어휘는 F3 대상이
+  아니며 — 오히려 키워야 한다 — `procedural_memory/DSL/` 가 아니라 `agent/` 아래에
+  둔다** (§2.5-1; CLAUDE.md §6.1 ↔ taxonomy §3 충돌은 session_log 에 surface).
 - **task-overfit 규칙 누적 금지 (§2.5-3/4)**: pair-specific 리터럴 프로그램이
   lift 없이 영구 규칙으로 task 마다 쌓이면 전진이 아니라 과거의 168-rule 실패다.
   규칙 *수* 증가는 covers(P1/P2) 증가를 *동반*할 때만 진짜 전진.
