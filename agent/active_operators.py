@@ -36,9 +36,11 @@ from agent.dsl_expr.selection import (
     analyze_object_size_grid,
     analyze_recolor_rank,
     analyze_scale_transform,
+    analyze_self_fractal,
     analyze_symmetry_repair,
     background_of,
     bbox_subgrid,
+    self_fractal,
     color_of,
     corner_anchor,
     extent_of,
@@ -171,6 +173,18 @@ SYMMETRY_REPAIR_DSL = "symmetry_repair"
 #: predict time (P5, the §2.5-2b selection lift) — so one value-agnostic rule
 #: covers the family.
 OBJECT_EXTRACT_DSL = "object_extract"
+
+#: action.dsl for the *self-fractal* family (BACKLOG_LOOP §2.5-1 on the
+#: size-expanding axis, §2.1 "grid size changes" + "pairs≠2") — the output is the
+#: input tiled into an (h·h)×(w·w) canvas with a copy of the input placed at each
+#: of its own foreground cells (007bbfb7, 5b6cbef5). The transformation is the
+#: frozen `coloring` primitive on a `make_grid` canvas
+#: (render_grid_via_primitives of the tiled grid): a fractal is `coloring` driven
+#: by a *where-to-place* placement expression, not a new `tile`/`fractal`
+#: primitive (§2.5-1, F3). The placement predicate ("the cell is foreground") is
+#: fixed and value-agnostic, recomputed off each test input's own background at
+#: predict time (P5), so one rule covers the family.
+SELF_FRACTAL_DSL = "self_fractal"
 
 
 # ======================================================================
@@ -453,6 +467,18 @@ class ExtractPatternOperator(Operator):
         # perturbs the readings above. Computed via the §2.5 selection vocabulary
         # (agent/dsl_expr/selection), not hand-coded here.
         patterns["object_extract"] = analyze_object_extract(task.example_pairs)
+
+        # *Self-fractal placement* (BACKLOG_LOOP §2.5-1, size-expanding axis; §2.1
+        # "grid size changes" + "pairs≠2"): the output is the input tiled into an
+        # (h·h)×(w·w) canvas with a copy of the input placed at each of its own
+        # foreground cells. The placement is the frozen `coloring` primitive on a
+        # `make_grid` canvas, not a new primitive; the whole content is the fixed
+        # *where-to-place* predicate ("the cell is foreground"), recomputed off each
+        # test input's own background at predict time. Inert (valid_all False)
+        # whenever the fractal does not reproduce all pairs (in particular on every
+        # same-size task), so it never perturbs the readings above. Computed via the
+        # §2.5 selection vocabulary (agent/dsl_expr/selection), not hand-coded here.
+        patterns["self_fractal"] = analyze_self_fractal(task.example_pairs)
 
         wm.s1["patterns"] = patterns
 
@@ -766,6 +792,22 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_extract_rule(patterns)
 
+        # Strategy 5 (BACKLOG_LOOP §2.5-1, size-expanding axis): self-fractal
+        # placement. If the `self_fractal` matcher fires (placing a copy of the
+        # input at each of its own foreground cells reproduces every example output
+        # with a genuine expansion), emit a canonical {condition, action} rule
+        # carrying empty args — the placement predicate is fixed and recomputed off
+        # each test input's own background at predict time, so one value-agnostic
+        # rule covers the family (it merges by condition+action equivalence, like
+        # the geometric/scale/symmetry/extract families, rather than accreting one
+        # literal rule per task — §2.5-3/4). Checked *last* (a size-changing exact
+        # reproduction): it only fires when the output is exactly the input's own
+        # fractal, which no earlier family claims, so ordering it last guarantees no
+        # regression. Recognition is delegated to the registered matcher, not a
+        # hand-coded detector.
+        if rule is None:
+            rule = self._self_fractal_rule(patterns)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -953,6 +995,44 @@ class GeneralizeOperator(Operator):
             },
             "concept": "object_extract",
             "category": "object_extract",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: self-fractal placement -------------------------------
+
+    def _self_fractal_rule(self, patterns):
+        """Emit the canonical self-fractal rule when the `self_fractal` matcher
+        fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `self_fractal` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The action carries *empty* args
+        — the placement predicate ("place a copy where the cell is foreground") is
+        fixed and the per-test background is recomputed at predict time off each
+        test input, so the rule is value-, colour- and size-agnostic and one rule
+        covers the whole fractal family (it merges by condition+action equivalence,
+        like the geometric/scale/symmetry/extract families, rather than accreting
+        one literal rule per task — §2.5-3/4). The transformation bottoms out in
+        the frozen `coloring` primitive on a `make_grid` canvas
+        (render_grid_via_primitives of the tiled grid); no new transformation is
+        introduced (§2.5-1, F3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("self_fractal", patterns, params):
+            return None
+        sig = patterns.get("self_fractal") or {}
+        evidence = int(sig.get("evidence", 0))
+        return {
+            "condition": {
+                "type": "self_fractal",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": SELF_FRACTAL_DSL,
+                "args": {},
+            },
+            "concept": "self_fractal",
+            "category": "self_fractal",
             "confidence": 1.0,
         }
 
@@ -1515,6 +1595,18 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # *Self-fractal placement* (BACKLOG_LOOP §2.5-1, size-expanding axis). For
+        # each test pair, place a copy of that test input at each of its own
+        # foreground cells (the background recomputed off the test G0, P5) and
+        # render the tiled grid via the frozen `coloring`/`make_grid` primitives.
+        if action and action.get("dsl") == SELF_FRACTAL_DSL:
+            for i, grid in self._self_fractal_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         # Object-property *canvas sizing* (R1 / §2.1). Recompute the learned
         # dimension property from the examples, then for each test pair read that
         # property and the colour off the test object (P5) and render a solid
@@ -1883,6 +1975,32 @@ class PredictOperator(Operator):
             if window is None:
                 continue
             grids[i] = render_grid_via_primitives(window)
+        return grids
+
+    @staticmethod
+    def _self_fractal_grids(task):
+        """Map test-pair index -> predicted grid for the self-fractal family.
+
+        The placement predicate is fixed ("place a copy of the input at each of its
+        own foreground cells"); the only per-test reading is the test input's own
+        background (P5). For each test pair the tiled (h·h)×(w·w) grid is built by
+        `self_fractal` and rendered via `make_grid` + `coloring`
+        (render_grid_via_primitives) — the COMM-verified mechanism, never a stored
+        literal. Returns {} when the analysis does not validate (so a stored rule
+        re-derived on a non-fractal task abstains rather than emitting a wrong
+        grid)."""
+        sig = analyze_self_fractal(task.example_pairs)
+        if not sig.get("valid_all"):
+            return {}
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            tiled = self_fractal(g0.raw)
+            if tiled is None:
+                continue
+            grids[i] = render_grid_via_primitives(tiled)
         return grids
 
     @staticmethod

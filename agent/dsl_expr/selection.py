@@ -2307,3 +2307,83 @@ def analyze_object_extract(example_pairs: list) -> dict:
         "valid_all": selector is not None,
         "evidence": len(pairs),
     }
+
+
+def self_fractal(grid: list, background: int | None = None):
+    """Self-fractal placement: tile a copy of `grid` into an (h·h)×(w·w) canvas,
+    placing the copy at block (i, j) **iff** `grid[i][j]` is a non-background cell
+    (the classic ARC self-similar / fractal family — 007bbfb7, 5b6cbef5).
+
+    The placement predicate ("the cell is foreground") is the *argument
+    expression* — value-, colour- and size-agnostic, read from comparison rather
+    than assumed (P3/P4). The transformation itself bottoms out in the two frozen
+    primitives: the returned grid is a plain nested list that
+    `render_grid_via_primitives` rebuilds as `coloring` calls on a `make_grid`
+    canvas, so this introduces no new `tile`/`fractal` transformation primitive
+    (§2.5-1, F3) — only a *where-to-place* selection expression in the F3-exempt
+    `agent/dsl_expr/` argument layer.
+
+    Returns None for an empty grid."""
+    if not grid or not grid[0]:
+        return None
+    bg = background_of(grid) if background is None else background
+    h = len(grid)
+    w = len(grid[0])
+    out = [[bg] * (w * w) for _ in range(h * h)]
+    for i in range(h):
+        for j in range(w):
+            if grid[i][j] != bg:
+                for r in range(h):
+                    for c in range(w):
+                        out[i * h + r][j * w + c] = grid[r][c]
+    return out
+
+
+def analyze_self_fractal(example_pairs: list) -> dict:
+    """Self-fractal placement — output = the input tiled into its own foreground.
+
+    Fires when, in *every* example, `self_fractal(input)` (a copy of the input
+    placed at each of its own non-background cells) equals the output exactly,
+    with ≥2 pairs and a genuine expansion (output strictly larger than input, so
+    it is inert on every same-size task and on a 1×1 grid). The predicate is
+    fixed — "place where the cell is foreground" — and recomputed off each test
+    input's own background at predict time, so one value-agnostic rule covers the
+    whole family rather than one literal rule per task (§2.5-3/4). The
+    transformation bottoms out in the frozen `coloring` primitive on a `make_grid`
+    canvas (render_grid_via_primitives of the tiled grid), not a new primitive
+    (§2.5-1, F3).
+
+    Grounded in comparison, never assumed (P3/P4): a fit is admitted only if the
+    placed-copy grid equals the output for every pair (the COMM between predicted
+    and actual outputs). Stays inert (valid_all False) whenever the fractal does
+    not reproduce all pairs, so it never perturbs the scale / move / recolor /
+    extract families. Returns a symbolic dict consumed by the `self_fractal`
+    matcher (agent/conditions/) and PredictOperator."""
+    pairs = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        if a and b and a[0] and b[0]:
+            pairs.append((a, b))
+
+    valid = False
+    if len(pairs) >= 2:
+        valid = True
+        grew = False
+        for a, b in pairs:
+            out = self_fractal(a)
+            if out != b:
+                valid = False
+                break
+            if len(b) > len(a) or len(b[0]) > len(a[0]):
+                grew = True
+        valid = valid and grew
+
+    return {
+        "valid_all": valid,
+        "evidence": len(pairs),
+    }

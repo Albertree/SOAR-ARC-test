@@ -1,0 +1,25 @@
+{
+  "id": 13,
+  "concept": "self_fractal",
+  "category": "self_fractal",
+  "condition": {
+    "type": "self_fractal",
+    "params": {
+      "min_evidence": 2
+    },
+    "min_evidence": 5
+  },
+  "action": {
+    "dsl": "self_fractal",
+    "args": {}
+  },
+  "covers": [
+    "007bbfb7",
+    "5b6cbef5",
+    "madeup_self_fractal"
+  ],
+  "source_task": "007bbfb7",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-13T04:31:58.520407",
+  "times_reused": 0
+}

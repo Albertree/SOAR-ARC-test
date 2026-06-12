@@ -1,6 +1,84 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 43 — 2026-06-13T04:32 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 27/27 hold. Iters 40/41 were
+no-ops pinned on the *reference-composing selector* open question; iter 42 opened the object
+*extract* axis. Rather than re-census the same-size families (mined out per iter 40) or
+re-touch extract, I opened a **fresh size-expanding axis the system had no family for at all**:
+*self-fractal placement* — output = the input tiled into an (h·h)×(w·w) canvas with a copy of
+the input placed at each of its own foreground cells (the classic ARC self-similar family). A
+whole-corpus census (real `background_of` + the placement predicate) found **exactly 2** tasks
+where this reproduces every train **and test** pair with a genuine expansion, **zero** false
+positives across all 1000: **007bbfb7** (3×3→9×9) and **5b6cbef5** (4×4→16×16) — both INCORRECT
+before (rule=identity, no family fires). The gap is general, value-agnostic, reuses
+`background_of`, and folds into one born-general rule. Both tasks have **5 train pairs** — the
+§2.1 "grid size changes" + "pairs≠2" concepts on the fractal axis.
+
+**Change** (a born-general new family via the frozen primitives — no transformation primitive,
+no new `_try_*`; a fractal is `coloring` at each cell of the tiled grid on a `make_grid` canvas,
+i.e. `render_grid_via_primitives` of the placement; F8 companion = the new
+`agent/conditions/self_fractal.py`):
+- `agent/dsl_expr/selection.py`: added **`self_fractal`** (the *where-to-place* placement
+  expression — place a copy of the grid at each non-background block) and
+  **`analyze_self_fractal`** — verifies the placement reproduces **every** example output
+  exactly, requiring ≥2 pairs and a genuine expansion (so it is inert on every same-size /
+  identity / 1×1 / non-fractal task). The placement predicate is the §2.5 argument expression;
+  the transformation is the two frozen primitives.
+- `agent/conditions/self_fractal.py`: **new condition matcher** (P5 +1) — fires only on a
+  validated fractal with ≥`min_evidence` pairs.
+- `agent/active_operators.py`: wired the family in symmetrically — `analyze_self_fractal` in
+  ExtractPattern; `_self_fractal_rule` emit (empty args — placement predicate fixed, background
+  recomputed at predict so one rule covers the family); checked **last** among the strategies (a
+  size-expanding exact reproduction → can only claim a task no earlier family solved,
+  guaranteeing no regression); PredictOperator dispatch + `_self_fractal_grids` (builds each
+  *test* input's own fractal off its own background, renders via primitives; abstains when the
+  analysis does not validate). (+118; F8-clean via the new conditions/ file.)
+- `procedural_memory/rule_013.json`: **auto-saved by the pipeline** — one value-agnostic rule,
+  `covers` = [007bbfb7, 5b6cbef5, madeup_self_fractal].
+- `data/ARC_madeup/madeup_self_fractal.json`: grounding task (3 value-agnostic fractals,
+  different palettes/sizes → test) — the §2.1 "grid size changes" + "pairs≠2" concepts on the
+  fractal axis. Solves the intended way.
+- `tests/test_self_fractal.py`: +9 tests (placement at foreground cells; empty→None; analyzer
+  learns the fractal; matcher fires; render == placement via primitives; abstains on single
+  pair / identity / uniform scale / 1×1).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 27/27; rules=10; P1=7.0 P2=7.0 P3=0.4 P5=16.
+  The 2 fractal tasks INCORRECT (no family fires).
+**Probe after** : 007bbfb7 / 5b6cbef5 **CORRECT** via the new family (one rule, covers=3 with
+  the madeup grounding task). madeup **28/28** (self_fractal solves the intended way, verified);
+  easy_a **9/9**; pytest **245/245** (236+9). The family is inert on every non-fractal task
+  (census: exactly 2 fires, zero false positives across 1000).
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P5 +1** (16→17,
+  the new `self_fractal` matcher). P1 7.0→6.636, P2 7.0→6.636, P3 0.4→0.364 dip is the
+  **born-general-family debut** shape (identical to object_extract's iter-42 debut and
+  symmetry_repair's iter-38 debut): a brand-new family starts a fresh non-AU rule, so the means
+  dip even though total covered tasks rose **70→73 (+3)** — *not* liftless per-task accretion
+  (one rule covers 3 distinct tasks via one mechanism, with covers headroom: other fractal
+  variants — place-where-background, place-where-a-specific-colour — are the named next gap). P4
+  flat 932; P6 active_operators +118 (F8-clean companion). Reverted the verification runs'
+  `times_reused` churn on rule_001/002 (runtime accounting — iter18..42 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the fractal
+  vocabulary (`self_fractal`, `analyze_self_fractal`) is util/selection (argument-expression)
+  vocabulary under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's "no new DSL def" binds only
+  `procedural_memory/DSL/`). No transformation primitive added; F3 contract intact (a fractal
+  bottoms out in `coloring` at each cell of the tiled grid on a `make_grid` canvas —
+  `render_grid_via_primitives` of the placement).
+
+**Next gap (note for future iter)**: rule_013 covers the fractal axis only via the *foreground*
+  placement predicate. Immediate covers-headroom: fractal variants where the copy is placed at
+  **background** cells, or at cells **matching a specific colour** (the predicate becomes the
+  lift, analogous to the extract selector) — a small generalization of `analyze_self_fractal`'s
+  predicate search, not a new family. The other live direction is unchanged: once ≥2
+  size-expanding families (scale, fractal) share a skeleton, the R3 prize
+  (`anti_unification.unify()` lifting them into one coordinate-remap rule). The raw-cell
+  ray/path/gravity synthesizer frontier (c9680e90, e5790162, 878187ab) is unchanged and still
+  grounding-blocked.
+
+---
 ## Iter 42 — 2026-06-13T04:22 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 26/26 hold. Iters 40/41 were
@@ -5436,3 +5514,73 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 14
 - Time: 12s
 - Log: logs/learn_20260613_042315.log
+
+---
+## Learning Loop -- 2026-06-13 04:24
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_042402.log
+
+---
+## Learning Loop -- 2026-06-13 04:24
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 14
+- Time: 11s
+- Log: logs/learn_20260613_042406.log
+
+---
+## Learning Loop -- 2026-06-13 04:24
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_042417.log
+
+---
+## Learning Loop -- 2026-06-13 04:27
+
+- Split: None, Tasks: 2
+- Correct: 0 / 2 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260613_042724.log
+
+---
+## Learning Loop -- 2026-06-13 04:32
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 10 -> 11 (+1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260613_043157.log
+
+---
+## Learning Loop -- 2026-06-13 04:32
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 14
+- Time: 13s
+- Log: logs/learn_20260613_043214.log
+
+---
+## Learning Loop -- 2026-06-13 04:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_043227.log
