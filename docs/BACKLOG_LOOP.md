@@ -77,6 +77,53 @@
 
 ---
 
+## 2.5 조립 원칙 (★ 이 래더의 *방향*. task-overfit 규칙 누적 금지)
+
+> 이 절이 래더 전체를 지배한다. 어떤 rung 도 이 원칙을 우회해 "그 task 만 푸는
+> 규칙"을 찍어내는 쪽으로 흘러가면 안 된다. ARBOR 의 이름(Bottom-up Organized
+> Rules)이 곧 이 원칙이다.
+
+**1. 변환 어휘의 유일한 출처 = 두 primitive 의 조합.**
+손으로 만들 수 있는 transformation 은 `make_grid`·`coloring` **둘뿐이다 (F3,
+영구).** `rotate`·`flip`·`move`·`translate`·`scale`·`copy`·`recolor` … *그 외
+전부*는 새 primitive 도, task 전용 규칙도 아니다. 이들은 두 primitive 의
+
+- **순차 조합** (sequential composition): `make_grid(...)` 로 캔버스를 깔고
+  `coloring(...)` 를 *여러 번* 적용하는 *순서 있는 프로그램*, 그리고
+- **args 조합/파라미터화** (argument composition): 각 `coloring` 의
+  `selection`·`color` 인자를 G0 에서 읽은 값의 *함수*로 두는 것
+
+로 **표현된다**. 예:
+- `move`  = `make_grid(H,W,bg)` ∘ `coloring(target_coords, source_color)`
+  — target_coords 는 source_coords 의 *함수* (예: (r,c)→(5,5)).
+- `flip_h` = source 의 각 셀 (r,c,color) 에 대해 `coloring((r, W-1-c), color)`
+  — 인자에 *좌표 변환식* 을 끼운 coloring 시퀀스.
+- `rotate90` = `coloring((c, H-1-r), color)` 시퀀스.
+
+즉 새 변환 = **같은 두 primitive + 인자에 끼운 좌표/색 변환식**. 절대 새
+`def rotate(...)` 가 아니다 (F3 위반·auto-revert).
+
+**2. 이 조합은 *발견* 되는 데이터다 (손코딩 아님).**
+위 조합 레시피는 사람이 적는 게 아니라 `anti_unification.unify()`(R3)가 2개
+이상의 pair-specific 프로그램에서 *공통 골격* 을 뽑아 **변수화** 해서 만든다.
+결과는 `procedural_memory/rule_NNN.json` 의 **데이터**로 저장된다
+(`action.dsl` = 조합 이름, `action.args` = 일반화 변수). CLAUDE.md §6.2 그대로.
+
+**3. overfit 은 *재료* 로만 허용 — *축적* 은 실패다.**
+한 pair 를 리터럴로 푸는 *pair-specific 프로그램* 은 **anti-unification 의
+입력 재료로서만** 허용된다 (§5 모듈-통일성의 "program 은 overfit OK" 가 이 뜻).
+그 프로그램이 그대로 *영구 규칙* 으로 굳어 task 마다 하나씩 쌓이면 — 그게 바로
+사용자가 없애려는 실패(`arbor.md` 진단, 과거 168-rule)다. **모든 overfit
+프로그램은 R3 로 lift 되어 `covers>1` 의 *인자-파라미터화된 조합* 으로 수렴해야
+한다.** lift 되지 않고 task 전용으로 남는 규칙은 gap 을 닫은 게 아니다.
+
+**4. 진행 방향의 리트머스.** 한 iter 가 규칙 *수* 를 늘렸는데 그 규칙들이 두
+primitive 의 *더 일반적인 조합* 으로 묶이지 않는다면 (covers 가 안 늘면), 그건
+전진이 아니라 누적이다 — `arbor.md` 의 핵심 진단. P1(rule_coverage)·P2(mean
+covers)·P3(au_traced_frac) 가 *함께* 오르는 방향만 진짜 전진이다.
+
+---
+
 ## 3. 역량 래더 (rung 별: 역량 · 모듈 · Gap출처 · done-when · 움직이는 신호)
 
 아래로 갈수록 *위 rung 을 전제*한다 (bottom-up). 각 rung 은
@@ -111,10 +158,13 @@
 - Gap 출처: `arbor-modules §2`("anti-unification 이 객체 수준에서 동작 미검증"),
   `§6 Gap`(property 의 condition 분리). *이전 Slice 1 §9 가 금지했던 바로 그것.*
 - 제약: transformation DSL 은 여전히 `make_grid`/`coloring` 둘뿐 — 이동/배치는
-  그 *합성*으로 (F3). object property(area/coordinate/color/shape)는 손코딩 허용
-  (`arbor-dsl-taxonomy`).
+  `make_grid(bg)` ∘ `coloring(target, source_color)` 처럼 **인자에 좌표/색
+  변환식을 끼운 조합**으로 (§2.5-1, F3). object property(area/coordinate/color/
+  shape)는 손코딩 허용 (`arbor-dsl-taxonomy`).
 - done-when: easy000c–i 가 4 관찰 기준으로 풀림 + easy_a 100% 도달 (graduation
-  교착의 해소 지점).
+  교착의 해소 지점). easy000c–i 의 pair-program 들은 같은 골격(코너 이동)을
+  공유하므로 **R3 로 lift 되어 covers>1 의 `place_object` 조합 1개로 수렴**해야
+  한다 — 과제마다 규칙 하나씩 쌓는 게 아니다 (§2.5-3).
 - 신호: easy_a 정답수 ↑, P5(condition_matchers) +1.
 
 ### R2 — Episodic writer 검증·확정
@@ -184,7 +234,8 @@
 
 - rung 이 **4 관찰 기준**으로 충족되면 — (1) **작동**: 모듈/비교가 에러 없이
   돈다; (2) **모듈 통일성**: 같은 종류 작업이 같은 모듈로 (모듈 안 task 전용
-  분기 ✗; 풀이로 생긴 program 은 overfit OK); (3) **정답 접근**: 풀이가 정답
+  분기 ✗; pair-specific program 의 overfit 은 *anti-unification 의 입력 재료로서만*
+  OK — §2.5-3); (3) **정답 접근**: 풀이가 정답
   *방향* 으로 간다 (우회·실패 거쳐도); (4) **탐색 건전성**: brute-force 가
   있어도 *의미있는 범위* 안 — `logs/session_log.md` 에 **`RUNG R<k> CLEARED`** 블록을
   쓴다: 무엇이 이제 의도된 방식으로 되는가 · 어떤 신호가 움직였나 · 다음 rung 의
@@ -201,6 +252,11 @@
 ### 그대로 유지 (PROMPT.md / INVARIANTS.md 에서 승계 — 큰 틀과 무관하게 불변)
 
 - **F3**: transformation DSL 은 `make_grid`/`coloring` 둘뿐. 세 번째 손코딩 영구 금지.
+  `rotate`/`flip`/`move` 등은 두 primitive 의 *순차 조합 + 인자 변환식* 으로만
+  표현·발견된다 (**§2.5** — 이 래더의 방향).
+- **task-overfit 규칙 누적 금지 (§2.5-3/4)**: pair-specific 리터럴 프로그램이
+  lift 없이 영구 규칙으로 task 마다 쌓이면 전진이 아니라 과거의 168-rule 실패다.
+  규칙 *수* 증가는 covers(P1/P2) 증가를 *동반*할 때만 진짜 전진.
 - **F2**: 새 `_try_<name>`/`_apply_<name>` 추가 금지. 새 category 의 답은
   anti-unification(R3)이지 새 디텍터가 아니다.
 - **anti-unification 은 `save_rule()` 단일 호출 지점**에서만 (CLAUDE.md §8).

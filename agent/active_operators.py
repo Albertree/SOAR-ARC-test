@@ -172,6 +172,25 @@ class ExtractPatternOperator(Operator):
             if g0.height != g1.height or g0.width != g1.width:
                 patterns["grid_size_preserved"] = False
 
+        # Inter-Grid COMM over example outputs: are all example G1 identical?
+        # This is the evidence R0's `constant_output` matcher keys on — when every
+        # example output is the same grid, the answer is that common grid (the
+        # COMM-copy path, BACKLOG_LOOP.md R0). Surfaced here as a symbolic signal
+        # rather than acted on, so the recognition stays value-agnostic.
+        example_outputs = [
+            pair.output_grid.raw
+            for pair in task.example_pairs
+            if pair.output_grid is not None
+        ]
+        all_equal = bool(example_outputs) and all(
+            o == example_outputs[0] for o in example_outputs
+        )
+        patterns["output_invariant"] = {
+            "all_equal": all_equal,
+            "evidence_count": len(example_outputs),
+            "common_output": example_outputs[0] if all_equal else None,
+        }
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
