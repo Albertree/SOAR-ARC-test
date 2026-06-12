@@ -576,6 +576,99 @@ GRID_DIM_PROPERTY_VOCAB = {
 }
 
 
+# ---------------------------------------------------------------------------
+# property vocabulary: a *rectangular* grid-level reading (h, w) — partition bands
+# ---------------------------------------------------------------------------
+#
+# The readings above all presuppose a single object (`unique_object`) or the
+# object *set* sized to a *square*. The §2.1 "grid size = f(input structure)"
+# concept also appears at *grid* level with a *rectangular* answer: an input
+# divided by full-line **separators** into a lattice of regions, whose output is a
+# solid rectangle counting those regions (rowbands × colbands). The subject is
+# neither one object nor the object set but the grid's separator *structure* — the
+# §2.5-2b "which subject feeds the dimension argument" axis, extended to a
+# grid-level rectangular subject. Both axes still bottom out in the same frozen
+# `make_grid` dimension argument, so a partition-sized task lifts into the *same*
+# `size_to_grid` family (one more value the dimension variable ranges over), not a
+# new family — covers rises, rule count holds (§2.5-4). Argument vocabulary under
+# agent/, no transformation (F3-exempt).
+
+def separator_color_of(grid: list):
+    """The colour of the grid's *separator lines* — the single non-dominant colour
+    that forms at least one complete row or complete column (a gridline).
+
+    Returns ``None`` when no such colour exists or when more than one does
+    (ambiguous → abstain). The dominant (`most_frequent_color`) colour is excluded
+    because it is the *content* the separators delimit, not a separator; in a
+    partitioned grid the separators are the minority lines and the content never
+    spans a full line."""
+    if not grid or not grid[0]:
+        return None
+    H = len(grid)
+    W = len(grid[0])
+    content = most_frequent_color(grid)
+    line_colors = set()
+    for r in range(H):
+        s = set(grid[r])
+        if len(s) == 1:
+            line_colors.add(next(iter(s)))
+    for c in range(W):
+        s = {grid[r][c] for r in range(H)}
+        if len(s) == 1:
+            line_colors.add(next(iter(s)))
+    cands = {c for c in line_colors if c != content}
+    if len(cands) != 1:
+        return None
+    return next(iter(cands))
+
+
+def _count_bands(n: int, sep_indices: set) -> int:
+    """Number of maximal runs of non-separator indices in ``range(n)``."""
+    count = 0
+    prev_sep = True
+    for i in range(n):
+        if i in sep_indices:
+            prev_sep = True
+        else:
+            if prev_sep:
+                count += 1
+            prev_sep = False
+    return count
+
+
+def partition_bands_of(grid: list):
+    """The ``(rowbands, colbands)`` partition of a separator-delimited grid.
+
+    A *rectangular* grid-level dimension reading (`GRID_RECT_DIM_VOCAB`): the
+    number of horizontal bands (maximal runs of rows not entirely separator) by the
+    number of vertical bands. Returns ``None`` when the grid has no unambiguous
+    separator colour or no separator line at all (so it never fires on an
+    unpartitioned grid)."""
+    if not grid or not grid[0]:
+        return None
+    sep = separator_color_of(grid)
+    if sep is None:
+        return None
+    H = len(grid)
+    W = len(grid[0])
+    sep_rows = {r for r in range(H) if all(grid[r][c] == sep for c in range(W))}
+    sep_cols = {c for c in range(W) if all(grid[r][c] == sep for r in range(H))}
+    if not sep_rows and not sep_cols:
+        return None
+    return (_count_bands(H, sep_rows), _count_bands(W, sep_cols))
+
+
+#: name -> fn(grid) -> (h, w) | None. A *grid-level rectangular* dimension reading
+#: usable as the `make_grid` ``(height, width)`` argument. Tried (after the
+#: per-object scalar/rect readings and the grid-level scalar) when *learning* which
+#: reading sizes a task's solid output. A value learned here fills the same
+#: `size_to_grid` dimension variable as `bbox_extent`/`count_bar_*` — it lifts into
+#: the existing family, not a new one (§2.5-4).
+GRID_RECT_DIM_VOCAB = {
+    "partition_bands": partition_bands_of,
+}
+
+
 def analyze_object_size_grid(example_pairs: list) -> dict:
     """Output canvas *sized by an object property* (BACKLOG_LOOP §2.1 / R1).
 
@@ -740,6 +833,26 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
                 ):
                     dim_property = name
                     color_all = subj_color_all
+                    break
+        if dim_property is None:
+            # Grid-level *rectangular* reading: the canvas dimensions count the
+            # input's separator-delimited partition bands (rowbands × colbands),
+            # the §2.1 "grid size = f(input structure)" concept at *grid* level
+            # (no single object). Colour grounds on the *content* (majority) colour
+            # — the cells the separators delimit — a colour COMM between the input
+            # content and the output fill, recomputed per test input (P5). Tried
+            # last so every object-level reading keeps priority and an existing
+            # task is classified exactly as before.
+            for name, fn in GRID_RECT_DIM_VOCAB.items():
+                dims = [fn(p["grid"]) for p in per_pair]
+                if all(
+                    d is not None
+                    and tuple(d) == (p["out_h"], p["out_w"])
+                    and most_frequent_color(p["grid"]) == p["out_color"]
+                    for d, p in zip(dims, per_pair)
+                ):
+                    dim_property = name
+                    color_all = True  # grounded on the content (majority) colour
                     break
 
     return {

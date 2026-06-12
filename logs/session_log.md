@@ -1,6 +1,81 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 34 — 2026-06-13T02:05 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 20/20 hold. The probe's
+own failures (c9680e90, 878187ab, e5790162) are same-size raw-cell ray/path tasks
+behind the general Slow-path synthesizer frontier — too big and grounding-blocked for
+one safe iter. So I took iter 33's explicitly-named *next* gap instead: the
+uniform-output training tasks whose **output dimensions count separator-delimited
+partition regions** (1190e5a7, 7039b2d7). Both share one clean general skeleton — a
+grid divided by full-line separators into a lattice → output = solid rectangle of
+(rowbands × colbands), filled with the content colour — the §2.1 "grid size = f(input
+structure)" concept at *grid* level (no single object), which the `size_to_grid` family
+could express off an object's bbox/count but not off the grid's separator structure.
+
+**Change** (general mechanism in `agent/dsl_expr/`, F3-exempt argument/analysis
+vocabulary — no transformation primitive, no new `_try_*`, no new matcher, **no new
+rule**):
+- `agent/dsl_expr/selection.py`: added `separator_color_of` (the unique non-dominant
+  full-line colour; abstains — returns None — when none or >1, so it never fires on an
+  unpartitioned/ambiguous grid), `partition_bands_of` → `(rowbands, colbands)` (maximal
+  runs of non-separator rows × cols), and a new **`GRID_RECT_DIM_VOCAB`** (grid-level
+  *rectangular* dimension reading, the converse of the per-object `RECT_DIM_VOCAB`). The
+  `analyze_object_size_grid` analyzer gained a final grid-rect branch tried **last**
+  (after every object-level scalar/rect/selector reading), so an existing task is
+  classified exactly as before; it grounds the fill on the *content* (majority) colour
+  (a colour COMM between input content and output fill), recomputed per test input (P5).
+- `agent/active_operators.py`: render dispatch for the grid-rect reading in
+  `_place_size_grid_grids` — reads bands + content colour off each *test* input and fills
+  a solid rect via the frozen `make_grid`; value-agnostic in separator/content colours,
+  band counts and grid size. (+21 net; F8 companion = the matcher edit below.)
+- `agent/conditions/object_size_grid.py`: docstring/comment accuracy fix — the matcher
+  now admits a **fourth** dimension subject (the grid's separator structure, grounded on
+  the content colour), not just the three object subjects. Genuine recognition-scope
+  update, also the F8 companion to the render edit.
+- `procedural_memory/rule_001.json`: recorded the genuine new coverage — `properties`
+  += `partition_bands` (the lifted `?v0` now ranges over it), `covers` +=
+  `madeup_partition_bands` + **`1190e5a7`** + **`7039b2d7`** (two real ARC-AGI-2 tasks).
+  All three **verified CORRECT** and solve via *reuse* of rule_001 (stored-rule hit,
+  method=stored_rule) — the `reuse_signal_blindspot` the learn-time auto-append misses;
+  recorded by hand because covers means "all tasks this rule has handled" and omitting
+  verified coverage under-counts. No new rule, no new matcher.
+- `data/ARC_madeup/madeup_partition_bands.json`: grounding task (3 pairs, different
+  sizes/colours/band-counts each, value-agnostic) + a 3×3 test pair.
+- `tests/test_partition_bands.py`: 8 tests (separator excludes content; band counting;
+  abstain without/ambiguous separator; analyzer learns partition_bands; vocab identity;
+  render round-trip; does-not-steal a square object task).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 20/20; rules=7; P1=6.0 P2=6.0
+  P3=0.571 P5=13. 1190e5a7 / 7039b2d7 ran INCORRECT (no grid-level rect reading).
+**Probe after** : 1190e5a7 **CORRECT** + 7039b2d7 **CORRECT** (both via stored rule_001
+  reuse — fast-path skill reuse generalising to real, structurally-new tasks, the R5
+  signal); madeup **21/21** (new partition task solves the intended way); easy_a **9/9**;
+  pytest **183/183** (175+8); training 120-sample (seed 42) **0 errors, Rules 7→7 (+0
+  spurious), 0 discovered** — the new reading is inert on non-partition tasks.
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P1 +0.43**
+  (6.0→6.43), **P2 +0.43** (6.0→6.43) — covers 42→45 folded into the existing **au=SET**
+  rule_001, rule count held at 7: the §2.5-4 real-progress shape (covers up, rules flat,
+  **P3 held** at 0.571 — no accretion/dilution, the opposite of a born-general family
+  add). P4/P5 unchanged (no matcher). P6 −21 (active_operators +21 lines for the render
+  branch; F8-clean via the conditions/ companion). Reverted the verification runs'
+  `times_reused` churn on rule_001/002 (runtime accounting — iter18..33 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  partition vocabulary is property/relation/util material placed under `agent/dsl_expr/`
+  (taxonomy §3 allows; §6.1's "no new DSL def" binds only `procedural_memory/DSL/`). No
+  transformation primitive added; F3 contract intact.
+
+**Next gap (note for future iter)**: 23b5c85d (the third uniform-output task scouted) is
+  *not* the same mechanism — its output is the smallest/largest **rectangle region's
+  size**, not a band count, so it needs a select-region-by-area capability, a different
+  (and defensible) next step. The large standing frontier is unchanged: the general
+  Slow-path synthesizer / `object_level_lift` for *raw-cell* ray/path tasks (e5790162,
+  c9680e90, 878187ab) behind most failing training tasks, still grounding-blocked.
+
+---
 ## Iter 33 — 2026-06-13T01:42 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 19/19 hold. The cheap
@@ -4129,3 +4204,73 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 1
 - Time: 0s
 - Log: logs/learn_20260613_014056.log
+
+---
+## Learning Loop -- 2026-06-13 01:48
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_014812.log
+
+---
+## Learning Loop -- 2026-06-13 01:48
+
+- Split: None, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 11
+- Time: 8s
+- Log: logs/learn_20260613_014816.log
+
+---
+## Learning Loop -- 2026-06-13 01:48
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_014825.log
+
+---
+## Learning Loop -- 2026-06-13 01:56
+
+- Split: training, Tasks: 0
+- Correct: 0 / 0 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260613_015659.log
+
+---
+## Learning Loop -- 2026-06-13 01:59
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_015937.log
+
+---
+## Learning Loop -- 2026-06-13 01:59
+
+- Split: None, Tasks: 21
+- Correct: 21 / 21 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 12
+- Time: 9s
+- Log: logs/learn_20260613_015940.log
+
+---
+## Learning Loop -- 2026-06-13 02:05
+
+- Split: training, Tasks: 120
+- Correct: 1 / 120 (0.8%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 310s
+- Log: logs/learn_20260613_015959.log

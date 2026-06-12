@@ -38,9 +38,11 @@ from agent.dsl_expr.selection import (
     extent_of,
     objects_of,
     unique_object,
+    most_frequent_color,
     COLOR_READING_VOCAB,
     DIM_PROPERTY_VOCAB,
     GRID_DIM_PROPERTY_VOCAB,
+    GRID_RECT_DIM_VOCAB,
     RECT_DIM_VOCAB,
     SELECTOR_VOCAB,
 )
@@ -1565,7 +1567,9 @@ class PredictOperator(Operator):
         obj_prop = DIM_PROPERTY_VOCAB.get(prop_name)
         grid_prop = GRID_DIM_PROPERTY_VOCAB.get(prop_name)
         rect_prop = RECT_DIM_VOCAB.get(prop_name)
-        if obj_prop is None and grid_prop is None and rect_prop is None:
+        grid_rect_prop = GRID_RECT_DIM_VOCAB.get(prop_name)
+        if (obj_prop is None and grid_prop is None and rect_prop is None
+                and grid_rect_prop is None):
             return {}
         select_fn = SELECTOR_VOCAB.get(selector_name) if selector_name else None
         if selector_name is not None and select_fn is None:
@@ -1587,6 +1591,23 @@ class PredictOperator(Operator):
                 color = color_of(obj)
                 h, w = rect_prop(obj)
                 if color is None or h < 1 or w < 1:
+                    continue
+                grids[i] = render_solid_rect(h, w, color)
+                continue
+            if grid_rect_prop is not None:
+                # Grid-level rectangular reading (§2.1 grid-size = f(input
+                # structure)): the canvas dims count the test input's own
+                # separator-delimited partition bands, the fill is its content
+                # (majority) colour — value-agnostic in the separator/content
+                # colours, the band counts and the grid size (P5). A single
+                # make_grid fill, no object and no square assumption.
+                raw = g0.raw or []
+                dims = grid_rect_prop(raw)
+                color = most_frequent_color(raw) if raw else None
+                if dims is None or color is None:
+                    continue
+                h, w = dims
+                if h < 1 or w < 1:
                     continue
                 grids[i] = render_solid_rect(h, w, color)
                 continue
