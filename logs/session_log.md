@@ -1011,3 +1011,116 @@ iter should either (a) make a *design proposal* for variable-origin resolution
 and surface it for the user, or (b) route to a different rung — R4 (2nd-order
 edge-of-edge compare) via an authored `data/ARC_madeup/` task — rather than
 inventing a 2-point relation fitter that would overfit.
+
+---
+## Learning Loop -- 2026-06-12 13:15
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_131547.log
+
+---
+## Learning Loop -- 2026-06-12 13:15
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_131549.log
+
+---
+## Learning Loop -- 2026-06-12 13:27
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_132658.log
+
+---
+## Learning Loop -- 2026-06-12 13:27
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 2
+- Time: 4s
+- Log: logs/learn_20260612_132700.log
+
+---
+## Iter 10 — 2026-06-12T13:28:13 — branch test31
+
+**Diagnosis**: R0–R3 are cleared and easy_a is mastered (9/9), but the probe's
+`Reused: 0 times (stored rule hit)` exposes that the **Fast path is dead code** —
+every solve re-runs the full Slow pipeline and no learned rule is ever reused,
+which directly contradicts the single ultimate goal (knowledge that *grows and
+gets reused*) and is the precondition for rung R5. Root cause (confirmed, three
+stacked breakages): `active_agent.solve()` read `entry.get("rule", {})`, a key
+from an **older wrapped schema**; the persisted schema is now flat
+({condition, action}, RULE_FORMAT §3) with no "rule" wrapper, so every rule read
+back as `{}`. Even read directly, the flat schema carries no top-level `type`
+dispatch tag PredictOperator keys on, and the render helpers read the task off
+the predictor — which the fast path never seeded. This is the smallest defensible
+step: a confirmed correctness/architecture defect with a bounded fix, no
+open-question entanglement, lower risk than starting R4's 2nd-order machinery.
+
+**Change**:
+- `agent/memory.py` — added `applicable_rule(entry)`: the schema bridge from the
+  on-disk flat {condition, action} rule to a PredictOperator-applicable rule
+  (stamps the dispatch `type` from `action.dsl` via `_DSL_TO_DISPATCH`). Returns
+  None for unknown recipes AND for rules whose action still holds an unresolved
+  anti-unification variable (`?v…`, e.g. rule_002's `target_mode="?v1"`) — so an
+  *incomplete* abstract rule is never falsely replayed; it falls through to the
+  Slow path. `_has_unresolved_var` helper. Also corrected the file's stale
+  module docstring, which still documented the obsolete wrapped-"rule" schema
+  (the very assumption that rotted the fast path).
+- `agent/active_agent.py` — fast path now reconstructs via `applicable_rule`,
+  seeds `self._predictor._task = task` before replay, and drops the dead
+  `entry.get("rule")` read. No change to active_operators.py (so F8 N/A) and no
+  new `_try_*`/`_apply_*` (F2 N/A).
+- `tests/test_fast_path_reuse.py` (new, 6 tests) — `applicable_rule` unit cases
+  (stamps type / skips unknown recipe / skips unresolved `?v`); end-to-end reuse
+  of a concrete constant-output rule (method=stored_rule, times_reused persisted,
+  correct grid); reuse output == Slow-path output (behaviour-preserving); and an
+  abstract `?v1` rule falls through to the Slow path with no correctness loss.
+
+**Probe before**: easy 1/3 (easy0001 via *pipeline*), easy_a 9/9; **Reused: 0**;
+rules=2 (covers 6+9); P1=7.5 P2=7.5 P3=0.5 P4=247 P5=5
+**Probe after** : easy 1/3 (easy0001 now via **stored(easy0001)**, "Discovered:
+0 new" — no re-derive), easy_a 9/9 (**Reused: 2** — the concrete constant-output
+members a/b reused; c–i correctly fall through to Slow path); **Reused: 1** on the
+seed-42 probe; rules=2 (covers 6+9); P1–P5 unchanged. Suite 66→**72** pass.
+
+**Invariants**: forbidden=**none** (active_operators.py untouched; no new
+`_try_*`/`_apply_*`; DSL frozen; no frozen-file edit; rule files restored to
+times_reused=0 so the commit carries no verification side-effects). positives =
+all flat → verdict **NEUTRAL**. This is the INVARIANTS §3 case: the P1–P6 set has
+**no signal that measures reuse rate**, so reviving the dead Fast path (an
+architecture-fidelity fix, observable as Reused 0→≥1) scores neutral despite being
+real, non-spinning work. Correctness is unchanged by construction (behaviour-
+preserving reuse, guarded by `_rule_matches_examples`).
+
+**Structural finding (surfaced for the user, not acted on)**: the easy→training
+graduation gate is **unsatisfiable**. `run_loop.sh` requires the seed-42 easy
+probe (easy0001/0002/0003) at 100%, but easy0002/0003 are *non-functional*
+(identical training inputs → different outputs; verified directly this iter), so
+the agent correctly abstains and EASY_CLEAN can never be 1 — the loop is pinned
+in `easy` phase regardless of capability. This is not mine to fix (editing
+run_loop.sh to skip ahead / editing frozen data/ is forbidden); flagging so the
+user can re-seed the probe, exclude the ill-posed members, or gate graduation on
+easy_a alone.
+
+**Next gap (note for future iter)**: with the Fast path alive, R5's remaining
+half is **variable resolution** — filling rule_002's `?v1` so the AU-lifted
+*abstract* rule self-applies (currently it's correctly skipped, so c–i still need
+the Slow path). The defensible, non-inventing route is Q-B4's *proposed
+direction* (a): enumerate the **already-known** fillings {fixed, displacement,
+corner} and accept the one that reproduces all example outputs — selection
+grounded in comparison, over a *bounded* domain (NOT the open Q-B3 "invent a new
+concept" case). Alternatively route to R4 (2nd-order edge-of-edge compare) via an
+authored `data/ARC_madeup/` task, which would also move P5.

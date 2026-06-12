@@ -15,7 +15,9 @@ from agent.elaboration_rules import build_elaborator
 from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
-from agent.memory import load_all_rules, save_rule, increment_reuse_count
+from agent.memory import (
+    load_all_rules, save_rule, increment_reuse_count, applicable_rule,
+)
 from agent.wm_logger import reset_wm_snapshot
 
 
@@ -57,11 +59,18 @@ class ActiveSoarAgent:
         }
 
         # --- Fast path: try stored rules ---
+        # `applicable_rule` bridges the persisted {condition, action} schema to a
+        # PredictOperator-applicable prediction-rule (stamping the dispatch
+        # `type`); it returns None for unknown recipes and for abstract rules
+        # whose anti-unification variable is unresolved (those fall through to the
+        # slow path rather than reuse a false match). The render helpers read the
+        # current task off the predictor, so seed it before replay.
+        self._predictor._task = task
         stored_rules = load_all_rules(self.procedural_memory_root)
         for entry in stored_rules:
-            rule = entry.get("rule", {})
-            if rule.get("type") == "identity":
-                continue  # skip identity fallback rules
+            rule = applicable_rule(entry)
+            if rule is None:
+                continue
             if self._rule_matches_examples(rule, task):
                 predicted = self._apply_rule_to_tests(rule, task)
                 if predicted:

@@ -6,18 +6,23 @@ Each rule is stored as a JSON file in procedural_memory/:
   procedural_memory/rule_002.json
   ...
 
-Rule schema:
+Rule schema (flat {condition, action} pair — docs/RULE_FORMAT.md §3):
   {
     "id":          <int>          — unique sequential ID,
-    "concept":     "<str>"        — short human-readable name (e.g. "swap_two_colors"),
-    "category":    "<str>"        — color_transform | spatial_transform |
-                                    geometric_transform | fill_transform | other,
-    "rule":        { ... }        — the actual rule parameters used by PredictOperator,
+    "concept":     "<str>"        — short human-readable name (e.g. "place_object"),
+    "category":    "<str>"        — grouping tag for anti-unification,
+    "condition":   { "type": ..., "params": {...} }  — LHS: when the rule applies,
+    "action":      { "dsl": ...,  "args": {...} }     — RHS: the recipe to replay,
     "covers":      ["<task_id>"]  — all tasks this rule has successfully handled,
     "source_task": "<task_id>"    — task that first triggered discovery of this rule,
+    "anti_unification_trace": "<path>|null"  — set iff lifted across sources (§8),
     "created_at":  "<ISO>"        — creation timestamp,
     "times_reused": <int>         — how often the fast-path reused this rule
   }
+
+Note: the rule is a flat {condition, action} dict — there is no wrapping "rule"
+sub-key. The fast path reconstructs a PredictOperator-applicable rule from this
+shape via `applicable_rule()` (which stamps the dispatch `type` from action.dsl).
 
 Design goal: FEW, GENERAL rules — not many specific ones.
 When a new rule is equivalent to an existing one, the existing rule's
@@ -370,6 +375,57 @@ def increment_reuse_count(entry: dict) -> None:
             json.dump(data, fh, indent=2)
     except (json.JSONDecodeError, IOError):
         pass
+
+
+# A persisted rule's `action.dsl` names the *recipe* (the discovered transform);
+# PredictOperator._apply_rule, however, dispatches on a top-level `type` tag (the
+# WM dispatch slot the generalize operator sets at discovery time). The persisted
+# {condition, action} schema (docs/RULE_FORMAT.md §3) does not carry that tag, so
+# the fast path cannot replay a stored rule without bridging the two. This map is
+# that bridge: one entry per *discovered recipe*, value-agnostic — NOT a per-task
+# detector (the task-specific cell/colour are re-derived at apply time from the
+# task's own grids, never stored). It grows only when a genuinely new recipe is
+# discovered, in lockstep with the generalize operator's dispatch tags.
+_DSL_TO_DISPATCH = {
+    "copy_common_output": "constant_output",
+    "place_object": "place_object",
+}
+
+
+def _has_unresolved_var(args: dict) -> bool:
+    """True if any action arg is still an anti-unification placeholder (`?v…`)."""
+    return any(isinstance(v, str) and v.startswith("?")
+               for v in (args or {}).values())
+
+
+def applicable_rule(entry: dict):
+    """Reconstruct a PredictOperator-applicable prediction-rule from a persisted
+    {condition, action} rule, or return None if it cannot be replayed as-is.
+
+    This is the fast path's bridge from the on-disk schema (RULE_FORMAT §3) to the
+    in-WM prediction-rule shape PredictOperator._apply_rule consumes. It copies
+    the stored entry and stamps the top-level `type` dispatch tag derived from
+    `action.dsl` (via `_DSL_TO_DISPATCH`).
+
+    Returns None when either:
+      (a) `action.dsl` names an unknown recipe (no dispatch tag) — nothing to
+          replay; or
+      (b) the action still carries an unresolved anti-unification variable
+          (a `?v…` placeholder, e.g. rule_002's `target_mode="?v1"`). Such an
+          abstract rule is *incomplete* until its variable is filled — selecting
+          that filling is the §2.5-2b / open-question Q-B4 problem and is out of
+          scope for direct replay. Skipping it here means the slow path re-derives
+          the concrete filling instead of the fast path applying a false reuse.
+    """
+    action = (entry or {}).get("action") or {}
+    dispatch = _DSL_TO_DISPATCH.get(action.get("dsl"))
+    if dispatch is None:
+        return None
+    if _has_unresolved_var(action.get("args")):
+        return None
+    rule = dict(entry)
+    rule["type"] = dispatch
+    return rule
 
 
 def load_rules_from_ltm(task_hex: str,
