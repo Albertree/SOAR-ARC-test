@@ -1,6 +1,94 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 12 — 2026-06-12 — branch test32
+
+**Diagnosis**: The loop graduated easy_a → **madeup** this iter (phase_state.json:
+madeup, streak 0; easy_a held 9/9 for K=5). The four existing madeup tasks all
+exercise the **multi-object selection** concept (size≠1, count≠1, selection), and
+the object-move families cover target/offset/corner/resize. The first *uncovered*
+§2.1 concept is **"grid size is a function of an object's property"** — `output_dims`
+only captures a *constant* cross-pair output size, so an output whose dimensions
+*vary* per pair as a function of an object feature has no reading. I authored the
+smallest task that exposes it and confirmed it fell back to `identity` (INCORRECT).
+
+**Change**:
+- `data/ARC_madeup/madeup_size_to_square.json` (new, F1-exempt) — 3 train + 1 test,
+  5×5 inputs, single object; output is a solid square whose side = the object's
+  cell-count and colour = the object's colour. Output dims vary per pair (2,3,4→5),
+  so the constant `output_dims` reading is None — the gap.
+- `data/ARC_madeup/madeup_size_to_square_big.json` (new) — the harder ladder rung:
+  7×7 grids, different object sizes/colours/positions, resolving to the *same*
+  dimension property. Folds into the same abstract rule (covers 1→2), proving the
+  reading is value-agnostic, not a per-task literal (§2.5-3).
+- `agent/dsl_expr/selection.py` — `DIM_PROPERTY_VOCAB` (named scalar object
+  properties usable as a canvas dimension; seed = `object_size`) + new analysis
+  `analyze_object_size_grid`: per pair the input has one object and the output is a
+  solid square; the output colour COMMs with the object colour; across pairs the
+  learned property is the one whose value reproduces the output side in *every*
+  pair (the cross-pair COMM grounding the size relation, P3/P4). This is the §2.5-1
+  argument-vocabulary growth: the `make_grid` *dimension argument* becomes a
+  property expression, the transformation stays frozen.
+- `agent/conditions/object_size_grid.py` (new matcher, registered) — fires only
+  when the analysis found a consistent dimension property + solid-square output +
+  colour COMM, with ≥2 evidence. Recognition vocabulary grows (P5 7→8); no new
+  transformation (F3-exempt).
+- `agent/dsl_expr/render.py` — `render_solid_square(side, color)`: a uniform fill
+  is a *single* `make_grid` call (the `coloring` half is a no-op, elided). The
+  whole rule content lives in the *argument* (`size_of(unique_object(in))`), not a
+  new primitive (§2.5-1, F3).
+- `agent/active_operators.py` — `SIZE_GRID_DSL` constant; extract surfaces
+  `object_size_grid`; GeneralizeOperator strategy 0g emits `_object_size_grid_rule`
+  (a canonical {condition, action} rule carrying the dim property — *not* a
+  `_try_*`/`_apply_*` method); PredictOperator dispatches `SIZE_GRID_DSL` to the
+  new `_place_size_grid_grids` renderer (reads the property + colour off each test
+  object — P5 origin — and renders a solid square). F8 satisfied via the
+  agent/conditions/ companion edit.
+- `tests/test_size_grid.py` (new) — 9 tests: render helper, analysis learns the
+  property on both tasks, inert on a move task, matcher fires/abstains + evidence
+  guard, end-to-end render equals expected for both size tasks, declines on a move
+  task.
+
+**Probe before**: easy_a 9/9; madeup 4/4 (size task INCORRECT→identity); rules=2
+  (place_object covers 11); P1=6.5, P2=6.5, P3=0.5, P5=7
+**Probe after** : easy_a 9/9 (regression guard held); madeup 6/6; rules=3
+  (rule_003 `object_size_to_solid_square`, covers 2: both size tasks via one
+  value-agnostic abstraction); P1=5.0, P2=5.0, P3=0.33, P5=8. 60/60 tests pass.
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN; F1 data edits under
+exempt ARC_madeup/; F2 no new _try_/_apply_; F3 no new DSL primitive — the
+dimension/colour are LHS *argument* vocabulary under agent/, the action is the
+frozen `make_grid`; F8 satisfied via agent/conditions/ companion edit). positives:
+**P5 +1** (new `object_size_grid` matcher). P1/P2/P3 **dipped** — this is the known
+arithmetic pin: P1=solved/rule_count and P2=mean covers are *density* metrics, so
+introducing any new concept's rule dilutes density until its family grows past the
+current mean (11-task place_object dominates). rule_003 is **not** a literal
+accretion rule (the 168-rule failure mode) — it is a value-agnostic abstraction
+already covering 2 distinct tasks, i.e. a *family seed that generalized*, which is
+the §2.5-3-good direction. The honest signal for "added a general capability" is
+P5, which rose.
+
+*Surfaced design nuance (CLAUDE.md §3.2 #3)*: rule_003 has `anti_unification_trace:
+null` with covers=2. #3 says a rule "produced by generalization across multiple
+sources" must carry a trace — but rule_003 was **emitted abstract directly** by the
+matcher and two tasks *independently* matched it (merged via `_canonical_equivalent`
+covers-fold), so no `unify()` episode exists to point to. The null trace is honest
+(no unification happened); but it means P3 can never reflect direct-emit abstract
+families. The cleaner fix is R3: route a *property-varying* pair (e.g. side=cell-
+count vs side=bbox-height) through `unify()` to lift `size_to_grid(property=$P)`,
+which would carry a real trace and raise P3.
+
+**Next gap (note for future iter)**: the size-grid family has one property
+(`object_size`). Adding a *second* dimension property (e.g. bounding-box height/
+width, or output = object count) gives two distinct concrete rules sharing the
+`size_to_grid` skeleton — the first genuine R3 lift candidate *outside* the
+object_move category (`_LIFTABLE_CATEGORIES` is currently `{"object_move"}` only).
+Wiring `unify()` to lift the dim-property argument would raise P3 and demonstrate
+AU firing on a fresh family. Orthogonally, the deeper structural debt remains a
+general Slow-path synthesizer so new concepts don't each need a hand-emitted
+matcher+rule pair (the P1/P2 density dilution is a symptom of that absence).
+
+---
 ## Iter 1 — 2026-06-12 — branch test31
 
 **Diagnosis**: Lowest unproven rung is **R0 (GRID-level COMM-copy)** — this is a
@@ -1010,3 +1098,58 @@ the selection path inherit corner/resize for free and *remove* the duplicated
 per-pair object/placement logic (a P6-positive refactor) rather than porting each
 reading by hand. Orthogonally, R5 fast-path *reuse* (Stored hits still 0) remains the
 higher-leverage structural step but reads NEUTRAL on P1–P6.
+
+---
+## Learning Loop -- 2026-06-12 20:08
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_200810.log
+
+> **PHASE GRADUATION** at iter 12 — easy_a → madeup.
+> All of data/ARC_easy_a solved 100% for 5 consecutive iters (K=5).
+> The loop now authors its own beginner tasks under data/ARC_madeup/ (§2.2)
+> and must solve them via the structure, unaided, before attempting ARC training.
+
+---
+## Learning Loop -- 2026-06-12 20:10
+
+- Split: None, Tasks: 5
+- Correct: 4 / 5 (80.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_201057.log
+
+---
+## Learning Loop -- 2026-06-12 20:15
+
+- Split: None, Tasks: 5
+- Correct: 5 / 5 (100.0%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_201531.log
+
+---
+## Learning Loop -- 2026-06-12 20:18
+
+- Split: None, Tasks: 6
+- Correct: 6 / 6 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_201812.log
+
+---
+## Learning Loop -- 2026-06-12 20:18
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_201837.log

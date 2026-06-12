@@ -53,6 +53,22 @@ def render_grid_via_primitives(grid: list) -> list:
     return canvas
 
 
+def render_solid_square(side: int, color: int) -> list:
+    """A ``side × side`` canvas filled with ``color`` — the §2.1 "grid size is a
+    function of an object's property" output expressed in the frozen primitives.
+
+    A uniform fill bottoms out in a *single* `make_grid` call: there is no
+    non-background cell, so the `coloring` half of the make_grid ∘ coloring
+    composition is a no-op and is elided. The whole content of the rule lives in
+    the *argument* — `side` is `size_of(unique_object(in))` and `color` is its
+    colour, both read off the test input (P5) — not in any new transformation
+    (§2.5-1, F3). Returns an empty canvas when ``side < 1``.
+    """
+    if side < 1:
+        return apply_DSL("make_grid", height=0, width=0, color=color)
+    return apply_DSL("make_grid", height=side, width=side, color=color)
+
+
 def render_object_at(height: int, width: int, bg: int,
                      pixels: list, target: tuple) -> list:
     """Place an object (its `pixels` = list of (row, col, color)) on a fresh

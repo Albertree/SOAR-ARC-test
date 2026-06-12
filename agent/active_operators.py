@@ -13,15 +13,22 @@ Pipeline operators (all fire in S2, read/write S1):
 from agent.operators import Operator
 from ARCKG.comparison import compare as arckg_compare
 from agent.conditions import match as match_condition
-from agent.dsl_expr.render import render_grid_via_primitives, render_object_at
+from agent.dsl_expr.render import (
+    render_grid_via_primitives,
+    render_object_at,
+    render_solid_square,
+)
 from agent.dsl_expr.selection import (
     analyze_object_move,
     analyze_object_select_move,
+    analyze_object_size_grid,
     background_of,
+    color_of,
     corner_anchor,
     extent_of,
     objects_of,
     unique_object,
+    DIM_PROPERTY_VOCAB,
     SELECTOR_VOCAB,
 )
 
@@ -53,6 +60,13 @@ PLACE_OBJECT_RESIZE_DSL = "place_object_resize"
 #: property selector (max_size/min_size/unique_color) picks out of several, the
 #: non-selected distractors simply not drawn. The selector is the §2.5-2b lift.
 PLACE_OBJECT_SELECT_DSL = "place_object_select"
+
+#: action.dsl for the object-property *canvas-sizing* family (R1 / §2.1 "grid
+#: size is a function of an object's property") — the output is a solid square
+#: rendered by a single make_grid call whose side is a learned scalar object
+#: property (`size_of`) and whose colour is the object's colour. The orthogonal
+#: axis to the move families: the dimension *argument* is the lift, not a literal.
+SIZE_GRID_DSL = "size_to_grid"
 
 
 # ======================================================================
@@ -247,6 +261,14 @@ class ExtractPatternOperator(Operator):
         # selection vocabulary, not hand-coded here.
         patterns["object_select_move"] = analyze_object_select_move(task.example_pairs)
 
+        # Object-property *canvas sizing* (R1 / §2.1 "grid size is a function of
+        # an object's property"): the orthogonal axis where the output's
+        # dimensions are read off a scalar object property rather than its
+        # position. Inert (dim_property None) on the move families, so it never
+        # perturbs the readings above. Computed via the §2.5 property vocabulary
+        # (agent/dsl_expr/selection), not hand-coded here.
+        patterns["object_size_grid"] = analyze_object_size_grid(task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -426,6 +448,17 @@ class GeneralizeOperator(Operator):
         # hand-coded detector.
         if rule is None:
             rule = self._object_select_target_rule(patterns)
+
+        # Strategy 0g (R1 / §2.1): the object-property *canvas-sizing* family. If
+        # the `object_size_grid` matcher fires (every example renders a solid
+        # square whose side is a learned scalar object property and whose colour
+        # is the object's colour), emit a canonical {condition, action} rule
+        # carrying the dimension property. The property and colour are recomputed
+        # at predict time off each test object — value-agnostic in colour, size,
+        # shape and position — so one rule covers the family. Recognition is
+        # delegated to the registered matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._object_size_grid_rule(patterns)
 
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
@@ -628,6 +661,40 @@ class GeneralizeOperator(Operator):
             },
             "concept": "select_object_constant_move",
             "category": "object_move",
+            "confidence": 1.0,
+        }
+
+    def _object_size_grid_rule(self, patterns):
+        """Emit the canonical object-property canvas-sizing rule when the matcher
+        fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `object_size_grid` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The learned dimension property
+        (`object_size` — agent/dsl_expr/selection.DIM_PROPERTY_VOCAB) is carried in
+        the action args and re-applied at predict time, while the colour and the
+        side are recomputed off each test object, so the rule stays value-agnostic
+        in the object's colour, size, shape and position. The orthogonal sibling
+        of the object-move readings: it sizes a fresh canvas from a *property
+        expression* instead of placing the object's pixels, but bottoms out in the
+        same frozen `make_grid` primitive (§2.5-1)."""
+        params = {"min_evidence": 2}
+        if not match_condition("object_size_grid", patterns, params):
+            return None
+        sz = patterns.get("object_size_grid") or {}
+        evidence = len(sz.get("per_pair") or [])
+        return {
+            "condition": {
+                "type": "object_size_grid",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": SIZE_GRID_DSL,
+                "args": {"dim_property": sz.get("dim_property")},
+            },
+            "concept": "object_size_to_solid_square",
+            "category": "object_size_grid",
             "confidence": 1.0,
         }
 
@@ -845,6 +912,18 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Object-property *canvas sizing* (R1 / §2.1). Recompute the learned
+        # dimension property from the examples, then for each test pair read that
+        # property and the colour off the test object (P5) and render a solid
+        # square of that side via a single make_grid call.
+        if action and action.get("dsl") == SIZE_GRID_DSL:
+            for i, grid in self._place_size_grid_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -1036,6 +1115,41 @@ class PredictOperator(Operator):
             grids[i] = render_object_at(
                 height, width, bg, obj["pixels"], anchor,
             )
+        return grids
+
+    @staticmethod
+    def _place_size_grid_grids(task):
+        """Map test-pair index -> predicted grid for the object-property
+        canvas-sizing family.
+
+        The dimension property is recomputed from the example pairs (the §2.1
+        lift: the scalar object property whose value reproduces the output side in
+        every pair). For each test pair the property and the colour are read off
+        that test input's own object (P5), and a solid square of that side is
+        rendered by a single make_grid call. Returns {} when the analysis yields
+        no consistent dimension property, or the test object is missing / has no
+        single colour."""
+        sz = analyze_object_size_grid(task.example_pairs)
+        prop_name = sz.get("dim_property")
+        if prop_name is None:
+            return {}
+        prop = DIM_PROPERTY_VOCAB.get(prop_name)
+        if prop is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            obj = unique_object(g0.raw)
+            if obj is None:
+                continue
+            color = color_of(obj)
+            side = prop(obj)
+            if color is None or side < 1:
+                continue
+            grids[i] = render_solid_square(side, color)
         return grids
 
     # ---- rule application dispatchers ------------------------------------
