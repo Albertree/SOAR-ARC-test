@@ -16,9 +16,13 @@ from agent.cycle import run_cycle
 from agent.elaboration_rules import build_elaborator
 from agent.rules import build_proposer
 from agent.io import inject_arc_task
-from agent.active_operators import PredictOperator, SIZE_GRID_DSL
+from agent.active_operators import PredictOperator, SIZE_GRID_DSL, SELF_FRACTAL_DSL
 from agent.conditions import match as match_condition
-from agent.dsl_expr.selection import analyze_object_size_grid, analyze_object_move
+from agent.dsl_expr.selection import (
+    analyze_object_size_grid,
+    analyze_object_move,
+    analyze_self_fractal,
+)
 from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
 from agent.wm_logger import reset_wm_snapshot
 
@@ -70,6 +74,14 @@ class ActiveSoarAgent:
         #    미완성; 변수를 채우는 선택이 선행돼야"). This is the richer resolution
         #    the size_to_grid self-resolving renderer did not need — and proves the
         #    Fast-path reuse mechanism is family-generic, not bound to one shape.
+        #  - ``self_fractal`` — a *size-expanding* abstraction (output (h·h)×(w·w)),
+        #    structurally different again from both sizing-square and same-size
+        #    object-move. Its renderer self-resolves its placement predicate (the
+        #    §2.5-2b lift — "place at foreground" vs "place at colour C") from the
+        #    task's own pairs, so it reuses like ``size_to_grid`` (no separate
+        #    reading-hole). Wiring it lets the learned fractal rule *activate* on an
+        #    unseen fractal task (the Fast path) instead of re-deriving through the
+        #    full Slow pipeline every time (`Reused: 0` on the size-expanding axis).
         #  ``copy_common`` reuse is a later, separate step.
         self._abstract_reuse = {
             SIZE_GRID_DSL: (
@@ -85,6 +97,13 @@ class ActiveSoarAgent:
                     "object_move": analyze_object_move(task.example_pairs)
                 },
                 self._place_object_render,
+            ),
+            SELF_FRACTAL_DSL: (
+                "self_fractal",
+                lambda task: {
+                    "self_fractal": analyze_self_fractal(task.example_pairs)
+                },
+                self._predictor._self_fractal_grids,
             ),
         }
 

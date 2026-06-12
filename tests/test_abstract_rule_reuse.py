@@ -93,15 +93,48 @@ def test_reuse_declined_when_examples_not_reproduced():
     assert ActiveSoarAgent._reproduces_examples(good_render, task) is True
 
 
-def test_reuse_table_covers_size_grid_and_place_object():
-    """Abstract reuse is wired for the two structurally distinct families that
-    have a lifted (covers>1) rule: the size_to_grid canvas-sizing family and the
-    place_object move family. Each is activated by *its own* condition matcher."""
+def test_reuse_table_covers_size_grid_place_object_and_fractal():
+    """Abstract reuse is wired for the structurally distinct families that have a
+    lifted (covers>1) rule: the size_to_grid canvas-sizing family, the place_object
+    same-size move family, and the self_fractal *size-expanding* family. Each is
+    activated by *its own* condition matcher."""
     from agent.active_agent import PLACE_OBJECT_ABSTRACT_DSL
+    from agent.active_operators import SELF_FRACTAL_DSL
     agent = ActiveSoarAgent()
-    assert set(agent._abstract_reuse) == {SIZE_GRID_DSL, PLACE_OBJECT_ABSTRACT_DSL}
+    assert set(agent._abstract_reuse) == {
+        SIZE_GRID_DSL, PLACE_OBJECT_ABSTRACT_DSL, SELF_FRACTAL_DSL}
     assert agent._abstract_reuse[SIZE_GRID_DSL][0] == "object_size_grid"
     assert agent._abstract_reuse[PLACE_OBJECT_ABSTRACT_DSL][0] == "object_move"
+    assert agent._abstract_reuse[SELF_FRACTAL_DSL][0] == "self_fractal"
+
+
+# ── the stored self_fractal abstraction reuses on a size-expanding task ───
+def test_reuse_fires_on_self_fractal_task():
+    """A self-fractal madeup task solves via the stored self_fractal abstraction
+    (the Fast path), not by re-deriving through the Slow pipeline. This proves the
+    reuse mechanism generalises to a *size-expanding* abstraction — structurally
+    different from both the sizing-square and the same-size move families (R5
+    done-when: a stored hit on a structurally different task)."""
+    task = _load("ARC_madeup/madeup_self_fractal")
+    agent = ActiveSoarAgent()
+    predicted = agent.solve(task)
+
+    assert predicted == _expected_outputs(task)
+    assert agent.last_solve_info["method"] == "stored_rule"
+    assert agent.last_solve_info["rule_type"] == "self_fractal"
+
+
+def test_self_fractal_reuse_abstains_on_non_fractal_task():
+    """A size-grid madeup task is not a fractal (no h²×w² expansion); the
+    self_fractal matcher abstains, so the self_fractal abstraction declines and the
+    families stay disjoint (size_to_grid reuse handles it instead)."""
+    from agent.memory import load_all_rules
+    from agent.active_operators import SELF_FRACTAL_DSL
+    task = _load("ARC_madeup/madeup_size_to_square")
+    agent = ActiveSoarAgent()
+    for entry in load_all_rules(agent.procedural_memory_root):
+        if entry.get("action", {}).get("dsl") == SELF_FRACTAL_DSL:
+            assert agent._reuse_abstract_rule(entry, task) is None
 
 
 # ── the stored place_object abstraction reuses on a move task ─────────────

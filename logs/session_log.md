@@ -1,6 +1,60 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 45 — 2026-06-13T04:58 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (c9680e90/878187ab/e5790162 — the raw-cell
+geometric-synthesis frontier, multi-iter & grounding-blocked, not a smallest step); easy_a 9/9,
+madeup 28/28 hold. The last ~9 iters all debuted/extended *born-general families* — each closing a
+1–2-task census gap. That is the §2.5-4 "family accretion = symptom" mode; another such family this
+iter would be spinning (PROMPT.md §2.2). Instead I took the **named lowest open rung, R5 (Fast-path
+reuse / module E)**: the probe shows `Reused: 0` on training, and inspection of
+`agent/active_agent.py:_abstract_reuse` shows the Fast-path activation table wires only **2 of ~9**
+born-general families (size_to_grid, place_object). The other learned abstractions never *activate*
+on an unseen task — they re-derive through the full Slow pipeline every time. The smallest
+defensible R5 step is to wire **one** more family into the Fast path, demonstrating the reuse
+mechanism generalises to a structurally-different abstraction.
+
+**Change** (R5 / module E — Fast-path reuse, reuses the existing renderer; **no** new family, **no**
+`_try_*`, **no** DSL primitive, **no** edit to `active_operators.py` so F8 is not implicated):
+- `agent/active_agent.py`: wired **`self_fractal`** into `_abstract_reuse` — a *size-expanding*
+  (h·h)×(w·w) abstraction, structurally different from both the sizing-square and the same-size
+  move families already wired. Its renderer (`PredictOperator._self_fractal_grids`) self-resolves
+  its placement predicate (the §2.5-2b lift — "place at foreground" vs "place at colour C") from the
+  task's own pairs, so it reuses like `size_to_grid` with no separate reading-hole. Imported
+  `SELF_FRACTAL_DSL` + `analyze_self_fractal`; updated the constructor doc-comment.
+- `tests/test_abstract_rule_reuse.py`: renamed the table-coverage test to assert the 3-family table;
+  +2 tests (reuse fires on `madeup_self_fractal` via `method == "stored_rule"`; the self_fractal
+  abstraction *abstains* on a non-fractal size-grid task — families stay disjoint, no regression).
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 28/28 (Reused **14**); rules=11;
+  P1=6.727 P2=6.727 P3=0.364 P5=17. The fractal abstraction (rule_013) re-derived through the Slow
+  path on every fractal task (`times_reused`=0).
+**Probe after** : easy_a **9/9** (Reused 5, unchanged — self_fractal abstains there), madeup
+  **28/28** (Reused **14→15** — `madeup_self_fractal` now activates via the Fast path, not a
+  re-derivation; `method == "stored_rule"`). pytest **251/251** (249+2). Both regression guards
+  intact. rule_013 `times_reused` 0→3 observed at runtime (reverted as accounting churn).
+
+**Invariants**: forbidden=**none** (checker verdict **NEUTRAL**). positives=**all P1–P6 flat** —
+  R5 reuse is invisible to the formal signals (no P-measure counts stored-rule hits; the documented
+  `reuse_signal_blindspot`). This is a legitimate NEUTRAL scaffolding iter (INVARIANTS §3 explicitly
+  blesses Fast-path/module-E build-out as real work whose payoff is reuse breadth, not a P-delta).
+  P6 flat (active_operators.py untouched → F8 not implicated; the change is confined to the
+  unrestricted `active_agent.py` + tests). Reverted the verification runs' `times_reused` churn on
+  rule_001/002/013 (runtime accounting — iter18..44 precedent).
+
+**Next gap (note for future iter)**: the Fast-path reuse table now wires 3 of ~9 born-general
+  families (size_to_grid, place_object, self_fractal). The remaining families
+  (geometric_transform, scale_transform, symmetry_repair, object_extract, recolor_map, fill_canvas,
+  recolor_selected_object, copy_common_output) still re-derive through the Slow path on every unseen
+  task — wiring each is a further R5 step (and `_abstract_reuse` is ripe to become *data-driven* over
+  a family registry rather than hand-listed). The standing big-ticket directions are unchanged: the
+  R3 prize (cross-family AU lift, the only move that raises P3 — but scale/fractal don't share a
+  one-argument skeleton, so this needs a design decision, possibly an open-question surface); the
+  reference-composing selector (iter 41, blocked on a design decision); and the raw-cell
+  ray/path/gravity synthesizer frontier (c9680e90, e5790162, 878187ab), still grounding-blocked.
+
+---
 ## Iter 44 — 2026-06-13T04:49 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3 (c9680e90/878187ab/e5790162 — the raw-cell
@@ -5734,3 +5788,53 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 303s
 - Log: logs/learn_20260613_044240.log
+
+---
+## Learning Loop -- 2026-06-13 04:51
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_045104.log
+
+---
+## Learning Loop -- 2026-06-13 04:51
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 14
+- Time: 13s
+- Log: logs/learn_20260613_045108.log
+
+---
+## Learning Loop -- 2026-06-13 04:51
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_045121.log
+
+---
+## Learning Loop -- 2026-06-13 04:58
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_045817.log
+
+---
+## Learning Loop -- 2026-06-13 04:58
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 15
+- Time: 12s
+- Log: logs/learn_20260613_045820.log
