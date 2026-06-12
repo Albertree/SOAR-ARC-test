@@ -26,5 +26,5 @@
   "source_task": "5582e5ca",
   "anti_unification_trace": "episodic_memory\\5582e5ca\\anti_unification\\fill_canvas_lift.json",
   "created_at": "2026-06-12T22:55:05.629408",
-  "times_reused": 0
+  "times_reused": 1
 }

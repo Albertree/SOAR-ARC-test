@@ -5961,3 +5961,33 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 4
 - Time: 306s
 - Log: logs/learn_20260613_050736.log
+
+---
+## Learning Loop -- 2026-06-13 05:14
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_051441.log
+
+---
+## Learning Loop -- 2026-06-13 05:14
+
+- Split: None, Tasks: 28
+- Correct: 28 / 28 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 24
+- Time: 12s
+- Log: logs/learn_20260613_051444.log
+
+---
+## Learning Loop -- 2026-06-13 05:15
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_051457.log
