@@ -25,10 +25,11 @@ same goal.
 One iter = one **smallest concrete step** toward the goal above. You are not
 asked to "improve ARC score." Each iter you:
 
-0. **Solve the current slice's target task(s)** — the active slice doc
-   (`docs/SLICE_<N>_LOOP.md`, currently `docs/SLICE_1_LOOP.md`) names them and
-   gives the exact select/compare sequence the solve should resemble. Run them
-   and **observe whether the system solves them *the way the user intends*** —
+0. **Advance the active capability ladder** — the active governing doc
+   (`docs/BACKLOG_LOOP.md`) defines a *capability ladder* (rungs R0..R6), not a
+   single-task box. Identify the **lowest unproven rung** and the probe/target
+   task(s) that exercise it, and **observe whether the system solves them *the
+   way the user intends*** —
    judged by the **four observation criteria** (1: works, 2: uniformity of
    *modules* [the produced program may be overfit], 3: approaches the answer,
    4: search sanity), **NOT by score**. The probe output in your context is a
@@ -54,7 +55,11 @@ which. The phase is managed by `run_loop.sh` (state file
   The graduation milestone is **the easy slice AND *all* of `data/ARC_easy_a/`
   solved 100%** for several consecutive iters; the loop then switches to
   `training` automatically. (The loop probes both each iter; the `easy_a`
-  milestone probe runs every task in that folder, no limit.)
+  milestone probe runs every task in that folder, no limit.) Note: the
+  `easy000c–i` tasks need object/G0 analysis, which is **now in scope** as
+  ladder rung **R1** (`docs/BACKLOG_LOOP.md`) — the milestone is therefore
+  reachable, not a structural wall. (Under the retired `SLICE_1_LOOP.md` it was
+  unreachable, which is what stalled the loop at iter 8.)
 
 - **`training` phase**. The probe now samples real ARC tasks
   (`data/ARC_AGI/training/`, `--split training`). The agent has shown it can do
@@ -144,11 +149,13 @@ If an iter is short on time, read *less code*, not less of this context.
 
 **A. The active target**
 
-1. **`docs/SLICE_<N>_LOOP.md`** — the **active slice** (currently
-   `docs/SLICE_1_LOOP.md`). THIS IS YOUR CONCRETE TARGET FOR THIS ITER: which
-   task(s) the slice must solve, the module scope (IN/OUT), the 7 design
-   principles, the exact select/compare sequence, and the (relaxed) pass
-   criteria.
+1. **`docs/BACKLOG_LOOP.md`** — the **active governing doc** (a capability
+   ladder, not a single-task slice box; it replaces the old
+   `docs/SLICE_N_LOOP.md`). THIS IS YOUR CONCRETE TARGET FOR THIS ITER: the
+   rung ladder (R0..R6), which rung is lowest-unproven, the 7 design
+   principles, the guardrails that remain vs. those lifted, and how a rung is
+   proven + the loop auto-climbs (no human gate). (The retired
+   `SLICE_1_LOOP.md` has been removed; its R0 work is summarized in the ladder.)
 
 **B. The ARBOR design originals — `docs/arbor_context/` (the mirrored wiki).**
 This directory is the user's full-detail specification of how ARBOR is meant to
