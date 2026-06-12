@@ -1,6 +1,79 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 28 — 2026-06-12T17:10 — branch test31
+
+**Diagnosis**: Iters 26→27 built the synthesize→AU producer (`program_synthesis`)
+and consumer (`anti_unify_pair_programs`); iter-27's named next-gap was "wire it,
+log-only first." Before wiring I **ran the now-complete pipeline on real data**
+(easy_a + a 60-task ARC-AGI training sample) and found wiring it as-is would
+*regress*: the lift is structurally valid but **semantically incomplete**. For
+easy000c it lifts to `coloring(?v1, 0) ∘ coloring([[5,5]], ?v2)` — the corner
+target `[[5,5]]` correctly survives as the COMM literal, but `?v1` (source cell)
+and `?v2` (colour) are **holes with no rule for filling them from a test G0**.
+Persisting that as a `covers>1` rule yields something uninstantiable on a test
+input (no G1 to read the holes off — P5). This is exactly the §2.5-2b gap ("the
+AU product is incomplete; each hole's filling must be *selected* from comparison
+evidence, not invented"). The missing link is binding each `?vN` to a G0-origin
+expression from the **existing** `agent/dsl_expr` vocabulary — the smallest piece
+that makes the eventual wiring produce *instantiable* rules instead of dead ones.
+
+**Change**:
+- `agent/program_binding.py` (new) — `bind_program_variables(abstract_program,
+  pair_programs, pair_inputs)`: for each `?vN` hole, selects over a **bounded,
+  ordered** candidate origin set (`source_cells` = `cells_of(unique(objects_of(
+  in)))`, `source_color` = `color_of(unique(...))`) the first origin that
+  **reproduces every pair's literal from that pair's input** — the same
+  example-reproduction discipline `variable_resolution.resolve_variable` already
+  uses for family `target_mode` holes (complementary, not duplicate: one selects
+  a *mode*, this an *origin expression*). Resolvable holes become a symbolic
+  `{"origin": "<name>"}` descriptor (P7); unresolvable ones keep their `?vN`
+  marker and are returned in `unbound` (honest surface of the next missing
+  origin). Plus `program_is_fully_bound()` — the gate a caller checks before
+  treating a lifted program as self-applying. **Invents no origin** (Q-B3/Q-B4
+  stays out of scope, like `variable_resolution`). Lives under `agent/` (the
+  §2.5-1 argument-vocabulary location), not `procedural_memory/DSL/`.
+- `tests/test_program_binding.py` (new, 6 tests) — grounded **end-to-end on real
+  pairs** through the actual producer+consumer: easy000c binds *both* holes →
+  fully grounded (instantiable); easy000e binds source cell+colour but reports
+  the moved-to *target* position unbound (source+Δ is a relation the seed set
+  doesn't express — the honest next gap); plus invariant-pass-through,
+  fully-literal-needs-no-binding, unbindable-hole-kept-as-marker, misalignment-
+  raises.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate, [[graduation_gate_unsatisfiable]]),
+easy_a 9/9; rules=3 (covers 6+9+2=17); P1=P2=5.67, P3=0.67, P5=10, P6=2229.
+**Probe after** : identical solve behaviour (binder is unwired by design — no
+solve-path change); 183/183 pytest pass (+6 new). check_invariants verdict
+**CLEAN**.
+
+**Invariants**: forbidden=**none** — F1 (no frozen-file edit; new files under
+`agent/`+`tests/`), F2 (no `_try_`/`_apply_`), F3 (no DSL primitive — binder is in
+`agent/`, only *reads* via `dsl_expr`), F4/F5/F6/F7 N/A, F8 N/A
+(`active_operators.py` untouched). positives=**P4 +5** (incidental, probe's own
+episodic writes); P1/P2/P3/P5/P6 all Δ=0 — the documented
+[[synthesizer_frontier]]/[[reuse_signal_blindspot]] blind spot (no P-signal
+measures pre-wiring solve-path substrate). **Not spinning** (PROMPT.md §4): this
+is not a 4th near-duplicate brick — today's empirical run *redirected* the
+frontier (wiring the incomplete pipeline would regress), and this closes the
+precise §2.5-2b gap that run exposed, grounded by a real-pair test where the
+binder both fully grounds easy000c and honestly declines easy000e's relational
+target.
+
+**Next gap (note for future iter)**: the binder now completes the
+synthesize→AU→**bind** chain to an *instantiable* abstract program on
+source-derived tasks (easy000c-class). Two diverging next moves, pick by evidence:
+(a) **wire** the chain into `GeneralizeOperator`'s `identity` fallback —
+synthesize per-pair programs, lift, bind, and *only when `program_is_fully_bound`*
+persist via `save_rule()` as a `covers>1` data rule (this finally touches the
+live solve path → F8 co-touch `memory.py`; the bound-gate prevents minting
+uninstantiable rules, the regression iter-28 just averted); or (b) **grow one
+origin** — add the `target = source + Δ` (constant-displacement) relation to the
+binder's candidate set so easy000e-class moves also fully bind (the unbound hole
+this iter surfaced). (b) is the smaller, lower-risk step and unblocks more of
+easy_a before the live-path wiring.
+
+---
 ## Iter 27 — 2026-06-12T17:05 — branch test31
 
 **Diagnosis**: Iter 26 built the per-pair program *synthesizer* (producer) but
@@ -3276,3 +3349,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 4s
 - Log: logs/learn_20260612_170029.log
+
+---
+## Learning Loop -- 2026-06-12 17:06
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_170637.log
+
+---
+## Learning Loop -- 2026-06-12 17:06
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_170638.log
