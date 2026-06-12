@@ -91,6 +91,56 @@ def unique(objs):
     return None
 
 
+def argmax(objs, key):
+    """Selection: return the single object that maximises `key`, or None.
+
+    This is the *ranking* selector R1's seed set names alongside `unique`
+    (BACKLOG_LOOP.md R1, §2.5-2b) and the agent-side expression of R4's
+    "2nd-order relation": where `unique` selects when there is exactly one
+    object, `argmax` selects *which* of several by **comparing them to each
+    other** on a property — the derived "longest / largest / most" the user's
+    raw prose reaches for. The comparison is the only information source (P4),
+    and the selection is its *result* (P3: a reason, not a literal cell).
+
+    `key` is a property reader from this package (`size_of`, `color_of`, …).
+    Objects whose `key` is None are ignored (the property does not apply).
+
+    Returns None — declining to select — when:
+      - `objs` is empty or not a list,
+      - no object has a defined `key`,
+      - the maximum is **tied** (two objects share the top value). A tie means
+        "the largest" is ambiguous, so a value-agnostic rule must abstain
+        rather than pick arbitrarily (the same discipline `unique` applies to
+        the >1-object case). Determinism over guessing (P7).
+    """
+    if not isinstance(objs, list) or not objs:
+        return None
+    scored = [(key(o), o) for o in objs]
+    scored = [(v, o) for v, o in scored if v is not None]
+    if not scored:
+        return None
+    best = max(v for v, _ in scored)
+    winners = [o for v, o in scored if v == best]
+    if len(winners) != 1:
+        return None
+    return winners[0]
+
+
+def cells_of(obj):
+    """Property: the object's absolute cell coordinates as a frozenset.
+
+    The selection material for a recolor: once a ranking selector
+    (`argmax(objects_of(G0), size_of)`) has *chosen* the object, its cells are
+    the `selection` argument handed to the frozen `coloring` primitive —
+    `coloring(cells_of(argmax(...)), color)` — never a raw cell-list literal
+    (BACKLOG_LOOP.md §2.5-2b: the lift that lets R3's anti-unification find a
+    common skeleton across pairs). Returns an empty frozenset for a non-object.
+    """
+    if not isinstance(obj, dict):
+        return frozenset()
+    return obj.get("cells", frozenset())
+
+
 def color_of(obj):
     """Property: the object's sole color, or None if it is multi-colored."""
     if not isinstance(obj, dict):

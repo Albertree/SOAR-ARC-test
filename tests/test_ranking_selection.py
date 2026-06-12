@@ -1,0 +1,134 @@
+"""
+Tests for R4's ranking-selection substrate (BACKLOG_LOOP.md R4 "2nd-order /
+ranking relation", R1 §2.5-2b seed selector `argmax`).
+
+Three layers, mirroring tests/test_single_object_move.py:
+  * vocabulary  — `argmax`/`cells_of` on real multi-object grids: select WHICH
+                  object by comparing them on a property, and read the chosen
+                  object's cells as the `coloring` selection argument.
+  * unit        — the `recolor_largest_object` matcher's logic on synthetic
+                  `object_ranking` dicts (its application wiring is a later rung;
+                  here the recognition contract is pinned).
+  * registry    — the matcher is registered, so P5 (distinct condition.type
+                  values) counts it, and is dormant on the single-object easy
+                  path (returns False when the `object_ranking` key is absent).
+"""
+
+import os
+import sys
+
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from agent.conditions import CONDITION_REGISTRY, get_matcher, match  # noqa: E402
+from agent.dsl_expr import argmax, cells_of, objects_of, size_of  # noqa: E402
+
+
+# ── seed vocabulary: ranking selection over real grids ────────────────
+def _two_object_grid():
+    # a size-1 object at (0,0) and a size-4 (2x2) object at rows 2-3, cols 2-3.
+    return [
+        [3, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 3, 3, 0, 0],
+        [0, 0, 3, 3, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+    ]
+
+
+def test_argmax_selects_the_largest_object():
+    objs = objects_of(_two_object_grid())
+    assert len(objs) == 2
+    largest = argmax(objs, size_of)
+    assert largest is not None
+    assert size_of(largest) == 4
+    assert largest["position"] == (2, 2)
+
+
+def test_cells_of_chosen_object_is_the_coloring_selection():
+    objs = objects_of(_two_object_grid())
+    cells = cells_of(argmax(objs, size_of))
+    # exactly the four cells of the 2x2 block — the `selection` for `coloring`.
+    assert cells == frozenset({(2, 2), (2, 3), (3, 2), (3, 3)})
+
+
+def test_argmax_abstains_on_a_tie():
+    # two equal-size (single-cell) objects: "the largest" is ambiguous → None,
+    # the same value-agnostic discipline `unique` applies to the >1 case.
+    grid = [
+        [3, 0, 0],
+        [0, 0, 0],
+        [0, 0, 3],
+    ]
+    objs = objects_of(grid)
+    assert len(objs) == 2
+    assert argmax(objs, size_of) is None
+
+
+def test_argmax_empty_and_non_list():
+    assert argmax([], size_of) is None
+    assert argmax(None, size_of) is None
+
+
+def test_argmax_ignores_objects_without_the_property():
+    # a key that is defined for one object and None for the other selects the
+    # one with a defined value rather than crashing.
+    objs = [{"size": 5}, {"size": None}]
+    assert argmax(objs, size_of) == {"size": 5}
+
+
+def test_cells_of_non_object_is_empty():
+    assert cells_of(None) == frozenset()
+    assert cells_of(42) == frozenset()
+
+
+# ── unit: the recolor_largest_object matcher logic ────────────────────
+def _ranking(**over):
+    base = {
+        "multi_object": True,
+        "select_extreme": True,
+        "recolor_constant": True,
+        "others_unchanged": True,
+        "recolor_color": 4,
+        "evidence_count": 3,
+    }
+    base.update(over)
+    return {"object_ranking": base}
+
+
+def test_matcher_fires_on_full_ranked_recolor_signal():
+    assert match("recolor_largest_object", _ranking()) is True
+
+
+def test_matcher_declines_when_not_multi_object():
+    assert match("recolor_largest_object", _ranking(multi_object=False)) is False
+
+
+def test_matcher_declines_when_selection_is_ambiguous():
+    assert match("recolor_largest_object", _ranking(select_extreme=False)) is False
+
+
+def test_matcher_declines_when_others_changed():
+    assert match("recolor_largest_object", _ranking(others_unchanged=False)) is False
+
+
+def test_matcher_declines_when_color_not_constant():
+    assert match("recolor_largest_object", _ranking(recolor_color=None)) is False
+
+
+def test_matcher_respects_min_evidence():
+    # one example pair cannot establish "always the largest, always this color".
+    assert match("recolor_largest_object", _ranking(evidence_count=1)) is False
+
+
+# ── registry: P5 counts it, dormant on the easy path ──────────────────
+def test_matcher_is_registered():
+    assert "recolor_largest_object" in CONDITION_REGISTRY
+    assert get_matcher("recolor_largest_object") is not None
+
+
+def test_matcher_dormant_when_signal_absent():
+    # the single-object easy/easy_a tasks never surface `object_ranking`, so the
+    # matcher cannot misfire there.
+    assert match("recolor_largest_object", {"object_transition": {}}) is False
+    assert match("recolor_largest_object", {}) is False

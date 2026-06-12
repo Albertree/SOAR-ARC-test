@@ -1,6 +1,81 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 13 — 2026-06-12T14:14 — branch test31
+
+**Diagnosis**: Rungs R0–R3 + R5-reuse are cleared; the lowest unproven rung is
+**R4 (2nd-order / ranking relation)**. The whole object pathway is gated on
+`unique(objects_of(G))` — exactly one foreground object (`all_single`). The
+moment a grid holds *several* objects, `unique` returns None and the pathway
+goes dark: there is **no ranking selector** to pick *which* of several objects
+to act on by comparing them to each other on a property. R1's §2.5-2b names that
+seed selector (`argmax`) but the `agent/dsl_expr` substrate never grew it;
+taxonomy §4 names this exact "selection 재료의 부재" as the root of the 168-rule
+accretion failure (with no way to *select*, an abstraction's hole can only be
+filled by a per-task literal). Empirically: a 12-task ARC-AGI-2 training slice
+(`--split training --seed 42`) fails **0/12**, every one collapsing to
+`identity` because it is multi-object. Per PROMPT §2 "smallest = smaller half",
+this iter builds the **selection + recognition substrate** (zero impact on the
+live easy path); the *application* wiring (extract signal → builder → render) is
+the next iter's step, set up here as a sharp, failing test.
+
+**Change**:
+- `data/ARC_madeup/largest_recolor.json` (new, F1-exempt corner) — the minimal
+  task that *isolates* the gap: a multi-object grid where the **single
+  size-maximal object** is recolored to a constant color, all else unchanged.
+  Confirmed it currently fails 0/1 → `identity` (multi-object ⇒ `unique`=None).
+  Authored to fail, per §2.2 (a task you can already pass teaches nothing).
+- `agent/dsl_expr/__init__.py` — added `argmax(objs, key)`: the ranking selector
+  (the agent-side expression of R4's edge-of-edge relation — selects *which*
+  object by comparing them on a property), and `cells_of(obj)` (the chosen
+  object's cells as the `coloring` `selection` argument, so the recolor is
+  `coloring(cells_of(argmax(objects_of(G0), size_of)), color)` — a lifted
+  expression, never a literal cell-list). `argmax` **abstains on a tie** (None),
+  the same value-agnostic discipline `unique` applies to the >1 case. F3-exempt:
+  selection/util vocabulary lives under `agent/`, not `procedural_memory/DSL/`
+  (BACKLOG_LOOP §2.5-1).
+- `agent/conditions/recolor_largest_object.py` (new, registered) — R4's
+  applicability matcher: fires iff every pair recolors the single size-maximal
+  object of a multi-object grid to one constant color, others untouched. Reads a
+  documented `patterns["object_ranking"]` signal whose producer is the next
+  rung's wiring; until then the key is absent so the matcher returns False and
+  **cannot misfire** on the single-object easy/easy_a tasks. Recognition-vocab
+  growth (P5), CLAUDE.md §6.3-blessed — no new way of *doing* a transformation.
+- `tests/test_ranking_selection.py` (new, 15 tests) — vocabulary (argmax selects
+  largest / reads its cells / abstains on tie / ignores undefined property /
+  empty+non-list), matcher logic on synthetic `object_ranking` dicts (fires on
+  full signal; declines on not-multi / ambiguous-selection / others-changed /
+  non-constant-color / min_evidence=1), and registry (registered ⇒ P5 counts it;
+  dormant when the signal is absent).
+
+**Probe before**: easy 1/3 (easy0001 via stored), easy_a 9/9; rules=2 (covers
+6+9); P1=7.5 P2=7.5 P3=0.5 P4=247 P5=5 P6=1007.
+**Probe after** : easy 1/3 (unchanged), easy_a 9/9 (unchanged — regression guard
+intact); madeup largest_recolor 0/1 (gap named, wiring deferred — intended);
+rules=2 unchanged; **P5=6 (+1)**, P4=304 (+57, probe-driven episodic writes —
+writer alive, not architectural). Suite 98 pass (incl. 15 new).
+
+**Invariants**: forbidden=**none** — no frozen-file edit (madeup is F1-exempt);
+`active_operators.py` untouched ⇒ F8 N/A; no new `_try_*`/`_apply_*` ⇒ F2 N/A;
+new vocab under `agent/`, not `DSL/` ⇒ F3 N/A; matcher added, no rule saved
+without condition ⇒ F4 N/A. positives = **P5 +1** (substantive: ranking
+recognition capability) and P4 +57 (probe side-effect). Checker verdict: CLEAN.
+This is non-spinning real motion (a *new general capability*, distinct from
+iters 11/12's reuse work), and is the disciplined "smaller half" of R4: the
+substrate now exists; wiring it to *solve* `largest_recolor` is the next step.
+
+**Next gap (note for future iter)**: wire the `object_ranking` producer into
+`ExtractPatternOperator` (compute `multi_object`/`select_extreme` via
+`argmax(objects_of(G0), size_of)`, and `recolor_constant`/`recolor_color`/
+`others_unchanged` from the G0→G1 diff), add a `_build_recolor_largest_rule`
+builder + `_render_recolor_largest` (render = `coloring` on `cells_of(...)`,
+frozen-primitive-only) — then `largest_recolor` solves the intended way and
+P1/P2 can climb once a second ranking task lets R3 lift the two into one
+`covers>1` rule. (Touching `active_operators.py` then is F8-safe because this
+iter already added the paired `agent/conditions/` matcher — but do it with the
+matcher/builder in the *same* commit.)
+
+---
 ## Iter 12 — 2026-06-12T14:02 — branch test31
 
 **Diagnosis**: R0/R1/R3/R5(half) are cleared, so the lowest *unproven* rung is
@@ -1332,3 +1407,73 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 3s
 - Log: logs/learn_20260612_135920.log
+
+---
+## Learning Loop -- 2026-06-12 14:05
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_140539.log
+
+---
+## Learning Loop -- 2026-06-12 14:05
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_140541.log
+
+---
+## Learning Loop -- 2026-06-12 14:09
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 39s
+- Log: logs/learn_20260612_140853.log
+
+---
+## Learning Loop -- 2026-06-12 14:11
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_141151.log
+
+---
+## Learning Loop -- 2026-06-12 14:13
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_141354.log
+
+---
+## Learning Loop -- 2026-06-12 14:13
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_141356.log
+
+---
+## Learning Loop -- 2026-06-12 14:14
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_141359.log
