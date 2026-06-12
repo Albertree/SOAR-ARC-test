@@ -1,6 +1,107 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 18 — 2026-06-12T15:32 — branch test31
+
+**Diagnosis**: R0–R6 mechanisms are cleared; iter 17 added the *positional*
+recolor (`color_map`) and named its neighbour gap explicitly: **object-keyed
+recolor** — recolor object A to the *color of a second object*, a relation read
+rather than a constant. I grounded it on the real ARC-AGI-2 training task it
+named, `aabf363d` (objects: a big body + a single-pixel marker; output = body
+recolored to the **marker's color**, marker erased). No existing family expresses
+it: `recolor_extreme` needs a *constant* fill and leaves other objects untouched
+(here the marker is erased); `color_map` reads no object relation and correctly
+declines (the test introduces a fresh color 8 it never mapped). This is the
+smallest defensible R4 step — the first transformation whose **argument is sourced
+from a relation between two objects** (§2.5-2b: the answer's color has a *reason*,
+the marker, not a stored value, P3/P4).
+
+**Change**:
+- `agent/conditions/object_keyed_recolor.py` (new matcher, **P5 7→8**) —
+  recognises "body ← color-of(marker), marker erased" from the
+  `object_keyed_recolor` signal. Recognition-vocabulary growth (CLAUDE.md §6.3),
+  not a transformation primitive.
+- `agent/active_operators.py` — producer/builder/renderer triple mirroring the
+  established families (F8 satisfied: paired with `memory.py` + `conditions/`):
+  - module-level `_object_keyed_parts(raw)`: selects body=`arg_extreme(objects_of,
+    size_of, "max")` and marker=`arg_extreme(…, "min")`, reads `color_of(marker)`
+    and the background — **one** selection definition shared by the holds-check and
+    the renderer so recognition and execution pick the same objects (module
+    uniformity, BACKLOG §5 criterion 2). Abstains (None) on a size tie / not-exactly-
+    two-objects (P7), which is what keeps it dormant on the single-object easy/easy_a
+    tasks and makes the renderer speculative-apply safe (declines, never crashes).
+  - module-level `_object_keyed_recolor_holds(pairs)`: the COMM/DIFF check — every
+    pair recolors its body to the *marker's* color (a per-pair varying value, the
+    relation) and erases the marker, all else unchanged, same shape. The varying
+    fill is exactly what separates this from constant-fill `recolor_extreme`.
+  - `ExtractPatternOperator._object_keyed_recolor` surfaces the signal;
+    `GeneralizeOperator._build_object_keyed_recolor_rule` emits the value-agnostic
+    `{condition: object_keyed_recolor, action:{dsl: object_keyed_recolor, args:{}}}`
+    rule (empty args ⇒ relation re-derived per task, one rule covers the family,
+    §2.5-3). Branch placed **before** `color_map` (an object-keyed recolor can be
+    coincidentally train-consistent with a positional map, so the more specific
+    object-relation reading wins); disjoint from `recolor_extreme` (constant fill
+    vs marker-erased), so that ordering is immaterial.
+  - `PredictOperator._render_object_keyed_recolor` re-derives the relation, selects
+    the test grid's body+marker, and applies **`coloring(cells_of(body),
+    color_of(marker))` then `coloring(cells_of(marker), background)`** on the input
+    canvas (same-shape ⇒ no `make_grid`); declines (None) on any non-matching task.
+- `agent/memory.py` — `"object_keyed_recolor": "object_keyed_recolor"` added to
+  `_DSL_TO_DISPATCH` so a *stored* rule (empty args ⇒ no unresolved `?v`) is
+  fast-path replayable. Not in `_RUNTIME_RESOLVABLE` (nothing to resolve).
+- `tests/test_object_keyed_recolor.py` (new, +9) — signal/matcher (consistent,
+  declines on constant-fill recolor + single-object), end-to-end rule build,
+  synthetic solve with **fresh test colors** (objects+color re-derived, never
+  stored), **exact-match solve of the real training task `aabf363d`**, two
+  speculative-apply decline tests (non-matching examples / ambiguous 3-object test
+  grid), and the fast-path `applicable_rule` bridge.
+
+**Probe before**: easy 1/3, easy_a 9/9; training `aabf363d` = identity; rules=3
+(covers 6+9+2); P1=5.67 P2=5.67 P3=0.67 P4=561 P5=7 P6=1489.
+**Probe after** : easy 1/3, easy_a 9/9 (regression guard intact — `object_keyed_
+recolor` stays dormant on every easy/easy_a task; rules unchanged at 3); the real
+global task `aabf363d` now solves **exactly** via the pipeline-built
+`object_keyed_recolor` rule (was `identity`); a synthetic sibling with unseen test
+colors solves too (relation, not literal). P1/P2/P3 flat (no per-task rule
+persisted — capability proven in code + 9 tests; the loop will learn/persist it
+organically when a matching task recurs, so no covers=1 dip is committed); **P5
+7→8**, **P4 561→578 (+17)** (probes exercised the episodic writer). Suite 124→**133**.
+
+**Invariants**: forbidden=**none** — F1: no frozen-file edit (only
+`active_operators.py` + `memory.py` + new `conditions/` + `tests/`); F2: no new
+`_try_*`/`_apply_*` (the additions are a matcher + producer/builder/renderer, the
+blessed vocabulary); F3: no DSL primitive — the recolor is the frozen `coloring`
+composed over selected cells, no `make_grid`/`@register` added; F4: no rule saved
+without condition (no rule persisted; the built rule carries one anyway); F8:
+`active_operators.py` net-positive **and** `agent/memory.py` + `agent/conditions/`
+also touched ⇒ satisfied. Checker verdict: **CLEAN** (P5 +1, P4 +17). positives =
+**P5 +1, P4 +17**. P6 −215 (new capability code — one general family reading an
+object relation, not `_try_*` accretion; same shape as iter 17's +209).
+
+### Observation criteria (BACKLOG §5) — R4 argument-from-relation on a real task
+1. **Works**: producer/matcher/builder/renderer run error-free; `aabf363d` solves,
+   declines cleanly on non-matching/ambiguous grids (no crash).
+2. **Module uniformity**: **one** value-agnostic `object_keyed_recolor` rule (empty
+   args) covers the family; recognition and execution share the single
+   `_object_keyed_parts` / `_object_keyed_recolor_holds` definitions — no per-task
+   branch; the overfit per-task instance would only ever be AU input material.
+3. **Approaches the answer**: exact output via frozen `coloring`; the fill color is
+   the COMM relation `color-of(marker)` (P3/P4), re-derived per task, never stored.
+4. **Search sanity**: deterministic; `arg_extreme` abstains on a size tie, and the
+   renderer declines when the examples don't exhibit the relation or the test grid
+   has no unambiguous body/marker pair — no guessing.
+
+**Next gap (note for future iter)**: the object-keyed recolor hardcodes the
+*reference selection* (marker = the size-min object, body = size-max) and the
+relation (`color-of`). The natural next generalization is to **lift the reference
+selector itself** — recolor the body to the color of the object selected by some
+property (smallest / unique-color / a specific marker shape), which would push the
+selection one level up like R3 lifted the `extreme` direction. Or persist this
+rule via a training run to turn it into a *reused* stored hit (R5/R6, driving P1
+once a second object-keyed task recurs). Latent (unchanged): no P-signal rewards
+reuse rate.
+
+---
 ## Iter 17 — 2026-06-12T15:18 — branch test31
 
 **Diagnosis**: R0–R5(reuse) + R4 cleared, R3 re-proven; iter 16 fixed the
@@ -2102,3 +2203,43 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 0
 - Time: 135s
 - Log: logs/learn_20260612_151845.log
+
+---
+## Learning Loop -- 2026-06-12 15:23
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_152356.log
+
+---
+## Learning Loop -- 2026-06-12 15:24
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_152358.log
+
+---
+## Learning Loop -- 2026-06-12 15:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_153236.log
+
+---
+## Learning Loop -- 2026-06-12 15:32
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_153239.log

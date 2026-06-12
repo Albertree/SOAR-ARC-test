@@ -139,6 +139,91 @@ def _color_map_determines(mapping, grids):
     return all(_grid_colors(g.raw) <= domain for g in grids if g is not None)
 
 
+def _object_keyed_parts(raw):
+    """Select the (body, marker) objects of a two-object grid and read the
+    marker's color and the grid background — the argument material an
+    *object-keyed* recolor acts on (R4, BACKLOG_LOOP.md §2.5-2b).
+
+    The body is the size-larger object, the marker the size-smaller one, both
+    chosen by the lift-ready selector `arg_extreme(objects_of(G0), size_of, …)`
+    (which abstains on a size tie, so an ambiguous pair declines rather than
+    guesses, P7). Returns `(body_cells, marker_cells, marker_color, background)`
+    — `body_cells`/`marker_cells` as frozensets of absolute coords, `marker_color`
+    the marker's sole color (the *relation* the recolor reads, not a constant),
+    `background` the grid's most-frequent color (where the erased marker goes) —
+    or None when the grid does not present exactly two size-distinct, single-color
+    objects. One definition, shared by the holds-check and the renderer, so
+    recognition and execution select the same objects by construction (module
+    uniformity, BACKLOG_LOOP.md §5 criterion 2)."""
+    objs = objects_of(raw)
+    if len(objs) != 2:
+        return None
+    body = arg_extreme(objs, size_of, "max")
+    marker = arg_extreme(objs, size_of, "min")
+    if body is None or marker is None:
+        return None
+    body_cells = cells_of(body)
+    marker_cells = cells_of(marker)
+    if not body_cells or not marker_cells or (body_cells & marker_cells):
+        return None
+    marker_color = color_of(marker)
+    if marker_color is None:
+        return None
+    flat = [cell for row in raw for cell in row]
+    background = Counter(flat).most_common(1)[0][0]
+    return body_cells, marker_cells, marker_color, background
+
+
+def _object_keyed_recolor_holds(pairs):
+    """True iff every `(g0, g1)` pair recolors its body object to the **marker
+    object's color** and erases the marker to background, every other cell
+    unchanged, same shape (R4 object-keyed recolor family).
+
+    This is the COMM/DIFF the family keys on (P3/P4): the fill color is *sourced
+    from a second object* — a relation read, not a constant — so it varies per
+    task (and even per pair) while the *relation* "body ← color-of(marker)" stays
+    constant. That is precisely the capability the constant-fill `recolor_extreme`
+    and the positional `color_map` families cannot express: `recolor_extreme`
+    requires one fill color across pairs and leaves all other objects untouched
+    (here the marker is *erased*, so its `others_unchanged` fails), and a global
+    `color_map` reads no object relation. Value-agnostic and symbolic (P7): nothing
+    is stored — producer, matcher and renderer all re-derive this from each task's
+    own examples, so one rule covers the whole family. Shared definition with the
+    renderer (module uniformity, BACKLOG_LOOP.md §5 criterion 2)."""
+    if not pairs:
+        return False
+    saw = False
+    for g0, g1 in pairs:
+        if g0 is None or g1 is None:
+            return False
+        if g0.height != g1.height or g0.width != g1.width:
+            return False
+        parts = _object_keyed_parts(g0.raw)
+        if parts is None:
+            return False
+        body_cells, marker_cells, marker_color, background = parts
+        raw0, raw1 = g0.raw, g1.raw
+        # Body recolored to the marker's color, and at least one body cell
+        # actually changed (else it is identity on the body, not a recolor).
+        if any(raw1[r][c] != marker_color for (r, c) in body_cells):
+            return False
+        if not any(raw0[r][c] != marker_color for (r, c) in body_cells):
+            return False
+        # Marker erased to the background color.
+        if any(raw1[r][c] != background for (r, c) in marker_cells):
+            return False
+        # Every other cell unchanged (the body and marker are the only edits).
+        touched = body_cells | marker_cells
+        if any(
+            raw0[r][c] != raw1[r][c]
+            for r in range(g0.height) for c in range(g0.width)
+            if (r, c) not in touched
+        ):
+            return False
+        saw = True
+    return saw
+
+
 # ======================================================================
 # SolveTaskOperator -- abstract top-level goal (S1)
 # ======================================================================
@@ -348,7 +433,40 @@ class ExtractPatternOperator(Operator):
         # (P3/P4), so one rule covers the whole family.
         patterns["color_map"] = self._color_map(task)
 
+        # Object-keyed recolor signal (R4, BACKLOG_LOOP.md "2nd-order relation").
+        # When a grid holds a *body* object and a smaller *marker* object, and the
+        # output recolors the body to the **marker's color** and erases the marker,
+        # the fill color is read from a relation between two objects — not a
+        # constant (recolor_extreme) nor a positional map (color_map). Surfaced
+        # here as the `object_keyed_recolor` signal the matcher of the same name
+        # keys on; the relation is derived value-agnostically from the example
+        # COMM/DIFF, never a stored literal (P3/P4), so one rule covers the family.
+        patterns["object_keyed_recolor"] = self._object_keyed_recolor(task)
+
         wm.s1["patterns"] = patterns
+
+    def _object_keyed_recolor(self, task):
+        """Surface the object-keyed recolor signal (R4) the
+        `object_keyed_recolor` matcher reads. Delegates the actual check to the
+        module-level `_object_keyed_recolor_holds` so recognition and rendering
+        share one definition (module uniformity).
+
+        Returns::
+
+            {
+              "consistent":     bool,   # every pair: body ← color-of(marker), marker erased
+              "evidence_count": int,
+            }
+        """
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        return {
+            "consistent": _object_keyed_recolor_holds(pairs),
+            "evidence_count": len(pairs),
+        }
 
     def _color_map(self, task):
         """Surface the global color-substitution signal (R6) the `color_map`
@@ -802,6 +920,20 @@ class GeneralizeOperator(Operator):
         elif match_condition("recolor_extreme_object", patterns):
             rule = self._build_recolor_extreme_rule(patterns)
 
+        # R4: recognise an *object-keyed* recolor — a body object recolored to the
+        # color of a smaller *marker* object, the marker then erased. The fill
+        # color is a relation read (`color-of(marker)`), so it varies per task and
+        # this is disjoint from `recolor_extreme` (constant fill, marker would be an
+        # untouched "other"). Checked *before* `color_map`: an object-keyed recolor
+        # can be coincidentally train-consistent with a global per-cell map, but the
+        # object-relation reading is the correct (more specific) interpretation — so
+        # the specific matcher wins and `color_map` only handles genuine positional
+        # recolors. One value-agnostic `object_keyed_recolor` rule covers the family;
+        # the marker color is re-derived from each task's own grids at apply time,
+        # never stored (§2.5-3).
+        elif match_condition("object_keyed_recolor", patterns):
+            rule = self._build_object_keyed_recolor_rule(patterns)
+
         # R6: recognise a *global color substitution* — same-shape grids where
         # every input color `c` becomes one fixed output color `map[c]`, the same
         # way in every pair. Disjoint from every branch above: a constant output
@@ -985,6 +1117,38 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- R4: object-keyed recolor rule construction ---------------------
+
+    def _build_object_keyed_recolor_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the object-keyed
+        recolor family. The action is the *recipe* `object_keyed_recolor` —
+        "recolor the body object to the marker object's color, then erase the
+        marker" — replayed at apply time as `coloring` over `cells_of(arg_extreme(
+        objects_of(G0), size_of, "max"))` filled with `color_of(arg_extreme(…,
+        "min"))`, then `coloring` the marker cells to background. Args are empty:
+        which objects and what color are re-derived from each task's own grids at
+        apply time (P3/P4 — the marker color is a relation read, not a constant),
+        never stored here — so one rule covers the whole family (§2.5-3) and
+        generalises to unseen object-keyed recolor tasks rather than minting one
+        detector per task."""
+        sig = patterns.get("object_keyed_recolor") or {}
+        if not sig.get("consistent"):
+            return None
+        return {
+            "type": "object_keyed_recolor",       # WM dispatch tag for PredictOperator
+            "concept": "recolor_body_to_marker_color",
+            "category": "object_recolor",
+            "condition": {
+                "type": "object_keyed_recolor",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "object_keyed_recolor",
+                "args": {},                       # objects + color re-derived at apply time
+            },
+            "confidence": 1.0,
+        }
+
     # ---- R6: color-map rule construction --------------------------------
 
     def _build_color_map_rule(self, patterns):
@@ -1089,6 +1253,8 @@ class PredictOperator(Operator):
             return self._render_recolor_extreme(rule, self._task, input_grid)
         if rule_type == "color_map":
             return self._render_color_map(rule, self._task, input_grid)
+        if rule_type == "object_keyed_recolor":
+            return self._render_object_keyed_recolor(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -1433,6 +1599,55 @@ class PredictOperator(Operator):
                 mapped = mapping.get(out[r][c], out[r][c])
                 if mapped != out[r][c]:
                     out = apply_DSL("coloring", out, selection=(r, c), color=mapped)
+        return out
+
+    def _render_object_keyed_recolor(self, rule, task, input_grid):
+        """Render the R4 `object_keyed_recolor` action: recolor the test grid's
+        body object to the **marker object's color** and erase the marker, via the
+        frozen `coloring` primitive.
+
+        Two value-agnostic derivations, both reading the example pairs (never the
+        test pair's absent output, P5):
+          - *applicability*: `_object_keyed_recolor_holds` re-checks that the
+            examples genuinely exhibit "body ← color-of(marker), marker erased"
+            (the *same* definition the producer/matcher use, module uniformity).
+            If they do not, render declines.
+          - *which objects + what color*: `_object_keyed_parts` selects the test
+            grid's body (size-max) and marker (size-min) objects and reads the
+            marker's color — the relation that supplies the fill. It abstains
+            (None) when the test grid does not present exactly two size-distinct
+            objects, so an ambiguous grid renders nothing.
+
+        The transformation is exactly `coloring(cells_of(body), color_of(marker))`
+        then `coloring(cells_of(marker), background)` applied to the test input:
+        the rest of the grid is preserved (the matcher guarantees others-unchanged
+        + size-preserved), so the input *is* the canvas — no `make_grid` is needed.
+        The painted cells are lifted expressions (`cells_of` of the ranked objects),
+        never stored cell-list literals (§2.5-2b).
+
+        Declines (returns None) — never raises — on any non-matching task, so a
+        *stored* object_keyed_recolor rule (empty args ⇒ runtime-replayable, tried
+        against every task on the fast path) cleanly passes rather than crashing
+        (the speculative-apply discipline, INVARIANTS / iter 16)."""
+        if task is None or input_grid is None:
+            return None
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        if not _object_keyed_recolor_holds(pairs):
+            return None
+        parts = _object_keyed_parts(input_grid.raw)
+        if parts is None:
+            return None
+        body_cells, marker_cells, marker_color, background = parts
+
+        out = [row[:] for row in input_grid.raw]
+        out = apply_DSL("coloring", out, selection=sorted(body_cells),
+                        color=marker_color)
+        out = apply_DSL("coloring", out, selection=sorted(marker_cells),
+                        color=background)
         return out
 
 
