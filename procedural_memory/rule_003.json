@@ -1,0 +1,22 @@
+{
+  "id": 3,
+  "concept": "recolor_largest_object",
+  "category": "object_recolor",
+  "condition": {
+    "type": "recolor_largest_object",
+    "params": {
+      "min_evidence": 2
+    }
+  },
+  "action": {
+    "dsl": "recolor_largest",
+    "args": {}
+  },
+  "covers": [
+    "largest_recolor"
+  ],
+  "source_task": "largest_recolor",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-12T14:22:45.265489",
+  "times_reused": 1
+}

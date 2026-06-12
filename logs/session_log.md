@@ -1,6 +1,99 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 14 — 2026-06-12T14:24 — branch test31
+
+**Diagnosis**: R0–R3 + R5-reuse are cleared; the lowest unproven rung is **R4
+(2nd-order / ranking relation)**. Iter 13 built only the *substrate* (`argmax`/
+`cells_of`, the dormant `recolor_largest_object` matcher reading a documented
+`object_ranking` signal whose producer did not yet exist) and authored a failing
+probe `data/ARC_madeup/largest_recolor.json` (multi-object grid, largest object
+recolored). Verified it still collapses to `identity` 0/1 (no producer ⇒ matcher
+dormant ⇒ no rule). This iter fills the exact "Next gap" iter 13 named: the
+*application* half — produce the `object_ranking` signal, build the value-agnostic
+`recolor_largest` rule, render it via the frozen `coloring` primitive — so the
+task solves *the intended way* (ranking selection, not a literal cell-list).
+
+**Change**:
+- `agent/active_operators.py` — three wired pieces (paired with the
+  `agent/memory.py` touch below, so F8 is satisfied):
+  - `ExtractPatternOperator._object_ranking(task)`: the producer. For each pair
+    selects the size-maximal object via `argmax(objects_of(G0), size_of)` (the
+    ranking selector — picks *which* of several objects by comparing them on a
+    property; abstains on a tie) and surfaces `multi_object` / `select_extreme` /
+    `recolor_constant` / `recolor_color` (the COMM of the example outputs'
+    recolored object) / `others_unchanged`. Value-agnostic: color read from the
+    examples, never stored.
+  - `GeneralizeOperator._build_recolor_largest_rule`: emits the
+    `{condition: recolor_largest_object, action: {dsl: recolor_largest, args:{}}}`
+    rule when the matcher fires. Args **empty** — one rule covers the whole family.
+    The branch is disjoint from every `single_object_move_*` branch (multi vs
+    single object), so order is immaterial and the easy path is untouched.
+  - `PredictOperator._render_recolor_largest`: re-derives the constant fill color
+    from the examples, selects the test grid's largest object, and paints its
+    cells — `coloring(cells_of(argmax(objects_of(G0), size_of)), color)` applied
+    to the input (others preserved, so the input *is* the canvas; no `make_grid`).
+    The selected cells are a lifted expression, never a literal (§2.5-2b).
+- `agent/memory.py` — added `"recolor_largest": "recolor_largest"` to
+  `_DSL_TO_DISPATCH` so the fast path can reconstruct and *reuse* a stored
+  `recolor_largest` rule (the R4 "reused on next task" signal).
+- `data/ARC_madeup/largest_recolor_b.json` (new, F1-exempt) — a *second* ranking
+  task with a different color (2→8) and grid, authored to prove the rule
+  generalizes value-agnostically rather than overfitting one task.
+- `tests/test_recolor_largest.py` (new, 5) — producer signal on both madeup tasks
+  (correct fields, recolor_color 4 / 8), declines on the single-object easy000c
+  (no misfire), end-to-end solve of both via the same `recolor_largest` rule with
+  empty args, and a renderer check that *only* the largest object's cells change.
+
+**Probe before**: easy 1/3, easy_a 9/9; madeup largest_recolor **0/1**
+(`identity`); rules=2 (covers 6+9); P1=7.5 P2=7.5 P3=0.5 P4=316 P5=6.
+**Probe after** : easy 1/3, easy_a 9/9 (regression guard intact); madeup **2/2**
+— largest_recolor CORRECT via `pipeline` (discovers `recolor_largest`),
+largest_recolor_b CORRECT via **`stored(largest_recolor)`** (fast-path reuse,
+`times_reused=1`); rules=3 (covers 6+9+1); P4=341 (+25). Suite 98→**103** pass.
+
+**Invariants**: forbidden=**none** — F1: madeup is F1-exempt, no frozen-file edit;
+F2: no new `_try_*`/`_apply_*`; F3: no DSL primitive — selection vocab is the
+pre-existing `agent/dsl_expr`, transformation is frozen `coloring`; F4: rule_003
+has a valid `condition`+`action` (verified on disk); F8: `active_operators.py`
+net-positive **and** `agent/memory.py` also touched ⇒ satisfied. Checker verdict:
+**CLEAN** (P4 +25). positives = **P4 +25**; P1/P2/P3 *dipped* (2→3 rules, the new
+family's first rule has covers=1) — this is the inherent, expected cost of
+**opening a new capability**, not the 168-rule accretion failure: the rule is
+value-agnostic and *demonstrably general* (largest_recolor_b reused it
+unchanged), so its `covers` will grow as more ranking tasks appear (§2.5-4's
+litmus is "rule-count-up *without* generalization"; here generalization is
+proven). P6 +205 lines (producer/builder/renderer are genuinely new capability,
+not `_try_*` accretion — the family they implement is one rule, not one per task).
+
+### RUNG R4 CLEARED — ranking-selection recolor wired end-to-end
+Against the four observation criteria (BACKLOG §5):
+1. **Works**: producer/builder/renderer run error-free; `largest_recolor` solves
+   via the pipeline, `largest_recolor_b` via stored reuse.
+2. **Module uniformity**: **one** `recolor_largest` module handles both tasks
+   (different color *and* grid) with **empty args** — no per-task branch; the
+   color is re-derived per task, the object chosen by the same `argmax` selector.
+3. **Approaches the answer**: exact test outputs for both (2/2), via the frozen
+   `coloring` primitive over a lifted `cells_of(argmax(...))` expression.
+4. **Search sanity**: deterministic; `argmax` abstains on size ties (no guessing);
+   bounded single-object selection.
+R4 done-when met — "2차 비교가 필요한 madeup 과제 1개를 그 메커니즘으로 해결"
+(largest_recolor) — and its signal — "새 compare 역량으로 푼 과제가 *다음*
+과제에도 재사용됨" (largest_recolor_b reused the rule, `via=stored`).
+
+**Next gap (note for future iter)**: R0–R5(reuse) + R4 are now cleared. Two
+defensible directions: (a) **R3 lift across families** — `recolor_largest` is one
+value-agnostic rule, but a *second distinct ranking action* (e.g. recolor the
+*smallest*, or move-the-largest) would share the `argmax`-selection skeleton and
+become R3 material to lift the selector into a variable (`argmax(_, ?key)` /
+`?extreme`), driving P1/P2/P3 back up — the genuine generalization that recovers
+this iter's coverage dip. (b) **R6 training escalation** — apply the now-working
+object/ranking machinery to a failing ARC-AGI-2 training task named for a reason.
+The held **R5 other-half** (variable-origin *invention*) still touches open
+Q-B3/Q-B4 — do not invent. Latent: no P-signal rewards reuse rate, so the
+`largest_recolor_b` stored-hit reads neutral (a P7 stored-hit-rate would capture it).
+
+---
 ## Iter 13 — 2026-06-12T14:14 — branch test31
 
 **Diagnosis**: Rungs R0–R3 + R5-reuse are cleared; the lowest unproven rung is
@@ -1477,3 +1570,63 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260612_141359.log
+
+---
+## Learning Loop -- 2026-06-12 14:16
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_141623.log
+
+---
+## Learning Loop -- 2026-06-12 14:16
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_141625.log
+
+---
+## Learning Loop -- 2026-06-12 14:21
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_142101.log
+
+---
+## Learning Loop -- 2026-06-12 14:22
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_142244.log
+
+---
+## Learning Loop -- 2026-06-12 14:22
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_142254.log
+
+---
+## Learning Loop -- 2026-06-12 14:22
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_142258.log

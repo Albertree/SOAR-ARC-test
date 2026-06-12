@@ -16,7 +16,7 @@ from agent.operators import Operator
 from agent.conditions import match as match_condition
 from agent.dsl_expr import (
     objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
-    output_dims,
+    output_dims, argmax, cells_of,
 )
 from agent.variable_resolution import resolve_variable
 from procedural_memory.DSL.apply import apply_DSL
@@ -236,7 +236,113 @@ class ExtractPatternOperator(Operator):
         # later rung, exactly as `output_invariant` preceded the R0 wiring.
         patterns["object_transition"] = self._object_transition(task)
 
+        # Object-ranking transition (R4, BACKLOG_LOOP.md "2nd-order / ranking
+        # relation"): when a grid holds *several* objects, `unique` goes dark and
+        # the move pathway above cannot pick *which* object to act on. The ranking
+        # selector `argmax(objects_of(G0), size_of)` resolves that by comparing the
+        # objects to each other on a property (R1 §2.5-2b's seed selector; the
+        # agent-side expression of R4's edge-of-edge relation). Surfaced here as
+        # the `object_ranking` signal the `recolor_largest_object` matcher
+        # (registered iter 13) keys on — value-agnostic, derived only from the
+        # example COMM/DIFF, never a stored literal (P3/P4).
+        patterns["object_ranking"] = self._object_ranking(task)
+
         wm.s1["patterns"] = patterns
+
+    def _object_ranking(self, task):
+        """Aggregate the per-pair *size-ranked recolor* signal across example
+        pairs (BACKLOG_LOOP.md R4). For each pair: select the single size-maximal
+        object of a multi-object G0 via `argmax(objects_of(G0), size_of)` and ask
+        whether the output equals the input except that one object is recolored to
+        a constant color.
+
+        Returns a symbolic dict (the contract `agent/conditions/
+        recolor_largest_object.py` documents)::
+
+            {
+              "multi_object":     bool,  # every pair: >1 foreground object in G0
+              "select_extreme":   bool,  # every pair: argmax(...,size_of) well-defined
+              "recolor_constant": bool,  # every pair: the selected object genuinely
+                                         #   recolored to a single color
+              "recolor_color":    int|None,  # that fill color, constant across pairs
+              "others_unchanged": bool,  # every pair: all non-selected cells identical
+              "evidence_count":   int,
+            }
+
+        Computed purely from `agent.dsl_expr` (`objects_of` / `argmax` / `size_of`
+        / `cells_of`) so the selection is the lift-ready expression
+        `argmax(objects_of(G0), size_of)`, not an ad-hoc cell scan. The recolor
+        color is read from the example outputs (the COMM of the selected object's
+        new color), never from the test pair — so one value-agnostic rule covers
+        the whole "recolor the largest object" family (§2.5-3)."""
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        if not pairs:
+            return {
+                "multi_object": False, "select_extreme": False,
+                "recolor_constant": False, "recolor_color": None,
+                "others_unchanged": False, "evidence_count": 0,
+            }
+
+        sels = []
+        multi = []
+        for g0, _ in pairs:
+            objs = objects_of(g0.raw)
+            multi.append(len(objs) > 1)
+            # argmax abstains (None) on a tie, so an ambiguous "largest" declines
+            # rather than guessing — the value-agnostic discipline (P7).
+            sels.append(argmax(objs, size_of) if len(objs) > 1 else None)
+
+        multi_object = all(multi)
+        select_extreme = multi_object and all(s is not None for s in sels)
+
+        recolor_ok = []
+        others_ok = []
+        recolor_colors = []
+        if select_extreme:
+            for (g0, g1), sel in zip(pairs, sels):
+                raw0, raw1 = g0.raw, g1.raw
+                if g0.height != g1.height or g0.width != g1.width:
+                    recolor_ok.append(False)
+                    others_ok.append(False)
+                    continue
+                cells = cells_of(sel)
+                out_colors = {raw1[r][c] for (r, c) in cells}
+                # Genuine recolor: the selected object's cells become one color
+                # *and* at least one of them actually changed (else it is identity
+                # on that object, not a recolor).
+                genuine = (
+                    len(out_colors) == 1
+                    and any(raw0[r][c] != raw1[r][c] for (r, c) in cells)
+                )
+                recolor_ok.append(genuine)
+                recolor_colors.append(next(iter(out_colors)) if genuine else None)
+                others_ok.append(all(
+                    raw0[r][c] == raw1[r][c]
+                    for r in range(g0.height) for c in range(g0.width)
+                    if (r, c) not in cells
+                ))
+
+        recolor_constant = (
+            select_extreme and bool(recolor_ok) and all(recolor_ok)
+        )
+        others_unchanged = (
+            select_extreme and bool(others_ok) and all(others_ok)
+        )
+        colors = set(recolor_colors) if recolor_constant else set()
+        recolor_color = next(iter(colors)) if len(colors) == 1 else None
+
+        return {
+            "multi_object": multi_object,
+            "select_extreme": select_extreme,
+            "recolor_constant": recolor_constant,
+            "recolor_color": recolor_color,
+            "others_unchanged": others_unchanged,
+            "evidence_count": len(pairs),
+        }
 
     def _object_transition(self, task):
         """Aggregate the per-pair single-object COMM/DIFF across example pairs.
@@ -530,6 +636,19 @@ class GeneralizeOperator(Operator):
         elif match_condition("single_object_move_relative_corner", patterns):
             rule = self._build_place_object_corner_rule(patterns)
 
+        # R4: recognise a *multi-object* grid whose single size-maximal object is
+        # recolored to one constant color, everything else untouched. This is the
+        # ranking pathway the `single_object_move_*` branches cannot reach (they
+        # gate on `all_single`); `argmax(objects_of(G0), size_of)` selects *which*
+        # object by comparing them to each other on size (BACKLOG_LOOP.md R4,
+        # §2.5-2b). Disjoint from every branch above (multi-object vs single), so
+        # order is immaterial. One value-agnostic `recolor_largest` rule covers the
+        # whole family — the fill color is re-derived from each task's example
+        # outputs at apply time, never stored — so it dedups into one rule with a
+        # growing `covers` rather than one per task (§2.5-3).
+        elif match_condition("recolor_largest_object", patterns):
+            rule = self._build_recolor_largest_rule(patterns)
+
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -665,6 +784,35 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- R4: recolor-largest rule construction --------------------------
+
+    def _build_recolor_largest_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the
+        size-ranked recolor family. The action is the *recipe* `recolor_largest`
+        — "recolor the single size-maximal object to the constant color the
+        examples agree on" — replayed at apply time as `coloring` over
+        `cells_of(argmax(objects_of(G0), size_of))`. Args are empty: the fill
+        color is the COMM of the example outputs' recolored object, re-derived per
+        task at apply time (P3/P4), not stored — so one rule covers the whole
+        family (§2.5-3)."""
+        ranking = patterns.get("object_ranking") or {}
+        if not ranking.get("recolor_constant") or ranking.get("recolor_color") is None:
+            return None
+        return {
+            "type": "recolor_largest",            # WM dispatch tag for PredictOperator
+            "concept": "recolor_largest_object",
+            "category": "object_recolor",
+            "condition": {
+                "type": "recolor_largest_object",
+                "params": {"min_evidence": 2},
+            },
+            "action": {
+                "dsl": "recolor_largest",
+                "args": {},               # fill color re-derived at apply time
+            },
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -736,6 +884,8 @@ class PredictOperator(Operator):
             return self._render_constant_output(rule, self._task)
         if rule_type == "place_object":
             return self._render_place_object(rule, self._task, input_grid)
+        if rule_type == "recolor_largest":
+            return self._render_recolor_largest(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -774,6 +924,61 @@ class PredictOperator(Operator):
                 if common[r][c] != background:
                     out = apply_DSL("coloring", out, selection=(r, c),
                                     color=common[r][c])
+        return out
+
+    def _render_recolor_largest(self, rule, task, input_grid):
+        """Render the R4 `recolor_largest` action: recolor the test grid's single
+        size-maximal object to the color the examples agree on, via the frozen
+        `coloring` primitive.
+
+        Two value-agnostic derivations, both reading the example pairs (never the
+        test pair's absent output, P5):
+          - *which object*: `argmax(objects_of(G0), size_of)` — the ranking
+            selector picks the largest by comparing the objects to each other;
+            abstains (None) on a tie, so an ambiguous "largest" renders nothing.
+          - *what color*: the COMM of the example outputs' recolored object (the
+            single color the selected cells take in every example G1). If that
+            color is not constant across pairs, the recolor is not derivable and
+            render returns None.
+
+        The transformation itself is exactly `coloring(cells_of(argmax(...)),
+        color)` applied to the test input: the rest of the grid is preserved (the
+        matcher guarantees others-unchanged + size-preserved), so the input *is*
+        the canvas and only the selected cells are painted — no `make_grid` is
+        needed. The selected cells are a lifted expression (`cells_of` of the
+        ranked object), never a stored cell-list literal (§2.5-2b)."""
+        if task is None or input_grid is None:
+            return None
+
+        # Derive the constant fill color from the example outputs (value-agnostic).
+        colors = set()
+        for pair in task.example_pairs:
+            if pair.input_grid is None or pair.output_grid is None:
+                return None
+            sel = argmax(objects_of(pair.input_grid.raw), size_of)
+            if sel is None:
+                return None
+            cells = cells_of(sel)
+            if not cells:
+                return None
+            out_colors = {pair.output_grid.raw[r][c] for (r, c) in cells}
+            if len(out_colors) != 1:
+                return None
+            colors.add(next(iter(out_colors)))
+        if len(colors) != 1:
+            return None
+        color = next(iter(colors))
+
+        # Select the test grid's largest object and paint its cells.
+        sel = argmax(objects_of(input_grid.raw), size_of)
+        if sel is None:
+            return None
+        cells = sorted(cells_of(sel))
+        if not cells:
+            return None
+
+        out = [row[:] for row in input_grid.raw]
+        out = apply_DSL("coloring", out, selection=cells, color=color)
         return out
 
     def _derive_place_target(self, rule, task, src_pos, grid_dims=None):

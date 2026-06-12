@@ -389,6 +389,7 @@ def increment_reuse_count(entry: dict) -> None:
 _DSL_TO_DISPATCH = {
     "copy_common_output": "constant_output",
     "place_object": "place_object",
+    "recolor_largest": "recolor_largest",
 }
 
 
