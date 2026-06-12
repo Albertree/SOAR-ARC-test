@@ -341,12 +341,17 @@ class ExtractPatternOperator(Operator):
                 return result
         return result
 
-    def _grade_extreme_direction(self, pairs, direction):
+    @staticmethod
+    def _grade_extreme_direction(pairs, direction):
         """For a single candidate `direction` ("max"/"min"), check whether every
         pair recolors its `arg_extreme(objects_of(G0), size_of, direction)` object
         to one constant color with all other cells unchanged. Returns a 1-tuple
         `(color,)` when it holds across all pairs (so a constant fill color
-        exists), else None. Pure example evidence (COMM/DIFF), value-agnostic."""
+        exists), else None. Pure example evidence (COMM/DIFF), value-agnostic.
+
+        A `@staticmethod` (no instance state) so `PredictOperator`'s renderer can
+        reuse this *same* grader — including its dimension guard below — instead of
+        a divergent partial copy in the render path."""
         colors = set()
         for g0, g1 in pairs:
             objs = objects_of(g0.raw)
@@ -1018,24 +1023,19 @@ class PredictOperator(Operator):
         if direction not in ("max", "min"):
             return None
 
-        # Derive the constant fill color from the example outputs (value-agnostic).
-        colors = set()
-        for pair in task.example_pairs:
-            if pair.input_grid is None or pair.output_grid is None:
-                return None
-            sel = arg_extreme(objects_of(pair.input_grid.raw), size_of, direction)
-            if sel is None:
-                return None
-            cells = cells_of(sel)
-            if not cells:
-                return None
-            out_colors = {pair.output_grid.raw[r][c] for (r, c) in cells}
-            if len(out_colors) != 1:
-                return None
-            colors.add(next(iter(out_colors)))
-        if len(colors) != 1:
+        # Derive the fill color via the producer's grader, whose dimension guard
+        # makes a stored rule decline on a resize task rather than crash (iter 16).
+        pairs = [
+            (pair.input_grid, pair.output_grid)
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+        if not pairs:
             return None
-        color = next(iter(colors))
+        graded = ExtractPatternOperator._grade_extreme_direction(pairs, direction)
+        if graded is None:
+            return None
+        color, = graded
 
         # Select the test grid's size-extreme object and paint its cells.
         sel = arg_extreme(objects_of(input_grid.raw), size_of, direction)

@@ -1,6 +1,87 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 16 — 2026-06-12T14:55 — branch test31
+
+**Diagnosis**: R0–R5(reuse) + R4 cleared, R3 re-proven. Iter 15's "Next gap"
+offered (a) lifting the ranking *key* via a 4th madeup task, or (b) R6 training
+escalation. PROMPT §2.2 ranks *real ARC-AGI-2 training failures* above authoring
+more madeup tasks, so I ran the training split first — and found **3 of 8 tasks
+(~37%) CRASH** with `IndexError: list index out of range`, not merely answer
+wrong. A crash violates observation criterion 1 ("작동: 모듈이 에러 없이 돈다")
+and is a far more defensible, general gap than elaborating the ranking machine on
+a self-authored task. Root cause (traceback): `_render_recolor_extreme` re-derives
+the fill color by indexing the *output* grid with cell coordinates selected from
+the *input* grid; when a stored `recolor_extreme` abstraction (`extreme=?v1`,
+runtime-resolvable ⇒ speculatively applied to **every** task) meets a task whose
+example outputs differ in shape from their inputs (any resize task), the input
+coords are out of bounds → crash that aborts the whole solve.
+
+**Change**:
+- `agent/active_operators.py` — the renderer's hand-rolled color-derivation loop
+  was a *divergent partial copy* of `_grade_extreme_direction` that omitted the
+  grader's dimension guard (the grader already declines on shape mismatch at the
+  `g0.height != g1.height` check). Replaced the 18-line buggy loop with a reuse of
+  that single grader: made `_grade_extreme_direction` a `@staticmethod` (it used no
+  instance state) so `PredictOperator`'s renderer can call the *same* definition
+  the `ExtractPatternOperator` producer uses. Now a speculatively-applied stored
+  rule **declines (None)** on a resize task instead of crashing. Net **−0 lines**
+  (−18-line loop, +grader reuse + comments balance to net 0; the *code* change is
+  net-negative), so F8's "removes code" exception applies and no score-chasing
+  generalizer hand-tuning is involved — this is a crash fix, the opposite of
+  score-chasing. One definition of "does this direction explain the examples"
+  instead of two, the stricter (correct) one now enforced on the render path.
+- `tests/test_recolor_extreme.py` (+1 test) — `test_renderer_declines_on_shape_
+  changing_task_without_crashing`: a stored `recolor_extreme(extreme=?v1)` rule
+  applied to a task whose example outputs (2×2) differ in shape from inputs (3×3)
+  must return None, never raise. Pins the regression.
+
+**Probe before**: easy 1/3, easy_a 9/9; madeup 3/3; training seed7 **0/8 with 3
+ERRORs (list index out of range)**; rules=3 (covers 6+9+2); P1=5.67 P2=5.67
+P3=0.67 P4=395 P5=6 P6=1280.
+**Probe after** : easy 1/3, easy_a 9/9 (regression guard intact); madeup 3/3
+(recolor_extreme family still solves via the lifted abstraction); training seed7
+**0/8 with 0 ERRORs**, and **0 ERRORs across 36 training tasks** (seeds 1/42/99 ×
+limit 12) — the crash is gone everywhere, not just on the 3 sampled. Score still
+0 on training (these are hard ARC-AGI-2 tasks the early agent cannot yet solve —
+the fix lets it *attempt and decline cleanly*, not solve). rules unchanged;
+P1/P2/P3/P5/P6 flat; **P4 395→474 (+79)** — previously-crashing solves now run to
+completion and write their `attempt_NNN/` episode (the crash aborted `solve()`
+before `_record_episode`), so the episodic writer is exercised on tasks it
+formerly never reached. Suite 113→**114** pass.
+
+**Invariants**: forbidden=**none** — F1: no frozen-file edit (only
+`active_operators.py` + `tests/`); F2: no new `_try_*`/`_apply_*` (the changed
+method is a `_render_*`/`_grade_*`, a bug-fix + dedup within existing methods,
+CLAUDE.md §5.1-allowed); F3: no DSL primitive touched (transformation stays frozen
+`coloring`); F4: rules unchanged structurally (only `times_reused` bumped by
+reuse hits); F8: `active_operators.py` net **0** (not >0) ⇒ check does not fire,
+and the change *removes* the buggy duplicate loop. Checker verdict: **CLEAN** (P4
++79). positives = **P4 +79**.
+
+### Observation criteria (BACKLOG §5) — criterion 1 restored on training
+1. **Works**: the ~37%-of-training crash is fixed; 36/36 sampled training tasks
+   now run to completion with no error. This was a genuine criterion-1 failure
+   (modules erroring out), surfaced only by escalating to the training split.
+2. **Module uniformity**: the renderer now reuses the *one* grader the producer
+   uses (one definition of the size-extreme recolor invariant), removing a
+   divergent partial copy — uniformity improved, not a new branch added.
+3. **Approaches the answer**: legitimate recolor_extreme tasks still solve exactly
+   (madeup 3/3); on non-matching tasks the rule now declines cleanly rather than
+   crashing or guessing.
+4. **Search sanity**: deterministic decline (None) on shape mismatch; no guessing.
+
+**Next gap (note for future iter)**: with the speculative-application crash gone,
+training tasks now fail *cleanly* (identity fallback) rather than erroring — so the
+next gap is again a *capability* one: either (a) iter 15's named R3 key-lift
+(`arg_extreme(_, ?key, ?extreme)` — a 4th sibling ranking on a property other than
+size, driving P1/P2/P3 up together), or (b) pick one cleanly-failing ARC-AGI-2
+training task, name *why* the pipeline returns identity, and close that general
+gap (R6). Latent: other runtime-resolvable renderers (e.g. `place_object`) may
+share the input-coords-into-output-grid assumption — none crashed in the 36-task
+sweep, but worth auditing if a resize task ever reaches them.
+
+---
 ## Iter 15 — 2026-06-12T14:40 — branch test31
 
 **Diagnosis**: R0–R5(reuse) + R4 are cleared, but iter 14 opened the recolor-
@@ -1769,3 +1850,93 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 3s
 - Log: logs/learn_20260612_144017.log
+
+---
+## Learning Loop -- 2026-06-12 14:45
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_144501.log
+
+---
+## Learning Loop -- 2026-06-12 14:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_144503.log
+
+---
+## Learning Loop -- 2026-06-12 14:48
+
+- Split: training, Tasks: 8
+- Correct: 0 / 8 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 31s
+- Log: logs/learn_20260612_144731.log
+
+---
+## Learning Loop -- 2026-06-12 14:53
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_145353.log
+
+---
+## Learning Loop -- 2026-06-12 14:53
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 3
+- Time: 1s
+- Log: logs/learn_20260612_145357.log
+
+---
+## Learning Loop -- 2026-06-12 14:54
+
+- Split: training, Tasks: 8
+- Correct: 0 / 8 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 23s
+- Log: logs/learn_20260612_145358.log
+
+---
+## Learning Loop -- 2026-06-12 14:55
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 58s
+- Log: logs/learn_20260612_145430.log
+
+---
+## Learning Loop -- 2026-06-12 14:55
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 29s
+- Log: logs/learn_20260612_145528.log
+
+---
+## Learning Loop -- 2026-06-12 14:56
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 30s
+- Log: logs/learn_20260612_145557.log

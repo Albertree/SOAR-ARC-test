@@ -195,6 +195,44 @@ def test_save_rule_folds_both_families_into_one_abstraction():
     assert lifted["anti_unification_trace"] is not None
 
 
+# ── regression: renderer declines (never crashes) on a resize task ────
+def _grid(raw):
+    from types import SimpleNamespace
+    return SimpleNamespace(raw=raw, height=len(raw), width=len(raw[0]) if raw else 0)
+
+
+def _task_with_pairs(pairs):
+    # Minimal stand-in task: only `example_pairs` (in/out grids) is read by the
+    # renderer + its grader. Each pair is (input_raw, output_raw).
+    from types import SimpleNamespace
+    eps = [SimpleNamespace(input_grid=_grid(i), output_grid=_grid(o))
+           for i, o in pairs]
+    return SimpleNamespace(example_pairs=eps)
+
+
+def test_renderer_declines_on_shape_changing_task_without_crashing():
+    # A stored `recolor_extreme` abstraction (extreme=?v1) is speculatively
+    # applied to a task whose example *outputs* differ in shape from their inputs
+    # (a resize). The selected object's input coordinates do not exist in the
+    # smaller output grid; the grader's dimension guard must make the renderer
+    # decline (return None) rather than index out of bounds (the iter-16 crash on
+    # ~37% of ARC-AGI-2 training tasks). Asserts no exception *and* a clean None.
+    from agent.active_operators import PredictOperator
+    # 3x3 multi-object inputs, 2x2 outputs (shape changes input->output).
+    pairs = [
+        ([[1, 1, 0], [0, 0, 0], [0, 0, 2]], [[3, 3], [3, 3]]),
+        ([[0, 5, 5], [0, 0, 0], [4, 0, 0]], [[3, 3], [3, 3]]),
+    ]
+    task = _task_with_pairs(pairs)
+    rule = {"action": {"dsl": "recolor_extreme", "args": {"extreme": "?v1"}}}
+    test_in = _grid([[1, 1, 0], [0, 0, 0], [0, 0, 2]])
+    op = PredictOperator()
+    op._task = task
+    # Must not raise IndexError; must decline because no direction explains the
+    # (shape-mismatched) examples.
+    assert op._render_recolor_extreme(rule, task, test_in) is None
+
+
 def test_lifted_rule_is_replayable_via_runtime_resolution():
     # The lifted abstraction's `extreme` hole is `_RUNTIME_RESOLVABLE`, so the fast
     # path admits it (it is filled at render time by example-grounded selection,
