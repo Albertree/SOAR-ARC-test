@@ -16,10 +16,13 @@ from agent.conditions import match as match_condition
 from agent.dsl_expr.render import render_grid_via_primitives, render_object_at
 from agent.dsl_expr.selection import (
     analyze_object_move,
+    analyze_object_select_move,
     background_of,
     corner_anchor,
     extent_of,
+    objects_of,
     unique_object,
+    SELECTOR_VOCAB,
 )
 
 #: condition.type the GeneralizeOperator emits for the constant-output family
@@ -44,6 +47,12 @@ PLACE_OBJECT_CORNER_DSL = "place_object_corner"
 #: canvas (the cross-pair COMM on the output dimensions) instead of copying the
 #: input size, and the object is placed at the constant target on it.
 PLACE_OBJECT_RESIZE_DSL = "place_object_resize"
+
+#: action.dsl for the multi-object *selection* move family (R1 / §2.5-2b) — same
+#: make_grid ∘ coloring composition, but the object placed is the one a learned
+#: property selector (max_size/min_size/unique_color) picks out of several, the
+#: non-selected distractors simply not drawn. The selector is the §2.5-2b lift.
+PLACE_OBJECT_SELECT_DSL = "place_object_select"
 
 
 # ======================================================================
@@ -231,6 +240,13 @@ class ExtractPatternOperator(Operator):
         # (agent/dsl_expr/selection), not hand-coded here.
         patterns["object_move"] = analyze_object_move(task.example_pairs)
 
+        # Multi-object *selection* (R1 / §2.5-2b): the converse case where several
+        # objects are present and the rule keeps the one a learned property
+        # selector picks. Inert (multi_object_all=False) on the single-object
+        # family, so it never perturbs the readings above. Computed via the §2.5
+        # selection vocabulary, not hand-coded here.
+        patterns["object_select_move"] = analyze_object_select_move(task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -400,6 +416,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_resize_target_rule(patterns)
 
+        # Strategy 0f (R1 / §2.5-2b): the multi-object *selection* move family. If
+        # the `object_select_target` matcher fires (several objects present, one
+        # kept by a learned property selector and placed at one shared target),
+        # emit a canonical {condition, action} rule carrying the selector. The
+        # selector and target are recomputed at predict time — value-agnostic in
+        # colour, source position and the distractors — so one rule covers the
+        # family. Recognition is delegated to the registered matcher, not a
+        # hand-coded detector.
+        if rule is None:
+            rule = self._object_select_target_rule(patterns)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -565,6 +592,40 @@ class GeneralizeOperator(Operator):
                 "args": {},
             },
             "concept": "move_object_onto_resized_canvas",
+            "category": "object_move",
+            "confidence": 1.0,
+        }
+
+    def _object_select_target_rule(self, patterns):
+        """Emit the canonical multi-object selection move rule when the matcher
+        fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `object_select_target` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The learned property selector
+        (max_size/min_size/unique_color — agent/dsl_expr/selection.SELECTOR_VOCAB)
+        is carried in the action args and re-applied at predict time, while the
+        shared target is recomputed from the example outputs, so the rule stays
+        value-agnostic in colour, source position and the non-selected
+        distractors. A sibling of the constant-target/offset/corner/resize
+        readings (it places the *selected* object at a constant target), so it
+        lifts into the same `place_object` abstraction (R3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("object_select_target", patterns, params):
+            return None
+        sel = patterns.get("object_select_move") or {}
+        evidence = len(sel.get("per_pair") or [])
+        return {
+            "condition": {
+                "type": "object_select_target",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": PLACE_OBJECT_SELECT_DSL,
+                "args": {"selector": sel.get("selector")},
+            },
+            "concept": "select_object_to_constant_target",
             "category": "object_move",
             "confidence": 1.0,
         }
@@ -770,6 +831,19 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Multi-object *selection* move (R1 / §2.5-2b). Recompute the learned
+        # selector and shared target from the examples, then for each test pair
+        # pick the object the selector names out of that test input's objects and
+        # render it onto a fresh canvas at the target (its color/shape/background
+        # from G0 — P5; the distractors are simply not drawn).
+        if action and action.get("dsl") == PLACE_OBJECT_SELECT_DSL:
+            for i, grid in self._place_object_select_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -915,6 +989,42 @@ class PredictOperator(Operator):
             bg = background_of(g0.raw)
             grids[i] = render_object_at(
                 out_h, out_w, bg, obj["pixels"], tuple(target),
+            )
+        return grids
+
+    @staticmethod
+    def _place_object_select_grids(task):
+        """Map test-pair index -> predicted grid for the multi-object selection
+        move.
+
+        The selector name and shared target are recomputed from the example pairs
+        (the §2.5-2b lift: the criterion that consistently picks the preserved
+        object); each test object is *chosen* from its own G0's objects by that
+        selector and rendered at the target (color/shape/background from its own
+        G0 — never a test G1, P5; non-selected objects are not drawn). Returns {}
+        when the analysis yields no consistent selector or target."""
+        sel = analyze_object_select_move(task.example_pairs)
+        selector_name = sel.get("selector")
+        target = sel.get("constant_target")
+        if selector_name is None or target is None:
+            return {}
+        selector = SELECTOR_VOCAB.get(selector_name)
+        if selector is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            obj = selector(objects_of(g0.raw))
+            if obj is None:
+                continue
+            bg = background_of(g0.raw)
+            height = len(g0.raw)
+            width = len(g0.raw[0]) if g0.raw else 0
+            grids[i] = render_object_at(
+                height, width, bg, obj["pixels"], tuple(target),
             )
         return grids
 

@@ -147,6 +147,150 @@ def unique_object(grid: list, background: int | None = None):
 
 
 # ---------------------------------------------------------------------------
+# selection vocabulary: pick ONE object out of MANY by a property criterion
+# ---------------------------------------------------------------------------
+#
+# This is the §2.5-2b "selection-lift" material. `unique_object` above is the
+# degenerate (count==1) selector; when several objects are present, *which one*
+# the rule acts on is the crux, and the selector — `argmax`/`argmin` over a
+# property, or "the odd-one-out" — is the real content of the rule. These are
+# util/selection functions (NOT transformations), so they belong here under
+# agent/ and not in the frozen DSL dir (BACKLOG_LOOP §2.5-1, F3).
+#
+# Each selector returns the chosen object, or None when the choice is *not
+# unambiguous* (a tie at the extreme, or no single odd-one-out). Returning None
+# on ambiguity keeps a selector honest: a rule may only commit to a selector
+# that names exactly one object, so the prediction stays well-defined.
+
+def select_extreme(objects: list, key, mode: str = "max"):
+    """The object whose ``key(obj)`` is maximal (``mode='max'``) or minimal
+    (``mode='min'``) — `argmax`/`argmin` in the selection vocabulary. Returns
+    None when more than one object ties at the extreme (ambiguous)."""
+    if not objects:
+        return None
+    vals = [(key(o), o) for o in objects]
+    best = max(v for v, _o in vals) if mode == "max" else min(v for v, _o in vals)
+    winners = [o for v, o in vals if v == best]
+    return winners[0] if len(winners) == 1 else None
+
+
+def select_unique_color(objects: list):
+    """The single object whose (single) color is shared by no other object — the
+    "odd colour out". Returns None when zero or several objects qualify."""
+    counts = Counter(o["color"] for o in objects if o.get("color") is not None)
+    uniques = [
+        o for o in objects
+        if o.get("color") is not None and counts[o["color"]] == 1
+    ]
+    return uniques[0] if len(uniques) == 1 else None
+
+
+#: Named property-selectors, tried in this deterministic order when *learning*
+#: which one a task uses (the first that consistently picks the preserved object
+#: across every example pair wins). Adding a named selector grows the LHS
+#: argument vocabulary — it introduces no new transformation (F3-exempt).
+SELECTOR_VOCAB = {
+    "max_size": lambda objs: select_extreme(objs, size_of, "max"),
+    "min_size": lambda objs: select_extreme(objs, size_of, "min"),
+    "unique_color": select_unique_color,
+}
+
+
+def analyze_object_select_move(example_pairs: list) -> dict:
+    """Multi-object *selection* move (BACKLOG_LOOP §2.5-2b, R1's real product).
+
+    The converse of `analyze_object_move`: there the grid holds a single object,
+    so "the object" needs no selector. Here several objects are present and the
+    crux is *which one* the rule keeps — the §2.1 "multi-object selection"
+    concept. The selector is **learned from comparison**, not invented (P3/P4):
+
+    1. Per pair, the output holds exactly one object; the *preserved* input object
+       is the one whose shape+colour survive into it (a COMM between an input
+       object and the output object). That identifies, by comparison, which object
+       was selected.
+    2. Across pairs, find the named property-selector (`SELECTOR_VOCAB`:
+       `max_size`/`min_size`/`unique_color`) that picks exactly that preserved
+       object in *every* pair. That consistent selector is the lifted argument —
+       value-agnostic in colour, position and the non-selected distractors.
+    3. The output anchor must be a cross-pair COMM (`constant_target`), reusing
+       the same target reading as the single-object family.
+
+    A sibling of the object_move readings (it places the *selected* object at a
+    constant target via make_grid ∘ coloring), so it lifts into the same
+    `place_object` abstraction (R3) rather than spawning a per-task family.
+
+    Returns a symbolic dict; the `object_select_target` matcher decides firing and
+    PredictOperator renders from it. Stays inert (multi_object_all=False) on the
+    single-object easy_a tasks, so it never perturbs that family.
+    """
+    per_pair = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        in_objs = objects_of(g0.raw)
+        out_objs = objects_of(g1.raw)
+        multi = len(in_objs) >= 2 and len(out_objs) == 1
+        selected = None
+        target = None
+        if multi:
+            out_obj = out_objs[0]
+            for o in in_objs:
+                if (normalized_shape(o) == normalized_shape(out_obj)
+                        and o["colors"] == out_obj["colors"]):
+                    selected = o
+                    break
+            target = list(position_of(out_obj))
+        per_pair.append({
+            "multi": multi,
+            "in_objs": in_objs,
+            "selected": selected,
+            "target": target,
+            "size_preserved": (
+                len(g0.raw) == len(g1.raw)
+                and (len(g0.raw[0]) if g0.raw else 0) == (len(g1.raw[0]) if g1.raw else 0)
+            ),
+        })
+
+    multi_all = bool(per_pair) and all(
+        p["multi"] and p["selected"] is not None for p in per_pair)
+    size_all = bool(per_pair) and all(p["size_preserved"] for p in per_pair)
+
+    targets = [tuple(p["target"]) for p in per_pair if p["target"] is not None]
+    constant_target = (
+        list(targets[0])
+        if targets and len(targets) == len(per_pair)
+        and all(t == targets[0] for t in targets)
+        else None
+    )
+
+    # Learn the selector: the first named criterion that picks the preserved
+    # object in every pair. Grounded in step 1's comparison (which object
+    # survived), never assumed.
+    selector = None
+    if multi_all:
+        for name, fn in SELECTOR_VOCAB.items():
+            ok = True
+            for p in per_pair:
+                chosen = fn(p["in_objs"])
+                if chosen is None or chosen["cells"] != p["selected"]["cells"]:
+                    ok = False
+                    break
+            if ok:
+                selector = name
+                break
+
+    return {
+        "per_pair": per_pair,
+        "multi_object_all": multi_all,
+        "size_preserved_all": size_all,
+        "constant_target": constant_target,
+        "selector": selector,
+    }
+
+
+# ---------------------------------------------------------------------------
 # relation/analysis: did the single object simply move to a constant target?
 # ---------------------------------------------------------------------------
 

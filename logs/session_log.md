@@ -629,3 +629,101 @@ solve it via a lifted selector, not a detector. Alternatively R5 (teach the fast
 path to *reuse* the stored abstract place_object rule — Stored hits still 0) is the
 higher-leverage long-term step, and the abstract rule now spans four readings ready
 to be driven. The loop manages the easy_a→madeup graduation; do not skip ahead.
+
+---
+## Learning Loop -- 2026-06-12 19:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_193255.log
+
+---
+## Learning Loop -- 2026-06-12 19:43
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_194344.log
+
+---
+## Learning Loop -- 2026-06-12 19:43
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_194347.log
+
+## Iter 8 — 2026-06-12T19:44 — branch test32
+
+**Diagnosis**: R1 (single-object placement) is cleared and easy_a is 9/9, so the
+next nameable gap is the §2.5-2b heart of the ladder: **multi-object selection** —
+the supplied easy_a suite is single-object only, so the structure has never had to
+pick *which* of several objects a rule acts on. Every object-move reading gates on
+`single_object_all`, so a grid with object count ≠ 1 makes all matchers abstain.
+The smallest defensible step (PROMPT §5: escalate via a `data/ARC_madeup/` task)
+is to author the smallest multi-object task I expect to fail and close the gap by
+*lifting a selector*, not hand-coding a detector.
+
+**Change**:
+- `data/ARC_madeup/madeup_select_largest.json` (new, F1-exempt corner) — 3 train +
+  1 test, two objects per grid, the **larger** kept and moved to top-left; colours,
+  positions and the distractor all vary so neither constant_output nor the
+  single-object matchers can solve it (only a learned selector can).
+- `agent/dsl_expr/selection.py` — selection vocabulary grows (§2.5-1, under
+  `agent/` not the frozen DSL dir): `select_extreme` (argmax/argmin, None on a
+  tie), `select_unique_color` (odd-colour-out), `SELECTOR_VOCAB` (the named
+  criteria tried in order), and `analyze_object_select_move` which *learns* the
+  selector from comparison — the preserved object is the one whose shape+colour
+  survive into the single output object (COMM, P3/P4), then the first named
+  criterion that picks it in every pair is the lift. Inert on single-object grids.
+- `agent/conditions/object_select_target.py` (new matcher) — fires only when
+  several objects are present, one is kept by a consistent selector, and placed at
+  a constant target on a same-size canvas. Registered → P5 +1 (6→7). Disjoint from
+  the single-object siblings (they require single_object_all).
+- `agent/active_operators.py` — `PLACE_OBJECT_SELECT_DSL`; ExtractPattern surfaces
+  `object_select_move`; `_object_select_target_rule` GeneralizeOperator strategy
+  (0f; carries the learned selector in action.args — *not* a `_try_*`/`_apply_*`,
+  F2-clean); PredictOperator branch + `_place_object_select_grids` (selects the
+  test object by the learned criterion, renders it via make_grid ∘ coloring at the
+  target, distractors not drawn; G0-only — P5, F3-clean).
+- `program/anti_unification.py` — registered `place_object_select →
+  constant_select` in `_OBJECT_MOVE_READING`, so the selection move is a liftable
+  object-move sibling and `_consolidate_object_move` folds it into the existing
+  abstract place_object rule automatically (no memory.py edit needed).
+- `procedural_memory/rule_002.json` — now readings=[constant_corner, _offset,
+  _resize, **_select**, _target], covers=8 (added madeup_select_largest); rule
+  count held at 2.
+- `tests/test_select_move.py` (new) — 7 tests: argmax/argmin + ties, unique-colour
+  odd-one-out, selector learned as max_size, single-object family stays inert,
+  matcher fires on selection & abstains for the single-object matcher, needs ≥2
+  examples, prediction selects the largest and places it value-agnostically.
+
+**Probe before**: easy_a 9/9; rules=2 (a,b / place_object covers c,d,h,e,f,g,i);
+  P1=4.5, P2=4.5, P3=0.5, P5=6
+**Probe after** : easy_a 9/9 (regression guard held) + madeup 1/1; rules=2 (a,b /
+  place_object covers c–i + madeup_select_largest); P1=5.0, P2=5.0, P3=0.5, P5=7
+
+**Invariants**: forbidden=none (F1 frozen-diff=0, madeup is exempt; F2 no new
+_try_/_apply_; F3 no new DSL primitive; F8 satisfied via agent/conditions/ +
+anti_unification.py companion edits); positives = P1 +0.5, P2 +0.5, P5 +1. Verdict
+CLEAN (3 positive deltas). 42/42 tests pass. This is the §2.5-4 real-progress
+direction: a genuinely new capability (multi-object **selection**) *folded into*
+the existing abstraction (covers 7→8, a 5th reading) rather than a new family —
+rule count held at 2, so P1/P2 *rose* instead of falling (the accretion litmus).
+
+**Next gap (note for future iter)**: the selection-lift now exists for the
+constant-target reading only; the natural next escalation (still §2.5-2b) is a
+*harder* selection variant — selection combined with offset/corner/resize, or a
+selector the current vocabulary cannot express (e.g. argmax over a *relation* like
+"the object touching the border", or count-of-objects as the criterion), authored
+as the next `data/ARC_madeup/` task. Each should fold into place_object the same
+way. Orthogonally, R5 (fast-path *reuse* — Stored hits still 0; the abstract rule
+is re-derived each run via the slow path rather than activated from storage)
+remains the higher-leverage structural step but reads NEUTRAL on P1–P6.

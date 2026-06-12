@@ -253,6 +253,7 @@ _OBJECT_MOVE_READING = {
     "place_object_relative": "constant_offset",
     "place_object_corner": "constant_corner",
     "place_object_resize": "constant_resize",
+    "place_object_select": "constant_select",
 }
 
 
