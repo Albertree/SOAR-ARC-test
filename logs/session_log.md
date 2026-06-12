@@ -1,6 +1,83 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 12 — 2026-06-12T14:02 — branch test31
+
+**Diagnosis**: R0/R1/R3/R5(half) are cleared, so the lowest *unproven* rung is
+**R2 (episodic writer)** — which iters 8 and 11 both flagged as "verify, don't
+assume". Verification exposed a real defect: `agent/episodic.py` **source is
+missing** — only an orphaned `agent/__pycache__/episodic.cpython-310.pyc`
+survived the test31 clean-start (identical to the DSL primitives restored in
+iter 2), and *nothing imports it*. The 247 entries are stale orphans: the newest
+`attempt_*` file is from 10:44, and a fresh solve at 13:54 wrote **nothing**. So
+P4=247 was *frozen*, not "alive" — exactly the INVARIANTS-P4 failure mode the
+signal exists to catch. The smallest defensible step is to reconstruct the lost
+writer faithfully (from the `.pyc`'s recovered API + the on-disk format) and wire
+it into the solve loop, without touching frozen `cycle.py`.
+
+**Change**:
+- `agent/episodic.py` (new) — the episodic-memory writer, reconstructed
+  faithfully from the orphaned `.pyc` (disassembled to recover the exact API:
+  `_ATTEMPT_RE=^attempt_(\d+)$`, `_next_attempt_index` = max+1, `_write_json`
+  indent=2, `write_attempt(task_hex, *, trace, metadata, grids,
+  episodic_root="episodic_memory")` laying down the CLAUDE.md §3.3 folder shape).
+  Always allocates a *fresh* attempt index so repeated solves accumulate (P4).
+- `agent/active_agent.py` — wired the writer into `solve()`. Refactored the body
+  into `_solve_inner()` (returns `(predicted, goal_satisfied, au_invocations)`)
+  so both the fast path and slow path converge on a **single exit** that calls
+  `_record_episode()` exactly once per solve — the §3.3 "exactly one attempt per
+  invocation" contract. `_record_episode` assembles trace/metadata/grids matching
+  the existing on-disk format (`test{i}-input`+`predicted` grid snapshots;
+  metadata method/rule_type/rule_source/outcome/submission_index/AU-count) and
+  swallows only `OSError` (the prediction is already produced; a write failure
+  must not break solving). `anti_unification_invocations` = 1 iff `save_rule`
+  (the sole AU call site, CLAUDE.md §8) fired this solve, else 0. No new
+  `_try_*`/`_apply_*`; `active_operators.py` untouched (F8 N/A).
+- `tests/test_episodic.py` (new, 5) — `_next_attempt_index` (absent→0,
+  accumulates, ignores non-attempt dirs); `write_attempt` lays down the §3.3
+  schema with faithful content; a second solve allocates a *fresh* index (no
+  overwrite); and end-to-end `solve()` writes **exactly one** attempt whose
+  metadata records the *true* path (`method=stored_rule`, not the stale
+  `identity` the orphaned data left on already-solved tasks). Suite 79→**84**.
+
+**Probe before**: easy 1/3, easy_a 9/9; rules=2 (covers 6+9); P1=7.5 P2=7.5
+P3=0.5 **P4=247 (frozen — writer dead)** P5=5
+**Probe after** : easy 1/3, easy_a 9/9 (no regression — correctness identical),
+rules=2; P1=7.5 P2=7.5 P3=0.5 **P4=261 (live — grows with every solve)** P5=5.
+A fresh solve now writes one accurate attempt (verified: easy000c/attempt_015 =
+`stored_rule`/`place_object`/`easy000e`, fixing the old always-`identity` record).
+
+**Invariants**: forbidden=**none** (F1: no frozen-file edit — episodic.py is new,
+active_agent.py is not frozen; F2: no new `_try_*`/`_apply_*`; F3: DSL untouched;
+F8: active_operators.py untouched). positives = **P4 +14 (247→261)** → verdict
+**CLEAN**. The signal moved *honestly*: it was frozen at 247 (dead writer) and
+now increases with each solve, which is precisely what P4 measures ("count
+increasing linearly with attempts means the episodic writer is alive").
+
+### RUNG R2 CLEARED — episodic writer verified & revived
+Against the four observation criteria (BACKLOG §5):
+1. **Works**: `write_attempt` runs error-free; every solve (fast + slow) writes
+   one schema-valid `attempt_NNN/` (trace.json + metadata.json + grids/).
+2. **Module uniformity**: **one** writer module, **one** call site
+   (`solve()`→`_record_episode`), no per-task branching — the cycle engine stays
+   pure (frozen `cycle.py` untouched; the writer is wired around it).
+3. **Approaches the answer**: the record faithfully reflects the actual solve
+   (path/rule/outcome), no longer the stale `identity` the orphan recorded.
+4. **Search sanity**: deterministic, bounded; fresh monotonic index per solve.
+R2 done-when met — "attempt 폴더가 과제마다 정확히 1개" (test asserts exactly one
+per solve) and "P4 가 *진짜* 증가" (247→261, and grows on every future run).
+
+**Next gap (note for future iter)**: R0/R1/R2/R3/R5(reuse-half) are now all
+cleared. The remaining unproven rungs are **R4** (2nd-order edge-of-edge
+`compare(edge1,edge2)` — needs an authored `data/ARC_madeup/` task that *requires*
+ranking/derived-from-comparison properties, which would also move P5) and the
+held **R5 other-half** (variable-origin *invention*, Q-B3/Q-B4 — open question,
+do not invent). R4 via a self-authored madeup task is the lowest defensible
+non-open next step (PROMPT.md §2.2 route 2). Also still latent: no P-signal
+measures *reuse rate*, so iters 10/11's reuse work read neutral — a P7
+(stored-hit rate) would capture it if the user wants reuse rewarded.
+
+---
 ## Iter 11 — 2026-06-12T13:44 — branch test31
 
 **Diagnosis**: R0/R1/R3 cleared and iter 10 revived the Fast path, but the
@@ -1215,3 +1292,43 @@ corner} and accept the one that reproduces all example outputs — selection
 grounded in comparison, over a *bounded* domain (NOT the open Q-B3 "invent a new
 concept" case). Alternatively route to R4 (2nd-order edge-of-edge compare) via an
 authored `data/ARC_madeup/` task, which would also move P5.
+
+---
+## Learning Loop -- 2026-06-12 13:50
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_135049.log
+
+---
+## Learning Loop -- 2026-06-12 13:50
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_135051.log
+
+---
+## Learning Loop -- 2026-06-12 13:54
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 1
+- Time: 0s
+- Log: logs/learn_20260612_135433.log
+
+---
+## Learning Loop -- 2026-06-12 13:59
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_135920.log

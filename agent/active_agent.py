@@ -20,6 +20,7 @@ from agent.memory import (
     _has_unresolved_var,
 )
 from agent.wm_logger import reset_wm_snapshot
+from agent import episodic
 
 
 class ActiveSoarAgent:
@@ -46,6 +47,12 @@ class ActiveSoarAgent:
         """
         Solve one task. Returns list of predicted grids (one per test pair).
         Tries stored rules first, then full pipeline.
+
+        Every invocation — fast-path reuse, slow-path discovery, or abstain —
+        routes through `_record_episode`, which writes exactly one
+        `episodic_memory/<task>/attempt_NNN/` folder (CLAUDE.md §3.3, the R2
+        episodic-writer contract / INVARIANTS P4). The cycle engine itself stays
+        pure; the writer is wired here, around it.
         """
         if self._current_task_hex != task.task_hex:
             self._current_task_hex = task.task_hex
@@ -59,6 +66,18 @@ class ActiveSoarAgent:
             "rule_source": None,
         }
 
+        predicted, goal_satisfied, au_invocations = self._solve_inner(task)
+        self._record_episode(task, predicted, goal_satisfied, au_invocations)
+        self._submission_count += 1
+        return predicted
+
+    def _solve_inner(self, task):
+        """Core solve: returns (predicted, goal_satisfied, au_invocations).
+
+        Populates `self.last_solve_info` as a side effect. Submission counting
+        and episodic recording happen once in `solve()`, so this stays a single
+        place that produces the prediction regardless of path.
+        """
         # --- Fast path: try stored rules ---
         # `applicable_rule` bridges the persisted {condition, action} schema to a
         # PredictOperator-applicable prediction-rule (stamping the dispatch
@@ -91,8 +110,8 @@ class ActiveSoarAgent:
                         "rule_type": rule.get("type", "unknown"),
                         "rule_source": entry.get("source_task"),
                     })
-                    self._submission_count += 1
-                    return predicted
+                    # Reuse needs no AU invocation; goal is satisfied by the hit.
+                    return predicted, True, 0
 
         # --- Slow path: full SOAR pipeline ---
         wm = WorkingMemory()
@@ -129,6 +148,7 @@ class ActiveSoarAgent:
         # condition-less memory accumulates (INVARIANTS F4). save_rule validates
         # and raises RuleSchemaError on a malformed rule rather than swallowing
         # it (F7).
+        au_invocations = 0
         if active_rules:
             rule = active_rules[0]
             if rule.get("condition") and rule.get("action"):
@@ -136,11 +156,61 @@ class ActiveSoarAgent:
                     rule, task.task_hex,
                     procedural_memory_root=self.procedural_memory_root,
                 )
+                # save_rule is the sole anti-unification call site (CLAUDE.md
+                # §8), so one save == one AU consideration this solve.
+                au_invocations = 1
 
-        self._submission_count += 1
-        return predicted
+        return predicted, result["goal_satisfied"], au_invocations
 
     # ---- helpers --------------------------------------------------------
+
+    def _record_episode(self, task, predicted, goal_satisfied, au_invocations):
+        """Write one `attempt_NNN/` folder summarising this solve (CLAUDE.md
+        §3.3). Pure side effect: a failed write must not break solving, so any
+        I/O error is swallowed here (the prediction is already produced)."""
+        info = self.last_solve_info
+        n_test = len(task.test_pairs)
+
+        grids = []
+        for i, pair in enumerate(task.test_pairs):
+            if pair.input_grid is not None:
+                grids.append((f"test{i}-input", pair.input_grid.raw))
+        if predicted:
+            # `predicted` is a list of grids (one per test pair); a single grid
+            # is a list of rows. Normalise to a list of grids for the snapshot.
+            if predicted[0] and not isinstance(predicted[0][0], list):
+                pred_list = [predicted]
+            else:
+                pred_list = predicted
+            for g in pred_list:
+                grids.append(("predicted", g))
+
+        trace = {
+            "task": task.task_hex,
+            "granularity": "summary",
+            "path": info.get("method", "none"),
+            "rule_type": info.get("rule_type", "none"),
+            "rule_source": info.get("rule_source"),
+            "steps_taken": info.get("steps", 0),
+            "goal_satisfied": bool(goal_satisfied),
+        }
+        metadata = {
+            "task": task.task_hex,
+            "method": info.get("method", "none"),
+            "rule_type": info.get("rule_type", "none"),
+            "rule_source": info.get("rule_source"),
+            "steps": info.get("steps", 0),
+            "n_test_pairs": n_test,
+            "outcome": "prediction-produced" if predicted else "no-prediction",
+            "submission_index": self._submission_count + 1,
+            "anti_unification_invocations": au_invocations,
+        }
+        try:
+            episodic.write_attempt(
+                task.task_hex, trace=trace, metadata=metadata, grids=grids,
+            )
+        except OSError:
+            pass
 
     def _rule_matches_examples(self, rule, task) -> bool:
         """Check if a rule produces correct output for ALL example pairs."""
