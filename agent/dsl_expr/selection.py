@@ -197,18 +197,53 @@ def select_unique_shape(objects: list):
     return uniques[0] if len(uniques) == 1 else None
 
 
+def touches_border(obj: dict, height: int, width: int) -> bool:
+    """True iff the object occupies any cell on the grid's outer edge (top/bottom
+    row or left/right column)."""
+    return any(
+        r == 0 or c == 0 or r == height - 1 or c == width - 1
+        for (r, c) in obj["cells"]
+    )
+
+
+def select_border_object(objects: list, grid: list):
+    """The single object that touches the grid border, when exactly one does.
+
+    A *grid-relative* (relation) selector — the first in the vocabulary whose
+    criterion is **not intrinsic** to the object considered alone: it reads the
+    canvas extent (the grid) to decide whether an object sits against the border.
+    That is the §2.5-1 "grid-relative position expression" axis (the placement
+    side already has `corner_anchor`; this is its selection-side analogue), an
+    axis the size/colour/shape selectors structurally cannot express because they
+    never see the grid. Returns None when zero or several objects qualify
+    (ambiguous), keeping the selector honest like the others."""
+    if not grid:
+        return None
+    height = len(grid)
+    width = len(grid[0]) if grid else 0
+    on_border = [o for o in objects if touches_border(o, height, width)]
+    return on_border[0] if len(on_border) == 1 else None
+
+
 #: Named property-selectors, tried in this deterministic order when *learning*
 #: which one a task uses (the first that consistently picks the preserved object
 #: across every example pair wins). Adding a named selector grows the LHS
 #: argument vocabulary — it introduces no new transformation (F3-exempt).
-#: `unique_shape` keys on a different property *axis* (form) from the size- and
-#: colour-based selectors above, so it names objects none of them can — but it
-#: still lifts into the same `place_object` abstraction, not a new family.
+#:
+#: Every selector takes ``(objects, grid)`` so a *grid-relative* (relation)
+#: criterion can read the canvas extent. The intrinsic selectors
+#: (size/colour/shape) ignore ``grid``; `border_object` uses it. `border_object`
+#: is appended **last** so tasks an earlier, intrinsic selector already resolves
+#: keep resolving to it (the learner takes the first consistent one). It keys on
+#: a different *axis* (grid-relative position, a relation) from the intrinsic
+#: selectors above, so it names objects none of them can — yet it still lifts
+#: into the same `place_object` abstraction, not a new family.
 SELECTOR_VOCAB = {
-    "max_size": lambda objs: select_extreme(objs, size_of, "max"),
-    "min_size": lambda objs: select_extreme(objs, size_of, "min"),
-    "unique_color": select_unique_color,
-    "unique_shape": select_unique_shape,
+    "max_size": lambda objs, grid: select_extreme(objs, size_of, "max"),
+    "min_size": lambda objs, grid: select_extreme(objs, size_of, "min"),
+    "unique_color": lambda objs, grid: select_unique_color(objs),
+    "unique_shape": lambda objs, grid: select_unique_shape(objs),
+    "border_object": select_border_object,
 }
 
 
@@ -261,6 +296,7 @@ def analyze_object_select_move(example_pairs: list) -> dict:
         per_pair.append({
             "multi": multi,
             "in_objs": in_objs,
+            "grid": g0.raw,
             "selected": selected,
             "target": target,
             "size_preserved": (
@@ -289,7 +325,7 @@ def analyze_object_select_move(example_pairs: list) -> dict:
         for name, fn in SELECTOR_VOCAB.items():
             ok = True
             for p in per_pair:
-                chosen = fn(p["in_objs"])
+                chosen = fn(p["in_objs"], p["grid"])
                 if chosen is None or chosen["cells"] != p["selected"]["cells"]:
                     ok = False
                     break

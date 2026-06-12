@@ -6,9 +6,13 @@ concept).
 The four object_move siblings (constant_target/offset/corner/resize) all gate on
 `single_object_all`: the grid holds exactly one object, so "the object" needs no
 selector. This matcher fires for the converse, higher case — several objects are
-present and the rule keeps exactly *one* of them, chosen by a property selector
-(`max_size`/`min_size`/`unique_color`) that consistently picks the object whose
-shape+colour survive into the (single) output object, placed at one shared target.
+present and the rule keeps exactly *one* of them, chosen by a learned selector
+(`max_size`/`min_size`/`unique_color`/`unique_shape`/`border_object`) that
+consistently picks the object whose shape+colour survive into the (single) output
+object, placed at one shared target. The selector may key on an intrinsic feature
+(size/colour/shape) or on a *grid-relative relation* (`border_object`: the object
+touching the canvas edge) — the matcher is selector-agnostic, gating only on the
+fact that *some* named selector is consistent across pairs.
 
 The selector is the §2.5-2b "selection-lift": instead of a literal coordinate or a
 bare `unique`, the object is *selected* by a learned criterion, so the resulting

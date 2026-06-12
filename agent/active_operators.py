@@ -1017,7 +1017,7 @@ class PredictOperator(Operator):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            obj = selector(objects_of(g0.raw))
+            obj = selector(objects_of(g0.raw), g0.raw)
             if obj is None:
                 continue
             bg = background_of(g0.raw)

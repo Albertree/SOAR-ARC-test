@@ -814,3 +814,103 @@ corner/resize), which `analyze_object_select_move` doesn't yet read. Orthogonall
 R5 fast-path *reuse* (Stored hits still 0; the abstract rule is re-derived each run
 rather than activated from storage) remains the higher-leverage structural step but
 reads NEUTRAL on P1–P6.
+
+---
+## Learning Loop -- 2026-06-12 19:52
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_195217.log
+
+---
+## Learning Loop -- 2026-06-12 19:58
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_195847.log
+
+---
+## Learning Loop -- 2026-06-12 19:58
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_195851.log
+
+## Iter 10 — 2026-06-12T19:59 — branch test32
+
+**Diagnosis**: easy_a is mastered (9/9, clean-streak 3/5) so per PROMPT §2.2/§5
+the work is to escalate via a `data/ARC_madeup/` task that exposes a real gap.
+Every selector in `SELECTOR_VOCAB` (max_size/min_size/unique_color/unique_shape)
+keys on an **intrinsic** single-object feature — none reads the *grid*, so the
+structure cannot name an object by its position *relative to the canvas* (the
+§2.5-1 grid-relative/relation axis, which the placement side already has via
+`corner_anchor` but the selection side entirely lacks). A multi-object task whose
+survivor is always the *border-touching* one — with size/colour/shape varying
+pair-by-pair so every intrinsic selector is inconsistent or abstains — makes the
+structure blind. That is the smallest nameable gap, and its fix is the first
+*relational* selector (a new selection axis, not a 4th intrinsic clone).
+
+**Change**:
+- `agent/dsl_expr/selection.py` — added `touches_border` + `select_border_object`
+  (grid-relative relation selector). Generalized `SELECTOR_VOCAB` to the uniform
+  `(objects, grid)` protocol so a relation selector can read the canvas extent;
+  the four intrinsic selectors ignore `grid`, `border_object` uses it and is
+  appended **last** (existing tasks resolve to their earlier selector first).
+  Threaded `g0.raw` into `analyze_object_select_move`'s per-pair store and its
+  selector-learning call. Grows the §2.5-1 LHS selection vocabulary along a new
+  *axis* (grid-relative position) — no new transformation (F3-exempt, under agent/).
+- `agent/active_operators.py` — one-line: predict-time `selector(objs, g0.raw)`
+  (protocol update; net 0 lines, F2/F8 clear with the conditions/ companion below).
+- `agent/conditions/object_select_target.py` — docstring: matcher is now
+  documented as selector-agnostic over both intrinsic and grid-relative selectors
+  (F8 companion edit).
+- `data/ARC_madeup/madeup_select_border.json` (new, F1-exempt corner) — 3 train +
+  1 test, two distinct-shape distinct-colour objects per 6×6 grid; the survivor is
+  always the border-touching one, but it is sometimes larger / sometimes smaller
+  than the interior distractor, so max_size/min_size are inconsistent and
+  unique_color/unique_shape abstain (two uniques) — only `border_object`
+  discriminates consistently. Grounding (which object survived) is unambiguous via
+  shape+colour COMM since the two objects always differ.
+- `tests/test_select_move.py` — +3 tests: `select_border_object` (picks border,
+  None when all-interior, None when two on border); the task learns `border_object`
+  (not an intrinsic selector); end-to-end value-agnostic render equals expected.
+
+The reading folds into the existing abstract `place_object` rule (rule count held
+at 2; `covers` auto-grew 9→10), not a new family — the §2.5-4 accretion litmus
+(rule count flat, covers up ⇒ P1/P2 rise).
+
+**Probe before**: easy_a 9/9; rules=2 (place_object covers 9: c–i + select_largest
+  + unique_shape); P1=5.5, P2=5.5, P3=0.5, P5=7
+**Probe after** : easy_a 9/9 (regression guard held) + madeup 3/3; rules=2
+  (place_object covers 10: + madeup_select_border); P1=6.0, P2=6.0, P3=0.5, P5=7
+
+**Invariants**: forbidden=none (F1 frozen-diff=0, data edit under exempt
+ARC_madeup/; F2 no new _try_/_apply_; F3 no new DSL primitive — selector is LHS
+vocabulary under agent/; F8 satisfied via agent/conditions/ companion edit, and
+active_operators net 0 lines anyway); positives = P1 +0.5, P2 +0.5. Verdict CLEAN.
+48/48 tests pass. Real-progress direction: a genuinely new selection *axis*
+(grid-relative *relation* — the first non-intrinsic selector) folded into the
+existing place_object abstraction (covers 9→10) instead of a new detector — P1/P2
+rose, rule count flat.
+
+**Next gap (note for future iter)**: the selection vocabulary now spans size,
+colour, shape (intrinsic) and one grid-relative relation (border). The next
+escalations are either (a) a *richer* relational/derived selector the vocabulary
+still can't express — e.g. the *enclosed/surrounded* object (an object↔object
+containment relation, R4-flavoured) or argmax over a *count* (most neighbours);
+or (b) the asymmetry between the two analyze_* paths: the single-object family
+reads constant_target/offset/corner/resize, but the *selection* family reads only
+constant_target — a multi-object task whose selected object moves by a constant
+*offset* or into a *corner* would still fail, and porting those readings into the
+selection path is a structural unification (anti-unification-flavoured, R3) rather
+than another selector. Orthogonally, R5 fast-path *reuse* (Stored hits still 0)
+remains the higher-leverage structural step but reads NEUTRAL on P1–P6.

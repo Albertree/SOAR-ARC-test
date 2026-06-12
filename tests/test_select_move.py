@@ -18,6 +18,7 @@ from agent.dsl_expr.selection import (
     select_extreme,
     select_unique_color,
     select_unique_shape,
+    select_border_object,
     size_of,
     SELECTOR_VOCAB,
 )
@@ -26,6 +27,7 @@ from agent.active_operators import PredictOperator
 
 TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_largest.json")
 SHAPE_TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_unique_shape.json")
+BORDER_TASK_PATH = os.path.join("data", "ARC_madeup", "madeup_select_border.json")
 
 
 class _G:
@@ -54,6 +56,11 @@ def _load():
 
 def _load_shape():
     with open(SHAPE_TASK_PATH, encoding="utf-8") as fh:
+        return json.load(fh)
+
+
+def _load_border():
+    with open(BORDER_TASK_PATH, encoding="utf-8") as fh:
         return json.load(fh)
 
 
@@ -87,6 +94,40 @@ def test_select_unique_shape_odd_one_out():
     assert select_unique_shape([i_horiz_a, i_horiz_b]) is None
 
 
+def test_select_border_object_grid_relative():
+    """The grid-relative selector keys on the canvas edge, not an intrinsic
+    feature: only the object touching the border is picked. It needs the grid
+    (unlike size/colour/shape) — two interior objects of any size/colour/shape
+    yield None, and an ambiguous two-on-border case yields None too."""
+    grid = [
+        [3, 0, 0, 0, 0, 0],
+        [3, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 4, 4, 0],
+        [0, 0, 0, 4, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+    ]
+    objs = objects_of(grid)
+    chosen = select_border_object(objs, grid)
+    assert chosen is not None and chosen["color"] == 3
+    # all-interior -> nothing on the border -> None
+    interior = [
+        [0, 0, 0, 0, 0, 0],
+        [0, 4, 4, 0, 0, 0],
+        [0, 4, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+    ]
+    assert select_border_object(objects_of(interior), interior) is None
+    # two objects on the border -> ambiguous -> None
+    two = [
+        [3, 0, 0, 5],
+        [3, 0, 0, 5],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+    ]
+    assert select_border_object(objects_of(two), two) is None
+
+
 # ---- the analysis ----------------------------------------------------------
 
 def test_select_move_learns_max_size_selector():
@@ -114,6 +155,26 @@ def test_predict_unique_shape_places_at_target():
     task = _Task(_load_shape())
     grids = PredictOperator._place_object_select_grids(task)
     assert grids[0] == _load_shape()["test"][0]["output"]
+
+
+def test_select_move_learns_border_selector():
+    """A task whose objects differ in size/colour/shape pair-by-pair — but whose
+    survivor is always the border-touching one — must fall through every intrinsic
+    selector (each inconsistent or abstaining across pairs) and be learned as
+    `border_object`, the grid-relative axis no intrinsic selector can express."""
+    task = _Task(_load_border())
+    sel = analyze_object_select_move(task.example_pairs)
+    assert sel["multi_object_all"] is True
+    assert sel["constant_target"] == [0, 0]
+    assert sel["selector"] == "border_object"
+
+
+def test_predict_border_object_places_at_target():
+    """End-to-end: the structure selects the border object on the test grid and
+    renders it at the constant target, value-agnostically."""
+    task = _Task(_load_border())
+    grids = PredictOperator._place_object_select_grids(task)
+    assert grids[0] == _load_border()["test"][0]["output"]
 
 
 def test_single_object_family_inert_for_select():
