@@ -17,6 +17,7 @@ from agent.dsl_expr.render import (
     render_grid_via_primitives,
     render_object_at,
     render_recolor,
+    render_recolor_rank,
     render_solid_rect,
     render_solid_square,
 )
@@ -25,6 +26,7 @@ from agent.dsl_expr.selection import (
     analyze_object_move,
     analyze_object_select_move,
     analyze_object_size_grid,
+    analyze_recolor_rank,
     background_of,
     color_of,
     corner_anchor,
@@ -80,6 +82,15 @@ SIZE_GRID_DSL = "size_to_grid"
 #: time so one condition-bearing rule covers the family and lifts under AU. The
 #: canonical replacement for the legacy condition-less `{type: color_mapping}`.
 RECOLOR_DSL = "recolor_map"
+
+#: action.dsl for the rank-based sequential-recolor family (R1 / §2.5-2b ranking
+#: selector) — a same-size grid whose source-coloured groups are repainted a
+#: contiguous colour run ordered by position. The transformation is a `coloring`
+#: composition (one call per group); the whole content is the *argument* — a
+#: `rank-by(position)` selector + start colour read off the example DIFF — so one
+#: condition-bearing rule covers the family and lifts under AU. The canonical
+#: replacement for the legacy condition-less `{type: recolor_sequential}`.
+RECOLOR_RANK_DSL = "recolor_by_rank"
 
 
 # ======================================================================
@@ -290,6 +301,16 @@ class ExtractPatternOperator(Operator):
         # vocabulary (agent/dsl_expr/selection), not hand-coded here.
         patterns["color_remap"] = analyze_color_remap(task.example_pairs)
 
+        # Rank-based sequential recolor (R1 / §2.5-2b ranking selector): the
+        # sibling recolor reading where the new colour is a function of a changed
+        # group's *rank by position* (a contiguous colour run) rather than its
+        # source colour. Inert (sort_key None) whenever the grid resizes, a group
+        # is not single-coloured, or the colours are not a sortable run, so it
+        # never perturbs the readings above. Computed via the §2.5 selection
+        # vocabulary (agent/dsl_expr/selection), not hand-coded here — the
+        # canonical replacement for the legacy condition-less producer.
+        patterns["recolor_rank"] = analyze_recolor_rank(task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -492,9 +513,14 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._color_remap_rule(patterns)
 
-        # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
+        # Strategy 1 (R1 / §2.5-2b ranking selector): rank-based sequential
+        # recolor. If the `recolor_rank` matcher fires (changed groups repainted a
+        # contiguous colour run ordered by a consistent position key), emit a
+        # canonical {condition, action} rule carrying the ordering key — the
+        # condition-bearing replacement for the legacy condition-less
+        # `_try_recolor_sequential` producer (dropped this iter, §5.1-allowed).
         if rule is None:
-            rule = self._try_recolor_sequential(patterns)
+            rule = self._recolor_rank_rule(patterns)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -738,60 +764,49 @@ class GeneralizeOperator(Operator):
 
     # ---- strategy: sequential recoloring --------------------------------
 
-    def _try_recolor_sequential(self, patterns):
+    def _recolor_rank_rule(self, patterns):
+        """Emit the canonical rank-based recolor rule when the `recolor_rank`
+        matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `recolor_rank` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. This is the canonical
+        replacement for the legacy condition-less `_try_recolor_sequential`
+        (arbor.md 진단 #4: a dropped-condition rule is an anti-unification
+        dead-end). The learned argument is a `rank-by(position)` selector (the
+        §2.5-2b ranking selector — `argsort` in the selection vocabulary), carried
+        in the action args *and* recomputed at predict time off the example DIFF,
+        so the rule stays value-agnostic in the absolute colours, positions and
+        group count and one rule covers the family. Being condition-bearing and
+        keyed on an ordinal selector, two such rules lift under anti-unification
+        (R3); the transformation bottoms out in the frozen `coloring` primitive
+        (§2.5-1), the rank ordering being the only argument.
         """
-        Detect pattern: all changed-cell groups have one source color,
-        output colors are sequential (1,2,3,...), ordered by position.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
+        params = {"min_evidence": 2}
+        if not match_condition("recolor_rank", patterns, params):
             return None
-
-        # All pairs must have the same number of change groups
-        group_counts = [a["num_groups"] for a in pair_analyses]
-        if len(set(group_counts)) != 1 or group_counts[0] == 0:
-            return None
-
-        all_source_colors = set()
-
-        for analysis in pair_analyses:
-            for g in analysis["groups"]:
-                if len(g["input_colors"]) != 1 or len(g["output_colors"]) != 1:
-                    return None
-                all_source_colors.add(g["input_colors"][0])
-
-            out_colors = sorted(set(g["output_colors"][0] for g in analysis["groups"]))
-            expected = list(range(min(out_colors), min(out_colors) + len(out_colors)))
-            if out_colors != expected:
-                return None
-
-        # Try sorting by different position keys
-        for sort_key in ["top_row", "top_col"]:
-            if self._check_sort_key(pair_analyses, sort_key):
-                start_color = min(
-                    g["output_colors"][0]
-                    for g in pair_analyses[0]["groups"]
-                )
-                return {
-                    "type": "recolor_sequential",
-                    "sort_key": sort_key,
-                    "start_color": start_color,
-                    "source_colors": sorted(all_source_colors),
-                    "confidence": 1.0,
-                }
-
-        return None
-
-    @staticmethod
-    def _check_sort_key(pair_analyses, sort_key):
-        """Verify that sorting groups by sort_key produces sequential output colors."""
-        for analysis in pair_analyses:
-            groups = analysis["groups"]
-            sorted_groups = sorted(groups, key=lambda g: g[sort_key])
-            colors = [g["output_colors"][0] for g in sorted_groups]
-            if colors != list(range(colors[0], colors[0] + len(colors))):
-                return False
-        return True
+        sig = patterns.get("recolor_rank") or {}
+        return {
+            "condition": {
+                "type": "recolor_rank",
+                "params": dict(params),
+                "min_evidence": max(2, sig.get("evidence", 2)),
+            },
+            "action": {
+                "dsl": RECOLOR_RANK_DSL,
+                # The selector is recomputed from the examples at predict time, so
+                # this carried copy is for self-description / AU lifting, not the
+                # live argument.
+                "args": {
+                    "sort_key": sig.get("sort_key"),
+                    "start_color": sig.get("start_color"),
+                    "source_colors": list(sig.get("source_colors") or []),
+                },
+            },
+            "concept": "recolor_objects_by_rank",
+            "category": "recolor_rank",
+            "confidence": 1.0,
+        }
 
     # ---- strategy: recolor by 1:1 colour map (canonical) ----------------
 
@@ -972,6 +987,18 @@ class PredictOperator(Operator):
         # geometry of the test input is preserved; only colours change.
         if action and action.get("dsl") == RECOLOR_DSL:
             for i, grid in self._recolor_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
+        # Rank-based sequential recolor (R1 / §2.5-2b). Recompute the ordering key
+        # and start colour from the example DIFF (P5 variable origin), then repaint
+        # each test input's source-coloured groups in that rank order via
+        # `coloring`. Geometry is preserved; only the group colours change.
+        if action and action.get("dsl") == RECOLOR_RANK_DSL:
+            for i, grid in self._recolor_rank_grids(task).items():
                 key = f"test_{i}"
                 if key not in predictions and grid is not None:
                     predictions[key] = grid
@@ -1261,6 +1288,29 @@ class PredictOperator(Operator):
             if g0 is None:
                 continue
             grids[i] = render_recolor(g0.raw, color_map)
+        return grids
+
+    @staticmethod
+    def _recolor_rank_grids(task):
+        """Per-test grids for the rank-based recolor family. Recompute the ordering
+        key, start colour and source colours from the example DIFF (value-agnostic,
+        P5: from G0/G1 of the examples), then repaint each test input's
+        source-coloured groups in that rank order via the frozen `coloring`
+        primitive. Returns {} when the analysis yields no consistent ordering."""
+        sig = analyze_recolor_rank(task.example_pairs)
+        if sig.get("sort_key") is None:
+            return {}
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            grids[i] = render_recolor_rank(
+                g0.raw,
+                sig["sort_key"],
+                sig["start_color"],
+                sig["source_colors"],
+            )
         return grids
 
     # ---- rule application dispatchers ------------------------------------

@@ -858,3 +858,144 @@ def analyze_color_remap(example_pairs: list) -> dict:
         "consistent": consistent,
         "evidence": changed_pairs,
     }
+
+
+# ---------------------------------------------------------------------------
+# selection vocabulary: rank-by-position (the §2.5-2b ranking selector)
+# ---------------------------------------------------------------------------
+#
+# The recolor families split on *what names the new colour*. `analyze_color_remap`
+# above keys on the source colour (a 1:1 map). This one keys on an object's
+# *rank among its peers* — the changed groups are ordered by position and painted
+# a contiguous sequence (1, 2, 3, …). The lifted argument is therefore a *ranking
+# selector* (`rank-by(top_row)` / `rank-by(top_col)` — `argsort` in the selection
+# vocabulary), distinct from the constant maps/targets/offsets the other families
+# carry and the first ordinal selector here (R4-adjacent: a derived "which is
+# n-th" property). It is util/selection material (not a transformation), so it
+# lives here under `agent/`, not the frozen DSL dir (§2.5-1, F3).
+
+def _changed_cell_groups(grid_in: list, grid_out: list) -> list:
+    """4-connected components of the cells that differ between two equal-size
+    grids. Returns a list of components, each a list of ``(row, col)``."""
+    changed = [
+        (r, c)
+        for r in range(len(grid_in))
+        for c in range(len(grid_in[r]))
+        if grid_in[r][c] != grid_out[r][c]
+    ]
+    cell_set = set(changed)
+    visited = set()
+    groups = []
+    for start in changed:
+        if start in visited:
+            continue
+        comp = []
+        queue = [start]
+        while queue:
+            p = queue.pop()
+            if p in visited or p not in cell_set:
+                continue
+            visited.add(p)
+            comp.append(p)
+            r, c = p
+            for nb in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+                if nb in cell_set and nb not in visited:
+                    queue.append(nb)
+        groups.append(comp)
+    return groups
+
+
+#: Position keys a ranking selector may order changed groups by, in deterministic
+#: trial order. The first that yields a sequential colour assignment across every
+#: example pair is the learned selector.
+RANK_KEYS = ("top_row", "top_col")
+
+
+def analyze_recolor_rank(example_pairs: list) -> dict:
+    """Cross-pair *rank-based* sequential recolor reading (the recolor-rank family).
+
+    The sibling of `analyze_color_remap`: there the new colour is a function of the
+    *source colour* (a 1:1 map); here it is a function of the changed group's
+    *rank among its peers*. Per pair the changed cells form ``k`` same-coloured
+    groups, each repainted to one output colour, and those output colours are a
+    contiguous run (``start, start+1, …``); across pairs the *same* position key
+    (`top_row` / `top_col`) orders the groups into that run. That ordering is the
+    lifted argument — a `rank-by(position)` selector (§2.5-2b) — value-agnostic in
+    the absolute colours, positions and group count, so two such rules share a
+    skeleton and lift under anti-unification (R3), unlike the legacy literal
+    ``{type: recolor_sequential}`` envelope this replaces.
+
+    Grounded in comparison, never assumed (P3/P4): the groups come from the
+    input↔output DIFF, the sequence is read off the output colours, and the
+    ordering key is *discovered* (the first consistent one), not chosen up front.
+
+    Returns ``{sort_key, start_color, source_colors, consistent, evidence}``;
+    ``sort_key`` is None (so the `recolor_rank` matcher abstains) whenever any pair
+    resizes, a group is not single-coloured on either side, the output colours are
+    not a contiguous run, or no position key orders them consistently across pairs.
+    The detection mirrors the legacy ``_try_recolor_sequential`` exactly so the
+    save-gate verdict is preserved; only the *form* (canonical, condition-bearing)
+    changes.
+    """
+    per_pair = []
+    consistent = True
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a, b = g0.raw, g1.raw
+        if len(a) != len(b) or any(len(a[r]) != len(b[r]) for r in range(len(a))):
+            consistent = False
+            per_pair.append(None)
+            continue
+        groups = _changed_cell_groups(a, b)
+        recs = []
+        ok = True
+        for comp in groups:
+            in_cols = {a[r][c] for (r, c) in comp}
+            out_cols = {b[r][c] for (r, c) in comp}
+            if len(in_cols) != 1 or len(out_cols) != 1:
+                ok = False
+                break
+            recs.append({
+                "in_color": next(iter(in_cols)),
+                "out_color": next(iter(out_cols)),
+                "top_row": min(r for r, _c in comp),
+                "top_col": min(c for _r, c in comp),
+            })
+        per_pair.append(recs if ok else None)
+
+    sort_key = None
+    start_color = None
+    source_colors = []
+    valid = bool(per_pair) and all(p is not None for p in per_pair)
+    if valid:
+        counts = {len(p) for p in per_pair}
+        if len(counts) == 1 and 0 not in counts:
+            for key in RANK_KEYS:
+                ok_key = True
+                for p in per_pair:
+                    ordered = sorted(p, key=lambda g: g[key])
+                    cols = [g["out_color"] for g in ordered]
+                    if cols != list(range(cols[0], cols[0] + len(cols))):
+                        ok_key = False
+                        break
+                if ok_key:
+                    sort_key = key
+                    break
+    if sort_key is not None:
+        start_color = min(g["out_color"] for g in per_pair[0])
+        srcs = set()
+        for p in per_pair:
+            for g in p:
+                srcs.add(g["in_color"])
+        source_colors = sorted(srcs)
+
+    return {
+        "sort_key": sort_key,
+        "start_color": start_color,
+        "source_colors": source_colors,
+        "consistent": consistent and sort_key is not None,
+        "evidence": len([p for p in per_pair if p is not None]),
+    }

@@ -1,6 +1,88 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 22 — 2026-06-12T22:23 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3 (the same ARC-AGI-2 gravity/reflect/
+line-draw tasks needing the absent Slow-path synthesizer — too big for one
+commit). The named, smaller gap is the *twin migration* both iter20 and iter21
+flagged as their Next-gap: `_try_recolor_sequential` was the **last** condition-
+less legacy producer. It emitted a literal `{type: recolor_sequential}` envelope —
+the arbor.md 진단 #4 dropped-condition failure and an anti-unification dead-end —
+and the probe showed it still firing (`e5790162: rule=recolor_sequential`,
+`Discovered: 1`) as a non-reproducing best-effort guess. Migrating it to the
+canonical condition-bearing path (as iter20 did for color_mapping→color_remap)
+finishes eliminating the dropped-condition producer family and lifts a genuinely
+*new* selector type — a **ranking selector** (rank-by-position, R4-adjacent) — into
+the canonical vocabulary, so the family becomes liftable (R3) and reusable (R5)
+through iter21's now-open save gate.
+
+**Change** (recolor-rank producer → canonical; legacy *applier* kept for back-compat):
+- `agent/dsl_expr/selection.py` — new `analyze_recolor_rank(example_pairs)`: the
+  cross-pair reading of a same-size recolor where changed groups are repainted a
+  contiguous colour *run* ordered by a consistent position key (`top_row`/
+  `top_col`). The lifted argument is a `rank-by(position)` selector (`argsort` in
+  the §2.5 selection vocabulary) — the first *ordinal* selector, distinct from the
+  constant maps/targets the other families carry. Detection mirrors the legacy
+  `_try_recolor_sequential` exactly (same group/sequence/key checks) so the save-
+  gate verdict is preserved; `sort_key` is None (matcher abstains) on resize / a
+  multi-colour group / a non-sequential run / mismatched group counts. Grown under
+  `agent/`, not `procedural_memory/DSL/` (F3-safe).
+- `agent/conditions/recolor_rank.py` (new matcher, **P5 9→10**) — fires on a
+  consistent ordering key with `min_evidence≥2`.
+- `agent/dsl_expr/render.py` — new `render_recolor_rank(...)`: groups the
+  source-coloured cells (re-derived from the input, mirroring the legacy applier),
+  orders by the key, paints the contiguous run via one `coloring` call per group
+  (bottoms out in the frozen primitive); non-source cells untouched.
+- `agent/active_operators.py` — extract_pattern surfaces `recolor_rank`; generalize
+  gains canonical `_recolor_rank_rule` (emits `{condition:{type:recolor_rank},
+  action:{dsl:recolor_by_rank, args:{sort_key,start_color,source_colors}}}`) and
+  **drops** the `_try_recolor_sequential` producer + its `_check_sort_key` helper
+  (§5.1-allowed removal); predict renders the family via new `_recolor_rank_grids`
+  (recomputes the selector from the example DIFF, P5 origin). `_apply_recolor_
+  sequential` + the `_apply_rule` `recolor_sequential` branch are **kept** (legacy
+  back-compat; `test_save_gate.py` reproduces a legacy rule through them).
+  Accompanied by `agent/conditions/` + render + selection edits (F8-clear).
+- Removed the orphaned `agent/conditions/__pycache__/recolor_sequential.*.pyc`
+  (a prior-lineage matcher whose source was dropped at the test32 clean start —
+  memory `cleanstart_orphaned_pyc`).
+- `tests/test_recolor_rank.py` (new, 11 tests) — reading detects the rank/abstains
+  on non-sequential·multicolour·resize·mismatched-count; matcher honours
+  min_evidence; renderer paints by rank and leaves non-source cells; GeneralizeOp
+  emits a canonical (no `type`) rule; end-to-end pipeline renders the test grid.
+
+**Probe before**: training 0/3 (`e5790162: rule=recolor_sequential`, **Discovered
+  1**); easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10); rules=3; P1=7.67 P2=7.67
+  P3=0.67 P4=932 P5=9 P6=1407; 107 tests.
+**Probe after** : training 0/3 — **`e5790162: rule=none`, Discovered 0**: the
+  canonical `recolor_rank` matcher honestly *abstains* on e5790162 (not a clean,
+  consistent-key rank recolor) instead of emitting a non-reproducing guess the gate
+  must catch. easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10) — both unchanged;
+  rules 3→3 (no canonical rule produced on these tasks → nothing to save/accrete);
+  P5 9→10; P6 1407→1457 (+50, the new canonical family); 118 tests.
+
+**Invariants**: forbidden=**none** (check_invariants CLEAN; F1 frozen diff 0; F2 no
+  new `_try_*`/`_apply_*` — a producer was *removed*, §5.1-allowed; F3 no DSL
+  primitive; F8 active_operators edit accompanied by the new conditions/ matcher +
+  render + selection; no rule saved without a condition — strengthened: the last
+  condition-less producer is gone). positives=**P5 +1 (9→10)**; P1/P2/P3/P4 flat
+  (no rule saved on the current tasks, the iter20/21 absorption pattern); P6 +50
+  (new family). Every Slow-path producer is now canonical and condition-bearing —
+  the arbor.md 진단 #4 dropped-condition failure mode is fully eliminated from the
+  producer path, and a ranking selector enters the AU-liftable vocabulary.
+
+**Next gap (note for future iter)**: with both recolor producers (color_remap,
+  recolor_rank) and every move/size producer now canonical, the producer side of
+  arbor.md 진단 #4 is closed — the dominant frontier is unchanged and now
+  unambiguous: the **Slow-path program synthesizer** (modules F/G) for unseen
+  training tasks. Object-level COMM/DIFF produces no program for same-size
+  gravity/reflect/line-draw, so every canonical family abstains (as e5790162 now
+  shows honestly) and nothing reaches the open save gate. That is the large gap
+  (`synthesizer_frontier`), needing its own decomposition — likely the first
+  decomposed sub-step (a per-pair program builder over the two frozen primitives)
+  is the next defensible smallest half.
+
+---
 ## Iter 21 — 2026-06-12T22:09 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3 (ARC-AGI-2 gravity/reflect/line-draw —
@@ -2369,3 +2451,63 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 10
 - Time: 5s
 - Log: logs/learn_20260612_220828.log
+
+---
+## Learning Loop -- 2026-06-12 22:12
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_221221.log
+
+---
+## Learning Loop -- 2026-06-12 22:12
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_221225.log
+
+---
+## Learning Loop -- 2026-06-12 22:12
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_221231.log
+
+---
+## Learning Loop -- 2026-06-12 22:22
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_222230.log
+
+---
+## Learning Loop -- 2026-06-12 22:22
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_222233.log
+
+---
+## Learning Loop -- 2026-06-12 22:22
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_222239.log

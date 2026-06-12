@@ -114,6 +114,70 @@ def render_recolor(grid: list, color_map: dict) -> list:
     return out
 
 
+def _connected_components(cells: list) -> list:
+    """4-connected components of a list of ``(row, col)`` cells."""
+    cell_set = set(cells)
+    visited = set()
+    comps = []
+    for start in cells:
+        if start in visited:
+            continue
+        comp = []
+        queue = [start]
+        while queue:
+            p = queue.pop()
+            if p in visited or p not in cell_set:
+                continue
+            visited.add(p)
+            comp.append(p)
+            r, c = p
+            for nb in ((r - 1, c), (r + 1, c), (r, c - 1), (r, c + 1)):
+                if nb in cell_set and nb not in visited:
+                    queue.append(nb)
+        comps.append(comp)
+    return comps
+
+
+def render_recolor_rank(grid: list, sort_key: str, start_color: int,
+                        source_colors: list) -> list:
+    """Recolour `grid` by *rank*: the source-coloured cells form connected groups
+    which, ordered by ``sort_key`` (`top_row` / `top_col`), are painted the
+    contiguous sequence ``start_color, start_color+1, …`` — one `coloring` call per
+    group.
+
+    This is the recolor-rank family's transformation bottoming out in the frozen
+    `coloring` primitive (BACKLOG_LOOP §2.5-1, F3): geometry is preserved (no
+    `make_grid` resize), and the whole content lives in the *argument* — a
+    `rank-by(position)` selector plus the start colour, read off the example DIFF
+    (§2.5-2b), not in any new primitive. Mirrors the legacy
+    ``_apply_recolor_sequential`` painting (groups of *source-coloured* cells,
+    re-derived from the input) so the migration preserves behaviour exactly.
+    """
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    srcs = set(source_colors)
+    out = [row[:] for row in grid]
+    target_cells = [
+        (r, c)
+        for r in range(height)
+        for c in range(width)
+        if grid[r][c] in srcs
+    ]
+    if not target_cells:
+        return out
+
+    def _key(group):
+        if sort_key == "top_row":
+            return min(r for r, _c in group)
+        if sort_key == "top_col":
+            return min(c for _r, c in group)
+        return 0
+
+    for idx, group in enumerate(sorted(_connected_components(target_cells), key=_key)):
+        out = apply_DSL("coloring", out, selection=list(group), color=start_color + idx)
+    return out
+
+
 def render_object_at(height: int, width: int, bg: int,
                      pixels: list, target: tuple) -> list:
     """Place an object (its `pixels` = list of (row, col, color)) on a fresh
