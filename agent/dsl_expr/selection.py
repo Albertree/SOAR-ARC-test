@@ -800,6 +800,109 @@ def analyze_object_move(example_pairs: list) -> dict:
     }
 
 
+# ---------------------------------------------------------------------------
+# property vocabulary: a *colour reading* off a whole grid (the §2.5-2b colour
+# hole filler)
+# ---------------------------------------------------------------------------
+#
+# The dimension vocabularies above read a *scalar* off an object/grid to size a
+# canvas. This axis is the colour analogue: a named reading that returns the
+# *colour* a transformation should use, read off the input grid. It is the
+# §2.5-2b "the choice that fills the variable hole comes from comparison
+# (COMM/DIFF), not invention" point on the *colour* axis — the recolor families
+# key the new colour on the source colour (`color_remap`) or a group's rank
+# (`recolor_rank`); this keys it on a *grid-level colour property*. The seed is
+# `most_frequent_color` (the grid's dominant colour), which is exactly
+# `background_of`; naming it as a reading lets a transformation say "fill with the
+# input's dominant colour" without a literal, so the same rule transfers across
+# pairs whose dominant colour differs (the COMM is the *reading*, not the value).
+#
+# Like the dimension vocabularies, this is a named, deterministic vocabulary the
+# analysis *learns from* (the first reading whose value reproduces the output side
+# in every pair wins); it is util/property material (not a transformation), lives
+# under agent/, and grows the LHS argument vocabulary (F3-exempt).
+
+def most_frequent_color(grid: list) -> int:
+    """The grid's most-frequent colour (ties → smallest) — the seed colour
+    reading. Identical to `background_of`; named separately so it reads as a
+    *colour argument* (`most_frequent_color(in)`) wherever a transformation needs
+    a colour, not a canvas background."""
+    return background_of(grid)
+
+
+#: name -> fn(grid) -> int. A named *colour reading* off a whole grid, usable
+#: wherever a transformation argument is a colour. Tried in this deterministic
+#: order when *learning* which reading a task uses (the first whose value
+#: reproduces the output colour in every pair wins). Adding one grows the LHS
+#: argument vocabulary; it introduces no new transformation (F3-exempt).
+COLOR_READING_VOCAB = {
+    "most_frequent_color": most_frequent_color,
+}
+
+
+def analyze_canvas_fill(example_pairs: list) -> dict:
+    """Output = a *solid canvas* (same size as input) whose fill colour is a
+    learned colour-reading of the input (BACKLOG_LOOP §2.5-2b colour hole filler).
+
+    The colour analogue of `analyze_object_size_grid`: there the output is a solid
+    canvas whose *dimensions* are a learned object property; here the output is a
+    solid canvas whose *colour* is a learned grid colour-reading, and the size is
+    just the input's own (a size COMM). Solves the "fill the grid with its dominant
+    colour" family (ARC-AGI-2 5582e5ca), which `color_remap` cannot — there every
+    input colour would have to map to the one output colour, but across pairs the
+    same source colour maps to different fills, so the map is not a function and
+    `color_remap` abstains. The lifted argument is the *reading*
+    (`most_frequent_color(in)`), not the literal fill colour, so one rule covers
+    the family value-agnostically.
+
+    Grounded in comparison, never assumed (P3/P4): every pair's output must be a
+    solid single colour at the input's own size, and a named reading
+    (`COLOR_READING_VOCAB`) whose value equals that output colour in *every* pair
+    is discovered (the first consistent one), not chosen up front.
+
+    Returns ``{fill_reading, consistent, evidence}``; ``fill_reading`` is None (so
+    the `canvas_fill` matcher abstains) whenever any pair is not a same-size solid
+    fill or no reading reproduces the colour across all pairs. The transformation
+    bottoms out in a single frozen `make_grid` call (a uniform fill needs no
+    `coloring`), the reading being the only argument (§2.5-1, F3).
+    """
+    per_pair = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        in_h = len(a)
+        in_w = len(a[0]) if in_h else 0
+        out_h = len(b)
+        out_w = len(b[0]) if out_h else 0
+        out_colors = {cell for row in b for cell in row}
+        per_pair.append({
+            "grid": a,
+            "same_size": (in_h, in_w) == (out_h, out_w) and in_h > 0 and in_w > 0,
+            "out_solid": len(out_colors) == 1 and out_h > 0 and out_w > 0,
+            "out_color": next(iter(out_colors)) if len(out_colors) == 1 else None,
+        })
+
+    valid = bool(per_pair) and all(
+        p["same_size"] and p["out_solid"] for p in per_pair)
+
+    fill_reading = None
+    if valid:
+        for name, fn in COLOR_READING_VOCAB.items():
+            if all(fn(p["grid"]) == p["out_color"] for p in per_pair):
+                fill_reading = name
+                break
+
+    return {
+        "fill_reading": fill_reading,
+        "consistent": valid and fill_reading is not None,
+        "evidence": len(per_pair),
+    }
+
+
 def analyze_color_remap(example_pairs: list) -> dict:
     """Cross-pair 1:1 colour-remap reading (the recolor family).
 

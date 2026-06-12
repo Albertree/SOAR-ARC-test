@@ -1,6 +1,79 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 25 — 2026-06-12T22:55 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. iter24's
+Next-gap named a "recolor binder" as the next half, but reassessing it showed it is
+**near-vacuous**: a *constant*-colour recolor needs no binder (the lifted program is
+already ground, covers=N), and a *varying*-colour recolor cannot predict from the
+fillers alone — it needs a colour **reading** (the new colour as a function of the
+input), which the producer never captured. Scanning all 1000 ARC-AGI-2 training
+tasks confirmed it: only **1** is a clean single-object recolor (5582e5ca), and it
+*varies* in colour — so a constant-recolor matcher would be a dead detector gaming
+P5. That one task is the real signal: its output is a solid grid filled with the
+input's **most-frequent colour** (the varying value explained by one reading). The
+smallest defensible gap is therefore the §2.5-2b *colour-hole-filling reading* on
+the colour axis — and it closes a **real, currently-failed** training task
+(5582e5ca: `rule=identity` → 0/1 before this iter).
+
+**Change** (a new canonical, condition-bearing family — the colour analogue of the
+object-property canvas sizing; F2/F3/F4/F8 honoured):
+- `agent/dsl_expr/selection.py` — new `COLOR_READING_VOCAB` (seed
+  `most_frequent_color`, = `background_of` named as a *colour argument*) and
+  `analyze_canvas_fill(example_pairs)`: every output is a *solid* canvas at the
+  input's own size whose colour a named reading reproduces in **every** pair (the
+  cross-pair COMM expressed as a reading, not a literal). Abstains (fill_reading
+  None) on non-solid / resized / reading-inconsistent outputs. Grown under `agent/`
+  (F3-safe), the LHS argument vocabulary that §2.5-1 says must grow.
+- `agent/conditions/canvas_fill.py` (new matcher, **P5 10→11**) — fires on a
+  consistent reading with `min_evidence≥2`.
+- `agent/active_operators.py` — extract_pattern surfaces `canvas_fill`; generalize
+  gains canonical `_canvas_fill_rule` (emits `{condition:{type:canvas_fill},
+  action:{dsl:fill_canvas, args:{fill_reading}}}`), checked **last** (after the
+  recolor families, before identity) so no task an earlier family explains is
+  perturbed; predict renders via new `_canvas_fill_grids` → `render_solid_rect`
+  (a single frozen `make_grid` fill, the colour read off each *test* input — P5).
+  Accompanied by the new `agent/conditions/` matcher (F8-clear).
+- `tests/test_canvas_fill.py` (new, 10 tests) — the reading; the analyzer learns it
+  on the **real** 5582e5ca and abstains on non-solid/resize/inconsistent; matcher
+  honours min_evidence; generalize emits a canonical (no `type`) rule; and the
+  load-bearing end-to-end test: recompute the reading from the train pairs and
+  reproduce 5582e5ca's **held-out test output exactly**.
+- `procedural_memory/rule_006.json` (new) — the canonical `canvas_fill` rule learned
+  from solving 5582e5ca (covers=1, value-agnostic via the reading). (Reverted the
+  `rule_001/002` `times_reused` probe churn — runtime accounting, iter18/21/23/24
+  precedent.)
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10);
+  rules=3; P1=7.67 P2=7.67 P3=0.67 P4=932 P5=10 P6=1457; 133 tests.
+**Probe after** : **5582e5ca now solves** (`rule=identity`→CORRECT, a real ARC-AGI-2
+  training task); easy_a 9/9, madeup 14/14 (regression guards hold); rules 3→4
+  (rule_006 canvas_fill, covers=1); **P5 10→11 (+1)**; P1 7.67→6.0, P2 7.67→6.0,
+  P3 0.67→0.50, P6 +110 — the expected, logged cost of a new general family's first
+  task (every family starts at covers=1; this is general/value-agnostic, not a
+  per-task literal, so it grows P1 back as more "fill with the dominant colour"
+  tasks merge in); 143 tests (+10).
+
+**Invariants**: forbidden=**none** (check_invariants verdict CLEAN; F1 frozen diff
+  0; F2 no new `_try_*`/`_apply_*`; F3 no DSL primitive; F4 rule_006 validates; F8
+  active_operators edit accompanied by the new `conditions/canvas_fill.py`).
+  positives=**P5 +1 (10→11)**, a real consumed matcher (it solves a real task, not a
+  dead detector). The colour-reading vocabulary is the §2.5-2b "colour hole filled
+  by a grounded reading" on the colour axis — competence grew onto an unseen
+  training task by *extending the system generally*, not a bespoke `_try_*`.
+
+**Next gap (note for future iter)**: `COLOR_READING_VOCAB` has one seed
+  (`most_frequent_color`); the obvious general growth is sibling readings
+  (`least_frequent_color`, `unique_color`) and folding `canvas_fill` +
+  `object_size_grid` (both solid `make_grid` fills, differing only in which
+  argument — colour vs dimension — is the reading) into a shared lift family so AU
+  raises P1/P2/P3 rather than each first-task dipping them. The off-path recolor
+  *binder* lineage (iters 23/24) is parked: its constant case is trivial and its
+  varying case is subsumed by readings like this one — surface a colour reading,
+  don't build a filler-less binder.
+
+---
 ## Iter 24 — 2026-06-12T22:40 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3 (c9680e90 gravity, 878187ab
@@ -2710,3 +2783,73 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 6s
 - Log: logs/learn_20260612_223408.log
+
+---
+## Learning Loop -- 2026-06-12 22:40
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_224008.log
+
+---
+## Learning Loop -- 2026-06-12 22:40
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_224012.log
+
+---
+## Learning Loop -- 2026-06-12 22:40
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_224018.log
+
+---
+## Learning Loop -- 2026-06-12 22:51
+
+- Split: None, Tasks: 1
+- Correct: 0 / 1 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260612_225110.log
+
+---
+## Learning Loop -- 2026-06-12 22:55
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260612_225505.log
+
+---
+## Learning Loop -- 2026-06-12 22:55
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_225505.log
+
+---
+## Learning Loop -- 2026-06-12 22:55
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_225509.log

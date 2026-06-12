@@ -22,6 +22,7 @@ from agent.dsl_expr.render import (
     render_solid_square,
 )
 from agent.dsl_expr.selection import (
+    analyze_canvas_fill,
     analyze_color_remap,
     analyze_object_move,
     analyze_object_select_move,
@@ -33,6 +34,7 @@ from agent.dsl_expr.selection import (
     extent_of,
     objects_of,
     unique_object,
+    COLOR_READING_VOCAB,
     DIM_PROPERTY_VOCAB,
     GRID_DIM_PROPERTY_VOCAB,
     RECT_DIM_VOCAB,
@@ -91,6 +93,14 @@ RECOLOR_DSL = "recolor_map"
 #: condition-bearing rule covers the family and lifts under AU. The canonical
 #: replacement for the legacy condition-less `{type: recolor_sequential}`.
 RECOLOR_RANK_DSL = "recolor_by_rank"
+
+#: action.dsl for the solid-canvas colour-fill family (R1 / §2.5-2b colour
+#: reading) — the output is a solid canvas at the input's own size whose colour is
+#: a learned grid colour-reading (`most_frequent_color`). The colour analogue of
+#: SIZE_GRID_DSL: a single `make_grid` fill whose *colour argument* is the lift
+#: (read off the test input — P5), not a literal. Solves the "fill with the
+#: dominant colour" family (5582e5ca) that the 1:1 `color_remap` cannot express.
+CANVAS_FILL_DSL = "fill_canvas"
 
 
 # ======================================================================
@@ -311,6 +321,15 @@ class ExtractPatternOperator(Operator):
         # canonical replacement for the legacy condition-less producer.
         patterns["recolor_rank"] = analyze_recolor_rank(task.example_pairs)
 
+        # Solid-canvas colour fill (R1 / §2.5-2b colour reading): the colour
+        # analogue of object_size_grid — the output is a solid canvas at the
+        # input's own size whose colour is a learned grid colour-reading
+        # (`most_frequent_color`). Inert (fill_reading None) unless every output is
+        # a same-size solid fill whose colour a named reading reproduces, so it
+        # never perturbs the readings above. Computed via the §2.5 colour-reading
+        # vocabulary (agent/dsl_expr/selection), not hand-coded here.
+        patterns["canvas_fill"] = analyze_canvas_fill(task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -521,6 +540,19 @@ class GeneralizeOperator(Operator):
         # `_try_recolor_sequential` producer (dropped this iter, §5.1-allowed).
         if rule is None:
             rule = self._recolor_rank_rule(patterns)
+
+        # Strategy 2 (R1 / §2.5-2b colour reading): solid-canvas colour fill. If
+        # the `canvas_fill` matcher fires (every example output is a solid canvas
+        # at the input's own size whose colour a learned grid colour-reading
+        # reproduces), emit a canonical {condition, action} rule carrying the
+        # reading name — the colour analogue of the object-property canvas sizing
+        # (Strategy 0g). The reading is recomputed at predict time off each test
+        # input, so the rule is value-agnostic in the actual fill colour. Checked
+        # *after* the recolor families so any task an earlier family already
+        # explains keeps its reading; this fires only on the otherwise-unsolved
+        # "fill with the dominant colour" family (5582e5ca).
+        if rule is None:
+            rule = self._canvas_fill_rule(patterns)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -848,6 +880,46 @@ class GeneralizeOperator(Operator):
             "confidence": 1.0,
         }
 
+    # ---- strategy: solid-canvas colour fill (canonical) -----------------
+
+    def _canvas_fill_rule(self, patterns):
+        """Emit the canonical solid-canvas colour-fill rule when the `canvas_fill`
+        matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `canvas_fill` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The colour analogue of
+        `_object_size_grid_rule`: the output is a solid canvas (a single
+        `make_grid` fill, §2.5-1) whose *colour* is a learned grid colour-reading
+        (`most_frequent_color`) recomputed at predict time off each test input, so
+        the rule stays value-agnostic in the actual fill colour and one rule covers
+        the family. The reading — not the literal colour — is the lifted argument,
+        so this is the §2.5-2b "colour hole filled by a grounded reading" point on
+        the colour axis. Solves the "fill with the dominant colour" family
+        (ARC-AGI-2 5582e5ca) the 1:1 `color_remap` structurally cannot.
+        """
+        params = {"min_evidence": 2}
+        if not match_condition("canvas_fill", patterns, params):
+            return None
+        sig = patterns.get("canvas_fill") or {}
+        return {
+            "condition": {
+                "type": "canvas_fill",
+                "params": dict(params),
+                "min_evidence": max(2, sig.get("evidence", 2)),
+            },
+            "action": {
+                "dsl": CANVAS_FILL_DSL,
+                # The reading is recomputed from the test input at predict time, so
+                # this carried copy is for self-description / AU lifting, not the
+                # live argument.
+                "args": {"fill_reading": sig.get("fill_reading")},
+            },
+            "concept": "fill_canvas_with_color_reading",
+            "category": "canvas_fill",
+            "confidence": 1.0,
+        }
+
 
 # ======================================================================
 # DescendOperator -- placeholder for deeper KG exploration
@@ -999,6 +1071,18 @@ class PredictOperator(Operator):
         # `coloring`. Geometry is preserved; only the group colours change.
         if action and action.get("dsl") == RECOLOR_RANK_DSL:
             for i, grid in self._recolor_rank_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
+        # Solid-canvas colour fill (R1 / §2.5-2b). Recompute the learned colour
+        # reading from the examples, then for each test pair fill a fresh canvas at
+        # that test input's own size with the reading's value off the test input
+        # (P5 variable origin: the colour is read from G0, never a test G1).
+        if action and action.get("dsl") == CANVAS_FILL_DSL:
+            for i, grid in self._canvas_fill_grids(task).items():
                 key = f"test_{i}"
                 if key not in predictions and grid is not None:
                     predictions[key] = grid
@@ -1311,6 +1395,32 @@ class PredictOperator(Operator):
                 sig["start_color"],
                 sig["source_colors"],
             )
+        return grids
+
+    @staticmethod
+    def _canvas_fill_grids(task):
+        """Per-test grids for the solid-canvas colour-fill family. Recompute the
+        learned colour reading from the examples (value-agnostic, P5: the reading
+        is fixed by the examples but its *value* is read off each test input), then
+        fill a fresh canvas at the test input's own size with that colour via the
+        frozen `make_grid` primitive. Returns {} when the analysis yields no
+        consistent reading."""
+        sig = analyze_canvas_fill(task.example_pairs)
+        name = sig.get("fill_reading")
+        if name is None:
+            return {}
+        reading = COLOR_READING_VOCAB[name]
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            raw = g0.raw or []
+            height = len(raw)
+            width = len(raw[0]) if height else 0
+            if height < 1 or width < 1:
+                continue
+            grids[i] = render_solid_rect(height, width, reading(raw))
         return grids
 
     # ---- rule application dispatchers ------------------------------------
