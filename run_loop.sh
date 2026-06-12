@@ -49,16 +49,29 @@ LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SNAPSHOT_PATH="${LOG_DIR}/_invariant_snapshot.json"
 
-# ── Phase graduation (easy → training) ──────────────────────
-# The loop starts in the `easy` phase (probe = controlled slice tasks under
-# data/ARC_easy*/). When the easy probe is solved 100% for GRADUATION_K
-# consecutive iters, the loop graduates to the `training` phase (probe samples
-# real ARC tasks under data/ARC_AGI/training/). The switch is criteria-gated,
-# logged, and recorded in PHASE_STATE — the F6-allowed exception, NOT a silent
-# budget creep. See docs/INVARIANTS.md F6, PROMPT.md §2.1, CLAUDE.md "Loop phases".
-GRADUATION_K=5            # consecutive 100% easy probes required to graduate
+# ── Phase graduation (easy_a → madeup → training) ───────────
+# The loop walks a three-phase development curriculum (PROMPT.md §2.1):
+#
+#   1. `easy_a`   — probe = ALL of data/ARC_easy_a/. Master the hand-supplied
+#                   beginner suite the *intended* way (the four observation
+#                   criteria, not score).
+#   2. `madeup`   — probe = ALL of data/ARC_madeup/. The loop now AUTHORS its
+#                   own beginner tasks isolating one concept at a time (object
+#                   size≠1, object count≠1, multi-object selection, grid resize,
+#                   unequal in/out sizes, size↔object-property, pairs≠2 …) and
+#                   makes the *structure* solve them by expressing each task's
+#                   specific rule — without expanding concepts, without Claude
+#                   hand-coding. easy_a stays as a regression guard.
+#   3. `training` — probe = real ARC-AGI-2 tasks (data/ARC_AGI/training/).
+#                   easy_a + madeup stay as regression guards.
+#
+# Each switch is criteria-gated, logged, and recorded in PHASE_STATE — the
+# F6-allowed exception, NOT a silent budget creep. See docs/INVARIANTS.md F6,
+# PROMPT.md §2.1, CLAUDE.md "Loop phases".
+GRADUATION_K=5            # consecutive 100% probes required to graduate a phase
+MADEUP_MIN_TASKS=7       # min authored data/ARC_madeup/ tasks before madeup may graduate
 TRAIN_PROBE_SIZE=3       # tasks sampled from training in the training phase
-GRADUATION_ENABLED=1     # --no-graduation pins the loop to the easy phase
+GRADUATION_ENABLED=1     # --no-graduation pins the loop to its current phase
 PHASE_STATE="${LOG_DIR}/_phase_state.json"
 # Honest self-termination: when Claude judges the system sufficiently developed
 # it writes this sentinel (PROMPT.md §2.2). The loop finishes the current iter,
@@ -71,6 +84,7 @@ while [[ "$#" -gt 0 ]]; do
         --probe-size)       PROBE_SIZE="$2";   shift ;;
         --probe-seed)       PROBE_SEED="$2";   shift ;;
         --graduation-k)     GRADUATION_K="$2"; shift ;;
+        --madeup-min-tasks) MADEUP_MIN_TASKS="$2"; shift ;;
         --train-probe-size) TRAIN_PROBE_SIZE="$2"; shift ;;
         --no-graduation)    GRADUATION_ENABLED=0 ;;
         *) echo "Unknown: $1"; exit 1 ;;
@@ -98,8 +112,10 @@ ITER=$(get_last_iter)
 NEUTRAL_STREAK=0
 
 # ── Phase state helpers (JSON via python for cross-platform portability) ──
-# State shape: {"phase": "easy"|"training", "easy_clean_streak": int,
+# State shape: {"phase": "easy_a"|"madeup"|"training", "clean_streak": int,
 #               "graduated_at_iter": int|null}
+# `clean_streak` is the consecutive-clean count for the CURRENT phase; it
+# resets to 0 on every phase graduation.
 phase_read() {  # $1 = key  → prints value (empty if missing/unreadable)
     python - "$PHASE_STATE" "$1" <<'PY' 2>/dev/null || true
 import json, sys
@@ -120,23 +136,34 @@ path, phase, streak, grad = sys.argv[1:5]
 grad_v = None if grad in ("", "null") else int(grad)
 with open(path, "w") as f:
     json.dump({"phase": phase,
-               "easy_clean_streak": int(streak),
+               "clean_streak": int(streak),
                "graduated_at_iter": grad_v}, f, indent=2)
 PY
 }
 
+# Count *.json tasks in a directory (0 if absent). Used for the madeup floor.
+count_tasks() {  # $1 = dir
+    if [ -d "$1" ]; then
+        find "$1" -maxdepth 1 -name '*.json' 2>/dev/null | wc -l | tr -d ' '
+    else
+        echo 0
+    fi
+}
+
 # Initialize phase state on first run.
 if [ ! -f "$PHASE_STATE" ]; then
-    phase_write "easy" 0 "null"
+    phase_write "easy_a" 0 "null"
 fi
-PHASE=$(phase_read phase);            [ -z "$PHASE" ] && PHASE="easy"
-EASY_STREAK=$(phase_read easy_clean_streak); [ -z "$EASY_STREAK" ] && EASY_STREAK=0
+PHASE=$(phase_read phase);            [ -z "$PHASE" ] && PHASE="easy_a"
+# Migrate a legacy `easy` phase (pre-curriculum) to `easy_a`.
+[ "$PHASE" = "easy" ] && PHASE="easy_a"
+STREAK=$(phase_read clean_streak);   [ -z "$STREAK" ] && STREAK=0
 GRAD_ITER=$(phase_read graduated_at_iter);   [ -z "$GRAD_ITER" ] && GRAD_ITER="null"
 
 log "=========================================="
 log "ARBOR Infinite Loop"
 log "Branch: $BRANCH | probe-size: $PROBE_SIZE | probe-seed: $PROBE_SEED"
-log "Phase: $PHASE | easy-streak: $EASY_STREAK/$GRADUATION_K | graduation: $([ "$GRADUATION_ENABLED" = 1 ] && echo on || echo off)"
+log "Phase: $PHASE | clean-streak: $STREAK/$GRADUATION_K | graduation: $([ "$GRADUATION_ENABLED" = 1 ] && echo on || echo off)"
 log "Reward function: docs/INVARIANTS.md"
 log "=========================================="
 
@@ -172,23 +199,18 @@ while true; do
     log ""
     log "========== ITER $ITER =========="
 
-    # ── 1. PROBE (phase-aware) ──────────────────────────────
-    # Always run the easy probe (ARC_easy) + the easy_a milestone probe (all of
-    # data/ARC_easy_a). In `easy` phase they ARE the probe and gate graduation;
-    # in `training` phase they are the regression guard (PROMPT.md §2.1/§2.2).
-    log "Easy probe: run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED"
-    EASY_OUTPUT=$(python run_learn.py --limit "$PROBE_SIZE" --seed "$PROBE_SEED" 2>&1 || true)
-    echo "$EASY_OUTPUT" >> "$PIPELINE_LOG"
-    EASY_SCORE=$(echo "$EASY_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / $PROBE_SIZE")
-    EASY_PCT=$(echo "$EASY_SCORE" | grep -oE '[0-9.]+%' | tr -d '%' | tail -1)
-    [ -z "$EASY_PCT" ] && EASY_PCT="0"
-    EASY_CLEAN=$(awk -v p="$EASY_PCT" 'BEGIN{print (p+0>=100)?1:0}')
+    # ── 1. PROBE (phase-aware: easy_a → madeup → training) ──────
+    # data/ARC_easy was retired (user-authored, partly ill-posed). The curriculum
+    # is now: master easy_a → author+solve data/ARC_madeup/ beginner tasks → real
+    # ARC training. easy_a is the regression guard in every phase; madeup is an
+    # additional guard once graduated past it. (PROMPT.md §2.1)
 
-    # easy_a milestone probe — ALL of data/ARC_easy_a (no --limit). The user's
-    # gating milestone is "solve all of easy_a" before moving on (§2.2).
+    # easy_a probe — ALL of data/ARC_easy_a (no --limit). Phase-1 probe AND the
+    # always-on regression guard.
     EASYA_SCORE="Correct: (no easy_a dir)"
     EASYA_CLEAN=1
     if [ -d "data/ARC_easy_a" ]; then
+        log "easy_a probe: run_learn.py --task-dir data/ARC_easy_a --seed $PROBE_SEED"
         EASYA_OUTPUT=$(python run_learn.py --task-dir data/ARC_easy_a --no-root-log --seed "$PROBE_SEED" 2>&1 || true)
         echo "$EASYA_OUTPUT" >> "$PIPELINE_LOG"
         EASYA_SCORE=$(echo "$EASYA_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / ?")
@@ -197,11 +219,25 @@ while true; do
         EASYA_CLEAN=$(awk -v p="$EASYA_PCT" 'BEGIN{print (p+0>=100)?1:0}')
     fi
 
-    # easy mastery = ARC_easy clean AND all of easy_a clean.
-    if [ "$EASY_CLEAN" = "1" ] && [ "$EASYA_CLEAN" = "1" ]; then
-        MASTERY_CLEAN=1
-    else
-        MASTERY_CLEAN=0
+    # madeup probe — ALL of data/ARC_madeup (the loop's self-authored beginner
+    # curriculum). Phase-2 probe AND a guard once graduated past it. Only run when
+    # relevant (madeup or training phase) so the easy_a phase stays focused.
+    MADEUP_SCORE="Correct: (not yet probed)"
+    MADEUP_CLEAN=1
+    MADEUP_COUNT=$(count_tasks "data/ARC_madeup")
+    if [ "$PHASE" = "madeup" ] || [ "$PHASE" = "training" ]; then
+        if [ "$MADEUP_COUNT" -gt 0 ]; then
+            log "madeup probe: run_learn.py --task-dir data/ARC_madeup ($MADEUP_COUNT tasks)"
+            MADEUP_OUTPUT=$(python run_learn.py --task-dir data/ARC_madeup --no-root-log --seed "$PROBE_SEED" 2>&1 || true)
+            echo "$MADEUP_OUTPUT" >> "$PIPELINE_LOG"
+            MADEUP_SCORE=$(echo "$MADEUP_OUTPUT" | grep -E "Correct:" | tail -1 || echo "Correct: ? / ?")
+            MADEUP_PCT=$(echo "$MADEUP_SCORE" | grep -oE '[0-9.]+%' | tr -d '%' | tail -1)
+            [ -z "$MADEUP_PCT" ] && MADEUP_PCT="0"
+            MADEUP_CLEAN=$(awk -v p="$MADEUP_PCT" 'BEGIN{print (p+0>=100)?1:0}')
+        else
+            MADEUP_SCORE="Correct: 0 / 0 (no authored tasks yet)"
+            MADEUP_CLEAN=0
+        fi
     fi
 
     if [ "$PHASE" = "training" ]; then
@@ -214,9 +250,9 @@ while true; do
         PROBE_OUTPUT="[PHASE: training]
 ===== TRAINING PROBE ($PROBE_CMD) — primary microscope =====
 $TRAIN_OUTPUT
-===== REGRESSION GUARD (easy + easy_a must stay 100%) =====
-ARC_easy : $EASY_SCORE
+===== REGRESSION GUARD (easy_a + madeup must stay 100%) =====
 ARC_easy_a: $EASYA_SCORE
+ARC_madeup: $MADEUP_SCORE
 (if either dropped below 100%, fixing that regression IS this iter's gap.)
 ===== ESCALATION (PROMPT.md §2.2) =====
 Do not emit a near-duplicate / cosmetic commit. If no real gap surfaces from the
@@ -227,38 +263,79 @@ When you judge the
 system sufficiently developed, end the loop honestly per §2.2 (write
 logs/_LOOP_COMPLETE.md)."
         PROBE_SCORE="$TRAIN_SCORE"
-        log "Training probe: $TRAIN_SCORE | guard easy=$EASY_SCORE easy_a=$EASYA_SCORE"
-    else
-        # easy phase — graduation accounting on the easy_a mastery milestone.
-        if [ "$MASTERY_CLEAN" = "1" ]; then
-            EASY_STREAK=$((EASY_STREAK + 1))
-        else
-            EASY_STREAK=0
-        fi
-        PROBE_OUTPUT="[PHASE: easy | mastery-streak: $EASY_STREAK/$GRADUATION_K]
-Mastery milestone = solve the easy slice AND all of easy_a (§2.2).
-===== EASY PROBE (run_learn.py --limit $PROBE_SIZE --seed $PROBE_SEED) =====
-$EASY_OUTPUT
-===== EASY_A MILESTONE PROBE (run_learn.py --task-dir data/ARC_easy_a) =====
-$EASYA_SCORE"
-        PROBE_SCORE="$EASY_SCORE | easy_a: $EASYA_SCORE"
-        log "Easy probe: $EASY_SCORE | easy_a: $EASYA_SCORE | mastery-streak: $EASY_STREAK/$GRADUATION_K"
+        log "Training probe: $TRAIN_SCORE | guard easy_a=$EASYA_SCORE madeup=$MADEUP_SCORE"
 
-        # Graduate once the easy_a mastery milestone holds for K consecutive iters.
-        if [ "$GRADUATION_ENABLED" = "1" ] && [ "$EASY_STREAK" -ge "$GRADUATION_K" ]; then
+    elif [ "$PHASE" = "madeup" ]; then
+        # Phase-2 — author+solve beginner tasks the *intended* way. Mastery =
+        # easy_a still clean AND madeup 100% AND ≥ MADEUP_MIN_TASKS authored
+        # (so it cannot graduate on an empty/tiny set).
+        if [ "$EASYA_CLEAN" = "1" ] && [ "$MADEUP_CLEAN" = "1" ] && [ "$MADEUP_COUNT" -ge "$MADEUP_MIN_TASKS" ]; then
+            STREAK=$((STREAK + 1))
+        else
+            STREAK=0
+        fi
+        PROBE_OUTPUT="[PHASE: madeup | clean-streak: $STREAK/$GRADUATION_K | authored: $MADEUP_COUNT/$MADEUP_MIN_TASKS]
+Curriculum (§2.1/§2.2): AUTHOR a beginner data/ARC_madeup/ task that isolates ONE
+concept not yet handled — e.g. object size≠1, object count≠1, multi-object
+selection (which object matters), grid resize, unequal in/out grid sizes, grid
+size tied to an object property, or example pairs≠2 — then make the STRUCTURE
+solve it by expressing that task's specific rule, WITHOUT expanding concepts and
+WITHOUT hand-coding a detector (F2/F3). Graduate to training only when the
+structure handles a reasonable spread of these unaided.
+===== MADEUP PROBE (run_learn.py --task-dir data/ARC_madeup) =====
+$MADEUP_SCORE
+===== REGRESSION GUARD (easy_a must stay 100%) =====
+ARC_easy_a: $EASYA_SCORE"
+        PROBE_SCORE="madeup: $MADEUP_SCORE | easy_a: $EASYA_SCORE"
+        log "madeup probe: $MADEUP_SCORE | easy_a: $EASYA_SCORE | authored: $MADEUP_COUNT | clean-streak: $STREAK/$GRADUATION_K"
+
+        if [ "$GRADUATION_ENABLED" = "1" ] && [ "$STREAK" -ge "$GRADUATION_K" ]; then
             PHASE="training"
             GRAD_ITER="$ITER"
-            phase_write "training" "$EASY_STREAK" "$ITER"
-            log "*** PHASE GRADUATION: easy → training at iter $ITER ($EASY_STREAK consecutive mastery iters) ***"
+            STREAK=0
+            phase_write "training" 0 "$ITER"
+            log "*** PHASE GRADUATION: madeup → training at iter $ITER ***"
             {
                 echo ""
-                echo "> **PHASE GRADUATION** at iter $ITER — easy → training."
-                echo "> Easy slice + all of easy_a solved 100% for $EASY_STREAK consecutive iters (K=$GRADUATION_K)."
-                echo "> Probe now samples data/ARC_AGI/training/ (ARC-AGI-2). easy + easy_a kept as regression guard."
-                echo "> Per PROMPT.md §2.2 the loop may now also author data/ARC_madeup/ tasks and will end itself when sufficiently developed."
+                echo "> **PHASE GRADUATION** at iter $ITER — madeup → training."
+                echo "> data/ARC_madeup/ ($MADEUP_COUNT tasks) + easy_a solved 100% for $GRADUATION_K consecutive iters (K=$GRADUATION_K)."
+                echo "> The structure now expresses task-specific rules for beginner concepts unaided."
+                echo "> Probe now samples data/ARC_AGI/training/ (ARC-AGI-2). easy_a + madeup kept as regression guard."
             } >> "${LOG_DIR}/session_log.md"
         else
-            phase_write "easy" "$EASY_STREAK" "null"
+            phase_write "madeup" "$STREAK" "null"
+        fi
+
+    else
+        # Phase-1 — easy_a. Master the supplied beginner suite the intended way.
+        if [ "$EASYA_CLEAN" = "1" ]; then
+            STREAK=$((STREAK + 1))
+        else
+            STREAK=0
+        fi
+        PROBE_OUTPUT="[PHASE: easy_a | clean-streak: $STREAK/$GRADUATION_K]
+Milestone (§2.1) = solve ALL of data/ARC_easy_a the intended way (the four
+observation criteria, not score). On mastery the loop graduates to the `madeup`
+phase, where it authors its own beginner tasks.
+===== EASY_A PROBE (run_learn.py --task-dir data/ARC_easy_a) =====
+$EASYA_SCORE"
+        PROBE_SCORE="easy_a: $EASYA_SCORE"
+        log "easy_a probe: $EASYA_SCORE | clean-streak: $STREAK/$GRADUATION_K"
+
+        if [ "$GRADUATION_ENABLED" = "1" ] && [ "$STREAK" -ge "$GRADUATION_K" ]; then
+            PHASE="madeup"
+            STREAK=0
+            phase_write "madeup" 0 "null"
+            log "*** PHASE GRADUATION: easy_a → madeup at iter $ITER ***"
+            {
+                echo ""
+                echo "> **PHASE GRADUATION** at iter $ITER — easy_a → madeup."
+                echo "> All of data/ARC_easy_a solved 100% for $GRADUATION_K consecutive iters (K=$GRADUATION_K)."
+                echo "> The loop now authors its own beginner tasks under data/ARC_madeup/ (§2.2)"
+                echo "> and must solve them via the structure, unaided, before attempting ARC training."
+            } >> "${LOG_DIR}/session_log.md"
+        else
+            phase_write "easy_a" "$STREAK" "null"
         fi
     fi
 
@@ -335,7 +412,7 @@ PROMPT
         fi
         # The hard reset also discarded this iter's phase-state write; restore it
         # from the in-memory phase so the file stays in sync across a restart.
-        phase_write "$PHASE" "$EASY_STREAK" "$GRAD_ITER"
+        phase_write "$PHASE" "$STREAK" "$GRAD_ITER"
     else
         # CLEAN or NEUTRAL — accept the work.
         git add -A

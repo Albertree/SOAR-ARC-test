@@ -43,39 +43,67 @@ asked to "improve ARC score." Each iter you:
 "Smallest" means: if the gap can be split into two, do the smaller half. The
 loop will keep running — there is always a next iter.
 
-### 2.1 Two phases: `easy` → `training`
+### 2.1 Three phases: `easy_a` → `madeup` → `training`
 
-The loop runs in one of two phases; the probe header in your context tells you
-which. The phase is managed by `run_loop.sh` (state file
-`logs/_phase_state.json`), **not** by you — never edit that file to skip ahead.
+The loop walks a **three-phase development curriculum**; the probe header in
+your context tells you which phase you are in. The phase is managed by
+`run_loop.sh` (state file `logs/_phase_state.json`), **not** by you — never edit
+that file to skip ahead. (The old user-authored `data/ARC_easy/` slice was
+*retired*: some of its tasks were ill-posed — identical inputs mapped to
+different outputs — so it is no longer a probe. The supplied beginner suite is
+now `data/ARC_easy_a/` alone.)
 
-- **`easy` phase** (default). The probe and your target are the controlled
-  slice tasks (`data/ARC_easy/`, `data/ARC_easy_a/`). Goal: make the agent
-  solve them *the way the user intends* (the four observation criteria above).
-  The graduation milestone is **the easy slice AND *all* of `data/ARC_easy_a/`
-  solved 100%** for several consecutive iters; the loop then switches to
-  `training` automatically. (The loop probes both each iter; the `easy_a`
-  milestone probe runs every task in that folder, no limit.) Note: the
-  `easy000c–i` tasks need object/G0 analysis, which is **now in scope** as
-  ladder rung **R1** (`docs/BACKLOG_LOOP.md`) — the milestone is therefore
-  reachable, not a structural wall. (Under the retired `SLICE_1_LOOP.md` it was
-  unreachable, which is what stalled the loop at iter 8.)
+- **`easy_a` phase** (default). The probe and your target are *all* of
+  `data/ARC_easy_a/`. Goal: make the agent solve them *the way the user intends*
+  (the four observation criteria above), not by score. The `easy000c–i` tasks
+  need object/G0 analysis (ladder rung **R1**, `docs/BACKLOG_LOOP.md`). The
+  graduation milestone is **all of `data/ARC_easy_a/` solved 100%** for K
+  consecutive iters; the loop then switches to `madeup` automatically.
+
+- **`madeup` phase**. Now the loop builds its **own beginner curriculum**. You
+  *author* minimal ARC-style tasks under `data/ARC_madeup/` (the one F1-exempt
+  corner of `data/`), each isolating **one concept the structure does not yet
+  handle**, and then make the **structure itself** solve them — by expressing
+  that task's specific rule through the existing mechanisms, *without expanding
+  the concept vocabulary and without hand-coding a detector* (F2/F3). Concepts
+  to climb, roughly one per task, easy variant → harder variant:
+
+  - an object whose **size ≠ 1** (not a single pixel);
+  - a grid with **object count ≠ 1** (more than one object);
+  - **multi-object selection** — several objects present and *which one* the
+    rule acts on is the crux (the selector is the real content);
+  - the **grid size changes** between input and output;
+  - input and output **grid sizes are not equal** to each other;
+  - the **grid size is a function of an object's property/feature** (e.g. output
+    height = count or size of some object);
+  - the example pairs are **not exactly 2** (one pair, or three+).
+
+  The point is the *selector / argument expression* (`unique`, `argmax`,
+  `filter`, `position-of`, `size-of`, …) that lets the structure name what a
+  task acts on — this is exactly the §2.5 "lift the selection" work, climbed on
+  tasks you design to expose it. Author the smallest task you expect to **fail**;
+  a task you can already pass teaches nothing. easy_a stays as a regression
+  guard. The loop graduates to `training` only once the structure handles a
+  reasonable spread of these concepts **unaided** — i.e. running the structure
+  alone (no architectural concept-expansion that iter) solves the authored
+  tasks by expressing each one's specific rule. That is the user's bar:
+  *concept-free, structure-only, task-specific-rule* competence.
 
 - **`training` phase**. The probe now samples real ARC tasks
-  (`data/ARC_AGI/training/`, `--split training`). The agent has shown it can do
-  the easy slice; now the job is to **make its competence *grow* onto harder,
-  unseen tasks by extending the system, not by hand-coding per-task detectors**.
-  In this phase, prioritize gaps whose fix is *general* — a new `compare`
-  capability, a new condition matcher, a property/relation/util primitive, or
-  (the prize) getting `anti_unification.unify()` to fire and lift two
-  task-specific programs into one rule with `covers` > 1. A training task you
-  solve by a mechanism that also helps the *next* unseen task is real progress;
-  one you solve by a bespoke `_try_*`-style special case is the documented
-  failure mode (see `arbor.md` 진단 #1/#2/#5) and trips the forbidden signals.
+  (`data/ARC_AGI/training/`, `--split training`). The job is to **make
+  competence *grow* onto harder, unseen tasks by extending the system, not by
+  hand-coding per-task detectors**. Prioritize gaps whose fix is *general* — a
+  new `compare` capability, a new condition matcher, a property/relation/util
+  primitive, or (the prize) getting `anti_unification.unify()` to fire and lift
+  two task-specific programs into one rule with `covers` > 1. A training task
+  you solve by a mechanism that also helps the *next* unseen task is real
+  progress; one you solve by a bespoke `_try_*`-style special case is the
+  documented failure mode (see `arbor.md` 진단 #1/#2/#5) and trips the forbidden
+  signals.
 
-Regression rule: a `training`-phase iter must not break the easy slice or
-`easy_a`. The loop keeps both as a regression guard in the probe; if either
-drops below 100%, fixing that regression *is* this iter's gap.
+Regression rule: a later-phase iter must not break an earlier phase's probe.
+The loop keeps `easy_a` (and, once past it, `madeup`) as regression guards; if
+either drops below 100%, fixing that regression *is* this iter's gap.
 
 ### 2.2 Challenge escalation & honest termination
 
@@ -85,33 +113,37 @@ like progress but move the system nowhere. That is worse than doing nothing.
 The rule for this project: **every commit must close a real gap, or the iter
 makes no commit at all** (§5 already blesses the no-op iter).
 
-So, once `easy_a` is mastered and the generalization machinery looks sound, do
-**not** keep polishing the easy slice. **Go looking for harder work, on
-purpose.** In rough order of preference:
+The phase you are in (§2.1) tells you *where* to look for that gap:
 
-1. **Take on ARC-AGI-2 training tasks the agent currently fails.** `data/ARC_AGI/`
-   is ARC-AGI-2 (1000 training / 120 evaluation). The probe samples it in the
-   `training` phase; you may also run any slice yourself:
-   `python run_learn.py --split training --limit N --shuffle --seed 42`.
-   Pick one the agent fails *for a reason you can name*, and close that
-   underlying capability gap so the fix generalizes.
+1. **`madeup` phase — author your own beginner curriculum (the core work
+   here).** Once `easy_a` is mastered, do **not** keep polishing it. Write a
+   minimal ARC-style task under `data/ARC_madeup/` (standard
+   `{"train":[…],"test":[…]}` JSON — see `data/ARC_madeup/README.md`) that
+   isolates **one** of the §2.1 concepts the structure cannot yet express (object
+   size≠1, object count≠1, multi-object selection, grid resize, unequal in/out
+   sizes, size↔object-property, pairs≠2), then make the **structure** solve it —
+   by lifting the right *selector / argument expression* (§2.5), **not** by
+   hand-coding a detector and **not** by inventing a new concept the task happens
+   to need. Author the smallest task you expect to *fail*; a challenge you can
+   already solve teaches nothing. Build a small ladder (easy variant → harder
+   variant) and climb it: `python run_learn.py --task-dir data/ARC_madeup/`.
+   `data/ARC_madeup/` is the **one exempt corner** of frozen `data/` (F1 excludes
+   it); tasks there are tracked and pushed, so they persist. The graduation bar
+   is the structure handling a reasonable spread of these *unaided* (§2.1).
 
-2. **Author your own challenge tasks.** When no supplied task surfaces a fresh,
-   nameable gap, *invent one*. Write a minimal ARC-style task under
-   `data/ARC_madeup/` (standard `{"train":[…],"test":[…]}` JSON — see
-   `data/ARC_madeup/README.md`) that isolates a specific capability you suspect
-   is missing, then make the agent solve it by **extending the system**:
-   `python run_learn.py --task-dir data/ARC_madeup/`. Author the smallest task
-   you expect to *fail* — a challenge you can already solve teaches nothing.
-   Build a small ladder of these (easy variant → harder variant) and climb it.
-   `data/` is frozen, but `data/ARC_madeup/` is the **one exempt corner** you may
-   write in freely (F1 excludes it); tasks there are tracked and pushed, so they
-   persist.
+2. **`training` phase — take on ARC-AGI-2 tasks the agent fails.**
+   `data/ARC_AGI/` is ARC-AGI-2 (1000 training / 120 evaluation). The probe
+   samples it; you may also run any slice yourself:
+   `python run_learn.py --split training --limit N --shuffle --seed 42`. Pick one
+   the agent fails *for a reason you can name*, and close that underlying
+   capability gap so the fix generalizes. When a supplied training task surfaces
+   no fresh gap, fall back to authoring a `data/ARC_madeup/` task (as in 1) that
+   exposes the next one.
 
 3. **Generalize across what is already solved.** Two task-specific programs that
    share a skeleton are an invitation for `anti_unification.unify()` to lift
    them into one rule with `covers` > 1. Driving rule coverage up is always real
-   work.
+   work, in any phase.
 
 You are **not** required to solve every task — ARC is not fully solvable by this
 early agent, and that is expected. The bar is *honest motion*: each iter either
@@ -128,7 +160,7 @@ is to **stop the loop**, not to spin. Signal this by writing
 - a dated, evidence-backed argument that development has converged (what the
   agent can now do the intended way; which positive signals plateaued; what you
   tried to challenge it with and why nothing surfaced a real gap),
-- the rule-coverage figure and the easy / easy_a / training standings,
+- the rule-coverage figure and the easy_a / madeup / training standings,
 - the honest remaining limitations (so the user can decide whether to lift the
   bar).
 
@@ -201,20 +233,23 @@ intended system, not toward a convenient local optimum. Read **all** of it:
 13. `docs/RULE_FORMAT.md` — current rule schema.
 14. The output of the probe run that `run_loop.sh` just executed (in the
     prompt context as `${PROBE_OUTPUT}` — see Step 2). The loop may be in the
-    **easy** phase (slice tasks) or the **training** phase (ARC_AGI training);
-    the probe header states which. Treat the probe as a *microscope*, not a
-    target. Until it targets the slice's tasks, also run the slice's own
-    target task(s) per `docs/SLICE_1_LOOP.md` directly.
+    **easy_a**, **madeup**, or **training** phase (§2.1); the probe header states
+    which and the exact command it ran. Treat the probe as a *microscope*, not a
+    target. You may also run any slice yourself —
+    `python run_learn.py --task-dir data/ARC_easy_a` (easy_a),
+    `--task-dir data/ARC_madeup/` (madeup), or `--split training` (training).
 
 ### Step 2 — Diagnose one gap
 
-The probe (`run_learn.py --limit 3 --shuffle --seed <fixed>`) ran *before*
-you were invoked. Its output is in `${PROBE_OUTPUT}`. The probe is **not** a
-score to maximize — it is a microscope. Use it to surface *where* the system
-is blind. Failure patterns to look for:
+The phase-appropriate probe (`run_learn.py --task-dir data/ARC_easy_a` in the
+easy_a phase, `--task-dir data/ARC_madeup/` in madeup, or `--split training
+--limit 3 --shuffle --seed <fixed>` in training) ran *before* you were invoked.
+Its output is in `${PROBE_OUTPUT}`. The probe is **not** a score to maximize —
+it is a microscope. Use it to surface *where* the system is blind. Failure
+patterns to look for:
 
-- The agent solved 0/3 — Slow path is producing no rules at all. Likely
-  cause: `extract_pattern`, `generalize`, or `save_rule` is unwired.
+- The agent solved 0 of the probe — Slow path is producing no rules at all.
+  Likely cause: `extract_pattern`, `generalize`, or `save_rule` is unwired.
 - The agent solved some but `procedural_memory/rule_*.json` count grew
   faster than `solved` count — `_try_*` accretion happening; anti-unification
   not firing.
@@ -317,10 +352,10 @@ commitment. Each iter re-diagnoses from scratch.
 - Plan multi-iter missions in this PROMPT.md. There are no future-session
   promises here; just the current iter's smallest step.
 - **Spin.** Do not emit a near-duplicate, cosmetic, or trivially-reshuffling
-  commit just to have committed something this iter. If the easy slice is
-  mastered and no nameable gap surfaces, you must either *escalate* the
-  challenge (§2.2: a failing ARC-AGI-2 training task, or a new
-  `data/ARC_madeup/` task you author to expose a gap), make a real no-op iter
+  commit just to have committed something this iter. If the current phase's
+  probe is mastered and no nameable gap surfaces, you must either *escalate* the
+  challenge (§2.2: author the next `data/ARC_madeup/` task that exposes a gap, or
+  in the training phase take on a failing ARC-AGI-2 task), make a real no-op iter
   (§5), or — when
   development has genuinely converged — end the loop honestly (§2.2,
   `logs/_LOOP_COMPLETE.md`). Repeating the same low-value change is the single
@@ -333,9 +368,10 @@ commitment. Each iter re-diagnoses from scratch.
 If you cannot find a smallest-step gap that satisfies §3 without tripping a
 forbidden signal, the correct iter output is:
 
-1. **First try to escalate, not idle** (§2.2). If `easy_a` is mastered, look for
-   a failing ARC-AGI-2 training task or author a `data/ARC_madeup/` task that
-   exposes a real gap — that is usually where the next defensible step is.
+1. **First try to escalate, not idle** (§2.2). If `easy_a` is mastered, author
+   the next `data/ARC_madeup/` task that exposes a real gap (the `madeup` phase's
+   core work); in the `training` phase, take on a failing ARC-AGI-2 task — that
+   is usually where the next defensible step is.
 2. If escalation also yields no defensible step *and* you judge development has
    converged, write `logs/_LOOP_COMPLETE.md` per §2.2 to end the loop honestly.
 3. Otherwise, append a `Iter <N>: no defensible step found — analysis only`

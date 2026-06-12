@@ -40,7 +40,8 @@ def parse_args():
     p = argparse.ArgumentParser(description="SOAR learning loop")
     p.add_argument("--split", default=None,
                    help="Force ARC_AGI split: 'training' (1000 tasks) or 'evaluation' (120 tasks). "
-                        "Omit to use data/ARC_easy/ when present.")
+                        "Omit (and pass no --task-dir) to default to the training split. "
+                        "The curriculum probes use --task-dir (data/ARC_easy_a, data/ARC_madeup/).")
     p.add_argument("--task-dir", default=None,
                    help="Load tasks from an arbitrary directory of *.json ARC tasks "
                         "(e.g. data/ARC_easy_a or data/ARC_madeup/). Overrides --split. "
@@ -60,8 +61,9 @@ def parse_args():
 def get_task_list(split, data_root="data", force_split=False):
     """Get sorted list of task IDs for a split.
 
-    If data/ARC_easy/ exists AND force_split is False, use it directly.
-    Pass force_split=True (via --split training/evaluation) to use ARC_AGI instead.
+    Defaults to the ARC_AGI split (the retired data/ARC_easy/ slice used to be the
+    no-flag default; the curriculum now probes via --task-dir instead). A legacy
+    data/ARC_easy/ directory, if present, is still honored for backward compat.
     """
     if not force_split:
         easy_dir = os.path.join(data_root, "ARC_easy")

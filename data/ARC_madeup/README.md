@@ -5,6 +5,24 @@ loop (Claude, inside a `run_loop.sh` session) **invents itself** to probe a
 specific capability gap. See `PROMPT.md §2.2` ("Challenge escalation & honest
 termination").
 
+**This is the `madeup` phase curriculum** (`PROMPT.md §2.1`). After mastering
+`data/ARC_easy_a/`, the loop graduates here and authors a small ladder of
+beginner tasks, each isolating **one** concept the structure cannot yet express,
+then makes the structure solve it *unaided* (no concept expansion, no hand-coded
+detector — F2/F3). Concepts to climb, roughly one per task:
+
+- an object whose **size ≠ 1** (not a single pixel);
+- a grid with **object count ≠ 1**;
+- **multi-object selection** — which of several objects the rule acts on is the crux;
+- the **grid size changes** between input and output;
+- input and output **grid sizes are not equal**;
+- the **grid size is a function of an object's property** (e.g. output size = object count);
+- the example pairs are **not exactly 2** (one, or three+).
+
+The loop graduates to the `training` phase only once the structure handles a
+reasonable spread of these (≥ `MADEUP_MIN_TASKS`, default 7) at 100% for K
+consecutive iters, with `easy_a` still clean.
+
 ## Freeze status — the one writable corner of `data/`
 
 `data/` is **frozen** (invariant F1): the supplied datasets (`ARC_easy`,

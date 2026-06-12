@@ -489,25 +489,37 @@ External-wiki-only (not mirrored; consult the wiki if present):
 | `[[object-level-lifting]]` | §8 lifting rationale |
 | `[[impasse]]` | §4 substate semantics |
 
-### Loop phases (easy → training → challenge → done)
+### Loop phases (easy_a → madeup → training → done)
 
-`run_loop.sh` runs in an **`easy`** phase (probe = controlled slice tasks in
-`data/ARC_easy*/`) and graduates to a **`training`** phase once the **easy slice
-AND *all* of `data/ARC_easy_a/`** are solved 100% for K consecutive iters
-(K=`GRADUATION_K`, default 5). The `training` phase probes `data/ARC_AGI/`, which
-is **ARC-AGI-2** (1000 training / 120 evaluation), via `--split training`, while
-keeping easy + easy_a as a regression guard. Graduation is **criteria-gated and
-logged** (state file `logs/_phase_state.json`), never a silent auto-grow of the
-budget — see `docs/INVARIANTS.md F6`, `PROMPT.md §2.1`.
+`run_loop.sh` walks a **three-phase development curriculum** (`PROMPT.md §2.1`):
 
-Beyond the supplied data, the loop is expected to **escalate**: take on
-ARC-AGI-2 training tasks it fails, or **author its own probe tasks** under
-`data/ARC_madeup/` — the one F1-exempt corner of the otherwise-frozen `data/`
-(run via `run_learn.py --task-dir data/ARC_madeup/`) — rather than emit
-meaningless near-duplicate commits (`PROMPT.md §2.2`). When development has genuinely converged, an iter may **end
-the loop honestly** by writing `logs/_LOOP_COMPLETE.md` (justification +
-standings); `run_loop.sh` detects it at the top of the next iter and stops (the
-user resumes by deleting it).
+1. **`easy_a`** (default) — probe = *all* of `data/ARC_easy_a/`. Graduates to
+   `madeup` once that suite is solved 100% the intended way for K consecutive
+   iters (K=`GRADUATION_K`, default 5).
+2. **`madeup`** — the loop **authors its own beginner tasks** under
+   `data/ARC_madeup/` (the one F1-exempt corner of the otherwise-frozen
+   `data/`), each isolating one concept (object size≠1, object count≠1,
+   multi-object selection, grid resize, unequal in/out sizes, size↔object
+   property, pairs≠2), and makes the *structure* solve them unaided — without
+   expanding concepts, without hand-coding a detector. Graduates to `training`
+   once `data/ARC_madeup/` (≥ `MADEUP_MIN_TASKS`, default 7) **and** `easy_a`
+   hold 100% for K consecutive iters. easy_a is a regression guard throughout.
+3. **`training`** — probe = `data/ARC_AGI/` (**ARC-AGI-2**, 1000 training / 120
+   evaluation) via `--split training`, keeping easy_a + madeup as regression
+   guards.
+
+(The old user-authored `data/ARC_easy/` slice was retired — some tasks were
+ill-posed.) Every graduation is **criteria-gated and logged** (state file
+`logs/_phase_state.json`), never a silent auto-grow of the budget — see
+`docs/INVARIANTS.md F6`, `PROMPT.md §2.1`.
+
+Beyond the supplied data the loop is expected to **escalate** rather than emit
+near-duplicate commits (`PROMPT.md §2.2`): author the next `data/ARC_madeup/`
+task that exposes a gap, or in the training phase take on an ARC-AGI-2 task it
+fails. When development has genuinely converged, an iter may **end the loop
+honestly** by writing `logs/_LOOP_COMPLETE.md` (justification + standings);
+`run_loop.sh` detects it at the top of the next iter and stops (the user resumes
+by deleting it).
 
 The reward is unchanged across all phases: extend the *system* so competence
 generalizes; do not hand-code per-task detectors.

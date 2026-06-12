@@ -154,16 +154,26 @@ covers)·P3(au_traced_frac) 가 *함께* 오르는 방향만 진짜 전진이다
 아래로 갈수록 *위 rung 을 전제*한다 (bottom-up). 각 rung 은
 `arbor-modules.md` 의 Gap 한 줄을 닫고, 닫히면 다음 rung 의 전제가 된다.
 
-> **이 브랜치(test31)는 pre-iter clean-start 노드에서 시작한다.** 즉 R0 의
+> **이 브랜치(test32)는 test31 의 §2.5 인프라 노드(cffa31f)에서 분기했다.** R0 의
 > 산물(DSL substrate·`constant_output`·규칙)은 *아직 트리에 없다* — 이전 test30
 > 의 iter 1~8 이 만든 것을 의도적으로 버리고 새 프롬프트로 다시 짓는 중이다.
 > **따라서 현재 상태 = R0 미구축. R0 가 첫 타겟이다.** (R0 가 *달성 가능*함은
 > test30 이 이미 증명했다 — 다만 그 구현 코드는 가져오지 않는다.)
+>
+> **개발 순서(2026-06-12 개정, PROMPT.md §2.1)**: 구 `data/ARC_easy/` 슬라이스는
+> 은퇴(일부 ill-posed)했고, 루프는 이제 3단계 커리큘럼 `easy_a → madeup →
+> training` 을 걷는다. 래더 rung(R0..R6)은 그대로지만, **`madeup` 단계에서 루프가
+> §2.1 의 초급 개념(객체 size≠1, count≠1, 다객체 선택, 그리드 resize, in/out 크기
+> 불일치, 크기↔객체속성, 예시쌍≠2)을 *직접 저작* 해 R1/R3 의 선택-lift 를
+> 개념확장·손코딩 없이 구조만으로 풀어내는 것이 training 도전의 전제**다.
 
 ### R0 — GRID-level COMM-copy (첫 rung — 지금 (재)구축 대상)
 
 - 역량: 모든 example G1 이 동일 → Inter-Grid role==G1 COMM → test G1 = 공통값.
-  → easy000a/b + easy0001/5/9/13 (constant-output) 를 *값-agnostic* 하게.
+  → easy000a/b (constant-output) 를 *값-agnostic* 하게. (구 `data/ARC_easy/` 의
+  easy0001/5/9/13 은 슬라이스 은퇴로 삭제됨 — 이제 supplied 초급 suite 는
+  `data/ARC_easy_a/` 뿐; constant-output 변종이 더 필요하면 §6 의 `madeup` 단계에서
+  `data/ARC_madeup/` 에 직접 저작한다.)
 - 빌드: `make_grid`+`coloring` 정적 DSL (F3 — 이 둘뿐, 영구), `constant_output`
   condition matcher, covers-무결성 게이트, COMM-copy 예측 경로. transformation
   은 두 primitive 의 *합성*으로만.

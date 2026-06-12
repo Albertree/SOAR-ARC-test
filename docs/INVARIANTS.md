@@ -114,10 +114,12 @@ broke reproducibility by silently changing the evaluation condition mid-run.
 No script may *silently* increase its task budget — a budget that creeps up
 inside a run with no record is forbidden.
 
-**Allowed exception — the easy→training phase graduation.** The loop may move
-from the `easy` phase to the `training` phase *deterministically and
-auditably*: the switch must be (a) **criteria-gated** (the easy probe solved
-cleanly for K consecutive iters, K fixed in the script), (b) **logged** to
+**Allowed exception — the `easy_a → madeup → training` phase graduations.** The
+loop may walk its three-phase curriculum (`PROMPT.md §2.1`) *deterministically
+and auditably*: each switch must be (a) **criteria-gated** (the current phase's
+probe solved cleanly for K consecutive iters, K fixed in the script; the
+`madeup → training` switch additionally requires ≥ `MADEUP_MIN_TASKS` authored
+tasks so it cannot graduate on an empty set), (b) **logged** to
 `logs/session_log.md` *and* recorded in the phase state file
 `logs/_phase_state.json`, and (c) **monotonic and reproducible** — same seed +
 same history ⇒ same phase. This is a *named, recorded change of evaluation
