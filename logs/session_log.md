@@ -3571,3 +3571,33 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 3s
 - Log: logs/learn_20260612_173032.log
+
+---
+## Learning Loop -- 2026-06-12 17:41
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_174151.log
+
+---
+## Learning Loop -- 2026-06-12 17:41
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_174153.log
+
+---
+## Learning Loop -- 2026-06-12 17:43
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 3
+- Time: 1s
+- Log: logs/learn_20260612_174332.log
