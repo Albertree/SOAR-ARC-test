@@ -17,6 +17,8 @@ from agent.dsl_expr.render import render_grid_via_primitives, render_object_at
 from agent.dsl_expr.selection import (
     analyze_object_move,
     background_of,
+    corner_anchor,
+    extent_of,
     unique_object,
 )
 
@@ -31,6 +33,11 @@ PLACE_OBJECT_DSL = "place_object_constant"
 #: same make_grid ∘ coloring composition, but the per-test target is the test
 #: object's own anchor plus the cross-pair constant displacement.
 PLACE_OBJECT_RELATIVE_DSL = "place_object_relative"
+
+#: action.dsl for the constant-*corner* object move family (R1, easy000g) —
+#: same make_grid ∘ coloring composition, but the per-test target is a
+#: grid-relative corner anchor recomputed against each test grid's own size.
+PLACE_OBJECT_CORNER_DSL = "place_object_corner"
 
 
 # ======================================================================
@@ -365,6 +372,17 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_constant_offset_rule(patterns)
 
+        # Strategy 0d (R1, easy000g): the constant-*corner* object-move family.
+        # If the `object_corner_target` matcher fires (single object moved flush
+        # into one shared grid corner across examples, but with neither a constant
+        # absolute target nor a constant offset), emit a canonical {condition,
+        # action} rule whose action recomputes the corner anchor against each test
+        # grid's own size at predict time — value-agnostic in color, source
+        # position, and grid size. Recognition is delegated to the registered
+        # matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._object_corner_target_rule(patterns)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -468,6 +486,37 @@ class GeneralizeOperator(Operator):
                 "args": {},
             },
             "concept": "move_object_by_constant_offset",
+            "category": "object_move",
+            "confidence": 1.0,
+        }
+
+    def _object_corner_target_rule(self, patterns):
+        """Emit the canonical constant-corner move rule when the matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the
+        registered `object_corner_target` matcher (agent/conditions/), and the
+        result is a schema-canonical {condition, action} rule. The shared corner
+        is a *grid-relative* reading (the cross-pair COMM on which canvas corner
+        the object lands in); the per-test anchor is recomputed from each test
+        grid's own size at predict time, so one rule covers easy000g across
+        differing grid sizes. A sibling of the constant-target/offset readings,
+        so it lifts into the same `place_object` abstraction (R3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("object_corner_target", patterns, params):
+            return None
+        move = patterns.get("object_move") or {}
+        evidence = len(move.get("per_pair") or [])
+        return {
+            "condition": {
+                "type": "object_corner_target",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": PLACE_OBJECT_CORNER_DSL,
+                "args": {"corner": move.get("constant_corner")},
+            },
+            "concept": "move_object_to_grid_corner",
             "category": "object_move",
             "confidence": 1.0,
         }
@@ -650,6 +699,17 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Constant-*corner* object move (R1, easy000g). Recompute the shared grid
+        # corner from the example outputs, then for each test pair render the test
+        # object flush into that corner of its *own* canvas (size from G0 — P5).
+        if action and action.get("dsl") == PLACE_OBJECT_CORNER_DSL:
+            for i, grid in self._place_object_corner_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -731,6 +791,38 @@ class PredictOperator(Operator):
             width = len(g0.raw[0]) if g0.raw else 0
             r0, c0 = obj["position"]
             target = (r0 + offset[0], c0 + offset[1])
+            grids[i] = render_object_at(
+                height, width, bg, obj["pixels"], target,
+            )
+        return grids
+
+    @staticmethod
+    def _place_object_corner_grids(task):
+        """Map test-pair index -> predicted grid for the constant-corner move.
+
+        The corner is the cross-pair COMM (a *grid-relative* reading) recomputed
+        from the example outputs; each test object's anchor is the corresponding
+        corner of its *own* G0 canvas (color/shape/background/size also from its
+        own G0 — never a test G1, P5). Returns {} when the move analysis yields no
+        constant corner."""
+        move = analyze_object_move(task.example_pairs)
+        corner = move.get("constant_corner")
+        if corner is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            obj = unique_object(g0.raw)
+            if obj is None:
+                continue
+            bg = background_of(g0.raw)
+            height = len(g0.raw)
+            width = len(g0.raw[0]) if g0.raw else 0
+            obj_h, obj_w = extent_of(obj)
+            target = corner_anchor(corner, height, width, obj_h, obj_w)
             grids[i] = render_object_at(
                 height, width, bg, obj["pixels"], target,
             )

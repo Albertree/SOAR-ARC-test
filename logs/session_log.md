@@ -437,3 +437,103 @@ target, grid-size-relative) / i (grid resize) need new argument vocabulary
 (`corner-of-grid` relation; unequal in/out size) — but those add families and,
 until the R5 reuse path exists, would re-press P1/P2 downward, so R5 (teach the
 fast path to read canonical rules) is the higher-leverage next step.
+
+---
+## Learning Loop -- 2026-06-12 19:15
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260612_191519.log
+
+---
+## Learning Loop -- 2026-06-12 19:23
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_192257.log
+
+---
+## Learning Loop -- 2026-06-12 19:23
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_192312.log
+
+---
+## Iter 6 — 2026-06-12T19:23 — branch test32
+
+**Diagnosis**: R1 is still the lowest *unproven* rung (BACKLOG_LOOP §3 done-when:
+easy000c–i solved + easy_a 100%); the probe showed 7/9 with easy000g/i open.
+easy000g is the smaller half — a single object moved flush into a *grid corner*
+(bottom-right) on canvases of differing sizes: neither `constant_target` nor
+`constant_offset` is constant across pairs (targets (3,3)/(2,4), offsets
+(+2,+2)/(+1,0)), but every output anchor is the same corner. (easy000i is left
+for later — it additionally needs grid *resize*, a separate concept.) The fix is
+a new *grid-relative position* reading, which is argument/relation vocabulary
+growth (§2.5-1, explicitly encouraged) — not a new transformation, not a `_try_*`.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — added the relation vocabulary `corner_anchor`
+  (top-left anchor that flush-places an obj of given extent into a named grid
+  corner — a *function of the canvas size*, so it transfers across grid sizes a
+  literal target cannot) + `corners_matching` + `extent_of`, and a third
+  `constant_corner` reading in `analyze_object_move` (sibling of constant_target/
+  offset: the cross-pair COMM on *which corner*, via per-pair corner-set
+  intersection). P5 material.
+- `agent/conditions/object_corner_target.py` (new matcher) — fires when every
+  example is a single object moved (color/shape/size kept) into one shared corner
+  and neither absolute target nor offset is constant (so the three move readings
+  stay disjoint). Registered → P5 +1 (4→5).
+- `agent/active_operators.py` — `_object_corner_target_rule` GeneralizeOperator
+  strategy (emits canonical `place_object_corner` rule, recognition delegated to
+  the matcher — *not* a `_try_*`/`_apply_*` method, F2-clean) + PredictOperator
+  branch + `_place_object_corner_grids` (renders the test object flush into the
+  recomputed corner of its *own* G0 canvas — P5 variable origin; make_grid ∘
+  coloring only, F3-clean). Net additions accompanied by the new condition
+  matcher → F8-clean.
+- `program/anti_unification.py` — registered `place_object_corner →
+  constant_corner` in `_OBJECT_MOVE_READING` so the corner move is a liftable
+  object-move sibling.
+- `agent/memory.py` — generalized `_consolidate_object_move` to also *re-lift*:
+  when an abstract place_object rule already exists and a standalone concrete rule
+  carries a reading it doesn't yet range over (the corner), it folds the new
+  reading into the abstraction's `readings` and absorbs its covers, via the same
+  single AU call site (synthesizes one concrete per distinct reading and routes
+  through `save_rule`→`unify`). Idempotent (re-discovered corner moves absorb at
+  save time). This is what keeps g raising covers instead of spawning rule_003.
+- `procedural_memory/rule_002.json` — now `readings`=[constant_corner,
+  constant_offset, constant_target], `covers`=6 (added easy000g).
+- `tests/test_corner_move.py` (new) — 6 tests: corner anchor is grid-relative,
+  matcher fires/abstains correctly, the analysis distinguishes corner from
+  target/offset, the corner reading re-lifts into place_object (covers up, no new
+  family), and unify lifts all three readings.
+
+**Probe before**: easy_a 7/9; rules=2 (a,b / place_object covers c,d,h,e,f);
+  P1=3.5, P2=3.5, P3=0.5, P5=4
+**Probe after** : easy_a 8/9 (easy000g now CORRECT); rules=2 (a,b / place_object
+  covers c,d,h,e,f,g); P1=4.0, P2=4.0, P3=0.5, P5=5
+
+**Invariants**: forbidden=none (F1 frozen-diff=0; F2 no new _try_/_apply_; F3 no
+new DSL primitive; F8 satisfied via agent/conditions/); positives = P1 +0.5,
+P2 +0.5, P5 +1. Verdict CLEAN (3 positive deltas). 29/29 tests pass. This is the
+§2.5-4 real-progress direction: a new capability *folded into* the existing
+abstraction (covers 5→6) rather than adding a family — rule count held at 2.
+
+**Next gap (note for future iter)**: only easy000i remains for easy_a 100% — it
+needs grid *resize* (input 6×6 → output 5×5) plus a top-left corner placement.
+The corner reading already exists; the missing piece is an output-size reading
+(unequal in/out grid sizes) so `make_grid` can size the canvas from a learned
+function of the input, not just copy the input dims. That is a genuinely new
+argument-vocabulary axis (size-of / output-dims), still R1, and once present
+easy000i should fold into place_object as a fourth reading the same way g did.
+Alternatively R5 (teach the fast path to *reuse* the stored abstract rule —
+Stored hits still 0) remains the higher-leverage long-term step.

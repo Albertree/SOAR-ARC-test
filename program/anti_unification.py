@@ -251,6 +251,7 @@ def _anti_unify_with_vars(pair_programs):
 _OBJECT_MOVE_READING = {
     "place_object_constant": "constant_target",
     "place_object_relative": "constant_offset",
+    "place_object_corner": "constant_corner",
 }
 
 

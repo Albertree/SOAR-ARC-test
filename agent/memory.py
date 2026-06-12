@@ -283,15 +283,23 @@ def save_rule(new_rule: dict, source_task: str, related_rules: list):
 
 
 def _consolidate_object_move(procedural_memory_root: str) -> None:
-    """Lift the concrete object-move family into one abstract place_object rule.
+    """Lift the object-move family into one abstract place_object rule.
 
-    Gathers the concrete (un-lifted) object-move rules on disk; if ≥2 with
-    *distinct* readings exist, routes them through save_rule() → unify(). On a
-    successful lift, writes the abstract rule into the lowest-id source file
+    Two cases, both routed through the single AU call site save_rule()→unify():
+
+    (a) **first lift** — ≥2 standalone concrete rules with *distinct* readings
+        (e.g. constant_target + constant_offset) collapse into one abstraction.
+    (b) **re-lift** — an existing abstract place_object rule plus a standalone
+        concrete rule carrying a reading the abstraction does not yet range over
+        (e.g. a corner move appearing after the target/offset lift). The new
+        reading is folded in and the concrete's covers absorbed.
+
+    On success, writes the abstract rule into the lowest-id family file
     (covers = union), records the anti_unification_trace, and removes the now
-    subsumed siblings. Idempotent: once lifted, only the abstract rule remains in
-    the family, so a re-run finds <2 concrete rules and no-ops (the §2.5-4
-    direction — rule count falls while covers rises)."""
+    subsumed siblings. Idempotent: once every family reading lives in the
+    abstraction, re-discovered concretes are absorbed at save time so a re-run
+    finds no standalone concrete and no-ops (the §2.5-4 direction — rule count
+    falls while covers rises)."""
     rules = []
     for fname in sorted(os.listdir(procedural_memory_root)):
         if not (fname.startswith("rule_") and fname.endswith(".json")):
@@ -305,23 +313,48 @@ def _consolidate_object_move(procedural_memory_root: str) -> None:
         r["_path"] = path
         rules.append(r)
 
-    concrete = [
-        r for r in rules
-        if r.get("category") in _LIFTABLE_CATEGORIES
-        and _object_move_reading(r) is not None
+    family = [r for r in rules if r.get("category") in _LIFTABLE_CATEGORIES]
+    concrete = [r for r in family if _object_move_reading(r) is not None]
+    abstract = [
+        r for r in family
+        if r.get("action", {}).get("dsl") == _ABSTRACT_PLACE_OBJECT_DSL
     ]
-    if len({_object_move_reading(r) for r in concrete}) < 2:
-        return  # nothing to lift (or already lifted)
+    if not concrete:
+        return  # nothing un-lifted to fold
 
-    # Deterministic source order: by id, so the lowest-id file hosts the result.
-    concrete.sort(key=lambda r: r.get("id", 0))
-    result = save_rule(concrete[-1], concrete[-1].get("source_task", ""), concrete[:-1])
+    # Every reading the family spans: those already lifted into an abstraction
+    # plus those carried by standalone concrete rules.
+    abstract_readings = set()
+    for a in abstract:
+        abstract_readings |= set(a.get("action", {}).get("args", {}).get("readings") or [])
+    concrete_readings = {_object_move_reading(r) for r in concrete}
+    all_readings = abstract_readings | concrete_readings
+    if len(all_readings) < 2:
+        return  # not enough distinct readings to generalise
+
+    # Synthesize one concrete rule per distinct reading so unify (the single AU
+    # call site) lifts the whole family uniformly, whether a reading comes from a
+    # standalone concrete rule or an existing abstraction's readings list.
+    reading_to_dsl = {v: k for k, v in anti_unification._OBJECT_MOVE_READING.items()}
+    synth = [
+        {
+            "condition": {"type": "object_move",
+                          "params": {"min_evidence": 2}, "min_evidence": 2},
+            "action": {"dsl": reading_to_dsl[reading], "args": {}},
+            "concept": "place_object",
+            "category": "object_move",
+        }
+        for reading in sorted(all_readings)
+    ]
+    result = save_rule(synth[-1], "", synth[:-1])
     if result is None:
         return
 
-    host = concrete[0]
+    # Deterministic host: lowest-id family file. covers = union over the family.
+    family.sort(key=lambda r: r.get("id", 0))
+    host = family[0]
     covers = []
-    for r in concrete:
+    for r in family:
         for t in r.get("covers", []):
             if t not in covers:
                 covers.append(t)
@@ -329,14 +362,14 @@ def _consolidate_object_move(procedural_memory_root: str) -> None:
     source_task = host.get("source_task") or (covers[0] if covers else "")
     trace_path = result.write_trace(source_task)
 
-    abstract = dict(result.abstract_rule)
+    abstract_rule = dict(result.abstract_rule)
     entry = {
         "id": host.get("id", _next_rule_id(
             [os.path.basename(r["_path"]) for r in rules])),
-        "concept": abstract.get("concept", "place_object"),
-        "category": abstract.get("category", "object_move"),
-        "condition": abstract["condition"],
-        "action": abstract["action"],
+        "concept": abstract_rule.get("concept", "place_object"),
+        "category": abstract_rule.get("category", "object_move"),
+        "condition": abstract_rule["condition"],
+        "action": abstract_rule["action"],
         "covers": covers,
         "source_task": source_task,
         "anti_unification_trace": trace_path,
@@ -347,7 +380,7 @@ def _consolidate_object_move(procedural_memory_root: str) -> None:
 
     with open(host["_path"], "w") as fh:
         json.dump(entry, fh, indent=2)
-    for r in concrete[1:]:
+    for r in family[1:]:
         try:
             os.remove(r["_path"])
         except OSError:

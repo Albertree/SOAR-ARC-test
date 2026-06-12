@@ -63,6 +63,44 @@ def normalized_shape(obj: dict):
     return frozenset((r - r0, c - c0) for (r, c) in obj["cells"])
 
 
+def extent_of(obj: dict):
+    """The object's bounding-box ``(height, width)`` in cells."""
+    cells = obj["cells"]
+    rows = [r for r, _c in cells]
+    cols = [c for _r, c in cells]
+    return (max(rows) - min(rows) + 1, max(cols) - min(cols) + 1)
+
+
+# ---------------------------------------------------------------------------
+# relation vocabulary: grid-relative position (a corner of the canvas)
+# ---------------------------------------------------------------------------
+
+#: The four grid corners, in deterministic order.
+CORNERS = ("top_left", "top_right", "bottom_left", "bottom_right")
+
+
+def corner_anchor(name: str, height: int, width: int,
+                  obj_h: int = 1, obj_w: int = 1):
+    """Top-left anchor that places an ``obj_h × obj_w`` object flush into the
+    named grid corner. A *grid-relative* position expression (§2.5-1): unlike a
+    literal target it is a function of the canvas size, so the same reading
+    transfers across grids of different sizes (easy000g)."""
+    row = 0 if name in ("top_left", "top_right") else height - obj_h
+    col = 0 if name in ("top_left", "bottom_left") else width - obj_w
+    return (row, col)
+
+
+def corners_matching(anchor, height: int, width: int,
+                     obj_h: int, obj_w: int) -> list:
+    """Which corner name(s) an object's top-left ``anchor`` flush-occupies, given
+    the canvas size and object extent. Usually one; a degenerate full-row/column
+    object can match several, so the list is returned (caller intersects)."""
+    return [
+        name for name in CORNERS
+        if list(corner_anchor(name, height, width, obj_h, obj_w)) == list(anchor)
+    ]
+
+
 # ---------------------------------------------------------------------------
 # selection vocabulary (pick objects out of a grid)
 # ---------------------------------------------------------------------------
@@ -126,10 +164,14 @@ def analyze_object_move(example_pairs: list) -> dict:
       displacement ``out_pos − in_pos`` (the cross-pair COMM on the *relative
       displacement*). Solves the easy000e/f family, where the absolute output
       anchor varies but the move vector does not.
+    - **constant corner** — every example puts the object flush into the *same*
+      grid corner (a *grid-relative* COMM: the absolute anchor varies, but it is
+      always e.g. the bottom-right corner). Solves easy000g, where neither the
+      absolute target nor the offset is constant but the corner is.
 
     These are sibling readings of the same per-pair DIFF: which one is constant
-    is what distinguishes a fixed-target move from a fixed-offset move. Grid size
-    must be preserved for the same-canvas placement to be well-defined.
+    is what distinguishes a fixed-target / fixed-offset / fixed-corner move. Grid
+    size must be preserved for the same-canvas placement to be well-defined.
 
     Returns a symbolic dict; the matchers (agent/conditions/object_constant_target
     and object_constant_offset) decide whether they fire, and PredictOperator
@@ -151,11 +193,17 @@ def analyze_object_move(example_pairs: list) -> dict:
             if single and source is not None and target is not None
             else None
         )
+        out_corners = None
+        if single and target is not None and g1.raw:
+            oh, ow = extent_of(out_obj)
+            out_corners = corners_matching(
+                target, len(g1.raw), len(g1.raw[0]), oh, ow)
         per_pair.append({
             "single_object": single,
             "source": source,
             "target": target,
             "offset": offset,
+            "out_corners": out_corners,
             "color_preserved": bool(single and in_obj["colors"] == out_obj["colors"]),
             "shape_preserved": bool(single and normalized_shape(in_obj) == normalized_shape(out_obj)),
             "size_preserved": (
@@ -184,6 +232,16 @@ def analyze_object_move(example_pairs: list) -> dict:
         else None
     )
 
+    # A corner is constant only when *every* pair lands the object in some shared
+    # corner — the intersection of each pair's matched corners. Deterministic
+    # tie-break (sorted) keeps the chosen corner reproducible.
+    corner_sets = [set(p["out_corners"]) for p in per_pair if p.get("out_corners")]
+    constant_corner = None
+    if corner_sets and len(corner_sets) == len(per_pair):
+        common = set.intersection(*corner_sets)
+        if common:
+            constant_corner = sorted(common)[0]
+
     return {
         "per_pair": per_pair,
         "single_object_all": single_all,
@@ -192,4 +250,5 @@ def analyze_object_move(example_pairs: list) -> dict:
         "size_preserved_all": size_all,
         "constant_target": constant_target,
         "constant_offset": constant_offset,
+        "constant_corner": constant_corner,
     }
