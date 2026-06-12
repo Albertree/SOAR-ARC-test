@@ -1,6 +1,79 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 17 — 2026-06-12 — branch test32
+
+**Diagnosis**: The madeup probe was 14/14 the intended way, but it also showed
+`via=pipeline rule=none` on **every** task and **`Reused: 0`** — the learned
+`covers>1` abstractions (rule_001 `size_to_grid` covers 10, rule_002
+`place_object` covers 11) are *never activated*; every task re-derives through the
+Slow path. This is the R5 (Fast path / skill reuse, BACKLOG §3) gap: a prior
+lineage had reuse working (memory `reuse_signal_blindspot.md`, easy_a Reused
+2→9), but test32's fresh re-implementation never ported it. Root cause: the
+Fast-path applier (`PredictOperator._apply_rule`) only knows the three concrete
+*legacy* types and returns None for the abstractions, which are *incomplete
+programs* — their `?vN` variable must be resolved from the new task's own COMM
+before they can run (§2.5-2b "AU 결과는 미완성; 변수를 채우는 선택이 선행돼야"). I
+deliberately did **not** take iter16's suggested next-gap (independent non-square
+cross-product): the psignal arithmetic shows a *new* family covering 2 tasks drops
+P1/P2 from 7.67 to 6.25 (a covering-< mean rule is accretion, §2.5-4), and it
+keeps polishing the saturated size-grid family — the §2.2 spinning failure. I also
+ruled out the only un-isolated §2.1 concept, a *single* training pair: the
+`object_size_grid` matcher's `min_evidence≥2` refusal is the *correct* P3/P4
+grounded behaviour (one pair cannot tell a property-reading from a coincidental
+constant), so forcing it would violate grounding, not fill a gap.
+
+**Change**:
+- `agent/active_agent.py` — wired Fast-path **activation-by-condition-matcher** for
+  abstract rules (R5 / §2.5-2b), scoped to the simplest family (`size_to_grid`).
+  New `_abstract_reuse` table maps an abstract `action.dsl` → `(condition.type,
+  patterns_fn, render_fn)`. New `_reuse_abstract_rule(entry, task)`: (1) the stored
+  rule's *own* `condition` matcher must fire on the task's patterns (module E
+  activation — a learned rule recognising a new task); (2) the family's render_fn
+  recomputes the lifted variable from *this* task's example COMM and renders (the
+  §2.5-2b "fill the hole from COMM" step — reuse of the abstraction, not Slow-path
+  rediscovery); (3) a safety gate (`_reproduces_examples`, via a `test_pairs =
+  example_pairs` shim) requires the resolved program to reproduce *every* example
+  output exactly, else reuse is declined and the Slow path runs unchanged — so
+  reuse can only *skip*, never *break*, a solvable task. All new code lives in
+  `active_agent.py` (no `active_operators.py` edit → no F2/F8/P6 exposure; the
+  render reuses the existing static `_place_size_grid_grids`).
+- `tests/test_abstract_rule_reuse.py` (new, 5 tests) — reuse fires on a square and
+  a non-square size-grid task (`method == "stored_rule"`); it abstains on a move
+  task (easy000c, matcher declines every stored rule); the safety gate rejects a
+  mis-grounding render_fn and accepts the genuine one; the activation table is
+  scoped to `size_to_grid` for this slice.
+
+**Probe before**: easy_a 9/9 (all `via=pipeline`, Reused 0); madeup 14/14 (all
+  `via=pipeline rule=none`, **Reused 0**); rules=3 (place_object covers 11,
+  size_to_grid covers 10, copy_common covers 2); 23 tasks / 3 rules; P1=7.67,
+  P2=7.67, P3=0.67; 83 tests.
+**Probe after** : easy_a 9/9 (unchanged — size_to_grid matcher abstains on
+  move/constant tasks, reuse falls through to Slow path, Reused 0, no regression);
+  madeup 14/14 with **10 of them now `via=stored(...object_property_to_solid_square)`
+  — Reused 0 → 10**, the stored abstraction activated and resolved per task instead
+  of re-derived; rules=3 (unchanged — reuse skips the Slow-path save); P1/P2/P3
+  unchanged; 88 tests.
+
+**Invariants**: forbidden=none (F1 frozen diff 0; F2/F8 `active_operators.py` and
+  `DSL/` untouched; F3 no DSL primitive; no rule saved without a condition).
+  positives=**NEUTRAL on P1–P6** — and that is the *expected* reading: the snapshot
+  has no signal that measures *reuse* (memory `reuse_signal_blindspot.md`; INVARIANTS
+  §2 P1 only moves when a *new* task enters a rule's covers, but these tasks were
+  already covered). The real moved signal is the R5 done-when itself: `Reused 0 → 10`,
+  the stored covers>1 abstraction now *activates* on matching tasks (BACKLOG R5
+  "stored-rule hit"). A genuine gap closed that the P-metrics structurally cannot see.
+
+**Next gap (note for future iter)**: reuse is wired for `size_to_grid` only.
+  `place_object` (covers 11) still re-derives — but unlike size_to_grid its abstract
+  `action.dsl == "place_object"` is *generic*, so reuse there must first resolve
+  *which* reading (constant_target/offset/corner/resize/select) grounds the task
+  before rendering (a richer §2.5-2b resolution than size_to_grid's self-resolving
+  renderer). Extending `_abstract_reuse` to `place_object` (and `copy_common`) would
+  carry Reused onto the easy_a guard too (Reused 0 → ~9 there), proving cross-family
+  reuse — the R5 "stored hit diversity ↑" signal — without touching P1/P2.
+
+---
 ## Iter 16 — 2026-06-12 — branch test32
 
 **Diagnosis**: madeup probe was 12/12, but every output the size-grid family sizes
@@ -1710,3 +1783,83 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_210614.log
+
+---
+## Learning Loop -- 2026-06-12 21:09
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_210939.log
+
+---
+## Learning Loop -- 2026-06-12 21:09
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_210942.log
+
+---
+## Learning Loop -- 2026-06-12 21:12
+
+- Split: None, Tasks: 0
+- Correct: 0 / 0 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260612_211242.log
+
+---
+## Learning Loop -- 2026-06-12 21:13
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_211259.log
+
+---
+## Learning Loop -- 2026-06-12 21:13
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_211304.log
+
+---
+## Learning Loop -- 2026-06-12 21:13
+
+- Split: None, Tasks: 16
+- Correct: 14 / 16 (87.5%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_211318.log
+
+---
+## Learning Loop -- 2026-06-12 21:21
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_212055.log
+
+---
+## Learning Loop -- 2026-06-12 21:21
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_212101.log
