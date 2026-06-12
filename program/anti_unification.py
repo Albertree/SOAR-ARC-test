@@ -335,11 +335,72 @@ def _size_grid_synth(prop):
     }
 
 
+# ---- color_remap family (value-agnostic 1:1 recolor — R3 on a fresh family) --
+#
+# The recolor family is *value-agnostic at predict*: PredictOperator recomputes
+# the 1:1 colour map from the example pairs and ignores the literal carried in
+# action.args (active_operators.PredictOperator._recolor_grids). So that literal
+# map is pure self-description — and, left un-lifted, it makes every recolor task
+# accrete its own ``covers=1`` rule (the 168-rule failure mode, BACKLOG_LOOP
+# §2.5-3, observed live on ARC-AGI-2 0d3d703e / b1948b0a / c8f0f002 / d511f180,
+# each a distinct literal map). Registering ``color_remap`` as a lift family
+# collapses those literals into one variable: the abstraction is a single
+# ``recolor_map`` rule whose ``color_map`` is ``?v0``, covering the whole family
+# value-agnostically (covers rises, rule count falls — §2.5-4; P3 rises — the
+# abstraction carries an anti_unification_trace).
+#
+# Unlike ``object_move`` (which keys on the *dsl* name) the recolor concretes
+# share one dsl (``recolor_map``) and differ only in the ``color_map`` argument,
+# so the lift key is a canonical *string* form of that map — sortable and
+# hashable, which both the fillers list and ``sorted()`` in :func:`unify` require.
+
+def _canon_color_map(m: dict) -> str:
+    """Deterministic, sortable string form of a 1:1 colour map (the lift key /
+    filler). ``{6: 2}`` -> ``"6>2"``; ``{8: 5, 5: 8}`` -> ``"5>8;8>5"``."""
+    return ";".join(f"{k}>{v}" for k, v in sorted(m.items()))
+
+
+def _color_remap_program(rule):
+    act = rule.get("action", {})
+    if act.get("dsl") != "recolor_map":
+        return None
+    args = act.get("args", {})
+    if "color_maps" in args:            # already an abstract lift, not a source
+        return None
+    cm = args.get("color_map")
+    if isinstance(cm, dict):
+        canon = _canon_color_map(cm)
+    elif isinstance(cm, str) and not cm.startswith("?"):
+        canon = cm                      # a synth'd concrete, already canonical
+    else:
+        return None                     # variable / missing — not a concrete source
+    if not canon:
+        return None
+    return [{"dsl": "recolor_map", "args": {"color_map": canon}}]
+
+
+def _color_remap_key(rule):
+    prog = _color_remap_program(rule)
+    return prog[0]["args"]["color_map"] if prog is not None else None
+
+
+def _color_remap_synth(canon):
+    return {
+        "condition": {"type": "color_remap",
+                      "params": {"min_evidence": 2}, "min_evidence": 2},
+        "action": {"dsl": "recolor_map", "args": {"color_map": canon}},
+        "concept": "recolor_by_color_map",
+        "category": "color_remap",
+    }
+
+
 #: The lift families, tried in order. ``object_move`` lifts the four placement
 #: readings into ``place_object``; ``object_size_grid`` lifts the canvas-sizing
 #: *dimension property* (object_size, bbox_height, …) into a single
 #: ``size_to_grid`` rule — the first lift family *outside* object_move (R3 on a
-#: fresh concept, raising P3 = au_traced_frac).
+#: fresh concept, raising P3 = au_traced_frac); ``color_remap`` lifts the
+#: value-agnostic 1:1-recolor literals into one ``recolor_map`` rule, ending the
+#: per-recolor-task accretion (§2.5-3/4).
 LIFT_FAMILIES = [
     {
         "name": "object_move",
@@ -360,6 +421,16 @@ LIFT_FAMILIES = [
         "program": _size_grid_program,
         "key": _size_grid_key,
         "synth": _size_grid_synth,
+    },
+    {
+        "name": "color_remap",
+        "category": "color_remap",
+        "condition_type": "color_remap",
+        "concept": "recolor_by_color_map",
+        "list_key": "color_maps",
+        "program": _color_remap_program,
+        "key": _color_remap_key,
+        "synth": _color_remap_synth,
     },
 ]
 

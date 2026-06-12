@@ -1,6 +1,72 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 27 — 2026-06-12T23:39 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. A 60-task
+training microscope surfaced a *live* instance of the documented 168-rule failure
+mode (§2.5-3): the existing `color_remap` family **solves** real ARC-AGI-2 tasks
+(`b1948b0a` etc.) but — unlike `object_move`/`object_size_grid` — `color_remap` was
+**not registered as an AU lift family**, so every recolor task accretes its own
+`covers=1` literal rule (the scan auto-spawned `rule_007 {6:2}`). A clean inline
+probe over all 1000 training tasks found **four** such recolor tasks, each a
+*distinct* literal map (`0d3d703e`/`b1948b0a`/`c8f0f002`/`d511f180`). The smallest
+defensible gap is to make these **fold into one** value-agnostic rule via R3 instead
+of accreting four — the recolor family is value-agnostic at predict (the map is
+recomputed from the examples; the carried literal is pure self-description), so the
+lift is both correct and safe.
+
+**Change** (purely additive AU lift family — the §2.5-4 anti-accretion direction;
+F1 frozen-diff 0, F2/F3 N/A, F8 N/A — `active_operators.py`/DSL untouched):
+- `program/anti_unification.py` — registered a new `color_remap` entry in
+  `LIFT_FAMILIES` with `_color_remap_program/_key/_synth` + `_canon_color_map`.
+  Unlike `object_move` (keys on the *dsl* name), the recolor concretes share one
+  dsl (`recolor_map`) and differ only in the `color_map` arg, so the lift key is a
+  canonical *string* form of the map (`{8:5,5:8}`→`"5>8;8>5"`) — sortable/hashable,
+  which the fillers list and `sorted()` in `unify()` both need. The abstraction is a
+  single `recolor_map` rule with `color_map: "?v0"`, recognised by the existing
+  `color_remap` matcher and rendered by the existing `_recolor_grids` (which
+  recomputes per task) — **no predict/matcher/operator/memory change**, so it cannot
+  perturb the guards (which use no recolor rule).
+- `procedural_memory/rule_007.json` (new) — the **folded** abstract `color_remap`
+  rule produced by running the four tasks through the live pipeline:
+  `covers=[0d3d703e,b1948b0a,c8f0f002,d511f180]`, `color_map: "?v0"`,
+  `anti_unification_trace` set (the R3 receipt). Four real ARC-AGI-2 training tasks,
+  **one** rule — not four (the accretion the un-lifted family produced moments
+  earlier in the scan).
+- `tests/test_color_remap_lift.py` (new, 4 tests) — two `recolor_map` maps lift to
+  one abstract rule (`?v0`, canon fillers, trace); unify declines vs an unrelated
+  family; the load-bearing `save_rule_to_ltm` end-to-end: four distinct maps
+  consolidate to one covers=4 rule, a re-discovered map *absorbs* (no re-spawn), and
+  a genuinely new map folds into the *same* abstraction (covers up, rule count flat);
+  the abstract rule validates.
+
+**Probe before**: training 0/3; easy_a 9/9 (Reused 5), madeup 14/14 (Reused 10);
+  rules=4; P1=6.0 P2=6.0 P3=0.5 P4=932 P5=11 P6=1493; 143 tests.
+**Probe after** : **4 ARC-AGI-2 recolor tasks now solve and fold into ONE rule**
+  (rule_007 color_remap, covers=4, AU-traced); easy_a 9/9, madeup 14/14 (guards
+  hold, +0 learned — the recolor rule never fires there); rules 4→5; **P3 0.5→0.6
+  (+0.1)** — the genuine R3 signal (a fresh family lifted by anti-unification); P1/P2
+  6.0→5.6 (the expected, logged new-family dip — every family's covers starts below
+  the mean, exactly the iter25 canvas_fill cost; it is the *anti*-accretion shape:
+  un-lifted, the four tasks would be 28/8≈3.5); P4/P5/P6 flat; 147 tests (+4).
+
+**Invariants**: forbidden=**none** (check_invariants verdict **CLEAN**; F1 frozen
+  diff 0; F2/F3 no `_try_*`/DSL touch; F4 rule_007 validates; F8 `active_operators.py`
+  untouched). positives=**P3 +0.1 (0.5→0.6)**. Reverted the guard runs'
+  `times_reused` churn on rule_001/002 (runtime accounting — iter18/21/23/24/25/26
+  precedent).
+
+**Next gap (note for future iter)**: `recolor_rank` and `canvas_fill` are the other
+  two value-agnostic-recompute families still un-lifted (each would accrete per task
+  the same way `color_remap` just did) — registering them as lift families is the
+  symmetric next step, but it only *moves a signal* once ≥2 real tasks of each
+  appear (recolor_rank/canvas_fill are far rarer than 1:1 recolor in ARC-AGI-2; a
+  scan found only the single canvas_fill task 5582e5ca). The larger `solid_canvas`
+  cross-category fold (object_size_grid + canvas_fill, iter25/26 next-gap) still
+  needs `unify()`'s single-category guard relaxed and remains the riskier prize.
+
+---
 ## Iter 26 — 2026-06-12T23:25 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 14/14 hold. iter25's
@@ -2928,3 +2994,73 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 10
 - Time: 6s
 - Log: logs/learn_20260612_225509.log
+
+---
+## Learning Loop -- 2026-06-12 23:25
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_232529.log
+
+---
+## Learning Loop -- 2026-06-12 23:25
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_232533.log
+
+---
+## Learning Loop -- 2026-06-12 23:25
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260612_232539.log
+
+---
+## Learning Loop -- 2026-06-12 23:31
+
+- Split: training, Tasks: 60
+- Correct: 1 / 60 (1.7%)
+- Rules: 4 -> 5 (+1 learned)
+- Stored rule hits: 0
+- Time: 221s
+- Log: logs/learn_20260612_232748.log
+
+---
+## Learning Loop -- 2026-06-12 23:39
+
+- Split: None, Tasks: 4
+- Correct: 4 / 4 (100.0%)
+- Rules: 4 -> 5 (+1 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260612_233913.log
+
+---
+## Learning Loop -- 2026-06-12 23:39
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_233932.log
+
+---
+## Learning Loop -- 2026-06-12 23:39
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_233935.log
