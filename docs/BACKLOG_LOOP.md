@@ -81,14 +81,26 @@
 
 아래로 갈수록 *위 rung 을 전제*한다 (bottom-up). 각 rung 은
 `arbor-modules.md` 의 Gap 한 줄을 닫고, 닫히면 다음 rung 의 전제가 된다.
-**현재 상태 = R0 완료** (Slice 1 의 산물).
 
-### R0 — GRID-level COMM-copy ✅ (이미 완료)
+> **이 브랜치(test31)는 pre-iter clean-start 노드에서 시작한다.** 즉 R0 의
+> 산물(DSL substrate·`constant_output`·규칙)은 *아직 트리에 없다* — 이전 test30
+> 의 iter 1~8 이 만든 것을 의도적으로 버리고 새 프롬프트로 다시 짓는 중이다.
+> **따라서 현재 상태 = R0 미구축. R0 가 첫 타겟이다.** (R0 가 *달성 가능*함은
+> test30 이 이미 증명했다 — 다만 그 구현 코드는 가져오지 않는다.)
+
+### R0 — GRID-level COMM-copy (첫 rung — 지금 (재)구축 대상)
 
 - 역량: 모든 example G1 이 동일 → Inter-Grid role==G1 COMM → test G1 = 공통값.
-- 산물: `make_grid`+`coloring` 정적 DSL, `constant_output` matcher, covers-무결성
-  게이트, `rule_004`/`rule_005`. easy000a/b + easy0001/5/9/13 = 6 과제.
-- **이 rung 은 닫혀 있다.** 더 닦지 말 것 (spinning).
+  → easy000a/b + easy0001/5/9/13 (constant-output) 를 *값-agnostic* 하게.
+- 빌드: `make_grid`+`coloring` 정적 DSL (F3 — 이 둘뿐, 영구), `constant_output`
+  condition matcher, covers-무결성 게이트, COMM-copy 예측 경로. transformation
+  은 두 primitive 의 *합성*으로만.
+- done-when: easy000a 와 *다른* 고정 출력(easy000b, 다른 셀+색)이 **같은 모듈**로
+  풀림 (값-agnostic 증명). 4 관찰 기준(§5) 충족.
+- 신호: P1(rule_coverage) > 1 로 시작, P5(condition_matchers) +1.
+- 주의: test30 이 R0 를 푼 *방식*(COMM-copy)을 참고는 하되, `_try_*` 누적이나
+  리터럴 하드코딩으로 되돌아가지 말 것 (F2/§6). 이미 증명된 길이니 빠르게 통과한 뒤
+  R1 로 올라간다 — R0 를 무한정 닦지 말 것(spinning).
 
 ### R1 — Object-level 분석 (easy000c–i 를 *의도된 방식*으로)
 
