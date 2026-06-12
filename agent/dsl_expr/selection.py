@@ -509,27 +509,45 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
             "out_color": out_color,
             "obj": obj,
             "objs": objs,
+            "grid": g0.raw,
         })
 
     single_all = bool(per_pair) and all(p["single_object"] for p in per_pair)
     solid_all = bool(per_pair) and all(
         p["out_solid"] and p["out_square"] for p in per_pair)
-    # Colour grounding now reads the subject colour (the object-set COMM), so it
-    # holds for both the single-object and the multi-object (count) cases. For a
-    # single object subj_color == obj_color, so single-object behaviour is
-    # unchanged.
-    color_all = bool(per_pair) and all(
+    # The subject-COMM colour grounding (object-set COMM, collapsing to the single
+    # object's colour). Holds for the single-object and the multi-object (count)
+    # cases; for a single object subj_color == obj_color, so single-object
+    # behaviour is unchanged. The *selected-object* subject grounds colour
+    # differently (off the chosen object), computed during selector learning below.
+    subj_color_all = bool(per_pair) and all(
         p["subj_color"] is not None and p["subj_color"] == p["out_color"]
         for p in per_pair)
 
     # Learn the dimension property: the first named scalar property whose value
     # equals the output side in every pair. The COMM between the property and the
     # output dimension is what *grounds* the size relation (P3/P4); it is
-    # discovered, not assumed. Per-object properties are tried first (they
-    # require a single object per pair); the grid-level properties (object_count)
-    # are tried only as a fallback, so a single-object task keeps resolving to its
-    # object property — count there is always 1 and never matches a side > 1.
+    # discovered, not assumed. Three subject forms are tried in order, the §2.5-2b
+    # "which subject feeds the dimension argument" axis:
+    #   1. the *single* object (per-object DIM_PROPERTY_VOCAB) — requires one
+    #      object per pair; colour grounds on the subject COMM;
+    #   2. the object *set* (grid-level GRID_DIM_PROPERTY_VOCAB, e.g. object_count)
+    #      — colour grounds on the set COMM;
+    #   3. a *selected* object among several (SELECTOR_VOCAB × DIM_PROPERTY_VOCAB)
+    #      — the §2.1 multi-object case: the dimension is a property of *one chosen*
+    #      object, so the subject is `select(...)`. This composes the two grown
+    #      vocabularies (selection + dimension property): the lifted argument is
+    #      `size_of(max_size(objects_of(in)))`. The selector and property are
+    #      learned together (the first consistent pair across every example), and
+    #      colour grounds on the *selected* object's colour — disjoint from the
+    #      set COMM, which a multi-colour grid never grounds.
+    # Subjects 1/2 are tried before 3 so a single-object task keeps resolving to
+    # its plain object property (count there is always 1, the selector is never
+    # reached); the selector path fires only when a single subject does not
+    # account for the size, i.e. genuinely-multi-object tasks.
     dim_property = None
+    selector = None
+    color_all = False
     if solid_all:
         for name, fn in DIM_PROPERTY_VOCAB.items():
             if all(
@@ -537,11 +555,32 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
                 for p in per_pair
             ):
                 dim_property = name
+                color_all = subj_color_all
                 break
         if dim_property is None:
             for name, fn in GRID_DIM_PROPERTY_VOCAB.items():
                 if all(fn(p["objs"]) == p["out_h"] for p in per_pair):
                     dim_property = name
+                    color_all = subj_color_all
+                    break
+        if dim_property is None:
+            for sel_name, sel_fn in SELECTOR_VOCAB.items():
+                for prop_name, prop_fn in DIM_PROPERTY_VOCAB.items():
+                    ok = True
+                    for p in per_pair:
+                        chosen = sel_fn(p["objs"], p["grid"])
+                        if (chosen is None
+                                or color_of(chosen) is None
+                                or prop_fn(chosen) != p["out_h"]
+                                or color_of(chosen) != p["out_color"]):
+                            ok = False
+                            break
+                    if ok:
+                        dim_property = prop_name
+                        selector = sel_name
+                        color_all = True  # grounded on the selected object's colour
+                        break
+                if selector is not None:
                     break
 
     return {
@@ -550,6 +589,7 @@ def analyze_object_size_grid(example_pairs: list) -> dict:
         "solid_output_all": solid_all,
         "color_preserved_all": color_all,
         "dim_property": dim_property,
+        "selector": selector,
     }
 
 

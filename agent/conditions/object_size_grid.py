@@ -41,13 +41,17 @@ def object_size_grid(patterns: dict, params: dict | None = None) -> bool:
         return False
     if sz.get("dim_property") is None:
         return False
-    # `single_object_all` is *not* required: the dimension property may be a
-    # grid-level one (object_count) whose subject is the object *set*, not one
-    # object (§2.1 "object count ≠ 1"). A learned dim_property already implies the
-    # right subject was found and is consistent; solid-square output + the colour
-    # COMM keep this disjoint from the move readings (whose outputs are not solid
-    # fills), so dropping the single-object gate widens the family without
-    # bleeding into the move families.
+    # `single_object_all` is *not* required: the analysis admits three subject
+    # forms for the dimension property (§2.5-2b "which subject feeds the dimension
+    # argument" axis) — (1) the single object (per-object property), (2) the object
+    # *set* (a grid-level property such as object_count, §2.1 "object count ≠ 1"),
+    # and (3) a *selected* object among several (`size_of(max_size(objects(in)))`,
+    # carried by `sz["selector"]`). A learned dim_property already implies one of
+    # these subjects was found and is consistent across every pair; solid-square
+    # output + the colour COMM (grounded on whichever subject won) keep this
+    # disjoint from the move readings (whose outputs are not solid fills), so
+    # admitting the extra subjects widens the family without bleeding into the move
+    # families.
     if not (sz.get("solid_output_all")
             and sz.get("color_preserved_all")):
         return False

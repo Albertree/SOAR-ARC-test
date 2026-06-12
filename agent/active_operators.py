@@ -684,6 +684,16 @@ class GeneralizeOperator(Operator):
             return None
         sz = patterns.get("object_size_grid") or {}
         evidence = len(sz.get("per_pair") or [])
+        # The dimension property is the lift key (one `size_to_grid` skeleton
+        # spans object_size/bbox_height/object_count). When the subject is a
+        # *selected* object among several (§2.5-2b), the learned selector is
+        # recorded too so the rule is self-describing — the AU lift keys only on
+        # `dim_property`, so a selector-bearing rule still folds into the same
+        # abstraction (the selector is re-derived at predict time off the test
+        # objects, like the property and colour).
+        args = {"dim_property": sz.get("dim_property")}
+        if sz.get("selector"):
+            args["selector"] = sz.get("selector")
         return {
             "condition": {
                 "type": "object_size_grid",
@@ -692,7 +702,7 @@ class GeneralizeOperator(Operator):
             },
             "action": {
                 "dsl": SIZE_GRID_DSL,
-                "args": {"dim_property": sz.get("dim_property")},
+                "args": args,
             },
             "concept": "object_size_to_solid_square",
             "category": "object_size_grid",
@@ -1134,9 +1144,13 @@ class PredictOperator(Operator):
         prop_name = sz.get("dim_property")
         if prop_name is None:
             return {}
+        selector_name = sz.get("selector")
         obj_prop = DIM_PROPERTY_VOCAB.get(prop_name)
         grid_prop = GRID_DIM_PROPERTY_VOCAB.get(prop_name)
         if obj_prop is None and grid_prop is None:
+            return {}
+        select_fn = SELECTOR_VOCAB.get(selector_name) if selector_name else None
+        if selector_name is not None and select_fn is None:
             return {}
 
         grids = {}
@@ -1144,7 +1158,17 @@ class PredictOperator(Operator):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            if obj_prop is not None:
+            if select_fn is not None:
+                # Selected-object subject (§2.5-2b): among several test objects,
+                # the selector picks the one the size is read off; the property
+                # and colour come from that chosen object — value-agnostic in the
+                # distractors, colours, sizes and positions (P5).
+                chosen = select_fn(objects_of(g0.raw), g0.raw)
+                if chosen is None:
+                    continue
+                color = color_of(chosen)
+                side = obj_prop(chosen)
+            elif obj_prop is not None:
                 # Per-object property: read it (and the colour) off the single
                 # test object — value-agnostic in colour/size/shape/position (P5).
                 obj = unique_object(g0.raw)

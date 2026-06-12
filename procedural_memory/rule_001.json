@@ -26,7 +26,9 @@
     "madeup_size_to_square",
     "madeup_size_to_square_big",
     "madeup_count_to_square",
-    "madeup_count_to_square_b"
+    "madeup_count_to_square_b",
+    "madeup_select_size_to_square",
+    "madeup_select_size_to_square_b"
   ],
   "source_task": "madeup_bbox_height_to_square",
   "anti_unification_trace": "episodic_memory\\madeup_bbox_height_to_square\\anti_unification\\size_to_grid_lift.json",
