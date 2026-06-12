@@ -1,6 +1,75 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 20 — 2026-06-12T22:01 — branch test32
+
+**Diagnosis**: Training phase, 3 consecutive NEUTRAL reuse iters (stagnation flag
+at iter19). The three sampled training tasks (c9680e90 gravity, 878187ab
+reflect+resize, e5790162 line-draw) each need the general Slow-path synthesizer
+iter19 flagged as "large enough to need its own decomposition" — not a single
+commit. But the microscope also re-exposes a *named, smaller* gap: the **recolor
+family has no canonical, condition-bearing, AU-liftable rule**. It was recognised
+only by the legacy condition-less `_try_color_mapping`, which emits a literal
+`{type: color_mapping, mapping}` — the arbor.md 진단 #4 dropped-condition failure
+and an anti-unification dead-end (a literal map shares no liftable skeleton). That
+legacy *producer* also re-enables the iter18 accretion path: a `color_mapping`
+guess that reproduces train would persist as a condition-less covers=1 rule
+(P1-drop). Smallest defensible step: migrate the producer to the canonical
+recognition path the other families use (§2.5-1).
+
+**Change** (recolor producer → canonical; legacy *applier* kept for back-compat):
+- `agent/dsl_expr/selection.py` — new `analyze_color_remap(example_pairs)`: the
+  GRID-level (P2) reading of a same-size 1:1 colour remap, computed cell-level
+  across all pairs; `color_map` is None unless the map is a *function* and ≥1
+  colour changes (declines resize / non-function / identity). The §2.5-1 argument
+  vocabulary grown under `agent/`, not `procedural_memory/DSL/` (F3-safe; the
+  CLAUDE.md §6.1 ↔ taxonomy §3 location conflict resolved the documented way —
+  no new conflict introduced).
+- `agent/conditions/color_remap.py` (new matcher, P5 8→9) — fires on a consistent,
+  non-identity map with `min_evidence≥2`.
+- `agent/dsl_expr/render.py` — new `render_recolor(grid, color_map)`: one
+  `coloring` call per remapped source colour (cells selected from the *original*
+  grid → no chaining), bottoming the recolor out in the frozen primitive.
+- `agent/active_operators.py` — extract_pattern surfaces `color_remap`; generalize
+  gains canonical `_color_remap_rule` (emits `{condition:{type:color_remap},
+  action:{dsl:recolor_map, args:{color_map}}}`) and **drops** the `_try_color_mapping`
+  *producer*; predict renders the family by recomputing the map from the example
+  DIFF (P5 origin). `_apply_color_mapping` and the `_apply_rule` `color_mapping`
+  branch are **kept** (legacy back-compat; `test_save_gate.py` reproduces a
+  `color_mapping` rule through them). Accompanied by `agent/conditions/` + render +
+  selection edits (F8-clear).
+- `tests/test_color_remap.py` (new, 9 tests) — reading detects the map / abstains
+  on non-function·resize·identity; matcher honours min_evidence; renderer doesn't
+  chain; GeneralizeOperator emits a canonical (no `type` key) rule; end-to-end
+  pipeline renders the correct test grid.
+
+**Probe before**: training 0/3 (identity/identity/recolor_sequential); easy_a 9/9,
+  madeup 14/14; rules=3; P1=7.67 P2=7.67 P3=0.67 P4=932 P5=8 P6=1349; 94 tests.
+**Probe after** : training 0/3 unchanged & **Rules 3→3 (no rule saved)** — the 3
+  sampled tasks are not clean 1:1 recolors so color_remap abstains; canonical
+  rules aren't auto-saved (the save gate only validates legacy-typed rules), so
+  the family adds no rule file → P1/P2/P3 held. easy_a 9/9, madeup 14/14; P5 8→9;
+  P6 1349→1407 (+58, the cost of a new canonical family); 103 tests.
+
+**Invariants**: forbidden=**none** (check_invariants CLEAN; F1 frozen diff 0; F2
+  no new `_try_*`/`_apply_*` — a producer was *removed*, §5.1-allowed; F3 no DSL
+  primitive; F8 active_operators edit accompanied by conditions/+render+selection;
+  no rule saved without a condition — strengthened). positives=**P5 +1 (8→9)**;
+  P1/P2/P3/P4 flat; P6 −58 lines (new family). This is the first non-NEUTRAL iter
+  since iter16 — recolor is now recognised the intended way and the legacy
+  condition-less producer (a latent P1-drop accretion source) is gone.
+
+**Next gap (note for future iter)**: the recolor rule is canonical but, like the
+  other canonical families, the save gate (`_rule_matches_examples`→`_apply_rule`)
+  cannot validate a `{condition,action}` rule, so it never persists → never lifts
+  (R3) or reuses (R5). Teaching the save gate to reproduce a canonical rule *via
+  the predict pipeline* (not the legacy `_apply_rule`) would let recolor (and
+  every canonical family) actually enter `covers` and be AU-lifted — the real
+  unblock for P1/P2/P3 growth, and a prerequisite the synthesizer frontier shares.
+  The other legacy condition-less producer, `_try_recolor_sequential`, remains a
+  twin migration candidate.
+
+---
 ## Iter 19 — 2026-06-12T21:43 — branch test32
 
 **Diagnosis**: Training phase. The training probe is 0/3 (expected for ARC-AGI-2 —
@@ -2099,3 +2168,85 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 10
 - Time: 5s
 - Log: logs/learn_20260612_214243.log
+
+> STAGNATION at iter 19 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-06-12 21:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_214551.log
+
+---
+## Learning Loop -- 2026-06-12 21:46
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_214555.log
+
+---
+## Learning Loop -- 2026-06-12 21:46
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_214601.log
+
+---
+## Learning Loop -- 2026-06-12 21:49
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_214905.log
+
+---
+## Learning Loop -- 2026-06-12 21:49
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 5s
+- Log: logs/learn_20260612_214908.log
+
+---
+## Learning Loop -- 2026-06-12 22:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260612_220031.log
+
+---
+## Learning Loop -- 2026-06-12 22:00
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 10
+- Time: 6s
+- Log: logs/learn_20260612_220034.log
+
+---
+## Learning Loop -- 2026-06-12 22:00
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260612_220040.log

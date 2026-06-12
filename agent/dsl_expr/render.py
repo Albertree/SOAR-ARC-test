@@ -84,6 +84,36 @@ def render_solid_rect(height: int, width: int, color: int) -> list:
     return apply_DSL("make_grid", height=height, width=width, color=color)
 
 
+def render_recolor(grid: list, color_map: dict) -> list:
+    """Recolour `grid` by a 1:1 colour map, expressed in the frozen `coloring`
+    primitive: one `coloring` call per remapped source colour repaints exactly
+    that colour's cells to its target. Geometry is preserved (no `make_grid`
+    resize); colours absent from the map keep their value (the implicit identity
+    default). This is the recolor family's transformation bottoming out in
+    `coloring` (BACKLOG_LOOP §2.5-1, F3) — the whole content lives in the
+    *argument* (`color_map`, read off the example DIFF), not in any new primitive.
+
+    Source cells are selected from the *original* grid each iteration (never the
+    progressively-painted copy), so a map like ``{1: 2, 2: 3}`` cannot chain
+    (original 1s do not become 3s).
+    """
+    height = len(grid)
+    width = len(grid[0]) if height else 0
+    out = [row[:] for row in grid]
+    for src, dst in color_map.items():
+        if src == dst:
+            continue
+        cells = [
+            (r, c)
+            for r in range(height)
+            for c in range(width)
+            if grid[r][c] == src
+        ]
+        if cells:
+            out = apply_DSL("coloring", out, selection=cells, color=dst)
+    return out
+
+
 def render_object_at(height: int, width: int, bg: int,
                      pixels: list, target: tuple) -> list:
     """Place an object (its `pixels` = list of (row, col, color)) on a fresh

@@ -16,10 +16,12 @@ from agent.conditions import match as match_condition
 from agent.dsl_expr.render import (
     render_grid_via_primitives,
     render_object_at,
+    render_recolor,
     render_solid_rect,
     render_solid_square,
 )
 from agent.dsl_expr.selection import (
+    analyze_color_remap,
     analyze_object_move,
     analyze_object_select_move,
     analyze_object_size_grid,
@@ -70,6 +72,14 @@ PLACE_OBJECT_SELECT_DSL = "place_object_select"
 #: property (`size_of`) and whose colour is the object's colour. The orthogonal
 #: axis to the move families: the dimension *argument* is the lift, not a literal.
 SIZE_GRID_DSL = "size_to_grid"
+
+#: action.dsl for the recolor family (R1 / arbor-dsl-taxonomy) — a same-size grid
+#: repainted by a learned 1:1 colour map. The transformation is a `coloring`
+#: composition (one call per remapped source colour); the whole content is the
+#: *argument* (the colour map read off the example DIFF), recomputed at predict
+#: time so one condition-bearing rule covers the family and lifts under AU. The
+#: canonical replacement for the legacy condition-less `{type: color_mapping}`.
+RECOLOR_DSL = "recolor_map"
 
 
 # ======================================================================
@@ -272,6 +282,14 @@ class ExtractPatternOperator(Operator):
         # (agent/dsl_expr/selection), not hand-coded here.
         patterns["object_size_grid"] = analyze_object_size_grid(task.example_pairs)
 
+        # Recolor family (R1 / arbor-dsl-taxonomy): the orthogonal GRID-level
+        # reading where geometry is preserved and only colour changes, by a 1:1
+        # colour map (the cross-pair COMM on the colour DIFF). Inert (color_map
+        # None) whenever the grid resizes or the map is not a function, so it
+        # never perturbs the object/size readings above. Computed via the §2.5
+        # vocabulary (agent/dsl_expr/selection), not hand-coded here.
+        patterns["color_remap"] = analyze_color_remap(task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -463,13 +481,20 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._object_size_grid_rule(patterns)
 
+        # Strategy 0h (R1 / arbor-dsl-taxonomy): the recolor family. If the
+        # `color_remap` matcher fires (a same-size grid repainted by a 1:1 colour
+        # map that is constant across examples), emit a canonical {condition,
+        # action} rule whose action is a `coloring` composition keyed on the map.
+        # The map is recomputed at predict time off the example DIFF, so the rule
+        # is value-agnostic in geometry and — being condition-bearing — liftable
+        # by anti-unification (R3) and reusable by the Fast path, unlike the
+        # legacy condition-less `{type: color_mapping}` envelope it replaces.
+        if rule is None:
+            rule = self._color_remap_rule(patterns)
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
-
-        # Strategy 2: simple 1:1 color mapping
-        if rule is None:
-            rule = self._try_color_mapping(patterns)
 
         # Fallback: identity (copy input as output)
         if rule is None:
@@ -768,41 +793,45 @@ class GeneralizeOperator(Operator):
                 return False
         return True
 
-    # ---- strategy: simple color mapping ---------------------------------
+    # ---- strategy: recolor by 1:1 colour map (canonical) ----------------
 
-    def _try_color_mapping(self, patterns):
+    def _color_remap_rule(self, patterns):
+        """Emit the canonical recolor rule when the `color_remap` matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `color_remap` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. This is the canonical
+        replacement for the legacy condition-less `_try_color_mapping` (arbor.md
+        진단 #4: a dropped-condition rule is an anti-unification dead-end). The
+        learned colour map is carried in the action args *and* recomputed at
+        predict time off the examples, so the rule stays value-agnostic in
+        geometry and one rule covers the whole recolor family. Being
+        condition-bearing and keyed on a colour→colour COMM, two such rules lift
+        under anti-unification (R3); the transformation bottoms out in the frozen
+        `coloring` primitive (§2.5-1), the map being the only argument.
         """
-        Detect pattern: each input color consistently maps to one output color.
-        """
-        pair_analyses = patterns.get("pair_analyses", [])
-        if not pair_analyses or not patterns.get("grid_size_preserved"):
+        params = {"min_evidence": 2}
+        if not match_condition("color_remap", patterns, params):
             return None
-
-        # Collect all observed color transitions
-        color_map = {}
-        for analysis in pair_analyses:
-            for group in analysis["groups"]:
-                for ic in group["input_colors"]:
-                    for oc in group["output_colors"]:
-                        if ic not in color_map:
-                            color_map[ic] = set()
-                        color_map[ic].add(oc)
-
-        # Each input color must map to exactly one output color
-        simple_map = {}
-        for ic, ocs in color_map.items():
-            if len(ocs) != 1:
-                return None
-            simple_map[ic] = list(ocs)[0]
-
-        if simple_map:
-            return {
-                "type": "color_mapping",
-                "mapping": simple_map,
-                "confidence": 0.8,
-            }
-
-        return None
+        sig = patterns.get("color_remap") or {}
+        color_map = sig.get("color_map") or {}
+        return {
+            "condition": {
+                "type": "color_remap",
+                "params": dict(params),
+                "min_evidence": max(2, sig.get("evidence", 2)),
+            },
+            "action": {
+                "dsl": RECOLOR_DSL,
+                # JSON keys must be strings; the map is recomputed from the
+                # examples at predict time, so this carried copy is for
+                # self-description / AU lifting, not the live argument.
+                "args": {"color_map": {str(k): v for k, v in color_map.items()}},
+            },
+            "concept": "recolor_by_color_map",
+            "category": "color_remap",
+            "confidence": 1.0,
+        }
 
 
 # ======================================================================
@@ -931,6 +960,18 @@ class PredictOperator(Operator):
         # square of that side via a single make_grid call.
         if action and action.get("dsl") == SIZE_GRID_DSL:
             for i, grid in self._place_size_grid_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
+        # Recolor family (R1 / arbor-dsl-taxonomy). Recompute the 1:1 colour map
+        # from the example DIFF (P5 variable origin: the map comes from G0/G1 of
+        # the examples), then repaint each test input by it via `coloring`. The
+        # geometry of the test input is preserved; only colours change.
+        if action and action.get("dsl") == RECOLOR_DSL:
+            for i, grid in self._recolor_grids(task).items():
                 key = f"test_{i}"
                 if key not in predictions and grid is not None:
                     predictions[key] = grid
@@ -1203,6 +1244,23 @@ class PredictOperator(Operator):
             if color is None or side < 1:
                 continue
             grids[i] = render_solid_square(side, color)
+        return grids
+
+    @staticmethod
+    def _recolor_grids(task):
+        """Per-test grids for the recolor family. Recompute the 1:1 colour map
+        from the example DIFF (value-agnostic, P5: from G0/G1 of the examples),
+        then repaint each test input by it via the frozen `coloring` primitive."""
+        sig = analyze_color_remap(task.example_pairs)
+        color_map = sig.get("color_map")
+        grids = {}
+        if not color_map:
+            return grids
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            grids[i] = render_recolor(g0.raw, color_map)
         return grids
 
     # ---- rule application dispatchers ------------------------------------

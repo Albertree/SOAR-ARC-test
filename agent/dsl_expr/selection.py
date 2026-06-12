@@ -798,3 +798,63 @@ def analyze_object_move(example_pairs: list) -> dict:
         "constant_corner": constant_corner,
         "output_dims": output_dims,
     }
+
+
+def analyze_color_remap(example_pairs: list) -> dict:
+    """Cross-pair 1:1 colour-remap reading (the recolor family).
+
+    The GRID-level (P2) relational reading of a *same-size* recolor: every cell's
+    ``input_colour -> output_colour`` is recorded across all example pairs, and
+    the map is well-defined only when each input colour maps to **exactly one**
+    output colour everywhere — a function, the cross-pair COMM on the colour DIFF.
+    Geometry is untouched, so the only learned content is the map itself, which is
+    exactly the *argument expression* a `coloring(cells_of_colour(c), map[c])`
+    composition consumes (BACKLOG_LOOP §2.5-1/2) — not a new transformation. Being
+    a colour→colour COMM shared across pairs, two such rules lift cleanly under
+    anti-unification (R3), unlike the legacy literal ``{type: color_mapping}``.
+
+    Returns a symbolic dict ``{"color_map", "consistent", "evidence"}``; the
+    ``color_remap`` matcher decides whether to fire and PredictOperator renders
+    from a recomputed map (value-agnostic in geometry). ``color_map`` is None when
+    the map is not a function, any pair changes grid size, or nothing changes
+    (identity is not a recolor).
+    """
+    full = {}                 # src -> dst over *all* cells (must stay a function)
+    consistent = True
+    changed_pairs = 0
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a, b = g0.raw, g1.raw
+        if len(a) != len(b) or any(
+            len(a[r]) != len(b[r]) for r in range(len(a))
+        ):
+            consistent = False
+            continue
+        pair_changed = False
+        for r in range(len(a)):
+            for c in range(len(a[r])):
+                s, d = a[r][c], b[r][c]
+                if s in full and full[s] != d:
+                    consistent = False
+                else:
+                    full[s] = d
+                if s != d:
+                    pair_changed = True
+        if pair_changed:
+            changed_pairs += 1
+
+    # Keep only the non-identity entries: colours that map to themselves are not
+    # part of the recolor's content (they are the implicit identity default the
+    # renderer leaves untouched).
+    color_map = {s: d for s, d in full.items() if s != d}
+    if not consistent or not color_map:
+        color_map = None
+
+    return {
+        "color_map": color_map,
+        "consistent": consistent,
+        "evidence": changed_pairs,
+    }
