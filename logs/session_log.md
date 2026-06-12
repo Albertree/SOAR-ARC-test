@@ -403,3 +403,118 @@ absent in the new schema, so stored rules never reuse — re-discovered each run
 - Stored rule hits: 0
 - Time: 1s
 - Log: logs/learn_20260612_120828.log
+
+---
+## Learning Loop -- 2026-06-12 12:11
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_121155.log
+
+---
+## Learning Loop -- 2026-06-12 12:12
+
+- Split: None, Tasks: 9
+- Correct: 5 / 9 (55.6%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_121157.log
+
+---
+## Learning Loop -- 2026-06-12 12:17
+
+- Split: None, Tasks: 9
+- Correct: 7 / 9 (77.8%)
+- Rules: 0 -> 3 (+3 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260612_121712.log
+
+---
+## Learning Loop -- 2026-06-12 12:19
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260612_121932.log
+
+---
+## Iter 5 — 2026-06-12 — branch test31
+
+**Diagnosis**: R1's fixed-target filling landed (iter 4: easy000c/d/h), and the
+iter-4 note named the next hole — the *relative-target* movers. The lowest
+unproven step within R1 is the **second target-filling**: the constant-
+displacement movers (easy000e Δ=(1,-1), easy000f Δ=(0,1)), where the object
+moves by one Δ across all pairs but lands on *different* cells (verified against
+the data). The fixed-target matcher correctly declines them (target not
+constant), so they resolved to `identity`. This is the *smaller half* of iter
+4's note (displacement only; the relative-corner g and resized i are left for a
+later filling), and it is exactly the §2.5-2b/§5(R3) setup: two fillings of the
+*same* `place_object` skeleton differing only in the target function `f`.
+
+**Change**:
+- `agent/conditions/single_object_move_constant_displacement.py` (new) — second
+  *filling* matcher: fires when every pair shares one Δ (COMM of the per-pair
+  position DIFFs) with grid size preserved. General predicate (any constant-
+  offset mover), disjoint from `single_object_move_fixed_target` on the data
+  (constant cell ⇒ varying Δ and vice-versa). P5 3→4; F8 companion for the
+  active_operators edit.
+- `agent/active_operators.py` — (a) `_object_transition` now also surfaces
+  `displacement_constant` / `displacement` (the COMM Δ), via the seed vocabulary;
+  (b) `GeneralizeOperator` emits a `place_object` rule with
+  `action.args.target_mode="displacement"` when that matcher fires (after the two
+  prior matchers; all disjoint); (c) `_render_place_object` is refactored to
+  derive its target through a new `_derive_place_target(rule, task, src_pos)` that
+  branches on `target_mode` — "fixed" (default; COMM of example output positions,
+  unchanged behaviour) vs "displacement" (test object position + COMM Δ). The
+  render skeleton (erase source via fresh `make_grid`, paint translated cells via
+  `coloring`) is now *shared* across both fillings; only `f` differs — the R3
+  variable. No new `_try_*`/`_apply_*` (helpers are `_build_*`/`_derive_*`/
+  `_render_*`).
+- `procedural_memory/rule_003.json` (new, learned) — value-agnostic,
+  `condition.type=single_object_move_constant_displacement`,
+  `action.dsl=place_object`, `args.target_mode=displacement`, `covers=[easy000e,
+  easy000f]` via dedup (not one rule per task); `anti_unification_trace=null`
+  (AU lift is R3). rule_001/002 unchanged (covers preserved).
+- `tests/test_place_object_displacement.py` (new) — registry + unit + disjoint-
+  ness + real-signal + true end-to-end (pipeline renders the exact known test
+  output for e/f via the two frozen primitives). `tests/test_place_object.py` —
+  updated the one now-stale assertion (e/f are no longer identity; only g/i are).
+  Suite 38/38 pass.
+
+**R3-readiness note (for the next iter)**: the two fillings are asymmetric in
+representation — fixed-target carries `args={}` (mode implicit), displacement
+carries `args={target_mode:"displacement"}`. The render defaults absent mode to
+"fixed", so this is correct, but when R3 lifts the two `place_object` rules it
+should *normalize* `target_mode` onto both (the variable it abstracts). Left
+asymmetric now to avoid churning the committed rule_002; flagged here, not
+silently resolved.
+
+**Probe before**: easy 1/3, easy_a 5/9; rules=2 (covers 6+3); P1=4.5, P5=3
+**Probe after** : easy 1/3 (0002/0003 out of scope, no false fire), easy_a
+**7/9** (a,b constant_output; c,d,h fixed place_object; **e,f displacement
+place_object**; g/i correctly identity); rules=3 (covers 6+3+2); P5=4. R0 family
+(easy0001/000a/000b) unregressed.
+
+**Invariants**: forbidden=none (F8 companion present: new conditions/ file).
+positives = **P5 +1 (3→4)** → verdict CLEAN. P1 4.5→3.67, P2 4.5→3.67, P6 −96:
+the expected dip from adding a *genuinely new general filling* (a third rule,
+more code), **not** overfit accumulation — rule_003 is value-agnostic and covers
+2 tasks via a general predicate (§2.5-3 "material for R3", not a per-task
+literal). P1/P2 recover when R3 merges the two place_object fillings. P3/P4 flat.
+
+**Next gap (note for future iter)**: with **two** `place_object` fillings now
+coexisting (fixed cell + constant Δ), differing only in `args.target_mode`, the
+R3 prerequisite is met — `anti_unification.unify()` over rule_002+rule_003 should
+lift them into one `place_object` rule whose target function is a variable,
+driving P1/P2/P3 up *together* (the BACKLOG §2.5-4 litmus). That is now the
+highest-value step (R3, the "★ 최우선 큰-틀 보상"). Alternatively, still within
+R1, the relative-corner filling (g: target=(H−1,W−1)) is a third member of the
+same skeleton; but adding a *third* literal filling before R3 lifts the first
+two would be accretion-shaped — prefer wiring R3 next.
