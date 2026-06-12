@@ -6,10 +6,20 @@ This is the **only** mechanism by which ARBOR's transformational vocabulary may
 grow (CLAUDE.md §6.2 / §8, docs/INVARIANTS.md F3): the hand-coded DSL is closed
 at two primitives, so every other transformation must emerge as a discovered
 composition produced by `unify()`. The public contract is specified in
-`docs/ANTI_UNIFICATION.md`; this module implements the leaf case (value
-positions compared via `==`). Recursive term-tree alignment of nested
-`coloring`/`make_grid` compositions is future work — the original-intent stubs
-below (`anti_unify_pair_programs`, …) record that design and are not yet wired.
+`docs/ANTI_UNIFICATION.md`; this module implements two cases:
+
+  * `unify(rules)` — the **rule** leaf case: anti-unify the `condition.params`
+    and `action.args` of two or more `{condition, action}` rules (value
+    positions compared via `==`), used by R3.
+  * `anti_unify_pair_programs(programs)` — the **program** case: anti-unify the
+    flat `coloring`/`make_grid` step lists that
+    `agent/program_synthesis.py:synthesize_pair_program` emits from individual
+    example pairs, lifting the per-step arg positions where the pairs disagree
+    into `?vN` variables. This is the consumer the synthesizer's program format
+    was shaped for (iter-26): 2+ overfit per-pair programs sharing a skeleton
+    are lifted into one abstract `covers>1` program — the §2.5-3 "overfit is AU
+    *material*, not a persisted rule" path, the alternative to a tenth in-code
+    family.
 
 Public API (docs/ANTI_UNIFICATION.md §1):
 
@@ -219,11 +229,72 @@ def _write_trace(rules: list, cond_type: str, action_dsl: str,
 
 
 # ======================================================================
-# Original-intent stubs — recursive term-tree anti-unification (future).
-# Not yet wired; `unify()` above implements the leaf case used by R3.
+# Program-line anti-unification — the consumer for the per-pair programs
+# `agent/program_synthesis.py` synthesizes (iter-26 → iter-27).
 # ======================================================================
 
 def anti_unify_pair_programs(pair_programs: list) -> list:
-    """INTENT: anti-unify flat program-line lists from multiple pairs into
-    abstract `?vN`-bearing program lines (CLAUDE.md §8). Future term-tree work."""
-    raise NotImplementedError("recursive program-line anti-unification is future work")
+    """Anti-unify a list of flat synthesized programs into one abstract program
+    whose per-step arg positions that disagree across the inputs become `?vN`
+    variables (CLAUDE.md §8; BACKLOG_LOOP.md §2.5-3).
+
+    Each input is a program in the `agent/program_synthesis.py` format: a flat
+    list of step dicts, each `{"dsl": <"coloring"|"make_grid">, "args": {...}}`.
+    The *skeleton* is the step sequence: the inputs must agree on step count and
+    on the `dsl` name at every position (the synthesizer emits one `coloring`
+    step per colour in ascending-colour order, so colour-aligned pairs share a
+    skeleton). For each step, the `args` dicts are anti-unified field-wise by the
+    same leaf rule `unify()` uses — a position whose value is equal across every
+    input passes through unchanged (the COMM of the programs), one that differs
+    lifts to a fresh `?vN` (the DIFF that the future fast path will fill).
+
+    Returns the abstract program — a list of `{"dsl", "args"}` step dicts in
+    which the surviving literals are the cross-pair invariant and the `?vN`
+    markers name exactly the positions a later instantiation must supply. When no
+    position differs (the inputs are identical) the result carries no variable;
+    the caller can detect generalization with :func:`program_is_more_general`.
+
+    Raises `NoCommonSkeleton` if fewer than two programs are given, the programs
+    differ in length, or any step position disagrees on its `dsl` name — a
+    skeleton mismatch is not bridgeable at this level (same contract as
+    `unify()`; bridging is object-level lifting, CLAUDE.md §8)."""
+    if not isinstance(pair_programs, list) or len(pair_programs) < 2:
+        n = len(pair_programs) if isinstance(pair_programs, list) else "non-list"
+        raise NoCommonSkeleton(f"anti_unify_pair_programs needs >= 2 programs, got {n}")
+
+    lengths = {len(p) for p in pair_programs}
+    if len(lengths) != 1:
+        raise NoCommonSkeleton(
+            f"input programs differ in step count: {sorted(lengths)}")
+
+    var_counter = [0]
+    substitutions: dict = {}
+    abstract = []
+    for i in range(lengths.pop()):
+        dsls = {p[i].get("dsl") for p in pair_programs}
+        if len(dsls) != 1:
+            raise NoCommonSkeleton(
+                f"input programs disagree on dsl at step {i}: {sorted(map(str, dsls))}")
+        dsl = dsls.pop()
+        args_list = [p[i].get("args") or {} for p in pair_programs]
+        abstract_args = _unify_field_dicts(
+            args_list, f"step{i}.args", substitutions, var_counter)
+        abstract.append({"dsl": dsl, "args": abstract_args})
+    return abstract
+
+
+def program_is_more_general(program: list) -> bool:
+    """True iff an abstract program (from :func:`anti_unify_pair_programs`)
+    carries at least one `?vN` variable — i.e. anti-unification lifted a
+    position, so the program covers more than a single pair. Mirrors
+    `UnifyResult.is_more_general()` for the program case."""
+    def _has_var(value) -> bool:
+        if isinstance(value, str):
+            return value.startswith("?v")
+        if isinstance(value, dict):
+            return any(_has_var(v) for v in value.values())
+        if isinstance(value, (list, tuple)):
+            return any(_has_var(v) for v in value)
+        return False
+
+    return any(_has_var(step.get("args") or {}) for step in program)

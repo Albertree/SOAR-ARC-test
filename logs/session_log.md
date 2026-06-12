@@ -1,6 +1,65 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 27 — 2026-06-12T17:05 — branch test31
+
+**Diagnosis**: Iter 26 built the per-pair program *synthesizer* (producer) but
+left its consumer a `NotImplementedError` stub: `program/anti_unification.py:
+anti_unify_pair_programs` — the term-tree case the synthesizer's flat
+`coloring`/`make_grid` program format was explicitly shaped for. Without it the
+synthesizer's overfit per-pair programs (the §2.5-3 AU *input material*) have
+nowhere to go, so the synthesize→AU→`covers>1` Slow path (the §6.2 alternative
+to a tenth in-code `_build_X` family) cannot close. This iter builds that
+consumer half — pure, off the live solve path, grounded by a *real* lift on
+easy000c — leaving only the wiring for a later iter.
+
+**Change**:
+- `program/anti_unification.py` — implemented `anti_unify_pair_programs(programs)`
+  (was a stub): aligns the flat synthesized programs by skeleton (step count +
+  per-step `dsl`), then anti-unifies each step's `args` field-wise via the same
+  leaf rule `unify()` uses — equal positions (the COMM of the programs) pass
+  through literal, disagreements (the DIFF) lift to a fresh `?vN`. Reuses the
+  existing `_unify_field_dicts`/`NoCommonSkeleton` machinery (no parallel logic).
+  Added `program_is_more_general(program)` mirroring `UnifyResult.is_more_general`
+  for the program case. Lives in the one file PROMPT.md §3 blesses for new AU
+  functions; **not** a new call site of `unify()` (the §8 single-call-site
+  contract is untouched — this is a sibling consumer, not a second `unify`).
+- `tests/test_anti_unify_programs.py` (new, 7 tests) — the ground is a real lift:
+  the two easy000c train pairs (single pixel → fixed corner (5,5)) synthesize to
+  2-step DIFF programs; anti-unifying them must keep the invariant corner target
+  `[[5,5]]` literal and lift exactly the moving source cell + colour to `?vN`.
+  Plus controlled precision (only the differing position lifts; identical
+  programs lift nothing; length/dsl mismatch and <2 inputs raise NoCommonSkeleton;
+  three-way share one variable per position).
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate, [[graduation_gate_unsatisfiable]]),
+easy_a 9/9; rules=3 (covers 6+9+2=17); P1=P2=5.67, P3=0.67, P5=10, P6=2229.
+**Probe after** : identical solve behaviour (consumer is unwired by design — no
+solve-path change); 177/177 pytest pass (+7 new). check_invariants verdict
+**CLEAN**.
+
+**Invariants**: forbidden=**none** — F1 (no frozen-file edit; change is in
+`program/` + `tests/`), F2 (no `_try_`/`_apply_`), F3 (no DSL primitive), F4/F5/F6/F7
+N/A, F8 N/A (`active_operators.py` untouched). positives=**P4 +5** (incidental,
+probe's own episodic writes); P1/P2/P3/P5/P6 all Δ=0 — the documented
+[[synthesizer_frontier]]/[[reuse_signal_blindspot]] blind spot (no P-signal
+measures pre-wiring solve-path substrate, same as iter-26's synthesizer half).
+Not spinning (PROMPT.md §4): a test-grounded implementation of the named stub
+that completes the synthesize→AU pair is none of near-duplicate/cosmetic/
+reshuffling — it is the second of three steps (producer→consumer→wiring).
+
+**Next gap (note for future iter)**: with producer (iter-26) and consumer
+(iter-27) both grounded, the wiring is now unblocked — route
+`GeneralizeOperator`'s `identity` fallback to synthesize a program per example
+pair and hand 2+ skeleton-sharing programs to `anti_unify_pair_programs`, then
+persist the lifted abstract program via `save_rule()` as a `covers>1` data rule
+(the first true synthesis→AU rule, not a `_build_X` family). Take it in
+easy_a-regression-guarded slices: first *log only* the synthesized+lifted result
+on currently-`identity` tasks (observe, no behaviour change), then route it.
+This touches the live solve path (F8: co-touch `memory.py`/`conditions/`), so it
+wants its own iter.
+
+---
 ## Iter 26 — 2026-06-12T16:55 — branch test31
 
 **Diagnosis**: I acted on iter-25's named next-gap (and verified it against the
@@ -3197,3 +3256,23 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 3s
 - Log: logs/learn_20260612_165255.log
+
+---
+## Learning Loop -- 2026-06-12 17:00
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_170027.log
+
+---
+## Learning Loop -- 2026-06-12 17:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260612_170029.log
