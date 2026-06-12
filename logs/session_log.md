@@ -1,6 +1,86 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 40 — 2026-06-13T03:40 — branch test32 — NO-OP (analysis only, open question surfaced)
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 26/26 hold. I took
+iter-39's explicitly-named next gap — **one-sided mirror repair** (496994bd, f25ffba3,
+e729b7be: one symmetric half fully occluded, no positive witness for the mirror) — and
+investigated whether it folds into rule_011's symmetry-repair family. It does **not**
+cleanly: a value-agnostic, predict-time symmetry selection is **underdetermined**. The
+other same-size failing clusters I censused (denoise-to-mode; uniform-color-class
+recolor) reduce to the standing object-level *selector* frontier, not a smallest step.
+**No defensible smallest gap surfaced this iter → no commit** (PROMPT §5.3), with a
+sharper characterization of the symmetry-completion open question recorded for the next
+iter (PROMPT §2.2 "set up a sharper test").
+
+**Investigation (evidence, all via throwaway census scripts — no repo change)**:
+- **One-sided mirror repair (the iter-39 (a) gap).** A 680-same-size census found
+  *exactly 3* tasks beyond the strict `held_symmetries` family where a *single*
+  involution reproduces all train pairs: 496994bd (flip_v), f25ffba3 (flip_v), e729b7be
+  (rot180). But the predict-time selector is **ambiguous**: the principled
+  value-agnostic criterion — "pick the symmetry `s` under which the single-`s` repair of
+  G0 yields a fully `s`-symmetric grid and changes ≥1 cell" — admits **two** symmetries
+  for *every* one of the 3 tasks (`[flip_v, rot180]` for 496994bd/f25ffba3, `[flip_h,
+  rot180]` for e729b7be), and the two completions are *different grids* (only one matches
+  the output). The disambiguation lives in the train pairs ("flip_v reproduces"), but it
+  is **not a function of G0 structure** that I could recompute at test: when one whole
+  symmetric half is occluded there is no visible witness to break the tie, and the
+  occluder colour is scattered (also legitimately present in the output, e.g. f25ffba3's
+  0s), so "the contiguous occluded half" is not cleanly extractable from G0 alone.
+  → Folding these would force *either* (a) baking the chosen axis as a per-task `args`
+  constant — splitting into ≥2 rules (flip_v-tasks vs rot180-task), i.e. **accretion**
+  (covers 2+1, P3 flat) — *or* (b) a tiebreak heuristic ("reflect across the occluder
+  bounding-box boundary") that is an **unjustified special-case** and itself fails when
+  the occluder is scattered. Both violate §2.5-3/4. This is the strict-vs-lax tension
+  iter 38/39 flagged, now pinned to its root cause.
+- **denoise-to-mode** (changed cells → grid mode color): 15 same-size tasks match the
+  *surface* relation, but 14 are uncovered and their **selectors are heterogeneous**
+  (42a50994 = drop scattered components; a934301b = keep right-edge objects; ba9d41b8 =
+  checkerboard overlay *inside* a rect; d23f8c26 = keep a central line). One rule per
+  selector = accretion. The clean general guess "remove size-1 singleton components, fill
+  with mode" fires on **0** tasks across the whole corpus (42a50994 drops more than
+  singletons). No single-mechanism cluster here.
+- **uniform-color-class recolor** (changed cells share one (before,after) per pair): 167
+  same-size tasks — but the live `recolor_by_color_map` (rule_007) already handles the
+  *global-bijection* subset; the residue is exactly the cases where only a **subset** of a
+  colour's cells change, i.e. the selector is the content — the general
+  Slow-path/object-level selection frontier, repeatedly named and grounding-blocked.
+
+**OPEN QUESTION surfaced (BACKLOG §5 "open-question 에 닿으면 멈춘다")**: *symmetry-
+completion is underdetermined when one full symmetric half is occluded.* Two distinct
+self-consistent symmetry completions can both satisfy "repair → fully symmetric" from G0
+alone; the correct one is learnable only from the train pairs, and lifting that into a
+value-agnostic G0-recomputable selector is the unresolved design decision (a specific
+instance of `arbor-open-questions.md` line 34 — object-level "정렬·범위·선택적 확인" of an
+exponential comparison space). I did **not** invent a tiebreak; per §5 I defer this rung
+corner and made no commit rather than accrete a per-axis rule.
+
+**Change**: none (no code, no rule, no data). Reverted the probe runs' `times_reused`
+churn on rule_001/002 (runtime accounting — iter18..39 precedent). Appended this entry.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 26/26; rules=9; P1=7.333 P2=7.333
+  P3=0.444 P5=15.
+**Probe after** : identical (no change made). easy_a 9/9, madeup 26/26 (regression guards
+  intact — nothing touched).
+
+**Invariants**: forbidden=**none** (no diff to any tracked file). positives=**all
+  unchanged** — a deliberate neutral/no-op iter (PROMPT §5.3): a *wrong* or *accreting*
+  commit (per-axis symmetry rule, or a heuristic tiebreak) would pollute the P1–P6
+  baseline and is worse than no commit. Not termination (§2.2): nameable gaps remain
+  (one-sided repair, object-level selector), they are just blocked on an open design
+  decision / the standing synthesizer frontier, not closable as a smallest step today.
+
+**Next gap (note for future iter)**: the one-sided symmetry-completion ambiguity is now
+  characterized (not a coverage bug — an underdetermined-selection open question; needs a
+  *user/design* decision on how to choose the completion symmetry, or a G0 signal that
+  pins it — e.g. tasks where the visible part *does* witness exactly one symmetry, of
+  which the census found none beyond the strict family). The larger, repeatedly-named
+  frontier is unchanged and is where the next *general* win lives: the object-level
+  *selector synthesizer* (which subset/object a transform acts on) for the recolor-subset
+  / denoise / gravity-path residue (c9680e90, e5790162, 878187ab), still grounding-blocked.
+
+---
 ## Iter 39 — 2026-06-13T03:33 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 25/25 hold. I took iter
@@ -5057,3 +5137,33 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 5
 - Time: 4s
 - Log: logs/learn_20260613_033241.log
+
+---
+## Learning Loop -- 2026-06-13 03:36
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_033611.log
+
+---
+## Learning Loop -- 2026-06-13 03:36
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 12s
+- Log: logs/learn_20260613_033615.log
+
+---
+## Learning Loop -- 2026-06-13 03:36
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_033627.log
