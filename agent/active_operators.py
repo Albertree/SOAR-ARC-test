@@ -16,6 +16,7 @@ from agent.conditions import match as match_condition
 from agent.dsl_expr.render import (
     render_geometric_transform,
     render_scale_transform,
+    render_symmetry_repair,
     render_grid_via_primitives,
     render_object_at,
     render_object_recolor,
@@ -34,6 +35,7 @@ from agent.dsl_expr.selection import (
     analyze_object_size_grid,
     analyze_recolor_rank,
     analyze_scale_transform,
+    analyze_symmetry_repair,
     background_of,
     color_of,
     corner_anchor,
@@ -144,6 +146,17 @@ GEOMETRIC_TRANSFORM_DSL = "geometric_transform"
 #: off the example COMM (output/input dimension ratio) and recomputed at predict
 #: time — so one value-agnostic rule covers the family.
 SCALE_TRANSFORM_DSL = "scale_transform"
+
+#: action.dsl for the *symmetry-repair* family (R1 / BACKLOG_LOOP §2.5-1 worked
+#: example, the repair axis) — an occluder region hiding part of an otherwise
+#: symmetric grid is rebuilt from the visible pattern. The transformation is the
+#: frozen `coloring` primitive applied at the *occluded coordinates* with the
+#: colour read from each cell's symmetric image (render_symmetry_repair): a repair
+#: is `coloring` with a coordinate+colour expression, not a new primitive (§2.5-1,
+#: F3). The whole content is two *arguments* — the occluder colour (the cross-pair
+#: COMM) and the per-input symmetry set (read off each input's own structure, P5),
+#: recomputed at predict time — so one value-agnostic rule covers the family.
+SYMMETRY_REPAIR_DSL = "symmetry_repair"
 
 
 # ======================================================================
@@ -402,6 +415,17 @@ class ExtractPatternOperator(Operator):
         # so it never perturbs the readings above. Computed via the §2.5 scale
         # vocabulary (agent/dsl_expr/selection), not hand-coded here.
         patterns["scale_transform"] = analyze_scale_transform(task.example_pairs)
+
+        # *Symmetry repair* (R1 / BACKLOG_LOOP §2.5-1 worked example, repair axis):
+        # an occluder region hiding part of an otherwise symmetric grid rebuilt
+        # from the visible pattern — the occluded cells repainted via the frozen
+        # `coloring` primitive at their symmetric-image colour, not a new
+        # primitive. Inert (occluder None) whenever no single occluder +
+        # visible-symmetry repair reproduces all pairs (in particular on every
+        # unchanged / multi-colour-change / asymmetric task), so it never perturbs
+        # the readings above. Computed via the §2.5 symmetry vocabulary
+        # (agent/dsl_expr/selection), not hand-coded here.
+        patterns["symmetry_repair"] = analyze_symmetry_repair(task.example_pairs)
 
         wm.s1["patterns"] = patterns
 
@@ -682,6 +706,23 @@ class GeneralizeOperator(Operator):
         if rule is None:
             rule = self._recolor_rank_rule(patterns)
 
+        # Strategy 3 (R1 / §2.5-1 repair axis): symmetry-driven occlusion repair.
+        # If the `symmetry_repair` matcher fires (a single occluder colour whose
+        # cells, filled from their non-occluder symmetric image under the
+        # symmetries each input's visible cells satisfy, reproduce every example
+        # output exactly), emit a canonical {condition, action} rule carrying empty
+        # args — the occluder colour and per-input symmetry set are recomputed at
+        # predict time, so one value-agnostic rule covers the family (it merges by
+        # condition+action equivalence, like the geometric/scale families, rather
+        # than accreting one literal rule per task — §2.5-3/4). Checked *last* among
+        # the same-size strategies: the repair requires exact full-output
+        # reproduction via symmetry-fill, which a genuine move / recolor / sizing
+        # task never satisfies, and ordering it last guarantees it can only claim a
+        # task no earlier family already solved (no regression). Recognition is
+        # delegated to the registered matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._symmetry_repair_rule(patterns)
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
@@ -792,6 +833,44 @@ class GeneralizeOperator(Operator):
             },
             "concept": "scale_transform",
             "category": "scale_transform",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: symmetry-driven occlusion repair (R1) ----------------
+
+    def _symmetry_repair_rule(self, patterns):
+        """Emit the canonical symmetry-repair rule when the `symmetry_repair`
+        matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `symmetry_repair` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The action carries *empty* args
+        — the learned occluder colour (the cross-pair COMM) and the per-input
+        symmetry set (read off each input's own visible structure —
+        agent/dsl_expr/selection.held_symmetries) are recomputed at predict time,
+        so the rule is value- and content-agnostic and one rule covers the whole
+        family (it merges by condition+action equivalence, like the geometric/scale
+        families, rather than accreting one literal rule per task — §2.5-3/4). The
+        transformation bottoms out in the frozen `coloring` primitive applied at the
+        occluded coordinate with the symmetric colour (render_symmetry_repair); no
+        new transformation is introduced (§2.5-1, F3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("symmetry_repair", patterns, params):
+            return None
+        sig = patterns.get("symmetry_repair") or {}
+        evidence = int(sig.get("evidence", 0))
+        return {
+            "condition": {
+                "type": "symmetry_repair",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": SYMMETRY_REPAIR_DSL,
+                "args": {},
+            },
+            "concept": "symmetry_repair",
+            "category": "symmetry_repair",
             "confidence": 1.0,
         }
 
@@ -1326,6 +1405,20 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # *Symmetry repair* (R1 / §2.5-1, repair axis). Recompute the learned
+        # occluder colour from the examples, then for each test pair fill that
+        # input's occluded cells from their symmetric image under the symmetries
+        # the test input's own visible cells satisfy (P5: the occluder from the
+        # example COMM, the symmetry set and cells from the test G0) — a repair
+        # rendered as the frozen `coloring` primitive at the occluded coordinate.
+        if action and action.get("dsl") == SYMMETRY_REPAIR_DSL:
+            for i, grid in self._symmetry_repair_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         # Object-property *canvas sizing* (R1 / §2.1). Recompute the learned
         # dimension property from the examples, then for each test pair read that
         # property and the colour off the test object (P5) and render a solid
@@ -1630,6 +1723,31 @@ class PredictOperator(Operator):
             else:
                 continue
             grids[i] = render_scale_transform(g0.raw, mode, kh, kw)
+        return grids
+
+    @staticmethod
+    def _symmetry_repair_grids(task):
+        """Map test-pair index -> predicted grid for the symmetry-repair family.
+
+        The occluder colour is recomputed from the example pairs (the §2.5-1 lifted
+        argument: the cross-pair COMM — the single hidden colour every example
+        repaints). For each test pair the occluded cells are filled from their
+        symmetric image under the symmetries that *test* input's own visible cells
+        satisfy, via render_symmetry_repair — `make_grid` + `coloring` at the
+        occluded coordinate (P5: the occluder from the example COMM, the symmetry
+        set and cells from the test G0). Returns {} when the analysis yields no
+        consistent occluder."""
+        sig = analyze_symmetry_repair(task.example_pairs)
+        occ = sig.get("occluder")
+        if occ is None:
+            return {}
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            grids[i] = render_symmetry_repair(g0.raw, occ)
         return grids
 
     @staticmethod

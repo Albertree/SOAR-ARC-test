@@ -1,6 +1,98 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 38 — 2026-06-13T03:18 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 24/24 hold. The
+probe's failing tasks (c9680e90 gravity, 878187ab, e5790162) are the standing
+raw-cell/path frontier. A 680-same-size-task structural census instead surfaced a
+genuinely-unhandled **general family with no existing rule**: *symmetry-driven
+occlusion repair* — an occluder region hides part of an otherwise symmetric grid
+and the hidden cells are reconstructed from the visible pattern. A *principled*
+recognizer (read the symmetries each input's own visible cells satisfy, fill the
+occluder from the symmetric image) fires on **exactly 3** real ARC-AGI-2 tasks
+(5751f35e, 9ddd00f0 flip_h+transpose; b8825c91 flip_h) with **zero false
+positives across all 680 same-size tasks**, and generalizes to each test input (a
+laxer combinational search hit 6 train tasks but overfit — b8825c91's test failed
+under a locked minimal combo). All 3 ran INCORRECT before (rule=identity — no
+family fires). The gap is general and value-agnostic.
+
+**Change** (a born-general new family, all via the frozen primitives — no
+transformation primitive, no new `_try_*`; a repair is `coloring` at the occluded
+coordinates with the colour read from each cell's *symmetric image*, BACKLOG §2.5-1
+repair axis):
+- `agent/dsl_expr/selection.py`: added `SYMMETRY_SRC`/`SYMMETRY_VOCAB` (5
+  coordinate involutions), `held_symmetries` (the symmetries a grid's *visible*
+  cells satisfy — read off its own structure, the §2.5-2b lift on the symmetry
+  axis), `apply_symmetry_repair` (fixpoint fill from the symmetric image), and
+  `analyze_symmetry_repair` — learns a single occluder colour (the cross-pair
+  COMM: the same hidden colour in every example) such that the visible-symmetry
+  repair reproduces *every* example output exactly (P3/P4, grounded in the COMM),
+  requiring ≥2 pairs and a genuine non-empty change so it is inert on every
+  identity / multi-colour-change / asymmetric task.
+- `agent/dsl_expr/render.py`: added `render_symmetry_repair` — `make_grid` + one
+  `coloring` per colour at the repaired coordinates; shares `SYMMETRY_SRC` with the
+  analyzer so render and recognition agree by construction (like geometric/scale).
+- `agent/conditions/symmetry_repair.py`: **new condition matcher** (P5 +1) — fires
+  only on a genuine occluder + visible-symmetry repair with ≥`min_evidence` pairs.
+- `agent/active_operators.py`: wired the family in symmetrically — analyzer in
+  ExtractPattern, `_symmetry_repair_rule` emit (empty args — occluder/symmetry-set
+  recomputed at predict time so one rule covers the family), checked **last** among
+  the same-size strategies (exact full-output reproduction via symmetry-fill; last
+  position guarantees no regression to an earlier family's tasks), PredictOperator
+  dispatch, `_symmetry_repair_grids` render. (+118; F8 companion = the new
+  `agent/conditions/symmetry_repair.py`.)
+- `procedural_memory/rule_011.json`: **auto-saved by the pipeline** — one
+  value-agnostic rule, `covers` = [5751f35e, 9ddd00f0, b8825c91] (3 real ARC-AGI-2
+  tasks, all **verified CORRECT**). No accretion: one rule, one mechanism, 3 tasks.
+- `data/ARC_madeup/madeup_symmetry_repair.json`: grounding task (3 value-agnostic
+  concentric-ring repairs, occluder colour 5, different palette/occluder per pair →
+  test) — the §2.1 "complete the symmetric pattern" concept, as a madeup regression
+  guard. Solves the intended way.
+- `tests/test_symmetry_repair.py`: +12 tests (involution vocab; held_symmetries
+  reads structure modulo occluder; fixpoint fill; the unrecoverable centre
+  fixed-point is left as occluder not guessed; analyzer learns occluder + abstains
+  on single-pair / identity / asymmetric / multi-colour-change; matcher fires;
+  render == apply).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 24/24; rules=8; P1=7.125
+  P2=7.125 P3=0.5 P5=14. The 3 symmetry-repair tasks INCORRECT (no family fires).
+**Probe after** : 5751f35e / 9ddd00f0 / b8825c91 **CORRECT** via the new family
+  (one rule, covers=3). madeup **25/25** (symmetry_repair solves the intended way);
+  easy_a **9/9**; pytest **219/219** (207+12). Training 120-sample (seed 42):
+  **3/120** (was 2), 0 errors, **Rules 9→9 (+0 spurious)**, 0 discovered — the
+  family is inert on every non-symmetry task (zero false positives).
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P5 +1**
+  (14→15, the new `symmetry_repair` matcher). P1 7.125→6.667, P2 7.125→6.667, P3
+  0.5→0.444 dip is the **born-general-family debut** shape (scale_transform's iter 36
+  debut was identical): a brand-new family starts a fresh rule, so the mean dips
+  even though total covered tasks rose 57→60 (+3) — *not* liftless per-task
+  accretion (one rule covers 3 distinct tasks via one mechanism, with clear covers
+  headroom: the other mirror-repair tasks + periodic-symmetry variants are the named
+  next gap, exactly how scale_transform grew 5→10 the following iter). P4/P6 per
+  checker. Reverted the verification runs' `times_reused` churn on rule_001/002
+  (runtime accounting — iter18..37 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter —
+  the symmetry vocabulary (`SYMMETRY_SRC`, `held_symmetries`) is util/selection
+  (argument-expression) vocabulary under `agent/dsl_expr/` (taxonomy §3 allows;
+  §6.1's "no new DSL def" binds only `procedural_memory/DSL/`). No transformation
+  primitive added; F3 contract intact (a repair bottoms out in `coloring` at the
+  occluded coordinate with the symmetric-source colour).
+
+**Next gap (note for future iter)**: the principled mirror-repair covers 3 tasks;
+  the immediate covers-headroom is (a) the laxer-but-overfit-prone mirror tasks
+  (496994bd, e729b7be, f25ffba3) where the visible pattern is only *almost*
+  globally symmetric or needs **periodic/translational** symmetry (tiling repair) —
+  a `period-h`/`period-v` extension to `held_symmetries` would fold those into the
+  same rule_011 (covers up, no new rule); and (b) once ≥2 same-size repair families
+  share the skeleton, the R3 prize: `anti_unification.unify()` lifting them. The
+  large standing frontier is unchanged: the general Slow-path synthesizer /
+  `object_level_lift` for raw-cell ray/path/gravity tasks (c9680e90, e5790162,
+  878187ab), still grounding-blocked.
+
+---
 ## Iter 37 — 2026-06-13T02:55 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 24/24 hold. I took iter
@@ -4749,3 +4841,73 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 301s
 - Log: logs/learn_20260613_025345.log
+
+---
+## Learning Loop -- 2026-06-13 03:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_030020.log
+
+---
+## Learning Loop -- 2026-06-13 03:00
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_030024.log
+
+---
+## Learning Loop -- 2026-06-13 03:00
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_030035.log
+
+---
+## Learning Loop -- 2026-06-13 03:13
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_031259.log
+
+---
+## Learning Loop -- 2026-06-13 03:13
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 10s
+- Log: logs/learn_20260613_031303.log
+
+---
+## Learning Loop -- 2026-06-13 03:18
+
+- Split: training, Tasks: 120
+- Correct: 3 / 120 (2.5%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 300s
+- Log: logs/learn_20260613_031322.log
+
+---
+## Learning Loop -- 2026-06-13 03:20
+
+- Split: None, Tasks: 25
+- Correct: 25 / 25 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 13
+- Time: 11s
+- Log: logs/learn_20260613_032035.log

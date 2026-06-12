@@ -1,0 +1,26 @@
+{
+  "id": 11,
+  "concept": "symmetry_repair",
+  "category": "symmetry_repair",
+  "condition": {
+    "type": "symmetry_repair",
+    "params": {
+      "min_evidence": 2
+    },
+    "min_evidence": 2
+  },
+  "action": {
+    "dsl": "symmetry_repair",
+    "args": {}
+  },
+  "covers": [
+    "5751f35e",
+    "9ddd00f0",
+    "b8825c91",
+    "madeup_symmetry_repair"
+  ],
+  "source_task": "5751f35e",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-13T03:12:43.992843",
+  "times_reused": 0
+}

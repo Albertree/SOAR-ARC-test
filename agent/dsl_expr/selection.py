@@ -1905,3 +1905,190 @@ def analyze_scale_transform(example_pairs: list) -> dict:
         "valid_all": mode is not None,
         "evidence": len(pairs),
     }
+
+
+# ----------------------------------------------------------------------
+# Symmetry-repair vocabulary (BACKLOG_LOOP §2.5-1 on the repair axis: an
+# *argument expression* over the frozen `coloring` primitive, NOT a new
+# transformation primitive).
+#
+# A symmetry repair — an "occluder" region hides part of an otherwise symmetric
+# grid, and the hidden cells are reconstructed from the visible pattern — is
+# *not* a new DSL primitive (F3 forbids that). It is the frozen `coloring`
+# primitive applied at the occluded coordinates with the colour read from each
+# cell's *symmetric image*: exactly the §2.5-1 "rotate/flip = coloring with a
+# coordinate expression" worked example, here a coordinate+colour expression.
+# The whole content of such a task is two lifted arguments: the occluder colour
+# `occ` (the cross-pair COMM — the same hidden colour in every example) and, read
+# off each input's own structure (P5), the set of grid symmetries the *visible*
+# cells satisfy. This module only *recognises* (occ, held symmetries);
+# `render.render_symmetry_repair` composes the fill with `coloring`.
+#
+# Each symmetry is a coordinate involution (its own inverse), so a cell and its
+# image are mutually symmetric — the repair can fill either from the other.
+# ----------------------------------------------------------------------
+
+#: name -> (row, col, H, W) -> (row', col') symmetric source/image of a cell.
+SYMMETRY_SRC = {
+    "flip_h": lambda r, c, H, W: (r, W - 1 - c),
+    "flip_v": lambda r, c, H, W: (H - 1 - r, c),
+    "rot180": lambda r, c, H, W: (H - 1 - r, W - 1 - c),
+    "transpose": lambda r, c, H, W: (c, r),
+    "anti_transpose": lambda r, c, H, W: (W - 1 - c, H - 1 - r),
+}
+
+#: symmetries defined only on square grids (they swap the two axes).
+SYMMETRY_SQUARE_ONLY = {"transpose", "anti_transpose"}
+
+#: deterministic recognition order.
+SYMMETRY_VOCAB = list(SYMMETRY_SRC)
+
+
+def held_symmetries(grid: list, occ: int) -> list:
+    """The symmetries the *visible* (non-occluder) cells of `grid` satisfy.
+
+    A symmetry s is "held" iff wherever both a cell and its image under s are
+    non-occluder they carry the same colour, and at least one such witnessed pair
+    exists. This is grounded in the COMM between the grid's symmetric halves
+    (P3/P4) and is *read off the input's own structure* — the §2.5-2b lift on the
+    symmetry axis, recomputable from a test G0 alone (P5). Returns a list in
+    `SYMMETRY_VOCAB` order (deterministic)."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    held = []
+    if H == 0 or W == 0:
+        return held
+    square = (H == W)
+    for s in SYMMETRY_VOCAB:
+        if s in SYMMETRY_SQUARE_ONLY and not square:
+            continue
+        fn = SYMMETRY_SRC[s]
+        ok = True
+        witnessed = False
+        for r in range(H):
+            for c in range(W):
+                if grid[r][c] == occ:
+                    continue
+                sr, sc = fn(r, c, H, W)
+                if grid[sr][sc] == occ:
+                    continue
+                witnessed = True
+                if grid[r][c] != grid[sr][sc]:
+                    ok = False
+                    break
+            if not ok:
+                break
+        if ok and witnessed:
+            held.append(s)
+    return held
+
+
+def apply_symmetry_repair(grid: list, occ: int, syms: list) -> list:
+    """Fill every `occ`-coloured cell of `grid` from a non-occluder symmetric
+    image under `syms`, returning a fresh grid.
+
+    Pure recognition helper (no frozen-primitive bookkeeping): iterates to a
+    fixpoint so a cell whose direct image is itself occluded can still be resolved
+    through a composed symmetry on a later pass. `render.render_symmetry_repair`
+    produces the identical grid via `coloring`; they share `SYMMETRY_SRC` so they
+    agree by construction. Cells with no non-occluder image under any held
+    symmetry are left as `occ` (a genuinely unrecoverable cell — recognition then
+    only admits the occluder if the repaired grid still equals the output)."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    out = [row[:] for row in grid]
+    if H == 0 or W == 0 or not syms:
+        return out
+    changed = True
+    guard = 0
+    while changed and guard < H * W + 2:
+        changed = False
+        guard += 1
+        for r in range(H):
+            for c in range(W):
+                if out[r][c] != occ:
+                    continue
+                for s in syms:
+                    sr, sc = SYMMETRY_SRC[s](r, c, H, W)
+                    if out[sr][sc] != occ:
+                        out[r][c] = out[sr][sc]
+                        changed = True
+                        break
+    return out
+
+
+def _symmetry_occluder_candidates(pairs: list) -> set:
+    """Colours that, in *every* pair, are the single colour of all cells the
+    output changes (the cross-pair-constant occluder — the COMM). Empty when any
+    pair has no change or a multi-colour changed region (abstain — a genuine
+    occlusion repaints exactly the hidden colour)."""
+    cand = None
+    for a, b in pairs:
+        H = len(a)
+        W = len(a[0]) if H else 0
+        changed_cols = {a[r][c] for r in range(H) for c in range(W)
+                        if a[r][c] != b[r][c]}
+        if not changed_cols:
+            return set()
+        single = changed_cols if len(changed_cols) == 1 else set()
+        cand = single if cand is None else (cand & single)
+        if not cand:
+            return set()
+    return cand or set()
+
+
+def analyze_symmetry_repair(example_pairs: list) -> dict:
+    """Symmetry-driven occlusion repair (BACKLOG_LOOP §2.5-1 / §2.5-2b).
+
+    Fires for: a single occluder colour `occ` — the cross-pair COMM (the same
+    hidden colour in every example) — such that filling each `occ` cell of every
+    example input from its non-occluder symmetric image, under the symmetries that
+    input's own *visible* cells satisfy (`held_symmetries`), reproduces *every*
+    example output exactly. The occluder colour is the lifted *argument*; the
+    symmetry set is read off each input's structure at predict time (P5), so one
+    value-agnostic rule covers the family — it merges by condition+action
+    equivalence, like the geometric/scale families, rather than accreting one
+    literal rule per task (§2.5-3/4). The transformation bottoms out in the frozen
+    `coloring` primitive applied at the occluded coordinate with the symmetric
+    colour (§2.5-1, F3): a repair is `coloring` with a coordinate+colour
+    expression, not a new primitive.
+
+    Grounded in comparison, never assumed (P3/P4): an occluder is admitted only if
+    `apply_symmetry_repair(input, occ, held_symmetries(input, occ))` equals the
+    output for every pair — the COMM between predicted and actual outputs — and
+    only when every pair has a genuine non-empty change (so it is inert on every
+    identity / unchanged task). Returns a symbolic dict; the `symmetry_repair`
+    matcher (agent/conditions/) decides firing and PredictOperator renders from it.
+    Stays inert (occluder None) whenever no single occluder + visible-symmetry
+    repair reproduces all pairs, so it never perturbs the other same-size families.
+    """
+    pairs = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        if (a and b and a[0] and b[0]
+                and len(a) == len(b) and len(a[0]) == len(b[0])):
+            pairs.append((a, b))
+
+    occluder = None
+    if len(pairs) >= 2:
+        for occ in sorted(_symmetry_occluder_candidates(pairs)):
+            ok = True
+            for a, b in pairs:
+                syms = held_symmetries(a, occ)
+                if not syms or apply_symmetry_repair(a, occ, syms) != b:
+                    ok = False
+                    break
+            if ok:
+                occluder = occ
+                break
+
+    return {
+        "occluder": occluder,
+        "valid_all": occluder is not None,
+        "evidence": len(pairs),
+    }

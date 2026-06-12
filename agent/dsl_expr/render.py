@@ -16,7 +16,13 @@ property R0 requires (one module, many constant outputs).
 from collections import Counter
 
 from procedural_memory.DSL.apply import apply_DSL
-from agent.dsl_expr.selection import GEO_COORD, GEO_DIMS, SCALE_BACKMAP
+from agent.dsl_expr.selection import (
+    GEO_COORD,
+    GEO_DIMS,
+    SCALE_BACKMAP,
+    apply_symmetry_repair,
+    held_symmetries,
+)
 
 
 def _background_color(grid: list) -> int:
@@ -275,6 +281,48 @@ def render_scale_transform(grid: list, mode: str, kh: int, kw: int) -> list:
         for c in range(Wo):
             ir, ic = bm(r, c, H, W, kh, kw)
             v = grid[ir][ic]
+            if v == bg:
+                continue
+            by_color.setdefault(v, []).append((r, c))
+    for color, cells in by_color.items():
+        canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
+    return canvas
+
+
+def render_symmetry_repair(grid: list, occ: int) -> list:
+    """Produce the symmetry repair of `grid` (an occluder region reconstructed
+    from the visible symmetric pattern) as a `make_grid` + `coloring` composition.
+
+    The repair axis of BACKLOG_LOOP §2.5-1's worked example: a symmetry repair is
+    *not* a new primitive — it is the frozen `coloring` primitive applied at the
+    occluded coordinates with the colour read from each cell's symmetric image. We
+    compute the repaired grid (`selection.apply_symmetry_repair` under the
+    symmetries the visible cells satisfy — `selection.held_symmetries`), lay a
+    fresh canvas of the same size with `make_grid` (its fill is the repaired grid's
+    background), then paint each non-background colour at its cells, one `coloring`
+    call per colour. The result equals
+    `selection.apply_symmetry_repair(grid, occ, selection.held_symmetries(grid, occ))`.
+    The whole content lives in the *argument* — the occluder colour and the
+    per-input symmetry set — read off the example COMM / the test input's own
+    structure and recomputed at predict time (§2.5-1/2.5-2b, F3), not in any new
+    transformation.
+
+    Returns a copy of `grid` for an empty grid or when no symmetry is held.
+    """
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    if H == 0 or W == 0:
+        return [row[:] for row in grid]
+
+    syms = held_symmetries(grid, occ)
+    repaired = apply_symmetry_repair(grid, occ, syms)
+    bg = _background_color(repaired)
+
+    canvas = apply_DSL("make_grid", height=H, width=W, color=bg)
+    by_color: dict = {}
+    for r in range(H):
+        for c in range(W):
+            v = repaired[r][c]
             if v == bg:
                 continue
             by_color.setdefault(v, []).append((r, c))
