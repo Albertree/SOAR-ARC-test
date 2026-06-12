@@ -1,22 +1,25 @@
 {
   "id": 3,
-  "concept": "recolor_largest_object",
+  "concept": "recolor_extreme_object",
   "category": "object_recolor",
   "condition": {
-    "type": "recolor_largest_object",
+    "type": "recolor_extreme_object",
     "params": {
       "min_evidence": 2
     }
   },
   "action": {
-    "dsl": "recolor_largest",
-    "args": {}
+    "dsl": "recolor_extreme",
+    "args": {
+      "extreme": "?v1"
+    }
   },
   "covers": [
-    "largest_recolor"
+    "largest_recolor",
+    "smallest_recolor"
   ],
-  "source_task": "largest_recolor",
-  "anti_unification_trace": null,
-  "created_at": "2026-06-12T14:22:45.265489",
-  "times_reused": 1
+  "source_task": "smallest_recolor",
+  "anti_unification_trace": "episodic_memory/smallest_recolor/anti_unification/au_003.json",
+  "created_at": "2026-06-12T14:39:57.893749",
+  "times_reused": 0
 }

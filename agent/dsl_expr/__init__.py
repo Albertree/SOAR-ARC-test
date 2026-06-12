@@ -126,6 +126,49 @@ def argmax(objs, key):
     return winners[0]
 
 
+def arg_extreme(objs, key, direction="max"):
+    """Selection: return the single object that is *extreme* on `key` in the
+    requested `direction` (`"max"` → largest, `"min"` → smallest), or None.
+
+    This is the direction-parameterised generalization of `argmax`
+    (BACKLOG_LOOP.md R3 / §2.5-2b): `argmax(objs, key)` is exactly
+    `arg_extreme(objs, key, "max")`. Where `argmax` hard-codes "the largest",
+    the *direction* here is the position R3's anti-unification lifts to a
+    variable — one `recolor_extreme` rule whose `?vN` extreme covers both the
+    "recolor the largest" and "recolor the smallest" families (the genuine
+    generalization, not a second per-task detector). Selection by **comparing
+    the objects to each other** on a property remains the only information
+    source (P4) and its result a reason, not a literal (P3).
+
+    Same abstention discipline as `argmax` (determinism over guessing, P7):
+    returns None when `objs` is empty/not a list, no object has a defined `key`,
+    or the extreme is **tied** (two objects share the top/bottom value).
+    """
+    if direction not in ("max", "min"):
+        raise ValueError(f"arg_extreme direction must be 'max' or 'min', got {direction!r}")
+    if not isinstance(objs, list) or not objs:
+        return None
+    scored = [(key(o), o) for o in objs]
+    scored = [(v, o) for v, o in scored if v is not None]
+    if not scored:
+        return None
+    pick = max if direction == "max" else min
+    best = pick(v for v, _ in scored)
+    winners = [o for v, o in scored if v == best]
+    if len(winners) != 1:
+        return None
+    return winners[0]
+
+
+def argmin(objs, key):
+    """Selection: return the single object that *minimises* `key`, or None.
+
+    The mirror of `argmax` — `arg_extreme(objs, key, "min")` — selecting "the
+    smallest / fewest" where `argmax` selects "the largest / most". Same
+    tie/empty abstention (P7)."""
+    return arg_extreme(objs, key, "min")
+
+
 def cells_of(obj):
     """Property: the object's absolute cell coordinates as a frozenset.
 

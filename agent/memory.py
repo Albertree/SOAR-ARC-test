@@ -389,7 +389,7 @@ def increment_reuse_count(entry: dict) -> None:
 _DSL_TO_DISPATCH = {
     "copy_common_output": "constant_output",
     "place_object": "place_object",
-    "recolor_largest": "recolor_largest",
+    "recolor_extreme": "recolor_extreme",
 }
 
 
@@ -410,6 +410,7 @@ def _has_unresolved_var(args: dict) -> bool:
 # active_operators.py; both grow only when a genuinely new resolvable hole exists.
 _RUNTIME_RESOLVABLE = {
     "place_object": {"target_mode"},
+    "recolor_extreme": {"extreme"},
 }
 
 

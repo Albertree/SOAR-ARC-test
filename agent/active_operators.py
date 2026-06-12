@@ -16,7 +16,7 @@ from agent.operators import Operator
 from agent.conditions import match as match_condition
 from agent.dsl_expr import (
     objects_of, unique, color_of, size_of, position_of, corners_at, corner_cell,
-    output_dims, argmax, cells_of,
+    output_dims, argmax, arg_extreme, cells_of,
 )
 from agent.variable_resolution import resolve_variable
 from procedural_memory.DSL.apply import apply_DSL
@@ -43,6 +43,30 @@ def _with_target_mode(rule, mode):
     action = dict(new.get("action") or {})
     args = dict(action.get("args") or {})
     args["target_mode"] = mode
+    action["args"] = args
+    new["action"] = action
+    return new
+
+
+# The bounded, already-known domain of `recolor_extreme` size-extreme directions
+# (§2.5-2b). When an anti-unification-lifted recolor_extreme rule reaches apply
+# time with its `extreme` still an unresolved `?vN` hole, the render path fills it
+# by selecting the first of these that reproduces the examples — NOT by inventing
+# a new selector (Q-B3/Q-B4). Order = the slow-path detection priority in
+# `_object_ranking` (max before min), so a self-applied abstraction and a freshly
+# built concrete rule resolve identically.
+RECOLOR_EXTREME_DIRECTIONS = ("max", "min")
+
+
+def _with_extreme(rule, direction):
+    """Return a shallow copy of `rule` with `action.args.extreme` set to
+    `direction` (the concrete filling chosen for an abstract recolor_extreme
+    rule's `?vN` hole). Nested dicts are copied so the stored abstract rule is
+    never mutated — instantiation produces a fresh concrete rule."""
+    new = dict(rule)
+    action = dict(new.get("action") or {})
+    args = dict(action.get("args") or {})
+    args["extreme"] = direction
     action["args"] = args
     new["action"] = action
     return new
@@ -239,110 +263,121 @@ class ExtractPatternOperator(Operator):
         # Object-ranking transition (R4, BACKLOG_LOOP.md "2nd-order / ranking
         # relation"): when a grid holds *several* objects, `unique` goes dark and
         # the move pathway above cannot pick *which* object to act on. The ranking
-        # selector `argmax(objects_of(G0), size_of)` resolves that by comparing the
-        # objects to each other on a property (R1 §2.5-2b's seed selector; the
-        # agent-side expression of R4's edge-of-edge relation). Surfaced here as
-        # the `object_ranking` signal the `recolor_largest_object` matcher
-        # (registered iter 13) keys on — value-agnostic, derived only from the
-        # example COMM/DIFF, never a stored literal (P3/P4).
+        # selector `arg_extreme(objects_of(G0), size_of, direction)` resolves that
+        # by comparing the objects to each other on a property (R1 §2.5-2b's seed
+        # selector; the agent-side expression of R4's edge-of-edge relation).
+        # Surfaced here as the direction-aware `object_ranking` signal the
+        # `recolor_extreme_object` matcher keys on — value-agnostic, derived only
+        # from the example COMM/DIFF, never a stored literal (P3/P4).
         patterns["object_ranking"] = self._object_ranking(task)
 
         wm.s1["patterns"] = patterns
 
     def _object_ranking(self, task):
         """Aggregate the per-pair *size-ranked recolor* signal across example
-        pairs (BACKLOG_LOOP.md R4). For each pair: select the single size-maximal
-        object of a multi-object G0 via `argmax(objects_of(G0), size_of)` and ask
-        whether the output equals the input except that one object is recolored to
-        a constant color.
+        pairs (BACKLOG_LOOP.md R4). For each pair: select the single size-extreme
+        object of a multi-object G0 via `arg_extreme(objects_of(G0), size_of,
+        direction)` and ask whether the output equals the input except that one
+        object is recolored to a constant color. The *direction* (largest vs
+        smallest) is discovered, not assumed: max is tried first, then min; the
+        first that explains every pair wins (the position R3 lifts to a `?vN`).
 
         Returns a symbolic dict (the contract `agent/conditions/
-        recolor_largest_object.py` documents)::
+        recolor_extreme_object.py` documents)::
 
             {
-              "multi_object":     bool,  # every pair: >1 foreground object in G0
-              "select_extreme":   bool,  # every pair: argmax(...,size_of) well-defined
-              "recolor_constant": bool,  # every pair: the selected object genuinely
-                                         #   recolored to a single color
-              "recolor_color":    int|None,  # that fill color, constant across pairs
-              "others_unchanged": bool,  # every pair: all non-selected cells identical
-              "evidence_count":   int,
+              "multi_object":      bool,  # every pair: >1 foreground object in G0
+              "select_extreme":    bool,  # every pair: arg_extreme(...) well-defined
+              "recolor_constant":  bool,  # every pair: the selected object genuinely
+                                          #   recolored to a single color
+              "recolor_color":     int|None,  # that fill color, constant across pairs
+              "extreme_direction": "max"|"min"|None,  # which extreme the pairs agree on
+              "others_unchanged":  bool,  # every pair: all non-selected cells identical
+              "evidence_count":    int,
             }
 
-        Computed purely from `agent.dsl_expr` (`objects_of` / `argmax` / `size_of`
-        / `cells_of`) so the selection is the lift-ready expression
-        `argmax(objects_of(G0), size_of)`, not an ad-hoc cell scan. The recolor
-        color is read from the example outputs (the COMM of the selected object's
-        new color), never from the test pair — so one value-agnostic rule covers
-        the whole "recolor the largest object" family (§2.5-3)."""
+        Computed purely from `agent.dsl_expr` (`objects_of` / `arg_extreme` /
+        `size_of` / `cells_of`) so the selection is the lift-ready expression
+        `arg_extreme(objects_of(G0), size_of, direction)`, not an ad-hoc cell
+        scan. The recolor color is read from the example outputs (the COMM of the
+        selected object's new color), never from the test pair — so one value-
+        agnostic rule covers the whole "recolor the size-extreme object" family,
+        with the direction generalised away by R3 (§2.5-3)."""
+        empty = {
+            "multi_object": False, "select_extreme": False,
+            "recolor_constant": False, "recolor_color": None,
+            "extreme_direction": None, "others_unchanged": False,
+            "evidence_count": 0,
+        }
         pairs = [
             (pair.input_grid, pair.output_grid)
             for pair in task.example_pairs
             if pair.input_grid is not None and pair.output_grid is not None
         ]
         if not pairs:
-            return {
-                "multi_object": False, "select_extreme": False,
-                "recolor_constant": False, "recolor_color": None,
-                "others_unchanged": False, "evidence_count": 0,
-            }
+            return empty
 
-        sels = []
-        multi = []
-        for g0, _ in pairs:
+        multi_object = all(len(objects_of(g0.raw)) > 1 for g0, _ in pairs)
+        result = dict(empty)
+        result["multi_object"] = multi_object
+        result["evidence_count"] = len(pairs)
+        if not multi_object:
+            return result
+
+        # Discover the size-extreme *direction* that explains every pair. Max
+        # before min (RECOLOR_EXTREME_DIRECTIONS order); the first whose selected
+        # object is genuinely recolored to a constant color in every pair, with
+        # all other cells unchanged, wins. The chosen direction is the value R3's
+        # anti-unification lifts to a `?vN` variable across the two families.
+        for direction in RECOLOR_EXTREME_DIRECTIONS:
+            graded = self._grade_extreme_direction(pairs, direction)
+            if graded is not None:
+                color, = graded                  # one constant fill color
+                result["select_extreme"] = True
+                result["recolor_constant"] = True
+                result["others_unchanged"] = True
+                result["recolor_color"] = color
+                result["extreme_direction"] = direction
+                return result
+        return result
+
+    def _grade_extreme_direction(self, pairs, direction):
+        """For a single candidate `direction` ("max"/"min"), check whether every
+        pair recolors its `arg_extreme(objects_of(G0), size_of, direction)` object
+        to one constant color with all other cells unchanged. Returns a 1-tuple
+        `(color,)` when it holds across all pairs (so a constant fill color
+        exists), else None. Pure example evidence (COMM/DIFF), value-agnostic."""
+        colors = set()
+        for g0, g1 in pairs:
             objs = objects_of(g0.raw)
-            multi.append(len(objs) > 1)
-            # argmax abstains (None) on a tie, so an ambiguous "largest" declines
-            # rather than guessing — the value-agnostic discipline (P7).
-            sels.append(argmax(objs, size_of) if len(objs) > 1 else None)
-
-        multi_object = all(multi)
-        select_extreme = multi_object and all(s is not None for s in sels)
-
-        recolor_ok = []
-        others_ok = []
-        recolor_colors = []
-        if select_extreme:
-            for (g0, g1), sel in zip(pairs, sels):
-                raw0, raw1 = g0.raw, g1.raw
-                if g0.height != g1.height or g0.width != g1.width:
-                    recolor_ok.append(False)
-                    others_ok.append(False)
-                    continue
-                cells = cells_of(sel)
-                out_colors = {raw1[r][c] for (r, c) in cells}
-                # Genuine recolor: the selected object's cells become one color
-                # *and* at least one of them actually changed (else it is identity
-                # on that object, not a recolor).
-                genuine = (
-                    len(out_colors) == 1
-                    and any(raw0[r][c] != raw1[r][c] for (r, c) in cells)
-                )
-                recolor_ok.append(genuine)
-                recolor_colors.append(next(iter(out_colors)) if genuine else None)
-                others_ok.append(all(
-                    raw0[r][c] == raw1[r][c]
-                    for r in range(g0.height) for c in range(g0.width)
-                    if (r, c) not in cells
-                ))
-
-        recolor_constant = (
-            select_extreme and bool(recolor_ok) and all(recolor_ok)
-        )
-        others_unchanged = (
-            select_extreme and bool(others_ok) and all(others_ok)
-        )
-        colors = set(recolor_colors) if recolor_constant else set()
-        recolor_color = next(iter(colors)) if len(colors) == 1 else None
-
-        return {
-            "multi_object": multi_object,
-            "select_extreme": select_extreme,
-            "recolor_constant": recolor_constant,
-            "recolor_color": recolor_color,
-            "others_unchanged": others_unchanged,
-            "evidence_count": len(pairs),
-        }
+            # arg_extreme abstains (None) on a tie, so an ambiguous extreme
+            # declines rather than guessing — value-agnostic discipline (P7).
+            sel = arg_extreme(objs, size_of, direction) if len(objs) > 1 else None
+            if sel is None:
+                return None
+            if g0.height != g1.height or g0.width != g1.width:
+                return None
+            raw0, raw1 = g0.raw, g1.raw
+            cells = cells_of(sel)
+            out_colors = {raw1[r][c] for (r, c) in cells}
+            # Genuine recolor: the selected object's cells become one color *and*
+            # at least one of them actually changed (else it is identity on that
+            # object, not a recolor).
+            if len(out_colors) != 1 or not any(
+                raw0[r][c] != raw1[r][c] for (r, c) in cells
+            ):
+                return None
+            others_ok = all(
+                raw0[r][c] == raw1[r][c]
+                for r in range(g0.height) for c in range(g0.width)
+                if (r, c) not in cells
+            )
+            if not others_ok:
+                return None
+            colors.add(next(iter(out_colors)))
+        if len(colors) != 1:
+            return None
+        return (next(iter(colors)),)
 
     def _object_transition(self, task):
         """Aggregate the per-pair single-object COMM/DIFF across example pairs.
@@ -636,18 +671,21 @@ class GeneralizeOperator(Operator):
         elif match_condition("single_object_move_relative_corner", patterns):
             rule = self._build_place_object_corner_rule(patterns)
 
-        # R4: recognise a *multi-object* grid whose single size-maximal object is
-        # recolored to one constant color, everything else untouched. This is the
-        # ranking pathway the `single_object_move_*` branches cannot reach (they
-        # gate on `all_single`); `argmax(objects_of(G0), size_of)` selects *which*
-        # object by comparing them to each other on size (BACKLOG_LOOP.md R4,
-        # §2.5-2b). Disjoint from every branch above (multi-object vs single), so
-        # order is immaterial. One value-agnostic `recolor_largest` rule covers the
-        # whole family — the fill color is re-derived from each task's example
-        # outputs at apply time, never stored — so it dedups into one rule with a
-        # growing `covers` rather than one per task (§2.5-3).
-        elif match_condition("recolor_largest_object", patterns):
-            rule = self._build_recolor_largest_rule(patterns)
+        # R4: recognise a *multi-object* grid whose single size-extreme object
+        # (largest *or* smallest) is recolored to one constant color, everything
+        # else untouched. This is the ranking pathway the `single_object_move_*`
+        # branches cannot reach (they gate on `all_single`); `arg_extreme(
+        # objects_of(G0), size_of, direction)` selects *which* object by comparing
+        # them to each other on size (BACKLOG_LOOP.md R4, §2.5-2b). Disjoint from
+        # every branch above (multi-object vs single), so order is immaterial. The
+        # extreme *direction* is carried in `action.args.extreme` — exactly the
+        # position R3's anti-unification lifts to a `?vN`, so the "recolor largest"
+        # and "recolor smallest" tasks fold into one `recolor_extreme` abstraction
+        # with covers>1 rather than two per-family detectors (§2.5-3/4). The fill
+        # color is re-derived from each task's example outputs at apply time, never
+        # stored.
+        elif match_condition("recolor_extreme_object", patterns):
+            rule = self._build_recolor_extreme_rule(patterns)
 
         # Fallback: identity (copy input as output); not persisted.
         if rule is None:
@@ -786,29 +824,34 @@ class GeneralizeOperator(Operator):
 
     # ---- R4: recolor-largest rule construction --------------------------
 
-    def _build_recolor_largest_rule(self, patterns):
-        """Build the value-agnostic `{condition, action}` rule for the
-        size-ranked recolor family. The action is the *recipe* `recolor_largest`
-        — "recolor the single size-maximal object to the constant color the
-        examples agree on" — replayed at apply time as `coloring` over
-        `cells_of(argmax(objects_of(G0), size_of))`. Args are empty: the fill
-        color is the COMM of the example outputs' recolored object, re-derived per
-        task at apply time (P3/P4), not stored — so one rule covers the whole
-        family (§2.5-3)."""
+    def _build_recolor_extreme_rule(self, patterns):
+        """Build the value-agnostic `{condition, action}` rule for the size-ranked
+        recolor family. The action is the *recipe* `recolor_extreme` — "recolor
+        the single size-extreme object to the constant color the examples agree
+        on" — replayed at apply time as `coloring` over `cells_of(arg_extreme(
+        objects_of(G0), size_of, direction))`. The fill *color* is the COMM of the
+        example outputs' recolored object, re-derived per task at apply time
+        (P3/P4), never stored. The only arg is `extreme` (the discovered
+        direction, "max"/"min"): two concrete instances differing only here are
+        what R3's anti-unification lifts into one `recolor_extreme` abstraction
+        whose `extreme` is a `?vN` variable, covers>1 (§2.5-3/4)."""
         ranking = patterns.get("object_ranking") or {}
-        if not ranking.get("recolor_constant") or ranking.get("recolor_color") is None:
+        direction = ranking.get("extreme_direction")
+        if (not ranking.get("recolor_constant")
+                or ranking.get("recolor_color") is None
+                or direction not in ("max", "min")):
             return None
         return {
-            "type": "recolor_largest",            # WM dispatch tag for PredictOperator
-            "concept": "recolor_largest_object",
+            "type": "recolor_extreme",            # WM dispatch tag for PredictOperator
+            "concept": "recolor_extreme_object",
             "category": "object_recolor",
             "condition": {
-                "type": "recolor_largest_object",
+                "type": "recolor_extreme_object",
                 "params": {"min_evidence": 2},
             },
             "action": {
-                "dsl": "recolor_largest",
-                "args": {},               # fill color re-derived at apply time
+                "dsl": "recolor_extreme",
+                "args": {"extreme": direction},   # fill color re-derived at apply time
             },
             "confidence": 1.0,
         }
@@ -884,8 +927,8 @@ class PredictOperator(Operator):
             return self._render_constant_output(rule, self._task)
         if rule_type == "place_object":
             return self._render_place_object(rule, self._task, input_grid)
-        if rule_type == "recolor_largest":
-            return self._render_recolor_largest(rule, self._task, input_grid)
+        if rule_type == "recolor_extreme":
+            return self._render_recolor_extreme(rule, self._task, input_grid)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
@@ -926,22 +969,29 @@ class PredictOperator(Operator):
                                     color=common[r][c])
         return out
 
-    def _render_recolor_largest(self, rule, task, input_grid):
-        """Render the R4 `recolor_largest` action: recolor the test grid's single
-        size-maximal object to the color the examples agree on, via the frozen
-        `coloring` primitive.
+    def _render_recolor_extreme(self, rule, task, input_grid):
+        """Render the R4 `recolor_extreme` action: recolor the test grid's single
+        size-extreme object (largest *or* smallest, per `action.args.extreme`) to
+        the color the examples agree on, via the frozen `coloring` primitive.
 
-        Two value-agnostic derivations, both reading the example pairs (never the
+        Three value-agnostic derivations, all reading the example pairs (never the
         test pair's absent output, P5):
-          - *which object*: `argmax(objects_of(G0), size_of)` — the ranking
-            selector picks the largest by comparing the objects to each other;
-            abstains (None) on a tie, so an ambiguous "largest" renders nothing.
+          - *which direction*: `action.args.extreme` ("max"/"min"). If it is still
+            an unresolved anti-unification hole (a `?vN`, e.g. the lifted
+            `recolor_extreme` abstraction reused on a fresh task), it is filled at
+            apply time by example-grounded selection over `RECOLOR_EXTREME_
+            DIRECTIONS` (`variable_resolution.resolve_variable`, §2.5-2b) — the
+            first direction reproducing every example wins, never invented.
+          - *which object*: `arg_extreme(objects_of(G0), size_of, direction)` — the
+            ranking selector picks the extreme by comparing the objects to each
+            other; abstains (None) on a tie, so an ambiguous extreme renders
+            nothing.
           - *what color*: the COMM of the example outputs' recolored object (the
             single color the selected cells take in every example G1). If that
             color is not constant across pairs, the recolor is not derivable and
             render returns None.
 
-        The transformation itself is exactly `coloring(cells_of(argmax(...)),
+        The transformation itself is exactly `coloring(cells_of(arg_extreme(...)),
         color)` applied to the test input: the rest of the grid is preserved (the
         matcher guarantees others-unchanged + size-preserved), so the input *is*
         the canvas and only the selected cells are painted — no `make_grid` is
@@ -950,12 +1000,30 @@ class PredictOperator(Operator):
         if task is None or input_grid is None:
             return None
 
+        # Fill an unresolved `extreme` hole by example-grounded selection over the
+        # bounded known directions. resolve_variable invokes this render only with
+        # concrete (instantiated) rules, so this does not recurse (§2.5-2b).
+        direction = ((rule.get("action") or {}).get("args") or {}).get("extreme", "max")
+        if isinstance(direction, str) and direction.startswith("?"):
+            resolved = resolve_variable(
+                task,
+                RECOLOR_EXTREME_DIRECTIONS,
+                lambda d: _with_extreme(rule, d),
+                self._render_recolor_extreme,
+            )
+            if resolved is None:
+                return None
+            rule = _with_extreme(rule, resolved)
+            direction = resolved
+        if direction not in ("max", "min"):
+            return None
+
         # Derive the constant fill color from the example outputs (value-agnostic).
         colors = set()
         for pair in task.example_pairs:
             if pair.input_grid is None or pair.output_grid is None:
                 return None
-            sel = argmax(objects_of(pair.input_grid.raw), size_of)
+            sel = arg_extreme(objects_of(pair.input_grid.raw), size_of, direction)
             if sel is None:
                 return None
             cells = cells_of(sel)
@@ -969,8 +1037,8 @@ class PredictOperator(Operator):
             return None
         color = next(iter(colors))
 
-        # Select the test grid's largest object and paint its cells.
-        sel = argmax(objects_of(input_grid.raw), size_of)
+        # Select the test grid's size-extreme object and paint its cells.
+        sel = arg_extreme(objects_of(input_grid.raw), size_of, direction)
         if sel is None:
             return None
         cells = sorted(cells_of(sel))

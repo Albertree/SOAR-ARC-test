@@ -1,6 +1,95 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 15 — 2026-06-12T14:40 — branch test31
+
+**Diagnosis**: R0–R5(reuse) + R4 are cleared, but iter 14 opened the recolor-
+ranking family as a *single* covers=1 rule that **hardcoded the extreme direction**
+(`argmax`/max) — and noted P1/P2/P3 dipped because that new family had nothing to
+lift against. The smallest defensible step that *recovers* the dip (the genuine
+R3 reward, §2.5-4 litmus: rule-count-up only counts if covers/coverage also rise)
+is to generalize that one literal — the max-vs-min direction — into an
+anti-unification variable. I authored the mirror sibling (`smallest_recolor`,
+recolor the *smallest* object) so the two concrete instances differ **only** in
+`action.args.extreme`, the exact position R3's `unify()` lifts.
+
+**Change**:
+- `agent/dsl_expr/__init__.py` — added `arg_extreme(objs, key, direction)` (the
+  direction-parameterised generalization of `argmax`; `argmax` == `arg_extreme(…,
+  "max")`) and `argmin`. Selection vocabulary, grown under `agent/` per §2.5-1
+  (not the frozen transformation `DSL/`), same tie/empty abstention as `argmax` (P7).
+- `agent/conditions/recolor_extreme_object.py` (new) replaces
+  `recolor_largest_object.py` (deleted): one matcher recognises the size-extreme
+  recolor in *either* direction (reads the new `extreme_direction` field). P5
+  unchanged (rename, not a new matcher) — uniformity, not accretion.
+- `agent/active_operators.py` — generalized the family end-to-end:
+  - `_object_ranking` now *discovers* the direction: tries max then min
+    (`_grade_extreme_direction` helper), and the first that explains every pair
+    (genuine constant recolor of the `arg_extreme`-selected object, others
+    unchanged) wins; surfaces `extreme_direction` ∈ {max,min,None}. Value-agnostic.
+  - `_build_recolor_extreme_rule` emits `action.args={"extreme": <direction>}` —
+    the only arg, and the position R3 lifts. `_render_recolor_extreme` reads it,
+    and when it is an unresolved `?vN` (a reused lifted abstraction) fills it by
+    example-grounded selection over `RECOLOR_EXTREME_DIRECTIONS`
+    (`resolve_variable`, §2.5-2b) — selection, never invention. Transformation is
+    still frozen `coloring(cells_of(arg_extreme(...)), color)`; no `make_grid`.
+- `agent/memory.py` — `_DSL_TO_DISPATCH` and `_RUNTIME_RESOLVABLE` updated for the
+  `recolor_extreme` recipe (its `extreme` hole is runtime-resolvable, like
+  place_object's `target_mode`), so the lifted abstraction is fast-path replayable.
+- `data/ARC_madeup/smallest_recolor.json` (new, F1-exempt) — the min-direction
+  probe (color 7, distinct from largest's 4/8: proves color *and* direction are
+  both re-derived, never stored).
+- `procedural_memory/rule_003.json` — the stale iter-14 max-only covers=1 rule
+  (args:{}) was deleted and **rebuilt by run_learn as the lifted abstraction**:
+  `recolor_extreme` with `args.extreme="?v1"`, covers=[largest_recolor,
+  smallest_recolor], `anti_unification_trace` set. This is the R3 prize.
+- `tests/test_recolor_extreme.py` (replaces `test_recolor_largest.py`) + updates
+  to `tests/test_ranking_selection.py` — direction-aware signal on both families,
+  declines on single-object easy000c, end-to-end solve of largest+smallest, and
+  two R3-lift tests (`unify()` direct and through `save_rule`) asserting the two
+  instances fold into ONE rule with `extreme=?vN`, covers=2, trace set.
+
+**Probe before**: easy 1/3, easy_a 9/9; madeup 2/2; rules=3 (covers 6+9+1);
+P1=5.33 P2=5.33 P3=0.33 P4=353 P5=6.
+**Probe after** : easy 1/3, easy_a 9/9 (regression guard intact); madeup **3/3** —
+largest_recolor + smallest_recolor via `pipeline` (discover, then **lift**),
+largest_recolor_b via `stored` reuse; rules=3 but the recolor rule is now ONE
+lifted `recolor_extreme(extreme=?v1)` covering both families; P1=5.67 P2=5.67
+P3=0.67 (all **+0.33**) P4=383 P5=6. Suite 103→**113** pass.
+
+**Invariants**: forbidden=**none** — F1: only `data/ARC_madeup/` (exempt) + non-
+frozen files touched; F2: no new `_try_*`/`_apply_*` (verified by diff); F3: no
+DSL primitive — `arg_extreme`/`argmin` are selection vocab in `agent/dsl_expr`,
+transformation stays frozen `coloring`; F4: rule_003 carries condition+action; F8:
+`active_operators.py` edit accompanied by `agent/memory.py` + `agent/conditions/`.
+Checker verdict: **CLEAN**. positives = **P1 +0.33, P2 +0.33, P3 +0.33, P4 +30** —
+the three coverage signals rising *together* is precisely the §2.5-4 litmus for
+genuine generalization (not accretion); it recovers the dip iter 14 named.
+
+### RUNG R3 RE-PROVEN (lift across the ranking family) — direction generalized
+Against the four observation criteria (BACKLOG §5):
+1. **Works**: producer discovers direction, builder/renderer run error-free; both
+   families solve, the lift fires through the single `save_rule()` call site.
+2. **Module uniformity**: **one** `recolor_extreme` rule (variable `extreme`)
+   handles largest *and* smallest — no per-direction branch; the overfit per-task
+   instances served only as AU input material and were folded away (§2.5-3).
+3. **Approaches the answer**: exact test outputs for both directions via frozen
+   `coloring` over a lifted `cells_of(arg_extreme(...))` expression.
+4. **Search sanity**: deterministic; `arg_extreme` abstains on size ties; the
+   direction hole is filled by bounded example-reproduction (max,min), never guessed.
+R3 done-when met — "최소 한 쌍이 lift 되어 covers>1 + anti_unification_trace" — and
+P1/P2/P3 rose together, the §2.5-4 진짜 전진 signal.
+
+**Next gap (note for future iter)**: the lifted `recolor_extreme` still hardcodes
+the *ranking key* (`size_of`). A third sibling that ranks on a *different* property
+(e.g. recolor the object of a particular **color**, or the one **most/least
+frequent**) would share the `arg_extreme` skeleton and push R3 to lift the *key*
+itself (`arg_extreme(_, ?key, ?extreme)`), generalizing selection one level
+further — or escalate to R6 (apply the now-working object/ranking machinery to a
+failing ARC-AGI-2 training task named for a reason). Latent (unchanged): no
+P-signal rewards reuse *rate*, so the `largest_recolor_b` stored-hit reads neutral.
+
+---
 ## Iter 14 — 2026-06-12T14:24 — branch test31
 
 **Diagnosis**: R0–R3 + R5-reuse are cleared; the lowest unproven rung is **R4
@@ -1630,3 +1719,53 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 1
 - Time: 1s
 - Log: logs/learn_20260612_142258.log
+
+---
+## Learning Loop -- 2026-06-12 14:27
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_142739.log
+
+---
+## Learning Loop -- 2026-06-12 14:27
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_142741.log
+
+---
+## Learning Loop -- 2026-06-12 14:39
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 1
+- Time: 2s
+- Log: logs/learn_20260612_143956.log
+
+---
+## Learning Loop -- 2026-06-12 14:40
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_144015.log
+
+---
+## Learning Loop -- 2026-06-12 14:40
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_144017.log
