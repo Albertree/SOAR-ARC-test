@@ -1,6 +1,89 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 36 — 2026-06-13T02:45 — branch test32
+
+**Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 22/22 hold. I first
+checked iter 35's handed-off next gap (wire `objects_by_color` into the move/recolor
+analyzers) and **rejected it**: a 1000-task scan found **0** real training tasks where
+a nested per-colour region recolors but connected segmentation fuses it — so that
+gap is not exercised by real data, and grounding it would be a manufactured madeup
+challenge (spinning-in-disguise). Instead a structural census surfaced a genuinely
+unsolved **general transformation family with no existing rule at all**: whole-grid
+**scale / replicate** (block-upscale: each cell → a kh×kw block; or whole-grid tile).
+≥8 real ARC-AGI-2 training tasks are pure replications and **all ran INCORRECT**
+(rule=identity — no family fires). The smallest defensible slice is the
+**constant-factor** case (factor = cross-pair COMM), mirroring the existing
+`geometric_transform` family exactly; the *factor-read-off-a-property* case
+(ac0a08a4/b91ae062 k=distinct-colour-count, ccd554ac k=grid-side) is the named next
+gap (§2.5-2b factor-axis lift).
+
+**Change** (new born-general family, all via the frozen primitives — no
+transformation primitive, no new `_try_*`; a scale/tile is `coloring` at a
+*replicated coordinate* on a `make_grid` canvas, BACKLOG_LOOP §2.5-1 scale axis):
+- `agent/dsl_expr/selection.py`: added `SCALE_BACKMAP`/`SCALE_VOCAB` (modes
+  "block"=`in[r//kh][c//kw]`, "tile"=`in[r%H][c%W]`, both output dims `(H·kh, W·kw)`),
+  `apply_scale` (recognition helper), and `analyze_scale_transform` — learns a single
+  *constant* integer factor + mode that reproduces every example output exactly
+  (grounded in the COMM, P3/P4); abstains on a non-integer ratio, a per-pair-varying
+  factor, or the identity `(1,1)`, so it is inert on every same-size task.
+- `agent/dsl_expr/render.py`: added `render_scale_transform` — `make_grid` + one
+  `coloring` per colour at the replicated coordinates; shares `SCALE_BACKMAP` with the
+  analyzer so render and recognition agree by construction (like the geometric family).
+- `agent/conditions/scale_transform.py`: **new condition matcher** (P5 +1) — fires only
+  on a genuine non-identity constant-factor scale with ≥`min_evidence` pairs.
+- `agent/active_operators.py`: wired the family in symmetrically to geometric —
+  `analyze_scale_transform` in ExtractPattern, `_scale_transform_rule` emit (empty args
+  — factor/mode recomputed at predict time so one rule covers the family),
+  PredictOperator dispatch, `_scale_transform_grids` render. (+118 net; F8 companion =
+  the new `agent/conditions/scale_transform.py`.)
+- `procedural_memory/rule_010.json`: **auto-saved by the pipeline** (GeneralizeOperator
+  → save_rule) merging by condition+action equivalence — `covers` =
+  [60c09cac, 9172f3a0, c59eb873, a416b8f3, madeup_block_upscale] (4 real ARC-AGI-2
+  tasks + the grounding madeup), all verified CORRECT. Schema-valid (validate_rule
+  passes; condition+action present, registered matcher, discovered-layer dsl).
+- `data/ARC_madeup/madeup_block_upscale.json`: grounding task (3 value-agnostic block-×2
+  pairs of different shapes/colours + a test pair) — the §2.1 "grid size changes
+  between input and output" concept.
+- `tests/test_scale_transform.py`: 10 tests (both modes apply/render agree; modes differ
+  on a non-uniform grid; analyzer learns constant block & tile factors; abstains on
+  varying factor / same-size / non-integer ratio; matcher fires/inert).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 22/22; rules=7; P1=6.71 P2=6.71
+  P3=0.571 P5=13. The 8 scale tasks (3 block + 1 tile constant; 4 variable-factor) all
+  INCORRECT (rule=identity — no scale family existed).
+**Probe after** : 60c09cac / 9172f3a0 / c59eb873 / a416b8f3 **CORRECT** (block + tile,
+  constant factor) via the new family; the 4 variable-factor tasks still abstain (named
+  next gap). madeup **23/23** (block_upscale solves the intended way); easy_a **9/9**;
+  pytest **200/200** (190+10). Training 120-sample (seed 42): **2/120** (c59eb873 newly
+  solved + the pre-existing c8f0f002 baseline), **0 errors, Rules 8→8 (+0 spurious, 0
+  discovered)** — the scale family is inert on the 118 non-scale tasks.
+
+**Invariants**: forbidden=**none** (checker verdict **CLEAN**). positives=**P5 +1**
+  (13→14, the new `scale_transform` recognition vocabulary). P1 6.71→6.5, P2 6.71→6.5,
+  P3 0.571→0.5 dip is the *arithmetic* dilution of a young born-general family (rule_010
+  covers 5, below the current mean) — **not** the accretion failure mode (covers rose by
+  5 with the one new rule; §2.5-4 litmus = covers-up-with-rule-up, satisfied), the same
+  shape under which rule_009/geometric was added. P4 unchanged. P6 −118 (active_operators
+  +118 for the family wiring; F8-clean via the new conditions/ file). Reverted the
+  verification runs' `times_reused` churn on rule_001/002 (runtime accounting —
+  iter18..35 precedent).
+
+**CLAUDE.md §6.1 ↔ taxonomy §3 conflict (Step1.C surface)**: unchanged this iter — the
+  scale vocabulary is util/selection (coordinate-replication *argument* expression)
+  placed under `agent/dsl_expr/` (taxonomy §3 allows; §6.1's "no new DSL def" binds only
+  `procedural_memory/DSL/`). No transformation primitive added; F3 contract intact (the
+  scale bottoms out in `make_grid` + `coloring`).
+
+**Next gap (note for future iter)**: the **factor-read-off-a-property** lift (§2.5-2b on
+  the scale axis) — ac0a08a4/b91ae062 (k = distinct non-background colour count),
+  ccd554ac (k = grid side), a59b95c0 (tile, k = distinct+1) — would fold straight into
+  rule_010 via a small `SCALE_FACTOR_VOCAB` (the converse of abstaining on a varying
+  factor), lifting P1/P2 back up rather than diluting. The large standing frontier is
+  unchanged: the general Slow-path synthesizer / `object_level_lift` for raw-cell
+  ray/path tasks (e5790162, c9680e90, 878187ab), still grounding-blocked.
+
+---
 ## Iter 35 — 2026-06-13T02:25 — branch test32
 
 **Diagnosis**: Training phase, probe 0/3; easy_a 9/9, madeup 21/21 hold. I took
@@ -4448,3 +4531,63 @@ higher-leverage structural step but reads NEUTRAL on P1–P6.
 - Stored rule hits: 0
 - Time: 83s
 - Log: logs/learn_20260613_022237.log
+
+---
+## Learning Loop -- 2026-06-13 02:26
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 5
+- Time: 3s
+- Log: logs/learn_20260613_022602.log
+
+---
+## Learning Loop -- 2026-06-13 02:26
+
+- Split: None, Tasks: 22
+- Correct: 22 / 22 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 13
+- Time: 9s
+- Log: logs/learn_20260613_022606.log
+
+---
+## Learning Loop -- 2026-06-13 02:26
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260613_022616.log
+
+---
+## Learning Loop -- 2026-06-13 02:38
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 13
+- Time: 10s
+- Log: logs/learn_20260613_023804.log
+
+---
+## Learning Loop -- 2026-06-13 02:38
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 5
+- Time: 4s
+- Log: logs/learn_20260613_023819.log
+
+---
+## Learning Loop -- 2026-06-13 02:43
+
+- Split: training, Tasks: 120
+- Correct: 2 / 120 (1.7%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 0
+- Time: 302s
+- Log: logs/learn_20260613_023845.log

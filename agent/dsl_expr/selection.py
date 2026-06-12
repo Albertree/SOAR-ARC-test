@@ -1719,3 +1719,126 @@ def analyze_geometric_transform(example_pairs: list) -> dict:
         "valid_all": transform is not None,
         "evidence": len(pairs),
     }
+
+
+# ----------------------------------------------------------------------
+# Scale / replicate vocabulary (BACKLOG_LOOP §2.5-1: an *argument expression* over
+# the frozen `make_grid` + `coloring` primitives, NOT a new transformation
+# primitive).
+#
+# A "scale" (block-upscale or whole-grid tiling) is *not* a new DSL primitive (F3
+# forbids that). It is the frozen `coloring` primitive applied at a *replicated
+# coordinate*: every output cell (r, c) takes the colour of one back-mapped input
+# cell, on a `make_grid` canvas of the scaled dimensions. The whole content of
+# such a task is the *factor* `(kh, kw)` and the replication *mode* — the lifted
+# arguments, named in a small deterministic vocabulary the way SELECTOR_VOCAB
+# names object selectors and GEOMETRIC_VOCAB names coordinate permutations:
+#
+#   - "block"  — each input cell becomes a kh×kw solid block:  in[r//kh][c//kw]
+#   - "tile"   — the whole grid is repeated kh×kw times:        in[r%H ][c%W ]
+#
+# Both produce output dims (H*kh, W*kw); they differ only in the back-map. This
+# module only *recognises* which (mode, kh, kw) fits; `render.render_scale_transform`
+# composes the chosen back-map with `make_grid` + `coloring`. This slice learns a
+# *constant* factor (the same (kh, kw) in every pair — the cross-pair COMM); a
+# factor *read off an input property* (e.g. distinct-colour count) is a separate,
+# named next step (§2.5-2b lift on the factor axis).
+# ----------------------------------------------------------------------
+
+#: name -> (output row, col, H, W, kh, kw) -> (input row, col) back-map.
+SCALE_BACKMAP = {
+    "block": lambda r, c, H, W, kh, kw: (r // kh, c // kw),
+    "tile": lambda r, c, H, W, kh, kw: (r % H, c % W),
+}
+
+#: deterministic recognition order (vocab order breaks ties when both reproduce,
+#: e.g. on a uniform grid block and tile coincide).
+SCALE_VOCAB = list(SCALE_BACKMAP)
+
+
+def apply_scale(grid: list, mode: str, kh: int, kw: int) -> list:
+    """Replicate `grid` by integer factor (kh, kw) under `mode`, fresh grid out.
+
+    Pure recognition helper (no frozen-primitive bookkeeping): every output cell
+    is filled from its `SCALE_BACKMAP[mode]` input cell.
+    `render.render_scale_transform` produces the identical grid via `make_grid` +
+    `coloring`; they share `SCALE_BACKMAP` so they agree by construction. Returns
+    a copy for an unknown mode, non-positive factor, or empty grid."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    if mode not in SCALE_BACKMAP or H == 0 or W == 0 or kh < 1 or kw < 1:
+        return [row[:] for row in grid]
+    bm = SCALE_BACKMAP[mode]
+    Ho, Wo = H * kh, W * kw
+    out = [[0] * Wo for _ in range(Ho)]
+    for r in range(Ho):
+        for c in range(Wo):
+            ir, ic = bm(r, c, H, W, kh, kw)
+            out[r][c] = grid[ir][ic]
+    return out
+
+
+def analyze_scale_transform(example_pairs: list) -> dict:
+    """Whole-grid scale / replicate (BACKLOG_LOOP §2.5-1, the scale axis).
+
+    Fires for: a single *constant* integer factor `(kh, kw)` and replication
+    `mode` ("block" upscale or "tile") that reproduces *every* example output from
+    its input exactly, with the factor not the identity `(1, 1)`. The (mode, kh,
+    kw) triple is the lifted *argument* — value-, colour- and content-agnostic —
+    recomputed at predict time, so one rule covers the whole family rather than one
+    literal rule per task (§2.5-3/4). The transformation bottoms out in the frozen
+    `coloring` primitive applied at the replicated coordinate (§2.5-1, F3): a
+    scale/tile is `coloring` with a coordinate-replication expression on a
+    `make_grid` canvas, not a new primitive.
+
+    Grounded in comparison, never assumed (P3/P4): a (mode, kh, kw) is admitted
+    only if `apply_scale(input, mode, kh, kw)` equals the output for every pair —
+    the COMM between predicted and actual output grids. The factor is read off the
+    output/input dimension ratio and must be a constant integer multiple in every
+    pair (a non-integer or per-pair-varying ratio abstains; the varying-factor case
+    is the §2.5-2b factor-reading lift, a separate next step). Returns a symbolic
+    dict; the `scale_transform` matcher (agent/conditions/) decides firing and
+    PredictOperator renders from it. Stays inert (mode None) whenever no single
+    constant factor+mode reproduces all pairs, so it never perturbs the same-size
+    (move / recolor / sizing / geometric) families.
+    """
+    pairs = []
+    for pair in example_pairs:
+        g0 = getattr(pair, "input_grid", None)
+        g1 = getattr(pair, "output_grid", None)
+        if g0 is None or g1 is None:
+            continue
+        a = g0.raw or []
+        b = g1.raw or []
+        if a and b and a[0] and b[0]:
+            pairs.append((a, b))
+
+    mode = None
+    factor = None
+    if pairs:
+        # The factor must be a constant integer multiple across every pair (the
+        # cross-pair COMM); abstain otherwise.
+        factors = set()
+        ok_ratio = True
+        for a, b in pairs:
+            H, W = len(a), len(a[0])
+            Ho, Wo = len(b), len(b[0])
+            if H == 0 or W == 0 or Ho % H or Wo % W:
+                ok_ratio = False
+                break
+            factors.add((Ho // H, Wo // W))
+        if ok_ratio and len(factors) == 1:
+            kh, kw = next(iter(factors))
+            if kh >= 1 and kw >= 1 and (kh, kw) != (1, 1):
+                for name in SCALE_VOCAB:
+                    if all(apply_scale(a, name, kh, kw) == b for a, b in pairs):
+                        mode = name
+                        factor = (kh, kw)
+                        break
+
+    return {
+        "mode": mode,
+        "factor": factor,
+        "valid_all": mode is not None,
+        "evidence": len(pairs),
+    }

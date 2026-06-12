@@ -15,6 +15,7 @@ from ARCKG.comparison import compare as arckg_compare
 from agent.conditions import match as match_condition
 from agent.dsl_expr.render import (
     render_geometric_transform,
+    render_scale_transform,
     render_grid_via_primitives,
     render_object_at,
     render_object_recolor,
@@ -32,6 +33,7 @@ from agent.dsl_expr.selection import (
     analyze_object_select_recolor,
     analyze_object_size_grid,
     analyze_recolor_rank,
+    analyze_scale_transform,
     background_of,
     color_of,
     corner_anchor,
@@ -129,6 +131,18 @@ CANVAS_FILL_DSL = "fill_canvas"
 #: content is the *argument* — which permutation, read off the example COMM and
 #: recomputed at predict time — so one value-agnostic rule covers the family.
 GEOMETRIC_TRANSFORM_DSL = "geometric_transform"
+
+#: action.dsl for the whole-grid *scale / replicate* family (R1 / BACKLOG_LOOP
+#: §2.5-1 worked example, the scale axis) — the input grid block-upscaled (each
+#: cell → a kh×kw block) or tiled (the whole grid repeated kh×kw) by a single
+#: learned constant factor + mode (agent/dsl_expr/selection.SCALE_VOCAB). The
+#: transformation is the frozen `coloring` primitive applied at the *replicated
+#: coordinate* on a `make_grid` canvas (render_scale_transform): a scale/tile is
+#: `coloring` with a coordinate-replication expression, not a new primitive
+#: (§2.5-1, F3). The whole content is the *argument* — the mode and factor, read
+#: off the example COMM (output/input dimension ratio) and recomputed at predict
+#: time — so one value-agnostic rule covers the family.
+SCALE_TRANSFORM_DSL = "scale_transform"
 
 
 # ======================================================================
@@ -378,6 +392,16 @@ class ExtractPatternOperator(Operator):
         patterns["geometric_transform"] = analyze_geometric_transform(
             task.example_pairs)
 
+        # Whole-grid *scale / replicate* (R1 / BACKLOG_LOOP §2.5-1 worked example,
+        # scale axis): the input block-upscaled (each cell → a block) or tiled by a
+        # single learned constant factor + mode — a scale/tile expressed as the
+        # frozen `coloring` primitive at a replicated coordinate on a `make_grid`
+        # canvas, not a new primitive. Inert (mode None) whenever no single constant
+        # factor+mode reproduces all pairs (in particular on every same-size task),
+        # so it never perturbs the readings above. Computed via the §2.5 scale
+        # vocabulary (agent/dsl_expr/selection), not hand-coded here.
+        patterns["scale_transform"] = analyze_scale_transform(task.example_pairs)
+
         wm.s1["patterns"] = patterns
 
     # ---- internal helpers ------------------------------------------------
@@ -522,6 +546,21 @@ class GeneralizeOperator(Operator):
         # detector.
         if rule is None:
             rule = self._geometric_transform_rule(patterns)
+
+        # Strategy 0a' (R1 / BACKLOG_LOOP §2.5-1 worked example, scale axis): the
+        # whole-grid *scale / replicate* family. If the `scale_transform` matcher
+        # fires (a single learned constant factor + mode — block-upscale or tile —
+        # reproduces every example output exactly), emit a canonical {condition,
+        # action} rule carrying *empty* args — the mode and factor are recomputed at
+        # predict time, so one value-agnostic rule covers the family (it merges by
+        # condition+action equivalence, like the geometric family, rather than
+        # accreting one literal rule per task — §2.5-3/4). Like the geometric family
+        # this is an exact full-grid reproduction, and it only fires when the output
+        # is an integer multiple of the input size, so it never mis-fires for a
+        # same-size move / recolor / sizing / geometric task. Recognition is
+        # delegated to the registered matcher, not a hand-coded detector.
+        if rule is None:
+            rule = self._scale_transform_rule(patterns)
 
         # Strategy 0b (R1, BACKLOG_LOOP §3): the constant-target object-move
         # family. If the `object_constant_target` matcher fires (single object
@@ -714,6 +753,44 @@ class GeneralizeOperator(Operator):
             },
             "concept": "geometric_transform",
             "category": "geometric_transform",
+            "confidence": 1.0,
+        }
+
+    # ---- strategy: whole-grid scale / replicate (R1) --------------------
+
+    def _scale_transform_rule(self, patterns):
+        """Emit the canonical whole-grid scale/replicate rule when the
+        `scale_transform` matcher fires.
+
+        Not a `_try_*`-family detector: recognition is delegated to the registered
+        `scale_transform` matcher (agent/conditions/), and the result is a
+        schema-canonical {condition, action} rule. The action carries *empty* args
+        — the learned mode + constant factor (block/tile × (kh, kw) —
+        agent/dsl_expr/selection.SCALE_VOCAB) is recomputed at predict time from the
+        example pairs, so the rule is value-, colour- and content-agnostic and one
+        rule covers the whole family (it merges by condition+action equivalence,
+        like the geometric family, rather than accreting one literal rule per task —
+        §2.5-3/4). The transformation bottoms out in the frozen `coloring` primitive
+        applied at the replicated coordinate on a `make_grid` canvas
+        (render_scale_transform); no new transformation is introduced (§2.5-1,
+        F3)."""
+        params = {"min_evidence": 2}
+        if not match_condition("scale_transform", patterns, params):
+            return None
+        sig = patterns.get("scale_transform") or {}
+        evidence = int(sig.get("evidence", 0))
+        return {
+            "condition": {
+                "type": "scale_transform",
+                "params": dict(params),
+                "min_evidence": max(2, evidence),
+            },
+            "action": {
+                "dsl": SCALE_TRANSFORM_DSL,
+                "args": {},
+            },
+            "concept": "scale_transform",
+            "category": "scale_transform",
             "confidence": 1.0,
         }
 
@@ -1234,6 +1311,20 @@ class PredictOperator(Operator):
             wm.s1["predictions"] = predictions
             return
 
+        # Whole-grid *scale / replicate* (R1 / §2.5-1, scale axis). Recompute the
+        # learned mode + constant factor from the examples, then for each test pair
+        # apply it to that test input (P5: the mode/factor read off the example
+        # COMM, the cells from the test G0) — a block-upscale / tile rendered as the
+        # frozen `coloring` primitive at the replicated coordinate on a `make_grid`
+        # canvas.
+        if action and action.get("dsl") == SCALE_TRANSFORM_DSL:
+            for i, grid in self._scale_transform_grids(task).items():
+                key = f"test_{i}"
+                if key not in predictions and grid is not None:
+                    predictions[key] = grid
+            wm.s1["predictions"] = predictions
+            return
+
         # Object-property *canvas sizing* (R1 / §2.1). Recompute the learned
         # dimension property from the examples, then for each test pair read that
         # property and the colour off the test object (P5) and render a solid
@@ -1498,6 +1589,33 @@ class PredictOperator(Operator):
             if g0 is None:
                 continue
             grids[i] = render_geometric_transform(g0.raw, transform)
+        return grids
+
+    @staticmethod
+    def _scale_transform_grids(task):
+        """Map test-pair index -> predicted grid for the whole-grid scale/replicate
+        family.
+
+        The mode + constant factor (block-upscale or tile × (kh, kw)) is recomputed
+        from the example pairs (the §2.5-1 lifted argument: the single mode+factor
+        that reproduces every example output). For each test pair that replication
+        is applied to the test input via render_scale_transform — `make_grid` +
+        `coloring` at the replicated coordinate (P5: the mode/factor from the example
+        COMM, the cells from the test G0). Returns {} when the analysis yields no
+        consistent constant factor+mode."""
+        sig = analyze_scale_transform(task.example_pairs)
+        mode = sig.get("mode")
+        factor = sig.get("factor")
+        if mode is None or factor is None:
+            return {}
+        kh, kw = factor
+
+        grids = {}
+        for i, test_pair in enumerate(task.test_pairs):
+            g0 = test_pair.input_grid
+            if g0 is None:
+                continue
+            grids[i] = render_scale_transform(g0.raw, mode, kh, kw)
         return grids
 
     @staticmethod

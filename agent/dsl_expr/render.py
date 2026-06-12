@@ -16,7 +16,7 @@ property R0 requires (one module, many constant outputs).
 from collections import Counter
 
 from procedural_memory.DSL.apply import apply_DSL
-from agent.dsl_expr.selection import GEO_COORD, GEO_DIMS
+from agent.dsl_expr.selection import GEO_COORD, GEO_DIMS, SCALE_BACKMAP
 
 
 def _background_color(grid: list) -> int:
@@ -237,6 +237,47 @@ def render_geometric_transform(grid: list, transform: str) -> list:
                 continue
             rr, cc = cm(r, c, H, W)
             by_color.setdefault(v, []).append((rr, cc))
+    for color, cells in by_color.items():
+        canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
+    return canvas
+
+
+def render_scale_transform(grid: list, mode: str, kh: int, kw: int) -> list:
+    """Produce the scale / replicate of `grid` (block-upscale or whole-grid tile)
+    as a `make_grid` + `coloring` composition.
+
+    The scale axis of BACKLOG_LOOP §2.5-1's worked example: a scale/tile is *not* a
+    new primitive — it is the frozen `coloring` primitive applied at a *replicated
+    coordinate*. We lay a fresh canvas of the scaled dimensions `(H*kh, W*kw)` with
+    `make_grid` (its fill is the input background), then paint each non-background
+    input cell at every output coordinate that back-maps to it
+    (`selection.SCALE_BACKMAP[mode]`), one `coloring` call per colour. Because every
+    output cell back-maps to exactly one input cell, every background position keeps
+    the background fill and every non-background cell's images land exactly, so the
+    result equals `selection.apply_scale(grid, mode, kh, kw)`. The whole content
+    lives in the *argument* — the mode and factor — read off the example COMM and
+    recomputed at predict time (§2.5-1, F3), not in any new transformation.
+
+    Returns a copy of `grid` for an unknown mode, non-positive factor, or empty grid.
+    """
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    if mode not in SCALE_BACKMAP or H == 0 or W == 0 or kh < 1 or kw < 1:
+        return [row[:] for row in grid]
+
+    Ho, Wo = H * kh, W * kw
+    bg = _background_color(grid)
+    bm = SCALE_BACKMAP[mode]
+
+    canvas = apply_DSL("make_grid", height=Ho, width=Wo, color=bg)
+    by_color: dict = {}
+    for r in range(Ho):
+        for c in range(Wo):
+            ir, ic = bm(r, c, H, W, kh, kw)
+            v = grid[ir][ic]
+            if v == bg:
+                continue
+            by_color.setdefault(v, []).append((r, c))
     for color, cells in by_color.items():
         canvas = apply_DSL("coloring", canvas, selection=cells, color=color)
     return canvas

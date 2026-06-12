@@ -1,0 +1,27 @@
+{
+  "id": 10,
+  "concept": "scale_transform",
+  "category": "scale_transform",
+  "condition": {
+    "type": "scale_transform",
+    "params": {
+      "min_evidence": 2
+    },
+    "min_evidence": 2
+  },
+  "action": {
+    "dsl": "scale_transform",
+    "args": {}
+  },
+  "covers": [
+    "60c09cac",
+    "9172f3a0",
+    "c59eb873",
+    "a416b8f3",
+    "madeup_block_upscale"
+  ],
+  "source_task": "60c09cac",
+  "anti_unification_trace": null,
+  "created_at": "2026-06-13T02:36:03.473031",
+  "times_reused": 0
+}
