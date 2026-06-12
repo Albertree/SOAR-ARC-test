@@ -1,6 +1,91 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 23 — 2026-06-12T16:33 — branch test31 — NO-OP (analysis only)
+
+**Iter 23: no defensible step found — analysis only.** Commit no code change
+(PROMPT.md §5.3). New hard evidence below; this is *not* a re-run of iter 21's
+no-op — it adds a 40-task sweep + an arithmetic proof that pins the verdict.
+
+**Diagnosis**: I ran a real ARC-AGI-2 training sweep (`run_learn.py --split
+training --limit 40 --shuffle --seed 42`) to test the one move that could still be
+genuine progress: **growing an *existing* rule's `covers`** (the only thing that
+raises P1/P2 — numerator up, denominator flat — without accretion). Result:
+**1/40 solved** (`c59eb873` via the existing `integer_scale` family); the other 39
+return `identity`. **None of the 39 is an existing-rule category the matcher
+narrowly misses** — each needs a fundamentally new mechanism. So the
+covers-growth move has no candidate this iter.
+
+**The arithmetic proof (why this iter is genuinely pinned, not just "I didn't find
+one")**: memory holds **17 solved tasks under 3 rules** (rule_001 covers 6,
+rule_002 covers 9, rule_003 covers 2) → mean covers **5.67**. Therefore *any* 4th
+rule covering **< 6** tasks **lowers** both P1 (`solved/total`) and P2 (`mean
+covers`). No single new family covers ≥ 6 training tasks (the largest, integer_scale,
+covers 3). Hence **P1 and P2 cannot rise via any new rule** — they can rise *only*
+by growing an existing rule's covers, and the sweep shows no such task exists in
+40. P1/P2 are structurally pinned at the current capability set. The probe itself
+demonstrated the trap: it auto-persisted `rule_004` (integer_scale, **covers=1,
+au_trace=null**) — the exact 168-rule accretion failure mode, P1 5.67→4.5,
+P2→4.5, P3 0.67→0.5, *all three down* — which I deleted (investigation artifact,
+never committed).
+
+**Why not iter 22's named next-gap (self_tile selector-lift)**: it would generalise
+the on-keyed mask key from the hard-coded `most_frequent_color` to a chosen
+selector set. But (a) the 40-task sweep contains **no self-tile at all** (they are
+rare), so there is no *real* task grounding it — closing it would require
+**authoring a madeup task I already know how to solve**, which §2.2 names as
+busywork ("a challenge you can already pass is spinning in disguise"); and (b) it
+moves none of P1/P2/P3 (no persist → flat; persist → covers-dip). So it is the 9th
+variation of the iters-17–22 move, not motion.
+
+**The reframe (the real finding)**: iters 17–22 each added an in-code recogniser
+family (`_derive_X`/`_build_X_rule`/`_render_X` + a matcher). These are **F2
+accretion in spirit** — hand-coded per-category special cases — that pass the F2
+checker only because it greps the literal names `_try_`/`_apply_` (INVARIANTS
+F2 regex `^\+\s*def _(try|apply)_`). They also violate **CLAUDE.md §6.2**
+("the discovered layer is *data, not code*"): every family lives as code in
+`active_operators.py` (1280→2126 lines over the run — the *wrong* direction for
+P6, whose positive signal is code *removed*). The honest structural fix —
+route one family through `anti_unification.unify()` into a persisted `covers>1`
+**data** rule — is exactly the move that hits the covers-dip and **drops P1/P2**.
+
+**Binding gap = an open-question-class design decision (deferred to the user,
+BACKLOG §5)**: the P1/P2 reward (*few rules, many covers* — favours **not**
+persisting) **directly contradicts** CLAUDE.md §6.2's mandate (*the discovered
+layer must be data, not code* — requires persisting). Iter 21 first surfaced this;
+this iter *proves* it is binding (the arithmetic above shows no capability addition
+can satisfy both). Resolving it — e.g. a reuse-rate signal, or redefining P1/P2 so
+a fresh value-agnostic AU-traced rule is not penalised — is an
+`arbor-open-questions`-class decision. Per BACKLOG §5 ("open-question 에 닿으면
+멈춘다") I surface it rather than pick a side or game the checker by adding a
+self-serving signal.
+
+**Not termination**: nameable gaps still exist (the 39 failing tasks; the
+selector-lift), so `_LOOP_COMPLETE.md` would be false (BACKLOG §7 condition 1
+unmet). The loop continues; this iter sets up a sharper test rather than spinning.
+
+**Probe before**: easy 1/3 (easy0002/3 ill-posed gate), easy_a 9/9; rules=3
+(covers 6+9+2=17); P1=5.67 P2=5.67 P3=0.67 P5=10 P6=2126.
+**Probe after** : identical — no code change (rule_004 artifact deleted). Expected
+checker verdict: **NEUTRAL**.
+
+**Invariants**: forbidden=**none** (no files changed beyond this log entry; the
+rule_001/002 `times_reused` bumps and snapshot are the loop's own pre-invocation
+probe state). positives=**none** (intentional no-op; a wrong/spinning commit would
+pollute the P-baseline — PROMPT.md §5).
+
+**Next gap (note for future iter)**: do **not** add a 9th in-code family or a
+selector-lift on a self-authored task — both are pinned/busywork (proven above).
+Real motion now requires *either* (i) the user resolving the P1/P2 ↔ §6.2 design
+tension, after which the structural step is moving ONE in-code family
+(integer_scale is the cleanest, covers 3 real tasks) into a persisted AU-traced
+data rule and accepting the covers-dip as the §6.2-intended cost; *or* (ii) a
+genuine P6 *reduction* — consolidating shared machinery across the accreted
+families (e.g. the H×W macro-block layout duplicated between `integer_scale` and
+`self_tile`) to shrink `active_operators.py` without losing capability. Both are
+larger than a single smallest-step and (i) is gated on a human decision.
+
+---
 ## Iter 22 — 2026-06-12T16:24 — branch test31
 
 **Diagnosis**: Iters 20 & 21 both named `27f8ce4f` as the "next gap" and both
@@ -2783,3 +2868,33 @@ authored `data/ARC_madeup/` task, which would also move P5.
 - Stored rule hits: 9
 - Time: 4s
 - Log: logs/learn_20260612_162422.log
+
+---
+## Learning Loop -- 2026-06-12 16:26
+
+- Split: None, Tasks: 3
+- Correct: 1 / 3 (33.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 1
+- Time: 1s
+- Log: logs/learn_20260612_162641.log
+
+---
+## Learning Loop -- 2026-06-12 16:26
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260612_162643.log
+
+---
+## Learning Loop -- 2026-06-12 16:31
+
+- Split: training, Tasks: 40
+- Correct: 1 / 40 (2.5%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 0
+- Time: 109s
+- Log: logs/learn_20260612_162935.log
