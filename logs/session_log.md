@@ -5559,3 +5559,117 @@ ray-growth) the training probe keeps surfacing remain the other open lever.
 
 ## Iter 49 [CLEAN] — 20260615_004249 — branch test33
 - Probe: [00:43:10] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 00:56
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_005609.log
+
+---
+## Learning Loop -- 2026-06-15 00:56
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_005613.log
+
+---
+## Learning Loop -- 2026-06-15 00:56
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260615_005624.log
+
+---
+## Learning Loop -- 2026-06-15 01:03
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 16 -> 17 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260615_010347.log
+
+---
+## Learning Loop -- 2026-06-15 01:04
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 17 -> 17 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_010409.log
+
+---
+## Learning Loop -- 2026-06-15 01:04
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 17 -> 17 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_010412.log
+
+## Iter 50 — 2026-06-15T01:05 — branch test33
+
+**Diagnosis**: iter49's "Next gap" proposed a position/coordinate-ordinal recolour
+property, but a 1000-task scan refuted it — the only task it fits (08ed6ac7) is
+*already* covered by `rank`, so it would fold **zero** new tasks (pure §2.5-3/4
+accretion). Pivoted to the other named lever: **cell gravity** (everything
+falls/piles to one edge), one of the most common ARC families and a clean R3
+target. A scan found it fits **2 real ARC-AGI training tasks** the synthesizer
+currently fails (1e0a9b12 down, 3906de3d up), both passing held-out test, differing
+only in *direction* — so they lift via `unify()` into ONE `covers=2` rule.
+
+**Change**:
+- `program/synthesis.py` — added **Schema 15 `gravity`**: a `_fit_gravity(pairs)`
+  that SEARCHES the four directions (`_GRAVITY_DIRS`) and returns the one-step
+  program `[("gravity", ("const", direction))]` for the first that reproduces every
+  pair exactly (requires same dims + at least one pair changed, so a settled grid
+  stays owned by identity); a `run_program` `gravity` branch that slides every
+  non-bg cell to one edge per line preserving order, composing ONLY the two frozen
+  primitives (`make_grid` blank canvas + one `coloring` per settled cell — F3-safe,
+  no new DSL `def`/`@register`); and the candidate yield (last, so a simpler
+  same-dims schema wins when a task fits both). The direction is the whole per-task
+  content in ONE const leaf, so divergent directions share the pure
+  `[("gravity", ("const", ?v))]` skeleton and lift into one covers>1 rule (R3).
+- `tests/test_synthesis_gravity.py` — +6 tests (down/up/right fits, order
+  preservation, settled-grid declines, two divergent directions share one skeleton,
+  full-search reachability).
+- Persisted **1e0a9b12** + **3906de3d** into **NEW rule_017** via the LIVE
+  solve/save path (`run_learn.py --task-dir` on a scratch copy, deleted after — no
+  further code edit): both solve via `synthesized_program`, and `save_rule`'s
+  `unify()` lifts the two divergent-direction programs into one abstract rule
+  (`?v`, covers=2, `anti_unification_trace` → episodic) — the R3 prize, not a rule
+  per direction.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=16, P1/P2=7.875, P3=0.9375, distinct-solved=126
+**Probe after** : same hard probe unchanged; rules=16→17, P1/P2=7.529, P3=0.9412,
+distinct-solved 126→128; easy_a 9/9 + madeup 27/27 hold; 246 tests pass (+6).
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN; F3 clean — gravity
+composes only `make_grid`/`coloring`; F2 clean — no new `_try_*`; active_operators.py
+untouched so F8 N/A). positives=P3 +0.0037 (15/16→16/17 traced); P1/P2 −0.346 — the
+documented §2.5-4 instrumentation trap: a NEW-skeleton covers=2 family lands 2 real
+new tasks via R3 (distinct-solved +2) but sits below the 7.875 mean, so it dilutes
+the average even though it is real progress (P3 up, coverage breadth up).
+
+**Next gap (note for future iter)**: gravity here is *cell* gravity (per-line
+compaction). The natural sibling the training probe will surface is **object**
+gravity (whole connected shapes fall and stack as rigid bodies, possibly blocked by
+a static obstacle colour) — a different fit (object-level, not per-line) and the
+gateway to the standing multi-step conditional families (gravity-with-obstacles /
+ray-growth) that the hard probe tasks keep needing.
+
+## Iter 50 [CLEAN] — 20260615_005609 — branch test33
+- Probe: [00:56:31] Correct:     0 / 3  (0.0%)

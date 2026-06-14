@@ -890,6 +890,48 @@ def run_program(program, input_grid):
                         f"recolor_objects: object property {k!r} not in fitted map")
                 cur = apply_DSL(
                     "coloring", cur, selection=sorted(obj["cells"]), color=cmap[k])
+        elif kind == "gravity":
+            # Cell gravity: every non-background cell slides along one direction
+            # until it is blocked by the grid edge or a cell already settled, per
+            # line (a column for up/down, a row for left/right), preserving the
+            # cells' order within that line. The recurring ARC "let everything fall
+            # / pile to one side" family. The reason — P3/P4 — is the COMM-DIFF
+            # observation that within each line the same multiset of coloured cells
+            # appears, only compacted against one edge; ``_fit_gravity`` reads which
+            # of the four directions reproduces every pair (chosen by SEARCH) and
+            # declines when none does. The direction is the WHOLE per-task content,
+            # carried as ONE const leaf — so a fall-down task and a fall-up task
+            # share the SAME one-step skeleton ``[("gravity", ("const", ?v))]`` and
+            # lift via ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise
+            # together), never a rule per direction (§2.5-3/4). Composes ONLY the two
+            # frozen primitives: it makes a blank canvas (``make_grid``) and paints
+            # each settled cell in its own colour (``coloring``), so it adds no
+            # transformation vocabulary (§2.5-1, F3-safe). Reads the cells of the
+            # FIXED input (``env``), so the same program settles the test input
+            # unchanged (P5).
+            _, dir_expr = step
+            direction = _eval(dir_expr, env)
+            grid = env["grid"]
+            bg = env["bg"]
+            H = len(grid)
+            W = len(grid[0]) if H else 0
+            cur = apply_DSL("make_grid", height=H, width=W, color=bg)
+            if direction in ("down", "up"):
+                for c in range(W):
+                    vals = [grid[r][c] for r in range(H) if grid[r][c] != bg]
+                    rows = (range(H - len(vals), H) if direction == "down"
+                            else range(0, len(vals)))
+                    for r, v in zip(rows, vals):
+                        cur = apply_DSL("coloring", cur, selection=(r, c), color=v)
+            elif direction in ("left", "right"):
+                for r in range(H):
+                    vals = [grid[r][c] for c in range(W) if grid[r][c] != bg]
+                    cols = (range(W - len(vals), W) if direction == "right"
+                            else range(0, len(vals)))
+                    for c, v in zip(cols, vals):
+                        cur = apply_DSL("coloring", cur, selection=(r, c), color=v)
+            else:
+                raise _Unevaluable(f"unknown gravity direction: {direction!r}")
         elif kind == "compose":
             # Two-stage composition: run a *stage-1* sub-program (a structural
             # reduction of the input — crop to a selected region, or a dihedral
@@ -1164,6 +1206,23 @@ def _candidate_programs(pairs):
     recolor_objects = _fit_recolor_objects(pairs)
     if recolor_objects is not None:
         yield recolor_objects
+
+    # --- Schema 15: cell gravity -------------------------------------------
+    # Same-dims output that is the input with every non-background cell slid to one
+    # edge per line (a column for up/down, a row for left/right), preserving order
+    # within the line — the recurring ARC "everything falls / piles to one side"
+    # family. The reason — P3/P4 — is the COMM-DIFF "within each line the same
+    # coloured cells appear, only compacted against one edge"; `_fit_gravity` reads
+    # which of the four directions reproduces every pair (chosen by SEARCH) and
+    # declines when none does. The direction is the whole per-task content carried
+    # as ONE const leaf, so a fall-down task and a fall-up task share the pure
+    # ``[("gravity", ("const", ?v))]`` skeleton and lift via ``unify()`` into one
+    # ``covers>1`` rule (R3 — P1·P2·P3 rise together), never a rule per direction
+    # (§2.5-3/4). Yielded last so a simpler same-dims schema wins when a task fits
+    # both (a settled grid is owned by identity).
+    gravity = _fit_gravity(pairs)
+    if gravity is not None:
+        yield gravity
 
 
 def _is_fractal_dims(pairs):
@@ -1704,6 +1763,47 @@ def _fit_recolor_objects(pairs):
                     for k, v in sorted(mapping.items(), key=lambda kv: repr(kv[0]))],
         }
         prog = [("recolor_objects", ("const", spec))]
+        if _reproduces(prog, pairs):
+            return prog
+    return None
+
+
+# The four gravity directions a `_fit_gravity` search tries, in a fixed order so
+# the fit is deterministic. Each is carried as a single const leaf, so two gravity
+# tasks differing only in direction share the same one-step skeleton and lift via
+# `unify()` into one covers>1 rule (R3).
+_GRAVITY_DIRS = ("down", "up", "left", "right")
+
+
+def _fit_gravity(pairs):
+    """Fit a cell-gravity: every non-background cell slides along one direction
+    until blocked by the grid edge or a settled cell, per line, preserving order
+    within the line. Tries each direction in `_GRAVITY_DIRS` and returns the
+    one-step program ``[("gravity", ("const", direction))]`` for the first that
+    reproduces **every** pair exactly, or ``None``.
+
+    Requires same input/output dims and at least one pair where the output differs
+    from the input (so a grid already settled — where gravity is a no-op — is not
+    mis-claimed as a gravity task; the simpler identity schema owns that). The
+    direction is the whole per-task content carried as ONE const leaf, so divergent
+    directions lift via ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise
+    together), never a rule per direction (§2.5-3/4). The final `_reproduces` gate
+    keeps the fit honest — a direction that does not reproduce a pair exactly is
+    rejected, not approximated."""
+    for direction in _GRAVITY_DIRS:
+        ok = True
+        changed = False
+        for p in pairs:
+            gin, gout = p["input"], p["output"]
+            if len(gin) != len(gout) or (
+                    gin and len(gin[0]) != len(gout[0] if gout else [])):
+                ok = False
+                break
+            if gin != gout:
+                changed = True
+        if not (ok and changed):
+            continue
+        prog = [("gravity", ("const", direction))]
         if _reproduces(prog, pairs):
             return prog
     return None
