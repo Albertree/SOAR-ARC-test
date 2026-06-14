@@ -215,8 +215,23 @@ def test_matcher_declines_without_out_shape():
     assert match_condition("object_motion", p) is False
 
 
-def test_matcher_needs_min_evidence():
-    assert match_condition("object_motion", _motion(1)) is False
+def test_matcher_accepts_single_fully_determined_pair():
+    # §2.1 "example pairs ≠ 2": a single pair from which a consistent selector +
+    # target + out_shape + scene all fit is admissible evidence (floor lowered to
+    # 1 for the transformation matchers — the minimal-assumption read of one
+    # example). The fit functions upstream still have to produce the expressions.
+    assert match_condition("object_motion", _motion(1)) is True
+
+
+def test_matcher_declines_zero_pairs():
+    assert match_condition("object_motion", _motion(0)) is False
+
+
+def test_matcher_floor_two_still_honoured_when_requested():
+    # An explicit higher floor is still respected (a caller may demand ≥2).
+    assert match_condition(
+        "object_motion", _motion(1), {"min_evidence": 2}
+    ) is False
 
 
 def test_matcher_declines_without_target():

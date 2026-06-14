@@ -64,13 +64,18 @@ def object_motion(patterns: dict, params: dict | None = None) -> bool:
     — which one moves is named by the fitted selector — and the grid size itself
     may change, captured by the fitted output-shape expression.
 
-    `params.min_evidence` (default 2) guards against concluding any expression
-    from a single pair.
+    `params.min_evidence` (default 1) is the floor on how many *consistent* pairs
+    the fitted expressions rest on. The §2.1 "example pairs ≠ 2" concept requires
+    the matcher not be hard-wired to exactly two pairs: three+ already works, and
+    a *single* pair from which a consistent selector + target + out_shape + scene
+    all fit is admissible — the minimal-assumption read of one example. The fit
+    functions still have to produce non-None expressions below, so this never
+    "concludes from nothing"; it concludes from one fully-determined example.
     """
     if not isinstance(patterns, dict):
         return False
     params = params or {}
-    min_evidence = params.get("min_evidence", 2)
+    min_evidence = params.get("min_evidence", 1)
 
     motion = patterns.get("object_motion")
     if not isinstance(motion, dict):

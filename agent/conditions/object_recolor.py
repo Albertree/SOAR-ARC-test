@@ -41,13 +41,18 @@ def object_recolor(patterns: dict, params: dict | None = None) -> bool:
     fit every pair. Absent either expression the recolour is not
     value-agnostically describable and we decline rather than guess.
 
-    `params.min_evidence` (default 2) guards against concluding any expression
-    from a single pair.
+    `params.min_evidence` (default 1) is the floor on how many *consistent* pairs
+    the fitted expressions rest on. The §2.1 "example pairs ≠ 2" concept requires
+    the matcher not be hard-wired to exactly two pairs: three+ already works, and a
+    *single* pair from which a consistent selector + colour-source both fit is
+    admissible — the minimal-assumption read of one example. The fit functions
+    still have to produce non-None expressions below, so this never "concludes from
+    nothing"; it concludes from one fully-determined example.
     """
     if not isinstance(patterns, dict):
         return False
     params = params or {}
-    min_evidence = params.get("min_evidence", 2)
+    min_evidence = params.get("min_evidence", 1)
 
     rec = patterns.get("object_recolor")
     if not isinstance(rec, dict):

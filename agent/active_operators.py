@@ -738,7 +738,7 @@ class GeneralizeOperator(Operator):
         from agent.conditions import match as match_condition
         try:
             return match_condition(
-                "object_motion", patterns, {"min_evidence": 2}
+                "object_motion", patterns, {"min_evidence": 1}
             )
         except KeyError:
             return False
@@ -751,7 +751,7 @@ class GeneralizeOperator(Operator):
         from agent.conditions import match as match_condition
         try:
             return match_condition(
-                "object_recolor", patterns, {"min_evidence": 2}
+                "object_recolor", patterns, {"min_evidence": 1}
             )
         except KeyError:
             return False

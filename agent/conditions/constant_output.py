@@ -29,7 +29,14 @@ def constant_output(patterns: dict, params: dict | None = None) -> bool:
     """True iff all example outputs are identical and there is enough evidence.
 
     `params.min_evidence` (default 2) guards against firing on a single example —
-    one pair is not enough to claim "the output is always this grid."
+    one pair is not enough to claim "the output is always this grid." Unlike the
+    transformation matchers (object_motion / object_recolor), which fit a *rule*
+    that one fully-determined pair can pin down, `constant_output` is the
+    degenerate hypothesis that trivially fits any single pair (one output is
+    vacuously "all-equal"). It would therefore shadow a richer transformation on a
+    one-pair task, so this floor stays at 2 — constancy needs ≥2 agreeing
+    examples. (This is the §2.1 "example pairs ≠ 2" asymmetry: three+ adds
+    agreement here, but a single pair cannot justify *constancy*.)
     """
     if not isinstance(patterns, dict):
         return False

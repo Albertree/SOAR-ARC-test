@@ -1517,3 +1517,165 @@ rather than a literal detector. R5 fast-path reuse still unfired.
 
 ## Iter 17 [CLEAN] — 20260614_173809 — branch test33
 - Probe: madeup: [17:38:16] Correct:     11 / 11  (100.0%) | easy_a: [17:38:12] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 17:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_174523.log
+
+---
+## Learning Loop -- 2026-06-14 17:45
+
+- Split: None, Tasks: 11
+- Correct: 11 / 11 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_174526.log
+
+---
+## Learning Loop -- 2026-06-14 17:45
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_174530.log
+
+---
+## Learning Loop -- 2026-06-14 17:48
+
+- Split: None, Tasks: 2
+- Correct: 1 / 2 (50.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_174825.log
+
+---
+## Learning Loop -- 2026-06-14 17:51
+
+- Split: None, Tasks: 12
+- Correct: 11 / 12 (91.7%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_175109.log
+
+---
+## Learning Loop -- 2026-06-14 17:52
+
+- Split: None, Tasks: 12
+- Correct: 11 / 12 (91.7%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_175214.log
+
+---
+## Learning Loop -- 2026-06-14 17:52
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_175218.log
+
+---
+## Learning Loop -- 2026-06-14 17:52
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_175250.log
+
+---
+## Learning Loop -- 2026-06-14 17:52
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_175254.log
+
+---
+## Learning Loop -- 2026-06-14 17:54
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_175426.log
+
+---
+## Learning Loop -- 2026-06-14 17:54
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_175431.log
+
+## Iter 18 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase. The probe's training tasks all fail (expected — real
+ARC-AGI-2 is hard), so I escalated per §2.2 to the one §2.1 beginner concept no
+madeup task yet exercises: **example pairs ≠ 2**. A scratch probe showed the
+asymmetry cleanly — a *3*-pair single-object move solves (object_motion), but the
+*1*-pair variant declines to identity. Root cause: the three condition matchers
+hard-wire `min_evidence = 2`, so a single fully-determined pair is refused even
+when a consistent selector/target/shape/scene all fit — the structure was wired to
+expect exactly two pairs.
+
+**Change**:
+- `data/ARC_madeup/mo_one_pair.json` (new, F1-exempt): a single-train-pair
+  single-object corner move — the smallest task isolating the one-pair concept,
+  authored to *fail* under the old floor.
+- `agent/conditions/object_motion.py`, `object_recolor.py`: lowered the
+  `min_evidence` default 2→1. A single pair from which the fit functions still
+  produce *non-None* selector/target/out_shape/scene (motion) or selector/source
+  (recolor) is admissible — the minimal-assumption read of one example. Floor stays
+  ≥1 so zero-pair declines.
+- `agent/active_operators.py`: the two matching wrapper call sites pass
+  `{"min_evidence": 1}` (was 2). `constant_output`'s call site **kept at 2**.
+- `agent/conditions/constant_output.py`: **deliberately left at floor 2** — it is
+  the degenerate hypothesis that trivially fits any single pair (one output is
+  vacuously "all-equal") and would shadow a richer transformation on a one-pair
+  task. Confirmed empirically: with floor 1 it mis-fired on mo_one_pair. The
+  one-pair asymmetry (transformation matchers vs constancy) is documented in the
+  matcher docstrings + session log here as the design rationale.
+- `tests/test_object_motion.py`, `tests/test_object_recolor.py`: replaced the
+  `needs_min_evidence` tests (which asserted the old floor=2) with three each:
+  single fully-determined pair now *accepted*, zero pairs declined, explicit
+  higher floor still honoured when a caller requests it.
+
+**Probe before**: training 0/3 (microscope); easy_a 9/9, madeup 11/11; mo_one_pair
+(new) INCORRECT via identity. Rules 3, covers mean 6.667.
+**Probe after** : easy_a 9/9, madeup **12/12** (mo_one_pair CORRECT via
+object_motion, folded into rule_002 covers 15→16, **no new rule**). 106 tests pass.
+
+**Invariants**: forbidden=none; positives=P1 +0.333 (6.667→7.0), P2 +0.333
+(6.667→7.0); P3/P4/P5/P6 held. Verdict CLEAN.
+
+**Next gap (note for future iter)**: every §2.1 beginner concept is now exercised
+by a madeup task and solved the intended way. The standing unfired mechanism is
+**R5 fast-path reuse** — `active_agent._apply_rule` declines object_motion/recolor
+(it cannot supply the example comparison the abstract `?v` rule needs to fill its
+variables), so stored rules are always re-derived on the slow path (Reused: 0).
+Closing it needs a reuse path that re-fits the rule's variables from a *new* task's
+own examples. R4 (2nd-order edge / ranking) also remains unproven.
+
+## Iter 18 [CLEAN] — 20260614_174523 — branch test33
+- Probe: [17:45:35] Correct:     0 / 3  (0.0%)
