@@ -48,6 +48,11 @@ PROBE_SEED=42
 LOG_DIR="logs"
 BRANCH=$(git rev-parse --abbrev-ref HEAD)
 SNAPSHOT_PATH="${LOG_DIR}/_invariant_snapshot.json"
+# Authoritative iteration counter, written by the loop itself at the end of
+# every iter (see get_last_iter). This decouples ITER from whether Claude
+# happened to log a "## Iter N" heading, so the session count can never run
+# ahead of completed work after a crash/restart.
+ITER_COUNTER="${LOG_DIR}/_iter_counter"
 
 # ── Phase graduation (easy_a → madeup → training) ───────────
 # The loop walks a three-phase development curriculum (PROMPT.md §2.1):
@@ -101,8 +106,23 @@ log() {
 }
 
 get_last_iter() {
+    # Resume the iteration counter robustly, independent of whether Claude
+    # wrote anything to session_log this run. Priority:
+    #   1. the loop's own counter file (written at the END of every iter, so it
+    #      reflects completed work and survives a mid-iter crash)
+    #   2. the max "Iter N" across git commit subjects (the loop authors one per
+    #      accepted iter) — recovers history even if the counter file is missing
+    #   3. the numeric MAX "Iter N" in session_log — use the max, never tail,
+    #      so out-of-order entries / file position cannot rewind the counter
+    if [ -f "$ITER_COUNTER" ]; then
+        c=$(tr -cd '0-9' < "$ITER_COUNTER")
+        if [ -n "$c" ]; then echo "$c"; return; fi
+    fi
+    g=$(git log --format='%s' 2>/dev/null | grep -oE 'Iter [0-9]+' | grep -oE '[0-9]+' | sort -n | tail -1)
+    if [ -n "$g" ]; then echo "$g"; return; fi
     if [ -f "${LOG_DIR}/session_log.md" ]; then
-        grep -oE 'Iter [0-9]+' "${LOG_DIR}/session_log.md" | tail -1 | grep -oE '[0-9]+' || echo "0"
+        s=$(grep -oE 'Iter [0-9]+' "${LOG_DIR}/session_log.md" | grep -oE '[0-9]+' | sort -n | tail -1)
+        echo "${s:-0}"
     else
         echo "0"
     fi
@@ -413,8 +433,23 @@ PROMPT
         # The hard reset also discarded this iter's phase-state write; restore it
         # from the in-memory phase so the file stays in sync across a restart.
         phase_write "$PHASE" "$STREAK" "$GRAD_ITER"
+        # Step 5 LOG — record the reverted iter too (after the hard reset, so it
+        # survives; it gets bundled into the next accepted commit).
+        {
+            echo ""
+            echo "## Iter $ITER [$VERDICT] — $TIMESTAMP — branch $BRANCH"
+            echo "- Probe: $PROBE_SCORE (work reverted)"
+        } >> "${LOG_DIR}/session_log.md"
     else
         # CLEAN or NEUTRAL — accept the work.
+        # Step 5 LOG — record this iter's result so the human-readable log keeps
+        # pace with the session counter (this append is part of the iter's own
+        # commit below, never trailing behind it).
+        {
+            echo ""
+            echo "## Iter $ITER [$VERDICT] — $TIMESTAMP — branch $BRANCH"
+            echo "- Probe: $PROBE_SCORE"
+        } >> "${LOG_DIR}/session_log.md"
         git add -A
         if ! git diff --cached --quiet; then
             COMMIT_MSG="Iter $ITER [$VERDICT]: $PROBE_SCORE ($TIMESTAMP)"
@@ -435,6 +470,12 @@ PROMPT
         echo "> STAGNATION at iter $ITER — $NEUTRAL_STREAK consecutive neutral iters." \
             >> "${LOG_DIR}/session_log.md"
     fi
+
+    # Persist the completed-iter counter — authoritative for get_last_iter on
+    # the next run. Written LAST, after all git ops, so if the machine dies
+    # earlier in the iter the counter still holds the previous value and the
+    # restart re-runs (rather than skips) the interrupted iter.
+    echo "$ITER" > "$ITER_COUNTER"
 
     log "========== ITER $ITER done ($VERDICT) =========="
     sleep 3
