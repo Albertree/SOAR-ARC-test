@@ -1679,3 +1679,146 @@ own examples. R4 (2nd-order edge / ranking) also remains unproven.
 
 ## Iter 18 [CLEAN] — 20260614_174523 — branch test33
 - Probe: [17:45:35] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 17:56
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_175604.log
+
+---
+## Learning Loop -- 2026-06-14 17:56
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_175608.log
+
+---
+## Learning Loop -- 2026-06-14 17:56
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_175612.log
+
+---
+## Learning Loop -- 2026-06-14 18:00
+
+- Split: training, Tasks: 40
+- Correct: 0 / 40 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 115s
+- Log: logs/learn_20260614_175822.log
+
+---
+## Learning Loop -- 2026-06-14 18:05
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_180526.log
+
+---
+## Learning Loop -- 2026-06-14 18:05
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 11
+- Time: 4s
+- Log: logs/learn_20260614_180529.log
+
+---
+## Learning Loop -- 2026-06-14 18:05
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_180542.log
+
+---
+## Learning Loop -- 2026-06-14 18:07
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_180746.log
+
+---
+## Learning Loop -- 2026-06-14 18:07
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 11
+- Time: 4s
+- Log: logs/learn_20260614_180750.log
+
+## Iter 19 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; probe 0/3 and a 40-task scan was 0/40 — real
+ARC-AGI-2 tasks (c9680e90 divider-gravity, 9f8de559 framed projection, …) need
+substantial new capabilities, not a smallest step, and hacking one would be the F2
+detector-accretion failure mode. The lowest genuinely-unproven rung is **R5
+fast-path reuse** (iter 18's flagged next gap). Root cause found: `_apply_rule`
+only handles `identity`, so **every** learned family rule (constant_output /
+object_motion / object_recolor) declines on the fast path — they were re-derived on
+the slow path every run (Reused: 0 forever). Their action args are holes filled
+from the example comparison (§2.5-2b), so a single input grid can't apply them.
+
+**Change**:
+- `agent/active_agent.py`: added the Fast path for the three descriptor families.
+  `_fit_descriptor_patterns` runs ExtractPattern once per task to re-fit the holes;
+  `_reuse_descriptor_rule` (a) requires the stored rule's own condition matcher to
+  fire on the fitted patterns, (b) **gates on the fitted rule reproducing every
+  example output exactly** (rejects a superficial match), then (c) renders the test
+  inputs via PredictOperator's existing make_grid+coloring renderers (no new
+  transformation, CLAUDE.md §6.2). Patterns are fit once and shared across rules.
+  This is value-agnostic reuse: the same stored abstraction re-fits to whatever the
+  new task's comparison yields, not a literal replay.
+- `tests/test_r5_reuse.py` (new, 6 tests): motion + constant reuse return the
+  correct test prediction; cross-family offers decline (matcher gate); a 1-pair
+  constant task declines under the floor-2 asymmetry; unknown type → None.
+- No edit to `agent/active_operators.py` (F8 N/A), no frozen file, no new
+  `_try_*`/`_apply_*`, no new DSL primitive. `procedural_memory/rule_00{1,2,3}.json`
+  changed only in `times_reused` (now 4/30/6 — the R5 evidence; covers unchanged).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 12/12, **Reused 0**. Rules 3,
+covers mean 7.0.
+**Probe after** : training 0/3 (0 errors, no false positives — the reproduction
+gate rejects superficial matches); easy_a 9/9 **Reused 9**, madeup 12/12 **Reused
+11**. 112 tests pass (106 + 6). `times_reused` 0→{4,30,6} persisted.
+
+**Invariants**: forbidden=none; positives=P1..P6 all Δ0 → **NEUTRAL**. The reuse
+blindspot is known (no P1–P6 measures fast-path reuse — covers grow identically on
+either path, so P1/P2 are unchanged). This is real, named-rung work (R5 wired for
+the first time, Reused 0→20 across the guards), not spinning; a neutral iter is
+sanctioned (PROMPT.md §5, INVARIANTS §2/§3) and this is the first non-positive iter
+after 14–18.
+
+**Next gap (note for future iter)**: R5's Fast path now fires but is still gated by
+covers-equivalence with the slow path, so no P-signal credits it — a candidate
+*design* improvement is a reuse signal (Pn = stored-hit task-diversity) the user
+would need to bless (don't self-edit the INVARIANTS contract). Otherwise R4
+(2nd-order edge / ranking compare, `ARCKG/comparison.py`) is the remaining unproven
+rung; and reuse currently only generalises within a family — a stored rule reused
+on a *structurally different* task (true R5 done-when) is untested.
+
+## Iter 19 [NEUTRAL] — 20260614_175604 — branch test33
+- Probe: [17:56:17] Correct:     0 / 3  (0.0%)
