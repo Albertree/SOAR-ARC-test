@@ -5322,3 +5322,6 @@ until a sibling appears; the real lever remains the SECOND one iter46 named:
 object-level recolor-by-property (ordinal/rank, transfers to unseen keys), and the
 standing multi-step conditional family (gravity-with-obstacles / ray-growth) the
 probe keeps surfacing.
+
+## Iter 47 [CLEAN] — 20260614_235955 — branch test33
+- Probe: [00:00:16] Correct:     0 / 3  (0.0%)
