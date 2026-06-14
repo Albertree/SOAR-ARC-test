@@ -6775,3 +6775,91 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 61 [NEUTRAL] — 20260615_052244 — branch test33
 - Probe: [05:23:04] Correct:     0 / 3  (0.0%)
+
+> STAGNATION at iter 61 — 3 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-06-15 05:36
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_053636.log
+
+---
+## Learning Loop -- 2026-06-15 05:36
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_053640.log
+
+---
+## Learning Loop -- 2026-06-15 05:36
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_053650.log
+
+## Iter 62 — 2026-06-15 — branch test33 — no defensible step found (analysis only)
+
+**Diagnosis**: Training probe 0/3 (c9680e90/878187ab/e5790162 — all hard, expected).
+The single-step clean-family frontier was declared PROBED-EXHAUSTED at iter59 and
+the cheap compose stage-1 widening was the remaining low-risk lever. iter61 nominated
+**panel-split** (select one half of a separator-split input) as the next compose
+widening. I implemented it as a prototype stage-1 reduction (`("panel", axis, side)`
+over the existing `_split_for_axis`, 4 candidates, fallback-only) and scanned all
+1000 training tasks under FULL-grid reproduction + held-out test: **0 currently-failing
+tasks fold**. The nominated lever is a confirmed dead end.
+
+**Escalation attempt (per §2.2/§5)**: characterized the largest remaining failing
+cluster — of 871 failing train tasks, 625 are same-dims; 184 of those are pure
+*recolor-in-place* (non-bg mask fixed, only colours change; global colormap and
+own-property recolor_objects already excluded). Drilled in:
+- Only **11** are per-object-constant recolours where colour-alone is insufficient,
+  and NONE of them is separable by any simple object property (size/w/h/hw/shape all
+  fail) — inspected 1acc24af (enclosure/proximity-keyed) and d406998b (positional
+  parity-counting within rows): each needs *bespoke relational* logic.
+- A loose batch-probe of compound `(incol, relational-key)` maps over the 184 showed
+  inflated hits (size 143, freq 111, sizerank 118, …) — but this is exactly the
+  **loose-probe inflation trap iter59 documented**: `(incol,key)`-map *consistency*
+  across train is not full-grid reproduction and does not transfer to held-out test
+  (test carries unseen `(incol,key)` combos). iter59 already sanity-checked that every
+  such recolor-property probe collapses to 0 under full reproduction. Re-confirmed; I
+  am not re-landing it.
+
+**Conclusion**: The cheap single-step and compose-widening frontiers are genuinely
+exhausted (panel-split now refuted at 0; recolor-property re-confirmed as inflation).
+The sole remaining real lever is the **object-correspondence engine** (relational
+input↔output object pairing → context-keyed recolour/move), which is a large,
+heterogeneous build with **no smallest-defensible single-commit slice that folds ≥2
+real tasks** — the 11 candidate tasks each demand distinct relational reasoning. Per
+PROMPT §5.3, the correct iter output is **no commit**: a wrong/NEUTRAL-infra commit
+would pollute the baseline; a near-duplicate would be spinning. Not converged
+(object-correspondence is a nameable unfilled gap), so **no `_LOOP_COMPLETE.md`**.
+
+**Change**: none (analysis only; all working-tree changes are loop-managed
+`times_reused`/snapshot/counter bookkeeping from the probe runs).
+
+**Probe before**: training 0/3, 24 rules, sum-covers 147.
+**Probe after** : unchanged (no commit).
+
+**Invariants**: forbidden=none (no code touched), positives=no deltas (intentional no-op).
+
+**Next gap (note for future iter)**: object-correspondence is the only remaining
+lever, but it lacks a small ≥2-fold slice. Before building it, find a *value-agnostic
+relational key that survives full-grid reproduction AND held-out test transfer* on ≥2
+tasks (the 11 colour-insufficient recolor-in-place tasks are the corpus: 1acc24af,
+2204b7a8, 4f537728, 776ffc46, 817e6c09, a5f85a15, bd14c3bf, d406998b, d94c3b52,
+ddf7fa4f, fea12743). Do NOT re-scan single-step recolor-property keys or compose
+whole-grid reductions — both are now exhaustively refuted (iter59, iter61, iter62).
+
+## Iter 62 [NEUTRAL] — 20260615_053636 — branch test33
+- Probe: [05:36:56] Correct:     0 / 3  (0.0%)
