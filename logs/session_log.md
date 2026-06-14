@@ -7093,3 +7093,88 @@ cluster is untested.
 
 ## Iter 65 [NEUTRAL] — 20260615_062726 — branch test33
 - Probe: [06:27:46] Correct:     0 / 3  (0.0%)
+
+> STAGNATION at iter 65 — 7 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-06-15 06:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_064717.log
+
+---
+## Learning Loop -- 2026-06-15 06:47
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_064720.log
+
+---
+## Learning Loop -- 2026-06-15 06:47
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_064731.log
+
+## Iter 66 — 2026-06-15 — branch test33 — LOOP COMPLETE (honest termination)
+
+**Diagnosis**: Training probe 0/3 (hard real tasks); easy_a 9/9 + madeup 27/27 guards
+hold. 7th consecutive neutral. iter64 nominated two last levers to rule out before a
+defensible `_LOOP_COMPLETE`: the 226 add-only fill cluster and (implicitly) the compose
+lever's remaining headroom. iter65 authored the add-only probes but did NOT document
+their results. This iter ran them and the remaining levers to a verdict.
+
+**What I ran (read-only, full 1000-task scan + held-out test)**:
+- `probe_addonly_families.py` (iter65, run here): 6 fresh add-only families over 223
+  add-only failing tasks → all 0 or 1 fold (diag_ray singleton). Add-only cluster has no
+  ≥2-fold general mechanism (11 families now probed across iter59+iter65/66).
+- `probe_addonly_profile.py`: 223 add-only tasks bucket into multi/samecol 65,
+  single/newcol 62, single/samecol 51, multi/newcol 45 — the "where to add" selector is
+  per-task (Q-B3), not a shared skeleton.
+- `probe_compose3_fast.py` (NEW): 3-step compose (reduction→reduction→step) over 188
+  shrinking failing tasks → (a) 0 folds, (b) 1 fold (b9b7f026) **0 held-out**. The 3rd
+  stacked reduction yields nothing (the iter46/61 compose lever is saturated at 2 steps).
+- `probe_compose_expand.py` (NEW): the natural compose extension — EXPANSION stage-1
+  (scale/fractal) → single-step stage-2, over all 50 larger-output failing tasks →
+  **0 folds**. Expand-then-transform is refuted.
+- profiled the resize cluster (246 tasks): 89 have a consistent (h,w) ratio; the 11×2-/8×3-
+  ratio tasks inspect as *per-task* arrangements (tile/fractal/scale + per-task recolour),
+  not a clean ≥2 skeleton — the clean tiling/scale/fractal sub-families are already schemas.
+
+**Verdict — convergence (BACKLOG_LOOP.md §7, all three met)**: every non-open-question
+general lever is now probed-exhausted at <2 held-out folds; the residual failing mass is
+object-correspondence / per-task selector = **Q-B3** (`arbor-open-questions.md`'s single
+❌ 본질적 미해결), which the architecture forbids autonomously inventing (§5); no new
+`madeup` task exposes a *new* general gap (curriculum 27/27 covers the §2.1 concept list).
+Continuing would emit near-duplicate NEUTRAL probe commits over an already-mapped frontier
+= the spinning §2.2 forbids. Wrote `logs/_LOOP_COMPLETE.md` (dated, evidence-backed,
+figures + honest Q-B3 limitation + how to resume).
+
+**Change**: no system code touched. Added read-only `scripts/probe_compose3_fast.py`,
+`scripts/probe_compose_expand.py` (standing evidence so a resumed loop won't re-scan);
+wrote `logs/_LOOP_COMPLETE.md`.
+
+**Probe before**: training 0/3, 24 rules, sum-covers 147, P3 0.833, synth 129/1000 (114 held-out).
+**Probe after** : unchanged (intentional — termination, not a system change).
+
+**Invariants**: forbidden=none (no frozen/system files; only read-only scripts/ + log + completion file), positives=no deltas (checker verdict NEUTRAL, expected).
+
+**Next gap (note for future iter)**: only if the user makes a Q-B3/Q-B4 design decision
+(matching-key / property-invention enumeration + ranking policy) and deletes
+`logs/_LOOP_COMPLETE.md` — then the object-correspondence rung (~184+ pure-recolour tasks,
+the single largest remaining capability) becomes buildable without inventing. Until then,
+autonomous progress is blocked; do not re-scan the refuted single-step / compose / add-only
+frontier (see scripts/probe_*.py).
+
+## Iter 66 [NEUTRAL] — 20260615_064717 — branch test33
+- Probe: [06:47:37] Correct:     0 / 3  (0.0%)

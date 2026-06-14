@@ -27,7 +27,7 @@
   ],
   "source_task": "recolor_to_largest",
   "created_at": "2026-06-14T17:30:01.641006",
-  "times_reused": 273,
+  "times_reused": 276,
   "condition": {
     "type": "object_recolor",
     "params": {
