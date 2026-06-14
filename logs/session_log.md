@@ -4224,3 +4224,126 @@ steps.
 
 ## Iter 38 [CLEAN] — 20260614_215747 — branch test33
 - Probe: [21:58:06] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 22:10
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_221048.log
+
+---
+## Learning Loop -- 2026-06-14 22:11
+
+- Split: None, Tasks: 25
+- Correct: 25 / 25 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 9s
+- Log: logs/learn_20260614_221052.log
+
+---
+## Learning Loop -- 2026-06-14 22:11
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_221102.log
+
+---
+## Learning Loop -- 2026-06-14 22:17
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_221650.log
+
+---
+## Learning Loop -- 2026-06-14 22:17
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_221706.log
+
+---
+## Learning Loop -- 2026-06-14 22:17
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_221715.log
+
+---
+## Learning Loop -- 2026-06-14 22:17
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_221722.log
+
+## Iter 39 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase. Iter-38 added multi-object map-all gravity but its
+input→output bijection keyed only on (colour-set + size + shape), so it *declined*
+on **identical** objects falling (the common gravity case) — it could not say which
+fell where, the named "next gap". That is the smallest defensible structural step
+on the R1 frontier: disambiguate the bijection by the coordinate a fall preserves.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — new bijection vocabulary: `motion_bijection` +
+  `MOTION_BIJECTION_STRATEGIES`. Strategies tried most-constrained-first:
+  `identity` (colour+size+shape, the distinct-object case, unchanged) then the axis
+  disambiguators `vertical` / `horizontal`, which add the column / row a fall keeps
+  to the match key — so two *identical* objects in distinct columns (or rows) are
+  matched by the coordinate gravity preserves. Value-agnostic (no literal index).
+- `agent/dsl_expr/motion.py` — new `fit_map_all_target(per_pair)`: holds the
+  strategy loop (bijection → colour-preservation check → `fit_uniform_target`),
+  returning the first strategy whose motions fit ONE uniform target. `identity`
+  still wins for distinct objects (zero regression); an axis strategy only claims an
+  identical-object scene `identity` cannot resolve.
+- `agent/active_operators.py` — `_fit_map_all` slimmed to gather per-pair objects
+  (size-preserving, ≥2, equal-count) and delegate to `fit_map_all_target`. Net
+  **−34 lines** (P6 ↑); the fitting logic now lives with the other `fit_*`
+  functions in `motion.py`, so active_operators only gathers + calls.
+- `agent/dsl_expr/__init__.py` — export `fit_map_all_target`.
+- `data/ARC_madeup/mo_gravity_identical.json` — authored the minimal task that
+  exposes the gap: two identical single-cell colour-5 objects in distinct columns,
+  varying rows, all fall to the bottom edge. Solves via `object_motion` and **folds
+  into rule_002** (covers 22→23, no new rule — §2.5-3 win).
+- `tests/test_object_motion.py` — replaced the now-obsolete "declines ambiguous
+  bijection" test (that case is now correctly resolved) with: resolves-identical-by-
+  column, declines-stacked-identical (same column → still honestly declines, needs
+  ordering), and three focused unit tests on `motion_bijection` / `fit_map_all_target`.
+  210 pass.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 25/25; 10 rules; rule_002
+covers 22; P1=7.2, P2=7.2.
+**Probe after** : easy_a 9/9, madeup **26/26**; 10 rules (no new file); rule_002
+covers 22→**23**; P1 7.2→**7.3**, P2 7.2→**7.3**; P6 1467→**1433** (−34).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1
++0.1, P2 +0.1, P6 −34 lines**. The map-all gravity family now resolves
+identical-object falls value-agnostically (matched by the axis a fall preserves),
+folded into the same move rule — no new detector, no new rule.
+
+**Next gap (note for future iter)**: identical objects *stacked in the same column*
+still decline (neither column nor row disambiguates — they need per-object fall
+ordering / a stop-on-occupied rule, the gravity-with-stacking case). That is also
+the heart of the probe's c9680e90 (gravity with obstacles): a falling object stops
+on another rather than reaching the edge — a per-object stop-condition, the next
+structural step on the motion frontier. The probe's e5790162/878187ab are ray
+projection (objects *grow* toward a target), a separate non-rigid family.

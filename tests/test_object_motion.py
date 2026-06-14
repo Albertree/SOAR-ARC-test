@@ -1159,13 +1159,63 @@ def test_fit_map_all_declines_single_object():
     assert ExtractPatternOperator._fit_map_all(task) is None
 
 
-def test_fit_map_all_declines_ambiguous_bijection():
-    # two identical objects (same colour+size+shape) -> the input->output bijection
-    # is ambiguous, so map_all declines rather than guessing which fell where.
-    spec_in = _g({(0, 1): 3, (0, 4): 3})
-    spec_out = _g(_fall({(0, 1): 3, (0, 4): 3}))
-    task = _Task([(spec_in, spec_out)], [(spec_in, spec_out)], name="ambig")
+def test_fit_map_all_resolves_identical_by_column():
+    # two *identical* objects (same colour+size+shape) in *distinct columns* falling
+    # to the bottom -> the colour+size+shape ('identity') bijection is ambiguous, but
+    # the column a vertical fall preserves disambiguates which fell where. Different
+    # fall distances (5 and 3) defeat a uniform offset, so the per-object to_edge
+    # bottom fits. Previously declined; the axis disambiguator now resolves it.
+    spec_in = _g({(0, 1): 3, (2, 4): 3})
+    spec_out = _g(_fall({(0, 1): 3, (2, 4): 3}))
+    task = _Task([(spec_in, spec_out)], [(spec_in, spec_out)], name="ident")
+    mapall = ExtractPatternOperator._fit_map_all(task)
+    assert mapall is not None
+    assert mapall["target"] == {"kind": "to_edge", "edge": "bottom"}
+    assert mapall["clean"] is True
+
+
+def test_fit_map_all_declines_stacked_identical():
+    # two identical objects in the *same column* (stacked) -> neither the identity
+    # key nor the column / row a fall preserves can say which fell where, so map_all
+    # honestly declines rather than guessing. (Stacked gravity needs per-object
+    # ordering, a later capability.)
+    spec_in = _g({(0, 2): 3, (2, 2): 3})
+    spec_out = _g({(4, 2): 3, (5, 2): 3})  # they stack at the bottom
+    task = _Task([(spec_in, spec_out)], [(spec_in, spec_out)], name="stacked")
     assert ExtractPatternOperator._fit_map_all(task) is None
+
+
+def test_motion_bijection_identity_distinct():
+    # distinct objects -> the colour+size+shape 'identity' strategy matches them.
+    from agent.dsl_expr.selection import motion_bijection
+    objs_in = objects_of(_g({(0, 1): 3, (1, 4): 4}))
+    objs_out = objects_of(_g({(5, 1): 3, (5, 4): 4}))
+    bij = motion_bijection(objs_in, objs_out, "identity")
+    assert bij is not None and len(bij) == 2
+    # colour 3 input maps to colour 3 output, 4 to 4.
+    assert all(color_of(oi) == color_of(oj) for oi, oj in bij)
+
+
+def test_motion_bijection_identity_declines_identical():
+    # identical objects -> the 'identity' key cannot tell them apart; declines.
+    from agent.dsl_expr.selection import motion_bijection
+    objs_in = objects_of(_g({(0, 1): 3, (2, 4): 3}))
+    objs_out = objects_of(_g({(5, 1): 3, (5, 4): 3}))
+    assert motion_bijection(objs_in, objs_out, "identity") is None
+    # but 'vertical' (the preserved column) resolves the same scene.
+    bij = motion_bijection(objs_in, objs_out, "vertical")
+    assert bij is not None and len(bij) == 2
+    # each input object maps to the output object in the same column.
+    assert all(oi["bbox"][1] == oj["bbox"][1] for oi, oj in bij)
+
+
+def test_fit_map_all_target_identical_gravity():
+    # the motion-fitter resolves identical-object gravity from pre-gathered pairs.
+    from agent.dsl_expr import fit_map_all_target
+    objs_in = objects_of(_g({(0, 1): 3, (2, 4): 3}))
+    objs_out = objects_of(_g({(5, 1): 3, (5, 4): 3}))
+    desc = fit_map_all_target([(6, 6, objs_in, objs_out)])
+    assert desc["target"] == {"kind": "to_edge", "edge": "bottom"}
 
 
 def test_render_map_all_motion():

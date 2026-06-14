@@ -216,6 +216,69 @@ def fit_uniform_target(motions):
     return None
 
 
+def fit_map_all_target(per_pair):
+    """Fit ONE uniform map-all displacement target across pre-gathered example
+    pairs — the multi-object gravity / "all objects fall" reading, the
+    select-one→map-all generalisation of the single-object move (§2.5-2b,
+    BACKLOG_LOOP R1 "next gap"). `per_pair` is a list of ``(H, W, objs_in,
+    objs_out)`` tuples, one per example pair; the caller guarantees each pair is
+    size-preserving with ≥2 colour-objects and equal in/out counts.
+
+    The input→output object **bijection** is fitted most-constrained-first by
+    `selection.motion_bijection`: ``identity`` (by the colour-set + size + shape a
+    move preserves — the *distinct*-object case) then the axis disambiguators
+    ``vertical`` / ``horizontal`` (the column / row a fall keeps) for *identical*
+    objects, which the identity key alone cannot tell apart. The first strategy
+    whose per-object motions are colour-preserving on every pair AND fit one uniform
+    `fit_uniform_target` wins — so distinct-object gravity reads exactly as before
+    (zero regression) and identical-object gravity, previously declined, is resolved
+    by the preserved axis. Returns ``{"target", "evidence_count", "clean"}`` or
+    ``None`` (decline) so the caller never guesses which object fell where.
+    """
+    from agent.dsl_expr.selection import (
+        motion_bijection, MOTION_BIJECTION_STRATEGIES, position_of, color_of,
+    )
+
+    if not per_pair:
+        return None
+    for strategy in MOTION_BIJECTION_STRATEGIES:
+        all_motions = []
+        ok = True
+        moved_any = True
+        for (H, W, objs_in, objs_out) in per_pair:
+            bij = motion_bijection(objs_in, objs_out, strategy)
+            if bij is None:
+                ok = False
+                break
+            pair_moved = False
+            for oi, oj in bij:
+                if color_of(oi) is None or color_of(oi) != color_of(oj):
+                    ok = False  # colour not preserved → not a plain move
+                    break
+                (oh, ow) = obj_origin_extent(oi)[1]
+                src, dst = position_of(oi), position_of(oj)
+                if src != dst:
+                    pair_moved = True
+                all_motions.append({
+                    "src": src, "dst": dst, "H": H, "W": W, "oh": oh, "ow": ow,
+                })
+            if not ok:
+                break
+            if not pair_moved:
+                moved_any = False  # a static scene is not a fall
+                break
+        if not ok or not moved_any or not all_motions:
+            continue
+        target = fit_uniform_target(all_motions)
+        if target is not None:
+            return {
+                "target": target,
+                "evidence_count": len(per_pair),
+                "clean": True,
+            }
+    return None
+
+
 def fit_output_shape(shapes):
     """Fit a value-agnostic output-grid-shape expression across example pairs.
 

@@ -415,19 +415,19 @@ class ExtractPatternOperator(Operator):
 
         Returns ``{"target": <descriptor>, "evidence_count": n, "clean": True}`` or
         ``None`` (decline). Requires ≥2 objects on every pair so it is *never*
-        consulted for the single-object move family the select-one path covers, and
-        declines on any ambiguous bijection (two objects sharing colour+size+shape)
-        rather than guessing which fell where — column-disambiguated identical-object
-        gravity is a later refinement.
+        consulted for the single-object move family the select-one path covers. The
+        per-object bijection + uniform-target fit live in
+        `motion.fit_map_all_target`, which tries strategies most-constrained-first
+        (``identity`` for distinct objects, then ``vertical`` / ``horizontal`` axis
+        disambiguators for *identical* objects falling — the column / row a fall
+        keeps), so distinct-object gravity reads exactly as before and
+        identical-object gravity is now resolved rather than declined.
         """
-        from agent.dsl_expr import (
-            objects_of, position_of, obj_origin_extent, color_of,
-            fit_uniform_target,
-        )
-        from agent.dsl_expr.selection import _shape_signature
+        from agent.dsl_expr import objects_of, fit_map_all_target
 
-        all_motions = []
-        npairs = 0
+        # Gather every pair's input/output objects once; size-preserving and a clean
+        # ≥2-object, equal-count scene are prerequisites the fitter relies on.
+        per_pair = []
         for pair in task.example_pairs:
             g0, g1 = pair.input_grid, pair.output_grid
             if g0 is None or g1 is None:
@@ -438,42 +438,8 @@ class ExtractPatternOperator(Operator):
             objs_out = objects_of(g1.raw)
             if len(objs_in) < 2 or len(objs_in) != len(objs_out):
                 return None
-
-            used = set()
-            moved_any = False
-            for oi in objs_in:
-                key = (tuple(oi["color_set"]), oi["size"], _shape_signature(oi))
-                cands = [
-                    j for j, oj in enumerate(objs_out)
-                    if j not in used
-                    and (tuple(oj["color_set"]), oj["size"], _shape_signature(oj))
-                    == key
-                ]
-                if len(cands) != 1:
-                    return None  # ambiguous / unmatched object → decline
-                j = cands[0]
-                used.add(j)
-                oj = objs_out[j]
-                if color_of(oi) is None or color_of(oi) != color_of(oj):
-                    return None  # colour not preserved → not a plain move
-                (oh, ow) = obj_origin_extent(oi)[1]
-                src, dst = position_of(oi), position_of(oj)
-                if src != dst:
-                    moved_any = True
-                all_motions.append({
-                    "src": src, "dst": dst,
-                    "H": g1.height, "W": g1.width, "oh": oh, "ow": ow,
-                })
-            if not moved_any:
-                return None  # a static scene is not a fall
-            npairs += 1
-
-        if npairs == 0 or not all_motions:
-            return None
-        target = fit_uniform_target(all_motions)
-        if target is None:
-            return None
-        return {"target": target, "evidence_count": npairs, "clean": True}
+            per_pair.append((g1.height, g1.width, objs_in, objs_out))
+        return fit_map_all_target(per_pair)
 
     @staticmethod
     def _identify_move(objs_in, objs_out):

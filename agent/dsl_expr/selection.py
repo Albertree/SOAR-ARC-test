@@ -353,6 +353,77 @@ def fit_selector(selections):
     return None
 
 
+# --- multi-object move bijection (map-all gravity, BACKLOG_LOOP R1 "next gap") ---
+#
+# A multi-object move ("all objects fall" / gravity) must first match each *input*
+# object to the *output* object it became, before any uniform displacement can be
+# fitted — and the match has to be value-agnostic. The most-constrained reading is
+# by the (colour-set + size + shape) a move preserves; it is unambiguous whenever
+# the objects differ in any of those. But *identical* objects falling (the common
+# gravity case) share that whole key, so it cannot say which fell where. A fall
+# along one axis preserves the object's *other* bbox coordinate, which
+# disambiguates: a vertical fall keeps each object's column (bbox left edge), a
+# horizontal one keeps its row (bbox top edge). So the strategies, most-constrained
+# first, add that preserved coordinate to the key. The caller
+# (`ExtractPatternOperator._fit_map_all`) tries them in order and keeps the first
+# whose resulting motions fit ONE uniform target — so ``identity`` still wins for
+# distinct objects (zero regression) and an axis strategy only claims an
+# identical-object scene ``identity`` cannot resolve.
+
+def _motion_key_base(obj):
+    """The (colour-set, size, shape) a colour-preserving move keeps invariant."""
+    return (tuple(obj["color_set"]), obj["size"], _shape_signature(obj))
+
+
+# Key functions per strategy: ``identity`` matches by the move-invariant base;
+# ``vertical`` also pins the column (bbox left edge) a vertical fall preserves;
+# ``horizontal`` also pins the row (bbox top edge) a horizontal fall preserves.
+_MOTION_BIJECTION_KEYS = {
+    "identity":   lambda o: _motion_key_base(o),
+    "vertical":   lambda o: _motion_key_base(o) + (o["bbox"][1],),
+    "horizontal": lambda o: _motion_key_base(o) + (o["bbox"][0],),
+}
+
+# Most-constrained-first order the caller iterates over.
+MOTION_BIJECTION_STRATEGIES = ("identity", "vertical", "horizontal")
+
+
+def _bijection_by_key(objs_in, objs_out, key_fn):
+    """One-to-one match of input→output objects under `key_fn`, or None when the
+    key does not pick exactly one unused output object for some input object (an
+    ambiguous or partial match → decline rather than guess)."""
+    if len(objs_in) != len(objs_out):
+        return None
+    used = set()
+    pairs = []
+    for oi in objs_in:
+        ki = key_fn(oi)
+        cands = [
+            j for j, oj in enumerate(objs_out)
+            if j not in used and key_fn(oj) == ki
+        ]
+        if len(cands) != 1:
+            return None
+        used.add(cands[0])
+        pairs.append((oi, objs_out[cands[0]]))
+    return pairs
+
+
+def motion_bijection(objs_in, objs_out, strategy):
+    """Bijection input→output objects under one matching `strategy`, or None.
+
+    ``identity`` matches by the (colour-set + size + shape) a move preserves — the
+    unambiguous reading. ``vertical`` additionally requires each object's column
+    (bbox left edge) preserved, the disambiguator for identical objects falling
+    straight down; ``horizontal`` requires the row (top edge) preserved, for
+    identical objects sliding sideways. Returns the list of ``(input_obj,
+    output_obj)`` pairs, or None when the strategy yields no clean bijection."""
+    key_fn = _MOTION_BIJECTION_KEYS.get(strategy)
+    if key_fn is None:
+        return None
+    return _bijection_by_key(objs_in, objs_out, key_fn)
+
+
 def position_of(obj):
     """Top-left `(row, col)` of the object's bounding box."""
     if not obj:

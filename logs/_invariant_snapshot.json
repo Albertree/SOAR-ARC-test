@@ -1,11 +1,11 @@
 {
-  "P1_rule_coverage": 7.1,
-  "P2_mean_covers": 7.1,
+  "P1_rule_coverage": 7.2,
+  "P2_mean_covers": 7.2,
   "P3_au_traced_frac": 0.9,
   "P4_episodic_entries": 932,
   "P5_condition_matchers": 4,
-  "P6_active_operators_lines": 1314,
-  "_head": "f88a6dfd98a8b01aa1e8af3bbca7c48d38372998",
+  "P6_active_operators_lines": 1467,
+  "_head": "55caf0fd8cae9dd9743a3b148fb59605f1e59a7e",
   "_rule_count": 10,
-  "_solved_count": 71
+  "_solved_count": 72
 }
