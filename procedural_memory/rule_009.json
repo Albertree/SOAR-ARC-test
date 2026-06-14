@@ -1,0 +1,128 @@
+{
+  "id": 9,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "tile",
+            [
+              "const",
+              "?v1"
+            ],
+            [
+              "const",
+              "?v2"
+            ],
+            [
+              "const",
+              "?v3"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "tile",
+            [
+              "const",
+              "?v4"
+            ],
+            [
+              "const",
+              "?v5"
+            ],
+            [
+              "const",
+              "?v6"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "00576224",
+    "0c786b71",
+    "3af2c5a8",
+    "46442a0e",
+    "4c4377d9",
+    "59341089",
+    "62c24649",
+    "67e8384a",
+    "6d0aefbc",
+    "6fa7a44f",
+    "7953d61e",
+    "7fe24cdd",
+    "833dafe3",
+    "8be77c9e",
+    "8d5021e8",
+    "a416b8f3",
+    "bc4146bd",
+    "c48954c1",
+    "c9e6f938",
+    "cf5fd0ad",
+    "ed98d772"
+  ],
+  "source_task": "00576224",
+  "created_at": "2026-06-14T21:08:52.005849",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "tile",
+          [
+            "const",
+            "?v1"
+          ],
+          [
+            "const",
+            "?v2"
+          ],
+          [
+            "const",
+            "?v3"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "tile",
+          [
+            "const",
+            "?v4"
+          ],
+          [
+            "const",
+            "?v5"
+          ],
+          [
+            "const",
+            "?v6"
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/0c786b71/anti_unification/au_001.json"
+}

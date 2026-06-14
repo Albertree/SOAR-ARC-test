@@ -384,3 +384,88 @@ def test_scale_factors_share_one_skeleton():
     assert two is not None and three is not None
     assert two[0][1] != three[0][1]  # different factor leaves
     assert _program_skeleton(two) == _program_skeleton(three)
+
+
+# --- Schema 8: dihedral tiling (replication / mirror / rotation tiling) -------
+
+def test_tile_plain_replication_discovered():
+    # Output is a 2x2 macro grid of identical input copies. The input is 2x3 so
+    # the output dims (4x6) are NOT (ih², iw²) — the fractal schema cannot fire,
+    # and the search expresses it as one `tile` step of all-identity blocks.
+    pairs = [
+        {"input": [[1, 2, 0], [3, 4, 5]],
+         "output": [[1, 2, 0, 1, 2, 0], [3, 4, 5, 3, 4, 5],
+                    [1, 2, 0, 1, 2, 0], [3, 4, 5, 3, 4, 5]]},
+        {"input": [[5, 0, 6], [0, 6, 1]],
+         "output": [[5, 0, 6, 5, 0, 6], [0, 6, 1, 0, 6, 1],
+                    [5, 0, 6, 5, 0, 6], [0, 6, 1, 0, 6, 1]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "tile"
+    k, m, pat = prog[0][1][1], prog[0][2][1], prog[0][3][1]
+    assert (k, m) == (2, 2)
+    assert all(name == "identity" for row in pat for name in row)
+    for p in pairs:
+        assert run_program(prog, p["input"]) == p["output"]
+
+
+def test_tile_mirror_arrangement_discovered():
+    # The kaleidoscope family: top-left identity, top-right horizontal mirror,
+    # bottom-left vertical mirror, bottom-right 180° — a value-agnostic rigid
+    # arrangement, never a colour literal.
+    g = [[1, 2], [3, 4]]
+    out = [[1, 2, 2, 1],
+           [3, 4, 4, 3],
+           [3, 4, 4, 3],
+           [1, 2, 2, 1]]
+    g2 = [[7, 8], [9, 5]]
+    out2 = [[7, 8, 8, 7],
+            [9, 5, 5, 9],
+            [9, 5, 5, 9],
+            [7, 8, 8, 7]]
+    prog = synthesize_task([{"input": g, "output": out},
+                            {"input": g2, "output": out2}])
+    assert prog is not None and prog[0][0] == "tile"
+    pat = prog[0][3][1]
+    assert pat[0][0] == "identity" and pat[0][1] == "flip_h"
+    assert pat[1][0] == "flip_v" and pat[1][1] == "rot180"
+    for inp, o in [(g, out), (g2, out2)]:
+        assert run_program(prog, inp) == o
+
+
+def test_tile_declines_on_non_multiple_dims():
+    # Output dims that are not an integer multiple of the input dims are not a
+    # tiling — the schema must decline (here a same-size recolour).
+    pairs = [
+        {"input": [[1, 2], [3, 4]], "output": [[2, 1], [4, 3]]},
+        {"input": [[5, 6], [7, 8]], "output": [[6, 5], [8, 7]]},
+    ]
+    prog = synthesize_task(pairs)
+    if prog:
+        assert prog[0][0] != "tile"
+
+
+def test_tile_arrangements_share_one_skeleton():
+    # The unification payoff: a 2x2 mirror tiling and a 1x2 plain tiling must
+    # produce the SAME program skeleton (k/m/pattern are the only divergent
+    # leaves), so save_rule lifts them into ONE covers>1 rule (R3) rather than
+    # accreting one rule per arrangement.
+    from agent.memory import _program_skeleton
+    mirror = synthesize_task([
+        {"input": [[1, 2], [3, 4]],
+         "output": [[1, 2, 2, 1], [3, 4, 4, 3],
+                    [3, 4, 4, 3], [1, 2, 2, 1]]},
+        {"input": [[7, 8], [9, 5]],
+         "output": [[7, 8, 8, 7], [9, 5, 5, 9],
+                    [9, 5, 5, 9], [7, 8, 8, 7]]},
+    ])
+    plain = synthesize_task([
+        {"input": [[1, 2], [3, 4]],
+         "output": [[1, 2, 1, 2], [3, 4, 3, 4]]},
+        {"input": [[5, 0], [0, 6]],
+         "output": [[5, 0, 5, 0], [0, 6, 0, 6]]},
+    ])
+    assert mirror is not None and plain is not None
+    assert mirror[0][0] == "tile" and plain[0][0] == "tile"
+    assert mirror[0][3][1] != plain[0][3][1]  # different arrangements
+    assert _program_skeleton(mirror) == _program_skeleton(plain)

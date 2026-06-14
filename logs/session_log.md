@@ -3580,3 +3580,138 @@ neighbourhood/alignment selector no schema yet expresses (R4-adjacent machinery)
 
 ## Iter 33 [CLEAN] — 20260614_204949 — branch test33
 - Probe: [20:50:14] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 21:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_210050.log
+
+---
+## Learning Loop -- 2026-06-14 21:01
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_210054.log
+
+---
+## Learning Loop -- 2026-06-14 21:01
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_210103.log
+
+---
+## Learning Loop -- 2026-06-14 21:06
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_210625.log
+
+---
+## Learning Loop -- 2026-06-14 21:06
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_210628.log
+
+---
+## Learning Loop -- 2026-06-14 21:09
+
+- Split: None, Tasks: 21
+- Correct: 21 / 21 (100.0%)
+- Rules: 8 -> 9 (+1 learned)
+- Stored rule hits: 0
+- Time: 16s
+- Log: logs/learn_20260614_210851.log
+
+---
+## Learning Loop -- 2026-06-14 21:09
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_210934.log
+
+---
+## Learning Loop -- 2026-06-14 21:09
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_210938.log
+
+## Iter 34 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; probe 0/3 (same-size conditional transforms — R4
+machinery, not a smallest step). A full 1000-task scan showed the synthesizer
+solves only 23 and that the single largest *unsolved, currently-expressible*
+family is **dihedral tiling**: 43 tasks whose output is a `k×m` macro grid of
+input-dim blocks, of which 21 are exactly a rigid (identity/mirror/rotate)
+arrangement of input copies (0c786b71/46442a0e/7fe24cdd kaleidoscope family, …).
+This is value-agnostic (a positional arrangement, never a colour), composes only
+the two frozen primitives, and many tasks share one skeleton — the textbook §2.5
+lift case, not accretion.
+
+**Change**:
+- `program/synthesis.py` — added **Schema 8: dihedral tiling**. New `_dihedral_grid`
+  helper (identity + the 7 `_DIHEDRAL` maps, returns a transformed grid),
+  `_fit_tile` fitter (resolves the shared `(k,m)` factor pair and the per-block
+  transform *directly* — 8 transforms/block intersected across pairs, a fit, NOT
+  an `8^(k·m)` enumeration; declines when no consistent arrangement exists), and a
+  `tile` step in `run_program` that makes the `k·ih × m·iw` canvas (`make_grid`)
+  and paints each block's transformed cells in their own input colour (`coloring`).
+  Pure positional coordinate expression composing the two frozen primitives
+  (§2.5-1, F3-safe); yielded LAST so simpler schemas (scale/fractal) win on
+  overlap. NO new DSL primitive (F3-safe), NO `_try_*` (F2-safe), NO
+  `active_operators.py` edit (F8 N/A — all in `program/`).
+- `procedural_memory/rule_009.json` — **created by folding all 21 real ARC-AGI-2
+  tiling tasks into ONE rule** (ran the agent's slow path on them; each discovers a
+  `[("tile", k, m, pattern)]` program, all share the collapsed-const skeleton, so
+  `save_rule`→`unify()` lifts the divergent `(k,m,pattern)` leaves to `?v` and
+  writes an `anti_unification_trace`). covers=21, one general value-agnostic rule,
+  no accretion (rules 8→9 for 21 solved tasks).
+- `tests/test_synthesis.py` (+4) — plain replication (non-fractal dims), mirror
+  kaleidoscope arrangement, declines-on-non-multiple, and the lift proof (two
+  divergent arrangements share one skeleton). 188 pass.
+
+**Probe before**: training probe 0/3; easy_a 9/9, madeup 23/23; 8 rules;
+P1=P2=5.625, P3=0.875; solved≈45.
+**Probe after** : easy_a 9/9, madeup 23/23 (guards unchanged); 9 rules; rule_009
+covers=21 (21 more real ARC-AGI-2 tiling tasks solve via ONE general dihedral-tile
+rule); P1/P2 5.625→7.333, P3 0.875→0.889.
+
+**Invariants**: forbidden=none (check_invariants CLEAN). positives = **P1 +1.708,
+P2 +1.708, P3 +0.014 — all three rise together** (the §2.5-4 real-progress
+signature: covers grew by 21 via a genuine divergent-leaf AU lift, not 21 files).
+P4/P5/P6 held.
+
+**Next gap (note for future iter)**: 22 more `k×m`-dim tasks remain that are NOT
+pure dihedral arrangements — their blocks are *content-conditional* (a block is the
+input only where some object/colour predicate holds, or each block recolours), a
+fractal-style per-block selector the tile schema does not yet express. The
+standing miss is unchanged: same-size CONDITIONAL transforms (gravity/ray/
+occlusion — the probe's 3) need a neighbourhood/alignment selector (R4-adjacent).
+
+## Iter 34 [CLEAN] — 20260614_210050 — branch test33
+- Probe: [21:01:08] Correct:     0 / 3  (0.0%)

@@ -74,6 +74,36 @@ _DIHEDRAL = {
     "antitranspose": (lambda r, c, ih, iw: (iw - 1 - c, ih - 1 - r), True),
 }
 
+# The eight dihedral *grids* (identity + the seven maps above), used both to fit
+# and to render the ``tile`` schema below. Returns a new grid (a permutation of
+# the input's cells under the named map), or ``None`` for an unknown name. Pure
+# coordinate relabelling — composes nothing but cell moves, so a ``tile`` step
+# built from these stays inside the two frozen primitives (§2.5-1, F3-safe).
+_TILE_XFORMS = ("identity",) + tuple(_DIHEDRAL)
+
+
+def _dihedral_grid(name, grid):
+    """Apply the named dihedral transform to ``grid`` and return a fresh grid
+    (``None`` for an unknown name). ``identity`` copies; the others relabel each
+    cell's coordinate via ``_DIHEDRAL`` (dims swap for the transpose/rotate maps).
+    Every output cell is written (the map is a bijection), so the fill value is
+    irrelevant."""
+    if name == "identity":
+        return [row[:] for row in grid]
+    spec = _DIHEDRAL.get(name)
+    if spec is None:
+        return None
+    remap, swaps = spec
+    ih = len(grid)
+    iw = len(grid[0]) if grid else 0
+    oh, ow = (iw, ih) if swaps else (ih, iw)
+    out = [[0] * ow for _ in range(oh)]
+    for r in range(ih):
+        for c in range(iw):
+            nr, nc = remap(r, c, ih, iw)
+            out[nr][nc] = grid[r][c]
+    return out
+
 
 # ======================================================================
 # Fractal self-tile conditions (the per-macro-cell selector)
@@ -377,6 +407,49 @@ def run_program(program, input_grid):
                                 "coloring", cur,
                                 selection=(R * ih + r, C * iw + c),
                                 color=grid[r][c])
+        elif kind == "tile":
+            # Dihedral tiling: the output is a ``k × m`` macro grid whose block
+            # ``(i, j)`` is a *dihedral transform* of the whole input (identity /
+            # flip / rotate / transpose), the per-block map carried in the fitted
+            # ``pattern`` matrix. Like ``dihedral``/``scale``/``fractal`` it
+            # composes ONLY the two frozen primitives — it makes the ``k·ih ×
+            # m·iw`` canvas (``make_grid``) and paints each block's transformed
+            # cells in their own input colour (``coloring``). The transform is
+            # purely positional (value-agnostic: a copy never recolours); the only
+            # per-task content is the *arrangement* of mirror/rotate copies, a
+            # const ``pattern`` leaf — so two tiling tasks with divergent
+            # ``(k, m, pattern)`` share the SAME one-step skeleton
+            # ``[("tile", ("const",?v), ("const",?v), ("const",?v))]`` and lift via
+            # ``unify()`` into a single ``covers>1`` rule (R3). Reads the fixed
+            # input (``env``) throughout, so it transfers unchanged to the test
+            # input (P5).
+            _, k_expr, m_expr, pat_expr = step
+            k = _eval(k_expr, env)
+            m = _eval(m_expr, env)
+            pattern = _eval(pat_expr, env)
+            grid = env["grid"]
+            bg = env["bg"]
+            ih = len(grid)
+            iw = len(grid[0]) if grid else 0
+            cur = apply_DSL("make_grid", height=ih * k, width=iw * m, color=bg)
+            for i in range(k):
+                for j in range(m):
+                    name = pattern[i][j]
+                    tg = _dihedral_grid(name, grid)
+                    if tg is None or len(tg) != ih or (tg and len(tg[0]) != iw):
+                        # A dims-swapping transform on a non-square input cannot
+                        # fill an ih×iw block — decline rather than misplace cells.
+                        raise _Unevaluable(
+                            f"tile block transform {name!r} does not fit an "
+                            f"{ih}x{iw} block")
+                    for r in range(ih):
+                        for c in range(iw):
+                            v = tg[r][c]
+                            if v == bg:
+                                continue
+                            cur = apply_DSL(
+                                "coloring", cur,
+                                selection=(i * ih + r, j * iw + c), color=v)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -518,6 +591,22 @@ def _candidate_programs(pairs):
         for name in _FRACTAL_CONDS:
             yield [("fractal", ("const", name))]
 
+    # --- Schema 8: dihedral tiling ----------------------------------------
+    # The output is a ``k × m`` macro grid of dihedral copies of the input —
+    # plain replication, mirror-tiling, or rotation-tiling (the kaleidoscope
+    # family: 0c786b71, 46442a0e, 7fe24cdd, …). The reason — P3/P4 — is the COMM
+    # result "every ih×iw block of the output is some rigid transform of the
+    # input". `_fit_tile` resolves the shared factor pair and the per-block
+    # transform arrangement directly (a fit, not an 8^(k·m) enumeration), and
+    # declines when no consistent arrangement exists. Being a pure
+    # ``[("tile", ("const",?),("const",?),("const",?))]`` skeleton, two tiling
+    # tasks with divergent arrangements lift via ``unify()`` into one
+    # ``covers>1`` rule (R3 — P1·P2·P3 rise together). Yielded last so a simpler
+    # schema (scale, fractal) wins when a task fits both.
+    tile = _fit_tile(pairs)
+    if tile is not None:
+        yield tile
+
 
 def _is_fractal_dims(pairs):
     """True iff every pair's output dims are exactly ``(ih·ih, iw·iw)`` — the
@@ -558,6 +647,54 @@ def _fit_scale(pairs):
     if rh < 1 or rw < 1 or (rh == 1 and rw == 1):
         return None
     return (rh, rw)
+
+
+def _fit_tile(pairs):
+    """Return a one-step ``tile`` program if every pair's output is a ``k × m``
+    macro grid of *dihedral copies* of its input, else ``None``.
+
+    The factor pair ``(k, m)`` must be shared across all pairs (value-agnostic,
+    read from the dims). For each block position the fitter intersects, across
+    pairs, the set of dihedral transforms whose grid equals that block — a direct
+    *fit* (8 transforms per block), not an enumeration of the ``8^(k·m)``
+    arrangements. If every position keeps at least one consistent transform, the
+    arrangement is realised as a ``pattern`` matrix (deterministic pick where a
+    symmetric block admits several). The literal here is purely *positional* (an
+    arrangement of mirror/rotate copies, never a colour), so two tiling tasks
+    lift via ``unify()`` into one ``covers>1`` rule (§2.5-3)."""
+    ks, ms = set(), set()
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        ih = len(gin)
+        iw = len(gin[0]) if gin else 0
+        oh = len(gout)
+        ow = len(gout[0]) if gout else 0
+        if ih == 0 or iw == 0 or oh % ih or ow % iw:
+            return None
+        ks.add(oh // ih)
+        ms.add(ow // iw)
+    if len(ks) != 1 or len(ms) != 1:
+        return None
+    k, m = ks.pop(), ms.pop()
+    if k * m <= 1:
+        return None  # a single block is just the identity / dihedral schema
+    valid = [[set(_TILE_XFORMS) for _ in range(m)] for _ in range(k)]
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        ih = len(gin)
+        iw = len(gin[0]) if gin else 0
+        xforms = {nm: _dihedral_grid(nm, gin) for nm in _TILE_XFORMS}
+        for i in range(k):
+            for j in range(m):
+                blk = [row[j * iw:(j + 1) * iw]
+                       for row in gout[i * ih:(i + 1) * ih]]
+                keep = {nm for nm in valid[i][j] if xforms[nm] == blk}
+                if not keep:
+                    return None
+                valid[i][j] = keep
+    pattern = tuple(
+        tuple(sorted(valid[i][j])[0] for j in range(m)) for i in range(k))
+    return [("tile", ("const", k), ("const", m), ("const", pattern))]
 
 
 def _fit_color_map(pairs):
