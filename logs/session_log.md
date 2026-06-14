@@ -7058,3 +7058,38 @@ cluster is untested.
 
 ## Iter 64 [NEUTRAL] — 20260615_061821 — branch test33
 - Probe: [06:18:41] Correct:     0 / 3  (0.0%)
+
+> STAGNATION at iter 64 — 6 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-06-15 06:27
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_062726.log
+
+---
+## Learning Loop -- 2026-06-15 06:27
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_062729.log
+
+---
+## Learning Loop -- 2026-06-15 06:27
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_062739.log
+
+## Iter 65 [NEUTRAL] — 20260615_062726 — branch test33
+- Probe: [06:27:46] Correct:     0 / 3  (0.0%)
