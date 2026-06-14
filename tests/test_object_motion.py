@@ -388,6 +388,74 @@ def test_fit_selector_odd_color_when_size_and_position_fail():
     assert sel == {"kind": "odd_color"}
 
 
+def test_select_object_odd_shape():
+    # three identical horizontal I-trominoes (same colour 5, same size 3) and one
+    # L-tromino (the odd shape) -> the L is the shape odd-one-out.
+    grid = [[5, 5, 5, 0, 5, 5, 5],
+            [0, 0, 0, 0, 0, 0, 0],
+            [5, 0, 0, 0, 0, 0, 0],
+            [5, 5, 0, 0, 5, 5, 5]]
+    objs = objects_of(grid)
+    picked = select_object(objs, {"kind": "odd_shape"})
+    assert picked is not None
+    # the picked object is the L-tromino (the only one whose bbox is not 1x3)
+    r0, c0, r1, c1 = picked["bbox"]
+    assert (r1 - r0, c1 - c0) == (1, 1)
+
+
+def test_select_object_odd_shape_declines_when_all_same_or_all_distinct():
+    # every object the same shape -> no odd-one-out, declines.
+    same = objects_of([[5, 5, 0, 5, 5], [0, 0, 0, 0, 0], [5, 5, 0, 0, 0]])
+    assert select_object(same, {"kind": "odd_shape"}) is None
+    # two horizontal dominoes, two vertical dominoes -> no single odd-one-out.
+    pairs = objects_of([[5, 5, 0, 5, 0], [0, 0, 0, 5, 0],
+                        [5, 0, 0, 0, 0], [5, 0, 0, 7, 7]])
+    assert select_object(pairs, {"kind": "odd_shape"}) is None
+
+
+def test_odd_shape_is_colour_agnostic():
+    # shape, not colour, is what odd_shape keys on: an L of a *different* colour
+    # among three I-trominoes is still the odd shape (and odd_color would also fit
+    # here, but odd_shape must independently pick it).
+    grid = [[5, 5, 5, 0, 5, 5, 5],
+            [0, 0, 0, 0, 0, 0, 0],
+            [3, 0, 0, 0, 0, 0, 0],
+            [3, 3, 0, 0, 5, 5, 5]]
+    objs = objects_of(grid)
+    picked = select_object(objs, {"kind": "odd_shape"})
+    r0, c0, r1, c1 = picked["bbox"]
+    assert (r1 - r0, c1 - c0) == (1, 1)
+
+
+def test_fit_selector_odd_shape_when_size_position_colour_fail():
+    # The moved object is the shape odd-one-out on every pair but is equal in size
+    # AND colour to the others and never at a position extreme -- so no size,
+    # position, or colour criterion fits; only `odd_shape` survives (mirrors
+    # data/ARC_madeup/mo_select_odd_shape.json train pairs).
+    p1 = objects_of([[5, 5, 5, 0, 0, 5, 5, 5], [0, 0, 0, 0, 0, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 5, 0, 0, 0, 0],
+                     [0, 0, 0, 5, 5, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 0, 0], [5, 5, 5, 0, 0, 0, 0, 0]])
+    p2 = objects_of([[0, 5, 5, 5, 0, 5, 5, 5], [0, 0, 0, 0, 0, 0, 0, 0],
+                     [0, 0, 0, 0, 5, 0, 0, 0], [5, 5, 5, 0, 5, 5, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0],
+                     [0, 0, 0, 0, 0, 0, 0, 0], [0, 0, 0, 0, 0, 0, 0, 0]])
+    odd1 = _selection_index_oddshape(p1)
+    odd2 = _selection_index_oddshape(p2)
+    sel = fit_selector([{"objects": p1, "selected": odd1},
+                        {"objects": p2, "selected": odd2}])
+    assert sel == {"kind": "odd_shape"}
+
+
+def _selection_index_oddshape(objs):
+    # the L-tromino is the only object whose bbox is 2x2 (the others are 1x3)
+    for i, o in enumerate(objs):
+        r0, c0, r1, c1 = o["bbox"]
+        if (r1 - r0, c1 - c0) == (1, 1):
+            return i
+    raise AssertionError("no L-tromino found")
+
+
 # --- end-to-end via the real pipeline operators ----------------------------
 
 class _Grid:

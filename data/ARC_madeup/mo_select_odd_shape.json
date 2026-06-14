@@ -1,0 +1,19 @@
+{
+  "_comment": "Multi-object selection by SHAPE identity. Four same-colour, same-size objects: three identical I-trominoes plus one L-tromino (the odd shape). The odd-shaped object moves to the bottom-right corner; the rest are preserved. Size selectors decline (all size 3), colour selectors decline (all one colour), position selectors decline (the odd object is never a unique bbox extreme). Only a shape-identity selector (odd_shape) can name the acted-on object. Tests the structure can lift selection on the shape dimension, not just size/position/colour.",
+  "train": [
+    {
+      "input":  [[5,5,5,0,0,5,5,5],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,5,0,0,0,0],[0,0,0,5,5,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[5,5,5,0,0,0,0,0]],
+      "output": [[5,5,5,0,0,5,5,5],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,5,0],[5,5,5,0,0,0,5,5]]
+    },
+    {
+      "input":  [[0,5,5,5,0,5,5,5],[0,0,0,0,0,0,0,0],[0,0,0,0,5,0,0,0],[5,5,5,0,5,5,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],
+      "output": [[0,5,5,5,0,5,5,5],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[5,5,5,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,5,0],[0,0,0,0,0,0,5,5]]
+    }
+  ],
+  "test": [
+    {
+      "input":  [[5,5,5,0,5,5,5,0],[0,0,0,0,0,0,0,0],[0,0,0,0,5,0,0,0],[0,0,0,0,5,5,0,0],[5,5,5,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0]],
+      "output": [[5,5,5,0,5,5,5,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,0,0],[5,5,5,0,0,0,0,0],[0,0,0,0,0,0,0,0],[0,0,0,0,0,0,5,0],[0,0,0,0,0,0,5,5]]
+    }
+  ]
+}

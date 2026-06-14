@@ -1,6 +1,64 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 14 — 2026-06-14 — branch test33
+
+**Diagnosis**: In `madeup` (7/7, easy_a 9/9) the object_motion selector vocabulary
+names which object moves along three orthogonal dimensions — size
+(largest/smallest), position (topmost/…/rightmost) and colour (odd_color) — but
+**shape** is an unhandled fourth dimension: when several blobs are equal in size
+*and* colour and none is at a position extreme, differing only in shape, no
+selector fits and the move declines. Smallest defensible step: author a task that
+isolates exactly that gap and add a value-agnostic `odd_shape` selector
+(structure-identity odd-one-out), so the *same* one object_motion rule names the
+acted-on object on the shape dimension too — lifting the selector, not adding a
+detector (§2.5-2b).
+
+**Change**:
+- `data/ARC_madeup/mo_select_odd_shape.json` (NEW, F1-exempt) — four same-colour,
+  same-size objects (three identical I-trominoes + one L-tromino); the odd-shaped
+  one moves to the bottom-right corner, the rest preserved. Confirmed it **failed
+  before** the fix (fell to a spurious `color_mapping`, INCORRECT) — every size,
+  colour, position and `unique` selector declines, so only a shape criterion can
+  name the moved object. Layouts chosen so no position selector picks the odd
+  object in either pair (ties/wrong picks), forcing the fit through to `odd_shape`.
+- `agent/dsl_expr/selection.py` — added `_shape_signature` (cells normalised to
+  the bbox origin → translation-invariant) and `_odd_shape_index` (the object
+  whose shape signature is unique among the objects; declines on tie / all-same /
+  all-distinct, mirroring `_odd_color_index`); appended `"odd_shape"` LAST in
+  `_SELECTOR_KINDS` and wired it into `_selection_index`. Updated `select_object`
+  / `fit_selector` docstrings + the selector-vocabulary comment. Value-agnostic
+  and G0-only (P5): keys on within-grid shape *uniqueness*, never a literal shape.
+- `tests/test_object_motion.py` (+4) — `odd_shape` picks the L among I-trominoes;
+  declines when all-same / two-of-each; is colour-agnostic (picks by shape even
+  when colours differ); and `fit_selector` resolves to `odd_shape` on the madeup
+  task's train pairs when size/position/colour all fail.
+- NO `agent/active_operators.py` edit: the `preserve` scene already identifies the
+  moved object by leftover-after-pixel-identity matching, so same-colour/same-size
+  objects need no match-key change. F8 not engaged.
+
+**Probe before**: easy_a 9/9; madeup 7/7 (mo_select_odd_shape absent); rules=2;
+rule_002 covers=14; P1=P2=8.0; 82 tests.
+**Probe after** : easy_a 9/9; madeup 8/8 (new task *merged* into object_motion);
+rules=2 (no accretion); rule_002 covers=15, target still `?v1` + trace preserved;
+**P1=P2=8.5**; 86 tests.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P1
++0.5 (8.0→8.5), P2 +0.5 (8.0→8.5)** via covers union (no new rule — §2.5-4 litmus
+satisfied: coverage up, rule count flat); P3/P4/P5 ±0; P6 ±0 (no active_operators
+edit). The new selector grows the LHS argument vocabulary under `agent/` (not the
+frozen DSL dir), exactly where BACKLOG_LOOP §2.5-1 says it must.
+
+**Next gap (note for future iter)**: selection is now size ∪ position ∪ colour ∪
+shape — a broad spread; the remaining within-family gaps are *structural*, not new
+scalar selectors: a move where **>1 object moves** (the iter12 note — `_identify_move`
+still requires exactly one moved object) or where unselected objects transform.
+The two standing big-ticket rungs are unchanged: **R5** (object_motion declines the
+fast path because its args are fitted from the example comparison; stored hits 0)
+and **cross-family AU** (rule_001 ↔ rule_002 share no skeleton — needs a Slow-path
+synthesizer emitting per-pair programs with divergent args).
+
+---
 ## Iter 13 — 2026-06-14 — branch test33
 
 **Diagnosis**: Iters 5–12 climbed R1 by adding one more *fitted-expression
@@ -1148,3 +1206,56 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 13 [CLEAN] — 20260614_164729 — branch test33
 - Probe: madeup: [16:47:34] Correct:     7 / 7  (100.0%) | easy_a: [16:47:32] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 17:03
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_170307.log
+
+---
+## Learning Loop -- 2026-06-14 17:03
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_170311.log
+
+---
+## Learning Loop -- 2026-06-14 17:10
+
+- Split: None, Tasks: 8
+- Correct: 7 / 8 (87.5%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_171042.log
+
+---
+## Learning Loop -- 2026-06-14 17:11
+
+- Split: None, Tasks: 8
+- Correct: 8 / 8 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_171138.log
+
+---
+## Learning Loop -- 2026-06-14 17:11
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_171148.log
+
+## Iter 14 [CLEAN] — 20260614_170307 — branch test33
+- Probe: madeup: [17:03:13] Correct:     7 / 7  (100.0%) | easy_a: [17:03:10] Correct:     9 / 9  (100.0%)

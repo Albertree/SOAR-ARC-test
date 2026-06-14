@@ -116,11 +116,20 @@ def unique_object(objects):
 # among the objects (the odd-one-out), the only criterion that picks the acted-on
 # object when several blobs are equal in size and none reaches a position extreme,
 # differing only by colour.
+#
+# `odd_shape` is a fourth, orthogonal selection dimension (shape identity). It
+# names the object whose *shape* — its cells normalised to the bbox origin, so a
+# translation-invariant signature — is unique among the objects. It is the only
+# criterion that picks the acted-on object when several blobs are equal in size
+# AND colour and none reaches a position extreme, differing only in shape (e.g.
+# three identical I-trominoes and one L-tromino). Appended last so size, position
+# and colour selectors still win when they apply (zero regression).
 _SELECTOR_KINDS = (
     "unique",
     "largest", "smallest",
     "topmost", "bottommost", "leftmost", "rightmost",
     "odd_color",
+    "odd_shape",
 )
 
 # Each position selector reads one edge of an object's bounding box; the extreme
@@ -187,6 +196,41 @@ def _odd_color_index(objects):
     return singletons[0] if len(singletons) == 1 else None
 
 
+def _shape_signature(obj):
+    """The object's shape as a translation-invariant signature: its cells
+    normalised so the bbox top-left is the origin. Two objects have the *same
+    shape* iff their signatures are equal, regardless of where they sit in the
+    grid (and regardless of colour — shape is a separate dimension)."""
+    cells = obj.get("cells")
+    if not cells:
+        return frozenset()
+    r0 = min(r for r, _c in cells)
+    c0 = min(c for _r, c in cells)
+    return frozenset((r - r0, c - c0) for r, c in cells)
+
+
+def _odd_shape_index(objects):
+    """Index of the object whose *shape* is unique among the objects — its
+    normalised cell signature matches no other object — or None when zero or
+    several objects have a shape of their own (so it declines rather than guesses,
+    like the size/position/colour selectors).
+
+    This is a structure-based criterion (shape identity), orthogonal to size,
+    position and colour: it names the acted-on object when several blobs are equal
+    in size and colour and none is at a position extreme, differing only in shape
+    (§2.1 multi-object selection). The choice keys on within-grid shape
+    *uniqueness*, never a literal shape, so it stays value-agnostic and computable
+    from G0 alone (P5)."""
+    if not objects:
+        return None
+    sigs = [_shape_signature(o) for o in objects]
+    counts = {}
+    for sig in sigs:
+        counts[sig] = counts.get(sig, 0) + 1
+    singletons = [i for i, sig in enumerate(sigs) if counts[sig] == 1]
+    return singletons[0] if len(singletons) == 1 else None
+
+
 def _selection_index(objects, kind):
     """Index the criterion `kind` picks from `objects`, or None if it declines."""
     if kind == "unique":
@@ -200,6 +244,8 @@ def _selection_index(objects, kind):
         return _position_index(objects, edge, want_max)
     if kind == "odd_color":
         return _odd_color_index(objects)
+    if kind == "odd_shape":
+        return _odd_shape_index(objects)
     return None
 
 
@@ -212,8 +258,9 @@ def select_object(objects, descriptor):
     Kinds (mirrors `_SELECTOR_KINDS`): ``unique`` (the sole object), ``largest`` /
     ``smallest`` (the unique size extremal object), the position extremes
     ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost`` (the unique object
-    whose bounding box reaches furthest to that edge), and ``odd_color`` (the
-    object whose colour is unique among the objects — the odd-one-out).
+    whose bounding box reaches furthest to that edge), ``odd_color`` (the object
+    whose colour is unique among the objects — the odd-one-out), and ``odd_shape``
+    (the object whose shape is unique among the objects).
     """
     if not descriptor or not isinstance(objects, list) or not objects:
         return None
@@ -233,14 +280,15 @@ def fit_selector(selections):
 
     Tried most-structural first — ``unique`` (every pair has a sole object), then
     the size extremes ``largest`` / ``smallest``, then the position extremes
-    ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost``, and finally the
-    colour odd-one-out ``odd_color`` — mirroring `fit_target`'s ordering so the
-    degenerate single-object case reads as ``unique`` rather than an accidental
-    size/position/colour criterion, and a size-describable selection is preferred
-    over a positional or colour one. A task whose acted-on object is a size extreme
-    on every pair still fits ``largest`` / ``smallest`` first; only a selection that
-    *no* size or position criterion explains (equal-sized blobs, none at a position
-    extreme, differing only by colour) falls through to ``odd_color``.
+    ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost``, then the colour
+    odd-one-out ``odd_color``, and finally the shape odd-one-out ``odd_shape`` —
+    mirroring `fit_target`'s ordering so the degenerate single-object case reads as
+    ``unique`` rather than an accidental size/position/colour/shape criterion, and
+    a size-describable selection is preferred over a positional, colour or shape
+    one. A task whose acted-on object is a size extreme on every pair still fits
+    ``largest`` / ``smallest`` first; only a selection that *no* size, position or
+    colour criterion explains (equal-sized, equal-coloured blobs, none at a
+    position extreme, differing only in shape) falls through to ``odd_shape``.
     """
     if not selections:
         return None
