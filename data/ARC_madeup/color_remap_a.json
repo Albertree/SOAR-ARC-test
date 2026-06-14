@@ -1,0 +1,15 @@
+{
+  "_comment": "Global colour substitution (shape-preserved cell-wise recolour): every 2->3 and 4->5, background 0 unchanged. Multiple distinct colours each map to a DIFFERENT colour, so no single-colour object_recolor fits; the grid does not move and outputs differ, so object_motion/constant_output decline. Only the Slow-path synthesizer's colour-map schema solves it. Authored to expose the missing colour-substitution schema (grounds R3 program-level AU together with color_remap_b: same 2-step skeleton, divergent colour leaves).",
+  "train": [
+    {"input": [[2,2,0,0],[0,4,4,0],[0,0,2,0],[4,0,0,2]],
+     "output": [[3,3,0,0],[0,5,5,0],[0,0,3,0],[5,0,0,3]]},
+    {"input": [[0,4,0,2],[4,4,0,0],[2,0,0,4],[0,0,2,2]],
+     "output": [[0,5,0,3],[5,5,0,0],[3,0,0,5],[0,0,3,3]]},
+    {"input": [[2,0,4,0],[0,0,4,0],[2,2,0,4],[0,4,0,0]],
+     "output": [[3,0,5,0],[0,0,5,0],[3,3,0,5],[0,5,0,0]]}
+  ],
+  "test": [
+    {"input": [[4,4,0,2],[0,2,0,0],[2,0,4,0],[0,0,0,4]],
+     "output": [[5,5,0,3],[0,3,0,0],[3,0,5,0],[0,0,0,5]]}
+  ]
+}

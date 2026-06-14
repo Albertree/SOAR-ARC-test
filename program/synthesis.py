@@ -13,13 +13,15 @@ bounded space of programs built from the **two frozen transformation primitives*
 (``make_grid``, ``coloring``) and return one program that reproduces every train
 output from its input.
 
-This module is the first, off-live-path slice of that synthesizer. It is
-deliberately small — it rediscovers, *by search*, the program shapes the
-hand-coded families already cover (identity, constant/common output, object
-reconstruction onto a fitted canvas) — so that the general mechanism is proven to
-produce what the special cases produce before it is wired onto the live
-``GeneralizeOperator`` path (a later rung) and before its outputs are lifted
-across tasks by ``anti_unification.unify()`` (R3).
+This module is the live Slow-path synthesizer. It searches a bounded space of
+``make_grid``/``coloring`` compositions: identity, constant/common output, object
+reconstruction onto a fitted canvas, and **global colour substitution** (a
+shape-preserved cell-wise recolour expressed as one ``coloring(cells_with_color
+(c), f(c))`` step per changed colour — the general case no single-colour
+``object_recolor`` family fits). Two tasks whose searched programs share a schema
+but diverge in fitted leaves are lifted by ``anti_unification.unify()`` into one
+``covers>1`` rule (R3); distinct schemas stay distinct rule families
+(``agent/memory.py:_program_skeleton``).
 
 Design contract:
 
@@ -90,6 +92,16 @@ def _eval(expr, env):
         if col is None:
             raise _Unevaluable("object has no single colour")
         return col
+    if op == "cells_with_color":
+        # All input cells holding a given colour. Reads the *input* grid (env is
+        # fixed to the input — P5), so a colour-substitution program transfers
+        # unchanged to the test input, and `coloring` selections never cascade off
+        # the running canvas (the value is read from the original input, not the
+        # partially-recoloured output).
+        target = _eval(expr[1], env)
+        grid = env["grid"]
+        return [(r, c) for r, row in enumerate(grid)
+                for c, v in enumerate(row) if v == target]
     raise _Unevaluable(f"unknown expression op: {op!r}")
 
 
@@ -253,6 +265,49 @@ def _candidate_programs(pairs):
             ("make_grid", h_expr, w_expr, ("bg",)),
             ("paint_objects", ("all_objects",)),
         ]
+
+    # --- Schema 4: global colour substitution ------------------------------
+    # A shape-preserved, cell-wise recolour: a single colour map ``c -> f(c)``
+    # holds across *every* pair (the reason — P3/P4 — is the COMM result "the
+    # same colour always becomes the same colour"). Expressed as one `coloring`
+    # step per *changed* colour, painting that colour's input cells in their
+    # mapped colour. Distinct colours may map to distinct colours, so this is the
+    # general case no single-colour `object_recolor` family fits — and, being a
+    # pure (`cells_with_color`, `const`) skeleton, two such tasks with divergent
+    # maps lift via `unify()` into one covers>1 rule (R3). The selections read the
+    # fixed input (see `cells_with_color`), so map order is irrelevant.
+    prog = _fit_color_map(pairs)
+    if prog is not None:
+        yield prog
+
+
+def _fit_color_map(pairs):
+    """Return a colour-substitution program (one `coloring` per changed colour),
+    or ``None`` if the pairs are not a shape-preserved consistent recolour.
+
+    A pair is eligible only when input and output have identical dimensions; a
+    single colour map must then be consistent across *all* cells of *all* pairs.
+    Only colours that actually change emit a step (an all-identity map is the
+    identity schema, already yielded)."""
+    cmap = {}
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout):
+            return None
+        for ri, ro in zip(gin, gout):
+            if len(ri) != len(ro):
+                return None
+            for a, b in zip(ri, ro):
+                if cmap.get(a, b) != b:
+                    return None  # inconsistent map → not a global recolour
+                cmap[a] = b
+    changed = sorted(c for c, t in cmap.items() if c != t)
+    if not changed:
+        return None
+    return [
+        ("coloring", ("cells_with_color", ("const", c)), ("const", cmap[c]))
+        for c in changed
+    ]
 
 
 def synthesize_task(pairs):

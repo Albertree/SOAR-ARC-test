@@ -1,0 +1,15 @@
+{
+  "_comment": "Sister task to color_remap_a with a DIFFERENT colour map (1->6, 8->7). Same 2-step colour-substitution skeleton, divergent colour leaves -> anti_unification.unify() lifts the two synthesized programs into one rule with covers=2 and a trace (R3 program-level AU on the new schema). Authored to fail before the colour-map schema exists.",
+  "train": [
+    {"input": [[1,1,0,0],[0,8,0,0],[8,0,1,0],[0,0,0,1]],
+     "output": [[6,6,0,0],[0,7,0,0],[7,0,6,0],[0,0,0,6]]},
+    {"input": [[0,8,8,0],[1,0,0,1],[0,0,8,0],[1,1,0,0]],
+     "output": [[0,7,7,0],[6,0,0,6],[0,0,7,0],[6,6,0,0]]},
+    {"input": [[8,0,0,1],[0,1,1,0],[0,0,8,8],[1,0,0,0]],
+     "output": [[7,0,0,6],[0,6,6,0],[0,0,7,7],[6,0,0,0]]}
+  ],
+  "test": [
+    {"input": [[1,0,8,0],[0,1,0,8],[8,0,0,1],[0,0,1,0]],
+     "output": [[6,0,7,0],[0,6,0,7],[7,0,0,6],[0,0,6,0]]}
+  ]
+}

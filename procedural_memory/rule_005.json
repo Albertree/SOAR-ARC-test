@@ -1,0 +1,161 @@
+{
+  "id": 5,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "coloring",
+            [
+              "cells_with_color",
+              [
+                "const",
+                "?v1"
+              ]
+            ],
+            [
+              "const",
+              "?v2"
+            ]
+          ],
+          [
+            "coloring",
+            [
+              "cells_with_color",
+              [
+                "const",
+                "?v3"
+              ]
+            ],
+            [
+              "const",
+              "?v4"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "coloring",
+            [
+              "cells_with_color",
+              [
+                "const",
+                "?v5"
+              ]
+            ],
+            [
+              "const",
+              "?v6"
+            ]
+          ],
+          [
+            "coloring",
+            [
+              "cells_with_color",
+              [
+                "const",
+                "?v7"
+              ]
+            ],
+            [
+              "const",
+              "?v8"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "color_remap_a",
+    "color_remap_b"
+  ],
+  "source_task": "color_remap_a",
+  "created_at": "2026-06-14T19:56:24.403206",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "coloring",
+          [
+            "cells_with_color",
+            [
+              "const",
+              "?v1"
+            ]
+          ],
+          [
+            "const",
+            "?v2"
+          ]
+        ],
+        [
+          "coloring",
+          [
+            "cells_with_color",
+            [
+              "const",
+              "?v3"
+            ]
+          ],
+          [
+            "const",
+            "?v4"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "coloring",
+          [
+            "cells_with_color",
+            [
+              "const",
+              "?v5"
+            ]
+          ],
+          [
+            "const",
+            "?v6"
+          ]
+        ],
+        [
+          "coloring",
+          [
+            "cells_with_color",
+            [
+              "const",
+              "?v7"
+            ]
+          ],
+          [
+            "const",
+            "?v8"
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/color_remap_b/anti_unification/au_001.json"
+}

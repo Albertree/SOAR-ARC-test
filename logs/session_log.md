@@ -1,6 +1,74 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 28 — 2026-06-14 — branch test33
+
+**Diagnosis**: iter27's next gap named the synthesizer grammar as the training
+frontier — its 3 fixed schemas (identity / constant / object-reconstruction) emit
+nothing on real ARC. The *smallest* defensible slice of "broaden the grammar" is one
+new general schema: a **global colour substitution** (shape-preserved cell-wise
+recolour) — the general case no single-colour `object_recolor` family fits, since
+distinct colours map to distinct colours. But adding any 2nd synthesizer schema
+first exposes a latent merge bug: all synthesizer rules collide on the coarse
+`(synthesized_program, run_program)` skeleton, so a colour-map rule would be wrongly
+folded into the already-generalised resize rule_004's covers. Both halves are this
+iter's gap (the schema is inert/corrupting without the merge fix).
+
+**Change**:
+- `program/synthesis.py` — added the `cells_with_color` expression op (reads the
+  *fixed input* grid, so selections never cascade off the running canvas and the
+  program transfers to the test input, P5) + Schema 4 `_fit_color_map`: fits one
+  colour map `c->f(c)` consistent across **all** pairs (the COMM reason — P3/P4) and
+  emits one `coloring(cells_with_color(const c), const f(c))` step per *changed*
+  colour. Declines (returns None) on shape change or inconsistent map. Module
+  docstring updated.
+- `agent/memory.py` — added `_rule_program` + `_program_skeleton` (collapses every
+  `("const", VALUE)` to a wildcard) and a guard in `save_rule`'s merge loop: two
+  synthesizer rules fold only when their *program* structure matches, so resize and
+  colour-map each keep their own `covers>1` family instead of cross-contaminating.
+- `data/ARC_madeup/color_remap_a.json`, `color_remap_b.json` (NEW, F1-exempt) — two
+  colour-substitution tasks with the same 2-step skeleton but **divergent maps**
+  ({2:3,4:5} vs {1:6,8:7}); confirmed INCORRECT (rule=identity) before the change.
+  They ground program-level AU on the new schema: `unify()` lifts the two synthesized
+  programs into ONE rule (rule_005, covers=2, trace, 4 `?v` holes).
+- `tests/test_synthesis_colormap.py` (NEW, +9) — `cells_with_color` selection; the
+  schema fits/declines (inconsistent map, shape change, identity); program transfers
+  to the held-out test input; `_program_skeleton` separates resize from colour-map
+  yet unifies colour-maps differing only in constants; two colour-map tasks fold into
+  one covers=2 trace rule **without** contaminating a sibling resize rule.
+
+**Probe before**: training 0/3 (microscope); easy_a 9/9, madeup 18/18; rules 4,
+P1=P2=6.75, P3=0.75, P5=4, P6=1314; 159 tests.
+**Probe after** : easy_a 9/9 (regression guard, rules 5->5 no re-mint), **madeup
+20/20** (color_remap_a/b CORRECT via the colour-map schema -> folded into NEW
+rule_005 covers=2 + anti_unification_trace, abstract program
+`[coloring(cells_with_color(const ?v1), const ?v2), coloring(..(?v3), ?v4)]`); rules
+4->5; P1=P2=5.8, P3=0.8; 168 tests (+9). A seed-7/limit-60 training scan also solved
+**a real ARC-AGI-2 task (b1948b0a)** via the same general schema (generality evidence
+beyond the authored tasks) — its lone covers=1 no-trace rule was *not* persisted
+(would be §2.5-3 accretion dragging P3; it re-mints and lifts when a sibling real
+colour-map task appears). No over-firing: 1/60 on real data, that 1 a genuine solve.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P3 +0.05
+(0.75->0.8)** with rule_005 carrying a trace at birth (covers=2, not 1 — §2.5-4
+litmus: the new rule is itself a generalization, not accretion). **P1/P2 -0.95** is
+the documented honest cost of a genuinely-new capability landing as a new rule whose
+covers (2) is below the running mean (the iter26 instrumentation pattern, smaller
+dip). P4/P5/P6 flat — **no `active_operators.py` edit (F8 not engaged)**, all logic
+in `program/` + `agent/memory.py`. F3 clean (no DSL primitive — a new *expression*
+op + search schema, both compositions of the two frozen primitives). F2 clean (no
+`_try_*`). rule_005 has condition+action.
+
+**Next gap (note for future iter)**: the colour-map schema is single-step cell-wise;
+the synthesizer still emits no *multi-step* / object-relational program, so real ARC
+beyond pure recolour/resize/constant stays 0. The named frontier is unchanged —
+object-level synthesis: emit selection as `cells_of(select(objects, predicate))` so
+the search composes a *sequence* of object transforms (the only path that moves
+structurally-transforming real ARC). A nearer step: a fitted *per-object* recolour
+schema (recolour each object by a property-keyed map), which would let two such tasks
+lift and start a 2nd covers>1 synthesizer family.
+
+---
 ## Iter 27 — 2026-06-14 — branch test33
 
 **Diagnosis**: iter26 wired the Slow-path synthesizer live but paid an honest
@@ -2856,3 +2924,73 @@ general mechanism that should eventually let `_try_*`/family matchers be *delete
 
 ## Iter 27 [CLEAN] — 20260614_193449 — branch test33
 - Probe: [19:35:05] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 19:48
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_194856.log
+
+---
+## Learning Loop -- 2026-06-14 19:49
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 14
+- Time: 7s
+- Log: logs/learn_20260614_194859.log
+
+---
+## Learning Loop -- 2026-06-14 19:49
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_194906.log
+
+---
+## Learning Loop -- 2026-06-14 19:55
+
+- Split: None, Tasks: 7
+- Correct: 1 / 7 (14.3%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_195507.log
+
+---
+## Learning Loop -- 2026-06-14 19:56
+
+- Split: None, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 4 -> 5 (+1 learned)
+- Stored rule hits: 14
+- Time: 7s
+- Log: logs/learn_20260614_195624.log
+
+---
+## Learning Loop -- 2026-06-14 19:58
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_195757.log
+
+---
+## Learning Loop -- 2026-06-14 20:00
+
+- Split: training, Tasks: 60
+- Correct: 1 / 60 (1.7%)
+- Rules: 5 -> 6 (+1 learned)
+- Stored rule hits: 0
+- Time: 166s
+- Log: logs/learn_20260614_195800.log

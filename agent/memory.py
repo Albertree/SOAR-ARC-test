@@ -148,6 +148,15 @@ def save_rule(rule: dict, task_hex: str,
             continue
         if _rule_skeleton(stored) != skeleton:
             continue
+        # Synthesizer rules all share the coarse (synthesized_program,
+        # run_program) skeleton; only fold into a stored one whose *program*
+        # structure matches, so distinct schemas (resize vs colour-map) each keep
+        # their own covers>1 family instead of cross-contaminating.
+        if skeleton == ("synthesized_program", "run_program") and (
+            _program_skeleton(_rule_program(stored))
+            != _program_skeleton(_rule_program(rule))
+        ):
+            continue
         return _absorb_or_lift(
             path, stored, rule, task_hex, episodic_memory_root
         )
@@ -310,6 +319,41 @@ def _rule_skeleton(rule_or_entry: dict):
         if ctype is not None and dsl is not None:
             return (ctype, dsl)
     return None
+
+
+def _rule_program(rule_or_entry: dict):
+    """The synthesized program carried by a ``synthesized_program`` rule/entry
+    (in ``condition.params.program``, falling back to ``action.args.program``),
+    or ``None`` for any other rule."""
+    if not isinstance(rule_or_entry, dict):
+        return None
+    cond = rule_or_entry.get("condition")
+    if isinstance(cond, dict):
+        prog = cond.get("params", {}).get("program")
+        if prog is not None:
+            return prog
+    act = rule_or_entry.get("action")
+    if isinstance(act, dict):
+        return act.get("args", {}).get("program")
+    return None
+
+
+def _program_skeleton(program):
+    """Structural skeleton of a synthesized program: its term tree with every
+    ``("const", VALUE)`` collapsed to ``("const", None)`` so two programs that
+    share step/op structure but differ only in fitted constant leaves compare
+    equal (and anti-unify), while structurally-different programs do not.
+
+    Synthesizer rules all share the coarse ``(synthesized_program, run_program)``
+    skeleton, so without this the merge loop would fold a colour-substitution
+    program into the (already-generalised) resize rule's covers — a task its
+    abstract program cannot reproduce. Keying the merge on this finer skeleton
+    keeps each synthesizer *schema* its own ``covers>1`` family."""
+    if isinstance(program, (list, tuple)):
+        if len(program) >= 1 and program[0] == "const":
+            return ("const", None)
+        return tuple(_program_skeleton(e) for e in program)
+    return program
 
 
 def _entry_to_view(entry: dict) -> dict:
