@@ -175,10 +175,19 @@ existing one — the sequence number monotonically increases.
 
 ---
 
-## 4. Integration Point (wired in iter 6)
+## 4. Integration Point (NOT yet wired — leaf-case `unify()` implemented)
+
+> **Status (test33 iter 9).** The leaf-case `unify()` / `UnifyResult` /
+> `NoCommonSkeleton` API described in §1–§3 is now implemented and unit-tested
+> (`tests/test_anti_unification.py`). The `save_rule()` call site sketched below
+> is **not** in `agent/memory.py` yet — the live writer remains
+> `save_rule_to_ltm()`, which merges by exact equality and never calls
+> `unify()`. So AU sees **no production traffic** and P3 (au_traced_frac) is
+> still 0.0. Wiring this call site, and producing the pair-specific
+> argument-expression rules it would lift, is the next R3 step.
 
 `CLAUDE.md §8` names `agent/memory.py:save_rule()` as the *only* permitted
-call site for `unify()`. As of iter 6 the wiring is in place:
+call site for `unify()`. The intended wiring is:
 
 ```python
 def save_rule(rule, *, related_rules=None,

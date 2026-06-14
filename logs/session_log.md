@@ -1,6 +1,58 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 9 — 2026-06-14 — branch test33
+
+**Diagnosis**: easy_a is mastered (9/9, clean-streak 4/5) and the #1 gap named
+by every iter 5–8 is **R3 — anti-unification has never fired** (P3=0.0 the whole
+branch): `program/anti_unification.py` was unimplemented `pass` stubs, and
+`program/__init__.py` imported a non-existent `anti_unify`, so `import program`
+was a latent `ImportError`. Iters 6/7/8 each did a selection/shape-lift folding
+into rule_002 (+0.5 P1/P2); a 4th would be the §2.2 spinning failure. The
+smallest defensible non-duplicate step is the keystone R3 deliverable already
+fully specified in `docs/ANTI_UNIFICATION.md §1–§3`: implement the **leaf-case**
+`unify()` (`==` value positions; recursive term-tree DP explicitly out of scope
+per §2) and fix the import.
+
+**Change**:
+- `program/anti_unification.py` — replaced the stubs with the spec'd
+  `unify(rules, *, episodic_memory_root)`, `UnifyResult` (with
+  `.is_more_general()`), and `NoCommonSkeleton`. Skeleton-checks `condition.type`
+  / `action.dsl`; field-wise anti-unifies `condition.params` + `action.args`
+  (agree→deep-copy keep, disagree-or-absent→fresh `?vN`); strictest
+  `min_evidence`; first-seen `covers` union; writes the immutable forensic trace
+  JSON (`au_NNN.json`, forward-slash path matching RULE_FORMAT V5). `anti_unify`
+  kept as a back-compat alias.
+- `program/__init__.py` — export `unify`/`UnifyResult`/`NoCommonSkeleton`
+  (+`anti_unify`); fixes the `ImportError`.
+- `tests/test_anti_unification.py` — 17 tests: skeleton guards, leaf lifting,
+  absent-key disagreement, sequential var numbering, no-aliasing deep-copy,
+  covers union, trace shape + sequence increment, V5-regex compliance.
+- `docs/ANTI_UNIFICATION.md §4` — corrected the false "wired in iter 6" claim;
+  the `save_rule()` call site is **not** in `agent/memory.py` (live writer is
+  still `save_rule_to_ltm`, equality-merge only), so AU sees no production
+  traffic yet. Honest status note added.
+
+**Probe before**: easy_a 9/9; rules=2; P1=P2=6.5; P3=0.0; `import program` raised
+ImportError; 46 tests.
+**Probe after** : easy_a 9/9 (unaffected — solver untouched); rules=2; P1=P2=6.5;
+P3=0.0; `import program` OK; 63 tests pass.
+
+**Invariants**: forbidden=none (check_invariants exit 0, CLEAN). positives: all
+Δ=0 → **NEUTRAL** iter. This is foundational scaffolding (INVARIANTS §3): P3
+cannot rise until a lifted rule is persisted into `procedural_memory/`, which
+needs the `save_rule()` wiring AND pair-specific argument-expression rules to
+lift — neither exists yet. Chosen over a 4th spinning selection-lift.
+
+**Next gap (note for future iter)**: wire `unify()` into a sanctioned
+`agent/memory.py:save_rule()` (CLAUDE.md §8 single call site) and feed it two
+rules that share a skeleton but differ in args — but the deeper blocker is that
+the live pipeline stores `action.args={}` and re-fits generalization in runtime
+matchers, so there are no materialized argument-expression programs for `unify()`
+to lift. Producing those (the Slow-path synthesizer, modules F/G) is the real
+prerequisite for P3 to move off 0.
+
+---
 ## Iter 5 — 2026-06-14 — branch test33
 
 **Diagnosis**: easy_a was 8/9; the only blind spot was **easy000i**, which moves
@@ -634,3 +686,16 @@ as a function of object *count* (vs extent, done iter7).
 
 ## Iter 8 [CLEAN] — 20260614_160536 — branch test33
 - Probe: easy_a: [16:05:39] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 16:13
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_161323.log
+
+## Iter 9 [NEUTRAL] — 20260614_161323 — branch test33
+- Probe: easy_a: [16:13:26] Correct:     9 / 9  (100.0%)
