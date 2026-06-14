@@ -40,11 +40,12 @@
     "mo_to_anchor",
     "mo_anchor_select",
     "mo_move_recolor",
-    "mo_gravity_bottom"
+    "mo_gravity_bottom",
+    "mo_gravity_multi"
   ],
   "source_task": "easy000c",
   "created_at": "2026-06-14T17:00:49.944031",
-  "times_reused": 700,
+  "times_reused": 745,
   "condition": {
     "type": "object_motion",
     "params": {

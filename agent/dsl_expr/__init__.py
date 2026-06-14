@@ -31,6 +31,7 @@ from agent.dsl_expr.selection import (
 )
 from agent.dsl_expr.motion import (
     fit_target,
+    fit_uniform_target,
     target_position,
     fit_output_shape,
     output_shape,
@@ -53,6 +54,7 @@ __all__ = [
     "color_of",
     "cells_of",
     "fit_target",
+    "fit_uniform_target",
     "target_position",
     "fit_output_shape",
     "output_shape",

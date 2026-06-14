@@ -390,7 +390,90 @@ class ExtractPatternOperator(Operator):
             "selector": selector,
             "scene": scene,
             "color": color,
+            # Multi-object "map-all" reading (gravity / "all objects fall"): every
+            # object moves by ONE per-object displacement target. Fitted
+            # independently of the single-object analysis above and only when the
+            # input holds ≥2 objects, so it never competes with the move family the
+            # select-one path already covers (the matcher prefers the single-object
+            # fit; map_all is consulted only when that declines). This is the R1
+            # "next gap" — generalising select-one to map-all (§2.5-2b).
+            "map_all": ExtractPatternOperator._fit_map_all(task),
         }
+
+    @staticmethod
+    def _fit_map_all(task):
+        """Fit a multi-object *map-all* uniform motion across the example pairs.
+
+        Every input object maps to an output object (a unique bijection by the
+        colour-set + size + shape a move preserves), and ONE per-object
+        displacement target — a uniform ``offset`` or a per-object ``to_edge`` fall
+        — explains *every* object on *every* pair. This is the canonical gravity /
+        "all objects fall" transform, the select-one→map-all generalisation of the
+        single-object move (§2.5-2b, BACKLOG_LOOP R1 "next gap"). Reads only G0/G1
+        object properties — no literal coordinate or index — so the signal stays
+        value-agnostic and computable from G0 alone at test time (P5).
+
+        Returns ``{"target": <descriptor>, "evidence_count": n, "clean": True}`` or
+        ``None`` (decline). Requires ≥2 objects on every pair so it is *never*
+        consulted for the single-object move family the select-one path covers, and
+        declines on any ambiguous bijection (two objects sharing colour+size+shape)
+        rather than guessing which fell where — column-disambiguated identical-object
+        gravity is a later refinement.
+        """
+        from agent.dsl_expr import (
+            objects_of, position_of, obj_origin_extent, color_of,
+            fit_uniform_target,
+        )
+        from agent.dsl_expr.selection import _shape_signature
+
+        all_motions = []
+        npairs = 0
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                continue
+            if g0.height != g1.height or g0.width != g1.width:
+                return None  # map_all is size-preserving
+            objs_in = objects_of(g0.raw)
+            objs_out = objects_of(g1.raw)
+            if len(objs_in) < 2 or len(objs_in) != len(objs_out):
+                return None
+
+            used = set()
+            moved_any = False
+            for oi in objs_in:
+                key = (tuple(oi["color_set"]), oi["size"], _shape_signature(oi))
+                cands = [
+                    j for j, oj in enumerate(objs_out)
+                    if j not in used
+                    and (tuple(oj["color_set"]), oj["size"], _shape_signature(oj))
+                    == key
+                ]
+                if len(cands) != 1:
+                    return None  # ambiguous / unmatched object → decline
+                j = cands[0]
+                used.add(j)
+                oj = objs_out[j]
+                if color_of(oi) is None or color_of(oi) != color_of(oj):
+                    return None  # colour not preserved → not a plain move
+                (oh, ow) = obj_origin_extent(oi)[1]
+                src, dst = position_of(oi), position_of(oj)
+                if src != dst:
+                    moved_any = True
+                all_motions.append({
+                    "src": src, "dst": dst,
+                    "H": g1.height, "W": g1.width, "oh": oh, "ow": ow,
+                })
+            if not moved_any:
+                return None  # a static scene is not a fall
+            npairs += 1
+
+        if npairs == 0 or not all_motions:
+            return None
+        target = fit_uniform_target(all_motions)
+        if target is None:
+            return None
+        return {"target": target, "evidence_count": npairs, "clean": True}
 
     @staticmethod
     def _identify_move(objs_in, objs_out):
@@ -717,7 +800,16 @@ class GeneralizeOperator(Operator):
         # registry matcher (`object_motion`), not re-implemented here.
         if rule is None and self._matches_object_motion(patterns):
             motion = patterns.get("object_motion") or {}
-            target_expr = motion.get("target")
+            # The multi-object "map-all" move (gravity) records its own fitted target
+            # when the single-object analysis declined; the rule dict is otherwise
+            # identical (type object_motion / dsl place_object / a target arg), so a
+            # map-all task merges into the same value-agnostic move rule and lifts its
+            # coverage rather than minting a separate detector (§2.5-3).
+            map_all = motion.get("map_all")
+            if motion.get("selector") is None and isinstance(map_all, dict):
+                target_expr = map_all.get("target")
+            else:
+                target_expr = motion.get("target")
             color_expr = motion.get("color")
             rule = {
                 "type": "object_motion",
@@ -980,6 +1072,7 @@ class PredictOperator(Operator):
         motion_out_shape = None
         motion_selector = None
         motion_color = None
+        motion_map_all = None
         if rule.get("type") == "object_motion":
             motion = (wm.s1.get("patterns") or {}).get("object_motion") or {}
             motion_target = motion.get("target")
@@ -987,6 +1080,11 @@ class PredictOperator(Operator):
             motion_selector = motion.get("selector")
             motion_scene = motion.get("scene")
             motion_color = motion.get("color")
+            # Multi-object map-all (gravity) is rendered only when the single-object
+            # analysis declined (no fitted selector), so the select-one renderer still
+            # serves the move family it already covers.
+            if motion_selector is None:
+                motion_map_all = motion.get("map_all")
 
         # R1 object_recolor: the selector + colour-source were fitted from this
         # task's own example comparison — read them here so the recolour is
@@ -1013,10 +1111,18 @@ class PredictOperator(Operator):
                     else None
                 )
             elif rule.get("type") == "object_motion":
-                predicted = self._render_object_motion(
-                    g0, motion_target, motion_out_shape, motion_selector,
-                    motion_scene, motion_color,
-                )
+                if (
+                    isinstance(motion_map_all, dict)
+                    and motion_map_all.get("target") is not None
+                ):
+                    predicted = self._render_map_all_motion(
+                        g0, motion_map_all.get("target")
+                    )
+                else:
+                    predicted = self._render_object_motion(
+                        g0, motion_target, motion_out_shape, motion_selector,
+                        motion_scene, motion_color,
+                    )
             elif rule.get("type") == "object_recolor":
                 predicted = self._render_object_recolor(
                     g0, recolor_selector, recolor_source,
@@ -1211,6 +1317,53 @@ class PredictOperator(Operator):
                 return None  # destination pushes the object off-grid → decline
             paint = new_color if new_color is not None else color
             out = apply_DSL("coloring", out, selection=(nr, nc), color=paint)
+        return out
+
+    @staticmethod
+    def _render_map_all_motion(input_grid, target_desc):
+        """Render a multi-object *map-all* move: place **every** object at the
+        destination named by `target_desc` (the per-object displacement expression
+        fitted from this task's example comparison — a uniform ``offset`` or a
+        per-object ``to_edge`` fall), on a same-shape canvas. The select-one→map-all
+        generalisation of `_render_object_motion` (§2.5-2b): instead of moving one
+        fitted-selector object, the same fitted target is resolved *per object* and
+        applied to all. Built only from make_grid + coloring (CLAUDE.md §6.2): a
+        fresh background canvas, then each object's cells repainted translated so its
+        bbox top-left lands at its resolved destination. No literal coordinate, size,
+        or count lives on the rule — the destination is an expression resolved per
+        object from G0 alone (P5) — so one value-agnostic rule serves the whole
+        gravity family. Declines (returns None) if the target resolves to nothing for
+        any object or any painted cell would fall off the grid."""
+        from procedural_memory.DSL.apply import apply_DSL
+        from agent.dsl_expr import (
+            objects_of, background_of, target_position,
+        )
+
+        if target_desc is None:
+            return None
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if h else 0
+        if h == 0 or w == 0:
+            return None
+
+        bg = background_of(raw)
+        objs = objects_of(raw, bg)
+        if len(objs) < 2:
+            return None
+
+        out = apply_DSL("make_grid", height=h, width=w, color=bg)
+        for obj in objs:
+            dst = target_position(target_desc, (h, w), obj, objs)
+            if dst is None:
+                return None
+            r0, c0, _r1, _c1 = obj["bbox"]
+            dr, dc = dst[0] - r0, dst[1] - c0
+            for (r, c), color in obj["pixels"].items():
+                nr, nc = r + dr, c + dc
+                if not (0 <= nr < h and 0 <= nc < w):
+                    return None  # destination pushes the object off-grid → decline
+                out = apply_DSL("coloring", out, selection=(nr, nc), color=color)
         return out
 
     # ---- object-recolour rendering via the two frozen DSL primitives ------

@@ -1089,6 +1089,128 @@ def test_to_anchor_converges_with_corner_family(tmp_path):
     assert entry["anti_unification_trace"]
 
 
+# --- multi-object "map-all" gravity (select-one -> map-all, §2.5-2b) ---------
+#
+# Every object falls to the bottom edge keeping its column — the canonical gravity
+# transform where the rule acts on *all* objects at once, not one fitted selector.
+# Distinct colours per object so the input->output bijection is unambiguous.
+
+from agent.dsl_expr import fit_uniform_target
+
+
+def _g(cells, h=6, w=6):
+    """Build an h×w grid from a {(r,c): colour} dict (background 0)."""
+    grid = [[0] * w for _ in range(h)]
+    for (r, c), v in cells.items():
+        grid[r][c] = v
+    return grid
+
+
+def _fall(cells, h=6):
+    """Drop every single-cell object to the bottom row, keeping its column."""
+    return {(h - 1, c): v for (r, c), v in cells.items()}
+
+
+MULTI_GRAVITY = {
+    "train": [
+        (_g({(0, 1): 3, (1, 4): 4}), _g(_fall({(0, 1): 3, (1, 4): 4}))),
+        (_g({(1, 0): 2, (0, 3): 3, (2, 5): 4}),
+         _g(_fall({(1, 0): 2, (0, 3): 3, (2, 5): 4}))),
+    ],
+    "test": [
+        (_g({(0, 2): 7, (1, 5): 8}), _g(_fall({(0, 2): 7, (1, 5): 8}))),
+    ],
+}
+
+
+def test_fit_uniform_target_to_edge():
+    # several objects, each falling to the bottom edge keeping its column, with
+    # *different* fall distances — defeats offset, fits the per-object to_edge.
+    desc = fit_uniform_target([
+        _m((0, 1), (5, 1)), _m((1, 4), (5, 4)), _m((2, 0), (5, 0)),
+    ])
+    assert desc == {"kind": "to_edge", "edge": "bottom"}
+
+
+def test_fit_uniform_target_offset():
+    # one uniform translation moves every object -> offset wins (most structural).
+    desc = fit_uniform_target([_m((0, 1), (1, 2)), _m((2, 3), (3, 4))])
+    assert desc == {"kind": "offset", "delta": [1, 1]}
+
+
+def test_fit_uniform_target_declines():
+    # inconsistent per-object displacement (no single offset, no single edge).
+    assert fit_uniform_target([_m((0, 1), (5, 1)), _m((1, 4), (1, 4))]) is None
+    # a static set (nothing moved) is not a fall.
+    assert fit_uniform_target([_m((5, 1), (5, 1)), _m((5, 4), (5, 4))]) is None
+
+
+def test_fit_map_all_recognises_gravity():
+    task = _Task(MULTI_GRAVITY["train"], MULTI_GRAVITY["test"], name="grav")
+    mapall = ExtractPatternOperator._fit_map_all(task)
+    assert mapall is not None
+    assert mapall["target"] == {"kind": "to_edge", "edge": "bottom"}
+    assert mapall["clean"] is True
+
+
+def test_fit_map_all_declines_single_object():
+    # the move family the select-one path covers must never be claimed by map_all.
+    task = _Task(EASY_C["train"], EASY_C["test"], name="c")
+    assert ExtractPatternOperator._fit_map_all(task) is None
+
+
+def test_fit_map_all_declines_ambiguous_bijection():
+    # two identical objects (same colour+size+shape) -> the input->output bijection
+    # is ambiguous, so map_all declines rather than guessing which fell where.
+    spec_in = _g({(0, 1): 3, (0, 4): 3})
+    spec_out = _g(_fall({(0, 1): 3, (0, 4): 3}))
+    task = _Task([(spec_in, spec_out)], [(spec_in, spec_out)], name="ambig")
+    assert ExtractPatternOperator._fit_map_all(task) is None
+
+
+def test_render_map_all_motion():
+    g0 = _Grid(_g({(0, 2): 7, (1, 5): 8}))
+    out = PredictOperator._render_map_all_motion(
+        g0, {"kind": "to_edge", "edge": "bottom"}
+    )
+    assert out == _g(_fall({(0, 2): 7, (1, 5): 8}))
+
+
+def test_pipeline_solves_multi_object_gravity():
+    # the multi-object gravity task solves end-to-end via the move family's rule
+    # skeleton (same type / condition / dsl as the single-object family); only the
+    # fitted target diverges (a per-object `to_edge` fall vs the corner), which
+    # save_rule lifts to a ?v variable (see the fold test below). No accretion.
+    rg = _check_solved(MULTI_GRAVITY, "multi_gravity").s1["active-rules"][0]
+    rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
+    assert rg["type"] == rc["type"] == "object_motion"
+    assert rg["condition"] == rc["condition"]
+    assert rg["action"]["dsl"] == rc["action"]["dsl"] == "place_object"
+    assert rg["action"]["args"]["target"] == {"kind": "to_edge", "edge": "bottom"}
+
+
+def test_map_all_gravity_folds_into_move_family(tmp_path):
+    # the multi-object gravity task carries a target (to_edge) that DIVERGES from the
+    # corner family's (bottom_right); save_rule lifts that divergence to a ?v
+    # variable, converging both into ONE covers>1 rule — map-all gravity absorbs into
+    # the move family instead of minting a separate detector (§2.5-3/4).
+    from agent.memory import save_rule
+
+    pm = str(tmp_path / "pm")
+    em = str(tmp_path / "em")
+    for spec, name in [(EASY_C, "c"), (MULTI_GRAVITY, "gravity")]:
+        rule = _check_solved(spec, name).s1["active-rules"][0]
+        save_rule(rule, name, procedural_memory_root=pm, episodic_memory_root=em)
+
+    files = [f for f in os.listdir(pm) if f.startswith("rule_")]
+    assert len(files) == 1, "map-all gravity must fold into the move family"
+    with open(os.path.join(pm, files[0])) as fh:
+        entry = json.load(fh)
+    assert set(entry["covers"]) == {"c", "gravity"}
+    assert str(entry["action"]["args"]["target"]).startswith("?v")
+    assert entry["anti_unification_trace"]
+
+
 if __name__ == "__main__":
     import pytest
     raise SystemExit(pytest.main([__file__, "-q"]))

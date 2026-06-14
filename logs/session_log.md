@@ -4090,3 +4090,134 @@ apply), the genuinely new structural step. Also still open: the latent
 
 ## Iter 37 [CLEAN] — 20260614_215039 — branch test33
 - Probe: [21:50:57] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 21:57
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_215747.log
+
+---
+## Learning Loop -- 2026-06-14 21:58
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 9s
+- Log: logs/learn_20260614_215751.log
+
+---
+## Learning Loop -- 2026-06-14 21:58
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_215800.log
+
+---
+## Learning Loop -- 2026-06-14 22:05
+
+- Split: None, Tasks: 25
+- Correct: 25 / 25 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 9s
+- Log: logs/learn_20260614_220513.log
+
+---
+## Learning Loop -- 2026-06-14 22:05
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_220541.log
+
+---
+## Learning Loop -- 2026-06-14 22:05
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_220549.log
+
+---
+## Learning Loop -- 2026-06-14 22:09
+
+- Split: training, Tasks: 20
+- Correct: 2 / 20 (10.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 59s
+- Log: logs/learn_20260614_220804.log
+
+## Iter 38 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; the 3 sampled tasks (c9680e90 diagonal
+gravity-with-obstacles, e5790162/878187ab ray projection) are all *multi-object*
+conditional transforms — and the whole object-motion family was still
+**select-one** (a fitted selector picks ONE object; others drop/preserve). The
+canonical multi-object move — *gravity*, where **every** object falls by the same
+per-object rule — had no path at all (iter-37's named "next gap": generalise
+select-one → map-all). That is the smallest defensible structural step on the R1
+frontier.
+
+**Change**:
+- `agent/dsl_expr/motion.py` — added `fit_uniform_target`: fits ONE *per-object*
+  displacement target (`offset` or `to_edge`) that explains **every** object's
+  move at once. Only the two displacement readings are admissible for map-all (the
+  absolute `bottom_right`/`constant`/`to_anchor` collapse all objects onto one
+  spot). Reuses the existing `target_position` resolver (already per-object).
+- `agent/active_operators.py` — `ExtractPatternOperator._fit_map_all`: recognises a
+  multi-object map-all scene (unique bijection by colour-set+size+shape, every
+  object colour-preserved, ≥2 objects, one uniform target fits all), surfaced as
+  `patterns["object_motion"]["map_all"]`, fully independent of the single-object
+  analysis. Gated on ≥2 objects + "single-object analysis declined" so it never
+  competes with the move family the select-one path already covers (zero
+  regression). `PredictOperator._render_map_all_motion` applies the fitted target
+  to *every* object via make_grid + coloring (the select-one→map-all generalisation
+  of `_render_object_motion`). GeneralizeOperator records the map_all target as the
+  same `place_object`/`target` action arg so a gravity task **folds into the move
+  rule** (rule_002), and PredictOperator dispatches map-all rendering when no
+  single-object selector fit.
+- `agent/conditions/object_motion.py` — the matcher now also fires for the map_all
+  case, *only* when the single-object fit declined (satisfies F8: active_operators
+  edit accompanied by a conditions edit). No new condition.type (P5 unchanged) —
+  map-all is the same `object_motion` recognition, generalised.
+- `data/ARC_madeup/mo_gravity_multi.json` — authored the minimal task that exposes
+  the gap (2–3 distinct-colour objects, varying rows/cols, all fall to the bottom
+  edge keeping columns). It folds into rule_002 via the slow path — **covers 21→22,
+  no new rule minted** (§2.5-3 win).
+- `tests/test_object_motion.py` — 8 new tests (uniform-target fit/decline, map_all
+  recognition + decline on single-object/ambiguous-bijection, render, end-to-end
+  family membership, save_rule fold proving covers>1 with an au trace). 206 pass.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 24/24; 10 rules; rule_002
+covers 21; P1=7.1, P2=7.1.
+**Probe after** : easy_a 9/9, madeup **25/25** (multi-object gravity added &
+solved via object_motion); 10 rules (no new file); rule_002 covers 21→**22**;
+P1 7.1→**7.2**, P2 7.1→**7.2**.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1
++0.1, P2 +0.1**; the object-motion family now expresses multi-object map-all
+gravity value-agnostically (re-fitted per task, never stored as a literal), folded
+into the same rule as the single-object move family.
+
+**Next gap (note for future iter)**: map-all gravity still requires an
+*unambiguous* bijection (distinct colour+size+shape per object), so it declines on
+*identical* objects falling (the common real case — needs column/axis matching to
+say which object fell where). It is also pure displacement (offset/to_edge); the
+probe's real misses (c9680e90/e5790162) add *obstacles/stacking* (an object stops
+on another) and *rays* (objects grow), neither of which is a rigid translation —
+those need a per-object stop-condition or a growth target, the next structural
+steps.

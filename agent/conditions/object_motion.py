@@ -91,6 +91,29 @@ def object_motion(patterns: dict, params: dict | None = None) -> bool:
     motion = patterns.get("object_motion")
     if not isinstance(motion, dict):
         return False
+
+    # Multi-object "map-all" acceptance (gravity / "all objects fall"): every object
+    # moves by ONE per-object displacement target (`map_all`), the select-one→map-all
+    # generalisation of the single-object move (§2.5-2b). Consulted *only* when the
+    # single-object analysis declined (`selector`/`target` None) — so the select-one
+    # path still wins for the move family it already covers, and map_all claims only a
+    # genuinely multi-object scene no single-object reading explains (zero regression).
+    map_all = motion.get("map_all")
+    single_fit = (
+        motion.get("selector") is not None
+        and motion.get("target") is not None
+        and motion.get("out_shape") is not None
+        and motion.get("scene") is not None
+    )
+    if (
+        not single_fit
+        and isinstance(map_all, dict)
+        and map_all.get("target") is not None
+        and map_all.get("clean")
+        and map_all.get("evidence_count", 0) >= min_evidence
+    ):
+        return True
+
     pairs = motion.get("pairs")
     if not isinstance(pairs, list) or len(pairs) < min_evidence:
         return False

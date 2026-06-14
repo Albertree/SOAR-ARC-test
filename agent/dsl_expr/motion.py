@@ -164,6 +164,58 @@ def _fit_anchor(motions):
     return fit_selector(anchor_selections)
 
 
+def fit_uniform_target(motions):
+    """Fit ONE *per-object* displacement target that explains **every** object's
+    move at once — the multi-object "map-all" case (the canonical gravity / "all
+    objects fall" pattern), generalising the single-object move from select-one to
+    map-all (§2.5-2b, BACKLOG_LOOP R1 "next gap").
+
+    `motions` is a flat list of per-object move dicts (every object across every
+    pair), each ``{"src","dst","H","W","oh","ow"}`` exactly as `fit_target`
+    consumes — but here each entry is *one object among several*, not the lone
+    selected one. Only the two **displacement** readings are admissible for a
+    map-all move: a single uniform ``offset`` (translate the whole scene by one
+    delta), or a per-object ``to_edge`` fall (every object slides flush to one grid
+    edge along one axis, keeping its free coordinate — independent fall distances
+    per object). The *absolute* readings `fit_target` also tries
+    (``bottom_right`` / ``constant`` / ``to_anchor``) collapse every object onto a
+    single spot, so they never describe a map-all move and are intentionally
+    excluded here. Tried most-structural-first (a uniform translation over a fall),
+    mirroring `fit_target`. Returns a descriptor resolvable by `target_position`
+    (which already evaluates ``offset`` / ``to_edge`` per object), or ``None`` so
+    the caller declines rather than guesses.
+    """
+    if not motions:
+        return None
+
+    # offset: a single translation delta moves every object on every pair (a pure
+    # uniform shift of the whole scene). A zero delta is a no-op, not a move.
+    deltas = {
+        (m["dst"][0] - m["src"][0], m["dst"][1] - m["src"][1])
+        for m in motions
+    }
+    if len(deltas) == 1:
+        dr, dc = next(iter(deltas))
+        if (dr, dc) != (0, 0):
+            return {"kind": "offset", "delta": [dr, dc]}
+
+    # to_edge: every object slides flush against one grid edge along a single axis,
+    # keeping its free coordinate — gravity for the whole scene. Independent fall
+    # distances per object are exactly what defeats `offset`. The `any(... moved)`
+    # guard keeps a static set from reading as a degenerate "already at the edge".
+    if any(m["src"] != m["dst"] for m in motions):
+        for edge, dst_of in (
+            ("bottom", lambda m: (m["H"] - m["oh"], m["src"][1])),
+            ("top",    lambda m: (0,                m["src"][1])),
+            ("left",   lambda m: (m["src"][0],       0)),
+            ("right",  lambda m: (m["src"][0],        m["W"] - m["ow"])),
+        ):
+            if all(m["dst"] == dst_of(m) for m in motions):
+                return {"kind": "to_edge", "edge": edge}
+
+    return None
+
+
 def fit_output_shape(shapes):
     """Fit a value-agnostic output-grid-shape expression across example pairs.
 
