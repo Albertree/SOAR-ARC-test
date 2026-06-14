@@ -293,6 +293,27 @@ _BOOL_OPS = {
     "ronly": lambda a, b: b and not a,
 }
 
+# Colour-*preserving* two-panel merges. Where the boolean ops above binarise the
+# panels (on == non-bg) and paint a single fixed colour, these read each panel
+# cell's *actual* colour and carry it through — the recurring "overlay / stack the
+# two panels" family (7b7f7511, e98196ab) where the output keeps the panels' own
+# colours rather than a third paint colour. Each is a pure function of
+# ``(a, b, bg)`` (the two panel cells and the background), so it is value-agnostic
+# exactly like the boolean predicates: the panels may use different colours and
+# the same logical overlay still applies. The carried spec stays the same 3-tuple
+# ``(axis, op, color)`` — ``color`` is unused (``None``) for a merge op since the
+# colour comes from the panels — so a boolean-combine task and a colour-merge task
+# share the SAME one-step skeleton ``[("boolcombine", ("const", ?v))]`` and lift
+# via ``unify()`` into the SAME ``covers>1`` rule (R3), folding into the existing
+# boolcombine family rather than minting a separate one (§2.5-3/4).
+_MERGE_OPS = {
+    "A_over_B":  lambda a, b, bg: a if a != bg else b,
+    "B_over_A":  lambda a, b, bg: b if b != bg else a,
+    "keep_equal": lambda a, b, bg: a if a == b else bg,
+    "xor_one":   lambda a, b, bg: (a if a != bg else b)
+                 if (a != bg) != (b != bg) else bg,
+}
+
 
 def _split_for_axis(grid, axis):
     """Split ``grid`` into its two equal panels along ``axis`` (``"v"`` =
@@ -664,7 +685,8 @@ def run_program(program, input_grid):
             _, spec_expr = step
             axis, op, color = _eval(spec_expr, env)
             pred = _BOOL_OPS.get(op)
-            if pred is None:
+            merge = _MERGE_OPS.get(op)
+            if pred is None and merge is None:
                 raise _Unevaluable(f"unknown boolean combine op: {op!r}")
             grid = env["grid"]
             bg = env["bg"]
@@ -678,10 +700,26 @@ def run_program(program, input_grid):
             if (len(B), len(B[0]) if B else 0) != (h, w):
                 raise _Unevaluable("boolcombine panels are not equal-sized")
             cur = apply_DSL("make_grid", height=h, width=w, color=bg)
-            on = [(r, c) for r in range(h) for c in range(w)
-                  if pred(A[r][c] != bg, B[r][c] != bg)]
-            if on:
-                cur = apply_DSL("coloring", cur, selection=on, color=color)
+            if pred is not None:
+                # Boolean mask: paint the predicate-selected cells one fixed colour.
+                on = [(r, c) for r in range(h) for c in range(w)
+                      if pred(A[r][c] != bg, B[r][c] != bg)]
+                if on:
+                    cur = apply_DSL("coloring", cur, selection=on, color=color)
+            else:
+                # Colour-preserving merge: each output cell keeps the panel colour
+                # the merge fn returns. Group cells by resulting colour so the
+                # canvas is filled with one ``coloring`` per colour (the two frozen
+                # primitives only — §2.5-1, F3-safe), exactly like Schema 2.
+                by_color = {}
+                for r in range(h):
+                    for c in range(w):
+                        v = merge(A[r][c], B[r][c], bg)
+                        if v != bg:
+                            by_color.setdefault(v, []).append((r, c))
+                for col in sorted(by_color):
+                    cur = apply_DSL("coloring", cur, selection=by_color[col],
+                                    color=col)
         elif kind == "connect":
             # Connect the dots: for each colour, every two same-colour markers that
             # are aligned in a row or column get the background gap between them
@@ -1188,25 +1226,46 @@ def _fit_boolcombine(pairs):
                 continue
             out_colors = {gout[r][c] for r in range(h) for c in range(w)
                           if gout[r][c] != bg}
-            if len(out_colors) != 1:
-                continue
-            (color,) = tuple(out_colors)
-            for op, pred in _BOOL_OPS.items():
+            # Boolean ops require a single output paint colour (the binarised
+            # predicate is value-agnostic; the colour is read from the comparison).
+            if len(out_colors) == 1:
+                (color,) = tuple(out_colors)
+                for op, pred in _BOOL_OPS.items():
+                    ok = True
+                    for r in range(h):
+                        for c in range(w):
+                            want = (color if pred(A[r][c] != bg, B[r][c] != bg)
+                                    else bg)
+                            if gout[r][c] != want:
+                                ok = False
+                                break
+                        if not ok:
+                            break
+                    if ok:
+                        local.add((axis, op, color))
+            # Colour-preserving merges read the panels' own colours (output may be
+            # multi-colour). ``color`` is unused for a merge op, carried as ``None``
+            # so the spec stays a 3-tuple sharing the boolcombine skeleton.
+            for op, fn in _MERGE_OPS.items():
                 ok = True
                 for r in range(h):
                     for c in range(w):
-                        want = color if pred(A[r][c] != bg, B[r][c] != bg) else bg
-                        if gout[r][c] != want:
+                        if gout[r][c] != fn(A[r][c], B[r][c], bg):
                             ok = False
                             break
                     if not ok:
                         break
                 if ok:
-                    local.add((axis, op, color))
+                    local.add((axis, op, None))
         inter = local if inter is None else (inter & local)
         if not inter:
             return None
-    axis, op, color = sorted(inter)[0]
+    # ``color`` is ``None`` for merge ops, so sort with a None-safe key (a merge
+    # op and a boolean op never both reproduce the same multi/single-colour output,
+    # so this only orders ties within one family; the lift is skeleton-identical
+    # either way).
+    axis, op, color = sorted(
+        inter, key=lambda t: (t[0], t[1], -1 if t[2] is None else t[2]))[0]
     return [("boolcombine", ("const", (axis, op, color)))]
 
 

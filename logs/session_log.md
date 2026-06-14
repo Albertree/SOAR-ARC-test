@@ -4841,3 +4841,130 @@ test objects are guaranteed to share, not a raw size table.
 
 ## Iter 43 [CLEAN] — 20260614_230108 — branch test33
 - Probe: [23:01:28] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 23:16
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_231649.log
+
+---
+## Learning Loop -- 2026-06-14 23:17
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_231652.log
+
+---
+## Learning Loop -- 2026-06-14 23:17
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_231703.log
+
+---
+## Learning Loop -- 2026-06-14 23:31
+
+- Split: training, Tasks: 25
+- Correct: 3 / 25 (12.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 0
+- Time: 101s
+- Log: logs/learn_20260614_233005.log
+
+---
+## Learning Loop -- 2026-06-14 23:32
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_233219.log
+
+---
+## Learning Loop -- 2026-06-14 23:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_233231.log
+
+---
+## Learning Loop -- 2026-06-14 23:32
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_233235.log
+
+## Iter 44 — 2026-06-14T23:33:00 — branch test33
+
+**Diagnosis**: Training phase, synthesizer frontier. Measured the held-out
+baseline (78/1000) and confirmed the *single-schema* clean frontier is genuinely
+thinned: every fresh value-agnostic transferable family I probed folds only ~1–2
+tasks (fill-enclosed=2, gravity=2, periodic-fill=2, periodic-patch=1), and 2-step
+compositions of existing transforms fold 0 (dihedral-then-X=0, crop-then-X=0,
+confirming iter43's note). The one lever that *raises* the P1/P2 mean rather than
+dipping it (the documented instrumentation trap) is **broadening an existing
+high-covers schema** so new tasks fold into it. The gap: Schema 10 (boolcombine)
+only handles boolean *masks* painted one fixed colour — it misses two-panel tasks
+whose output keeps the panels' own colours (colour-preserving overlay/merge).
+
+**Change**:
+- `program/synthesis.py` — generalized Schema 10 from boolean-only to
+  **two-panel combine**: added `_MERGE_OPS` (colour-preserving overlay family:
+  `A_over_B`, `B_over_A`, `keep_equal`, `xor_one`) — each a pure value-agnostic
+  function of `(a, b, bg)` reading the panels' actual colours. The carried spec
+  stays the SAME 3-tuple `(axis, op, color)` (`color=None` for a merge op), so a
+  boolean-combine task and a colour-merge task share the SAME one-step skeleton
+  `[("boolcombine", ("const", ?v))]` and lift via `unify()` into the SAME rule
+  (rule_011), folding in rather than minting a new family (§2.5-3/4). `_fit_boolcombine`
+  gains a merge-op branch (no single-output-colour requirement) with a None-safe
+  sort key; `run_program`'s boolcombine handler dispatches merge ops by grouping
+  cells by result colour and painting one `coloring` per colour (only the two
+  frozen primitives — §2.5-1, F3-safe). No new transformation primitive (F3-safe),
+  no `_try_*` (F2-safe).
+- `procedural_memory/rule_011.json` — ran the learner over the one net-new
+  colour-merge task (e98196ab); it discovered the boolcombine program and
+  save_rule folded it into rule_011 (covers 20→21, AU trace retained) — coverage
+  up *with* the rule count flat, the §2.5-4 litmus's intent.
+- `tests/test_synthesis.py` — `test_boolcombine_colour_preserving_merge` (overlay
+  with held-out transfer, asserts merge op + `color is None`). 228 pass.
+
+**Probe before**: training 0/3 (sample); easy_a 9/9, madeup 27/27; 13 rules;
+synthesizer held-out solves 78/1000; P1=8.231, P2=8.231, P3=0.9231.
+**Probe after** : easy_a 9/9, madeup 27/27; 13 rules (rule_011 covers 20→21);
+synthesizer held-out solves **79/1000**; P1 8.231→**8.308**, P2 8.231→**8.308**,
+P3 0.9231 (unchanged — rule_011 already traced).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1
++0.077, P2 +0.077** — the rare *non*-instrumentation-trap direction: folding a
+new task into a high-covers rule (21 > mean) raises the mean instead of dipping
+it, exactly the §2.5-4 ideal (coverage up + mean up together, by generalizing a
+capability, not accreting a detector). P3/P4/P5/P6 unchanged.
+
+**Next gap (note for future iter)**: the two-panel family has one more reachable
+task (7b7f7511) blocked by a *per-pair-varying split axis* — its panels split
+vertically in some pairs, horizontally in others, so the fitter's shared-axis
+intersection empties. Lifting the axis from a fixed const to a value-agnostic
+*structural selector* ("the axis along which the input splits into two equal
+panels") would fold it and any similar tasks, and is the natural next selection-lift.
+Beyond that, the single-schema frontier is empirically picked clean (best fresh
+family ~2 tasks); the remaining real levers are (a) broadening other high-covers
+schemas the same way (raises the mean), and (b) per-pair structural selectors so
+a schema whose parameter varies *within* a task can still fit.

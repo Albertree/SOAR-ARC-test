@@ -578,6 +578,26 @@ def test_boolcombine_declines_non_panel_task():
         assert prog[0][0] != "boolcombine"
 
 
+def test_boolcombine_colour_preserving_merge():
+    # Two stacked panels; output = overlay A over B keeping each panel's OWN
+    # colour (not a third fixed paint colour). The merge is value-agnostic — it
+    # reads the panel cells' colours — and shares the boolcombine skeleton so it
+    # folds into the same family rather than minting a new one.
+    pairs = [
+        {"input":  [[3, 0], [0, 7], [4, 4], [0, 5], [6, 0]],
+         "output": [[3, 5], [6, 7]]},
+        {"input":  [[0, 2], [8, 0], [4, 4], [1, 0], [0, 9]],
+         "output": [[1, 2], [8, 9]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "boolcombine"
+    axis, op, color = prog[0][1][1]
+    assert op in ("A_over_B", "B_over_A") and color is None
+    # held-out: overlay keeps each non-bg colour through to the result
+    held = [[2, 0], [0, 3], [4, 4], [0, 8], [5, 0]]
+    assert run_program(prog, held) == [[2, 8], [5, 3]]
+
+
 def test_boolcombine_tasks_share_one_skeleton():
     # Two combine tasks with DIFFERENT (axis, op, colour) triples produce the same
     # one-step skeleton (only the const triple leaf differs), so save_rule lifts
