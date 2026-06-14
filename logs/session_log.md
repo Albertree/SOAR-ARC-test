@@ -4968,3 +4968,6 @@ Beyond that, the single-schema frontier is empirically picked clean (best fresh
 family ~2 tasks); the remaining real levers are (a) broadening other high-covers
 schemas the same way (raises the mean), and (b) per-pair structural selectors so
 a schema whose parameter varies *within* a task can still fit.
+
+## Iter 44 [CLEAN] — 20260614_231648 — branch test33
+- Probe: [23:17:08] Correct:     0 / 3  (0.0%)
