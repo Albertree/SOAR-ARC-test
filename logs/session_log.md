@@ -2344,3 +2344,147 @@ remains open-question-blocked.
 
 ## Iter 23 [CLEAN] — 20260614_184602 — branch test33
 - Probe: [18:46:17] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 18:54
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_185420.log
+
+---
+## Learning Loop -- 2026-06-14 18:54
+
+- Split: None, Tasks: 15
+- Correct: 15 / 15 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_185423.log
+
+---
+## Learning Loop -- 2026-06-14 18:54
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_185429.log
+
+---
+## Learning Loop -- 2026-06-14 18:59
+
+- Split: None, Tasks: 16
+- Correct: 15 / 16 (93.8%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_185952.log
+
+---
+## Learning Loop -- 2026-06-14 19:03
+
+- Split: None, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_190310.log
+
+---
+## Learning Loop -- 2026-06-14 19:03
+
+- Split: None, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_190321.log
+
+---
+## Learning Loop -- 2026-06-14 19:04
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_190409.log
+
+---
+## Learning Loop -- 2026-06-14 19:07
+
+- Split: training, Tasks: 30
+- Correct: 0 / 30 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 81s
+- Log: logs/learn_20260614_190541.log
+
+---
+## Iter 24 — 2026-06-14 — branch test33
+
+**Diagnosis**: Iter 23's own next-gap noted the selector vocabulary is complete and
+the standing frontier is *composing* transformations — real tasks chain steps no
+single family handles. The smallest defensible slice of that: a move that *also
+recolours* the object (translate ∘ recolour). `object_motion` alone gates on colour
+preserved; `object_recolor` alone gates on cells unchanged — so neither solves it,
+yet it is one composition expressible by lifting the new colour into a fitted
+argument expression on the existing move family (not a 4th family — §2.5-3/2b).
+
+**Change**:
+- `data/ARC_madeup/mo_move_recolor.json` (NEW, F1-exempt) — a 2×2 block that both
+  moves to a constant position (0,0) and changes to a constant new colour (4),
+  colours/positions varying across pairs. Authored to **fail**: confirmed INCORRECT
+  (rule=identity) before the change.
+- `agent/active_operators.py` — `_identify_move` now returns a 4-tuple with the
+  object's *new colour*: when the colour-set+size match fails it falls back to a
+  colour-invariant *shape*+size match (tried only after the colour-preserving match,
+  so existing moves are identified byte-identically — zero regression) and reports
+  the new colour. `_object_motion` records the per-pair new colour and fits one
+  value-agnostic colour expression via the existing `fit_color_source`
+  (another-object's-colour, or a fitted constant); a mix of recoloured and
+  colour-preserving pairs declines. `GeneralizeOperator` rides the fitted colour as
+  a second `place_object` arg (omitted for a pure move, so the colour-preserving
+  rule dict is byte-for-byte unchanged and still merges). `PredictOperator` /
+  `_render_object_motion` paint the moved object in the resolved new colour when
+  recolouring, else its own colours.
+- `agent/conditions/object_motion.py` — per-pair gate now accepts
+  `color_preserved OR recolored`; when any pair recolours, the fitted `color`
+  expression must be present (else decline). Docstring + schema comment updated
+  (F8 satisfied by this co-touch to `agent/conditions/`).
+- `tests/test_object_motion.py` — updated the three `_identify_move` tests to the
+  4-tuple; added: recolour identification reports the new colour, `_object_motion`
+  fits the constant colour expr, matcher requires the colour expr when recoloured,
+  and pipeline solves `mo_move_recolor` via the same family carrying the colour arg.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 15/16 (mo_move_recolor INCORRECT);
+rules 3, rule_002 covers 19, P1=P2=8.0, P3=0.667. 133 tests.
+**Probe after** : easy_a 9/9, madeup **16/16** (mo_move_recolor CORRECT via
+object_motion, folded into rule_002 covers 19→20, **no new rule**). training 0/30
+sampled — **0 errors, 0 spurious rules** (relaxed matcher does not over-fire on real
+data). 137 tests pass.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P1
++0.333 (8.0→8.333), P2 +0.333 (8.0→8.333)** via covers union (rule count flat —
+§2.5-4 litmus satisfied); P3/P4/P5 ±0; P6 −83 (active_operators grew by the
+move∘recolour plumbing — the cost of feeding the new fitted colour argument; the
+colour-fitting itself reuses `agent/dsl_expr`'s `fit_color_source`). No new family,
+no new `_try_*`, no new transformation primitive — the new colour is one more fitted
+LHS argument expression on the existing move family.
+
+**Next gap (note for future iter)**: move∘recolour is the first *composition* of two
+transformations expressed on one family by lifting an argument. The colour key is
+dropped in the AU merge into rule_002 (its skeleton lacks colour), so the abstract
+rule does not yet *carry* the colour as a `?v` variable — lifting divergent colour
+expressions across two move∘recolour tasks (a second such task) is the next coverage
+step. The larger frontier is unchanged: a general multi-step synthesizer (modules
+F/G) for tasks whose solution is a *sequence* of transformations with observed
+intermediate structure, which single-argument lifting cannot reach.
+
+## Iter 24 [CLEAN] — 20260614_185419 — branch test33
+- Probe: [18:54:34] Correct:     0 / 3  (0.0%)

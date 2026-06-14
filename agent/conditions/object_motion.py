@@ -9,7 +9,11 @@ pattern). The relational anchor is itself named by a fitted *selector* over the
 *other* objects (`fit_target`'s ``anchor`` sub-expression: unique / largest /
 odd-one-out / …), so the destination is identified even when several other objects
 are present — the selector says *which* one is the anchor — not only in the lone
-single-other case. With the object (colour + shape) preserved. Which object moves is itself a fitted
+single-other case. With the object's *shape + size* preserved and its colour
+either preserved (a plain move) or changed to a fitted new colour
+(``motion["color"]`` — a move that also *recolours* the object, the translate ∘
+recolour composition neither object_motion-alone nor object_recolor-alone handles).
+Which object moves is itself a fitted
 *selector expression* (`agent/dsl_expr/selection.fit_selector`: unique / largest
 / smallest), so a multi-object input can name which object the rule acts on
 without a literal index — the §2.1 multi-object-selection concept. The
@@ -30,6 +34,7 @@ Reads the `object_motion` signal surfaced by ExtractPatternOperator::
             "scene":       "drop" | "preserve" | None,  # fate of the *other* objects
             "selected_ok": bool,  # the moved object was identified in G0
             "color_preserved": bool,
+            "recolored":       bool,  # move also changed the object's colour
             "size_preserved":  bool,
             "grid_size_preserved": bool,   # informational; resizes are allowed
             ... per-pair geometry (src/dst/H/W/oh/ow) ...
@@ -38,6 +43,7 @@ Reads the `object_motion` signal surfaced by ExtractPatternOperator::
         "target":    {"kind": ...} | None,  # fitted target expression, or None
         "out_shape": {"kind": ...} | None,  # fitted output-shape expr, or None
         "scene":     "drop" | "preserve" | None,  # fitted output-scene, or None
+        "color":     {"kind": ...} | None,  # fitted new-colour expr (recolour), or None
     }
 
 The output need not be a single object: a *move with the other objects preserved*
@@ -89,24 +95,40 @@ def object_motion(patterns: dict, params: dict | None = None) -> bool:
     if not isinstance(pairs, list) or len(pairs) < min_evidence:
         return False
 
+    any_recolored = False
     for p in pairs:
         if not isinstance(p, dict):
             return False
+        # The object's *shape*/*size* is preserved on every pair; its colour is
+        # either preserved (a plain move) or changed to a fitted new colour (a move
+        # that also recolours — translate ∘ recolour). Both are admissible; a pair
+        # whose object is neither colour-preserved nor cleanly recoloured declines.
         if not (
             p.get("selected_ok")
-            and p.get("color_preserved")
             and p.get("size_preserved")
+            and (p.get("color_preserved") or p.get("recolored"))
         ):
             return False
+        if p.get("recolored"):
+            any_recolored = True
 
     # A selector, a target, an output-shape AND a scene expression must all have
     # been fitted across the pairs; absent any, the move is not value-agnostically
     # describable and we decline rather than guess. The scene fixes the fate of the
     # unselected objects (drop vs preserve) — required so the multi-object-output
     # case is named explicitly rather than mis-rendered as a single-object drop.
-    return (
+    if not (
         motion.get("selector") is not None
         and motion.get("target") is not None
         and motion.get("out_shape") is not None
         and motion.get("scene") is not None
-    )
+    ):
+        return False
+
+    # When the move recolours the object, the new colour must itself be a fitted
+    # value-agnostic expression (`motion["color"]`); absent it — including the
+    # inconsistent case where only *some* pairs recolour — decline rather than bake
+    # a literal. A pure (colour-preserving) move needs no colour expression.
+    if any_recolored and motion.get("color") is None:
+        return False
+    return True

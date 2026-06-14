@@ -228,7 +228,7 @@ class ExtractPatternOperator(Operator):
         (corner/constant/translation), and an *output-shape* expression."""
         from agent.dsl_expr import (
             objects_of, position_of, color_of, obj_origin_extent,
-            fit_target, fit_output_shape, fit_selector,
+            fit_target, fit_output_shape, fit_selector, fit_color_source,
         )
 
         pairs = []
@@ -236,6 +236,7 @@ class ExtractPatternOperator(Operator):
         shapes = []      # in/out grid dims feeding fit_output_shape (same pairs)
         selections = []  # (objects, selected idx) feeding fit_selector
         scenes = []      # per-pair scene ("drop"/"preserve"), clean pairs only
+        recolors = []    # per recorded pair: {"objects", "color"} if recoloured
         for pair in task.example_pairs:
             g0, g1 = pair.input_grid, pair.output_grid
             if g0 is None or g1 is None:
@@ -249,10 +250,12 @@ class ExtractPatternOperator(Operator):
             # literal index (§2.5-2b / §2.1 multi-object selection + output). The
             # moved object is matched by colour-set + size (both preserved by a
             # move); `scene` names whether the others are dropped (output holds only
-            # the moved object) or preserved (they survive unchanged). An absent /
+            # the moved object) or preserved (they survive unchanged). `new_color`
+            # is non-None when the move *also recolours* the object (translate ∘
+            # recolour) — a colour-invariant shape match identifies it. An absent /
             # ambiguous match leaves the selection undefined and the pair declines.
-            sel_idx, obj_out, scene = ExtractPatternOperator._identify_move(
-                objs_in, objs_out
+            sel_idx, obj_out, scene, new_color = (
+                ExtractPatternOperator._identify_move(objs_in, objs_out)
             )
             obj_in = objs_in[sel_idx] if sel_idx is not None else None
 
@@ -261,6 +264,11 @@ class ExtractPatternOperator(Operator):
                 and color_of(obj_in) is not None
                 and color_of(obj_in) == color_of(obj_out)
             )
+            # A recoloured move keeps the object's shape/size but changes its
+            # colour; `new_color` carries the destination colour (None when the
+            # colour is preserved). Either is an acceptable move — the colour, when
+            # it changes, becomes a fitted argument expression (below).
+            recolored = new_color is not None
             size_preserved = (
                 obj_in is not None and obj_out is not None
                 and obj_in["size"] == obj_out["size"]
@@ -271,6 +279,7 @@ class ExtractPatternOperator(Operator):
                 "scene": scene,
                 "selected_ok": obj_in is not None,
                 "color_preserved": color_preserved,
+                "recolored": recolored,
                 "size_preserved": size_preserved,
                 "grid_size_preserved": grid_size_preserved,
             }
@@ -282,7 +291,7 @@ class ExtractPatternOperator(Operator):
             # NOT a gate here.
             if (
                 obj_in is not None and obj_out is not None
-                and color_preserved and size_preserved
+                and size_preserved and (color_preserved or recolored)
             ):
                 (oh, ow) = obj_origin_extent(obj_in)[1]
                 # H/W are the *output* grid dims so a corner target lands flush in
@@ -323,6 +332,13 @@ class ExtractPatternOperator(Operator):
                 })
                 selections.append({"objects": objs_in, "selected": sel_idx})
                 scenes.append(scene)
+                # Record the recoloured object's *new* colour (or None when the
+                # colour is preserved) parallel to the move geometry, so a colour
+                # expression can be fitted across the recorded pairs.
+                recolors.append(
+                    {"objects": objs_in, "color": new_color}
+                    if recolored else None
+                )
 
             pairs.append(entry)
 
@@ -339,6 +355,20 @@ class ExtractPatternOperator(Operator):
         selector = fit_selector(selections) if clean else None
         scene = scenes[0] if (clean and len(set(scenes)) == 1) else None
 
+        # Fit the *new colour* expression only when the move recolours the object
+        # on EVERY recorded pair (a mix of recoloured and colour-preserving pairs is
+        # inconsistent → decline, leaving `color=None` and the family unaffected).
+        # The colour is the same value-agnostic argument expression the in-place
+        # recolour family fits (`fit_color_source`: another object's colour, or a
+        # fitted constant), so the destination *and* the new colour are both fitted
+        # from the example comparison and one rule covers move ∘ recolour.
+        recolored_flags = [r is not None for r in recolors]
+        color = (
+            fit_color_source([r for r in recolors if r is not None])
+            if (clean and recolored_flags and all(recolored_flags))
+            else None
+        )
+
         return {
             "evidence_count": len(pairs),
             "pairs": pairs,
@@ -346,14 +376,15 @@ class ExtractPatternOperator(Operator):
             "out_shape": out_shape,
             "selector": selector,
             "scene": scene,
+            "color": color,
         }
 
     @staticmethod
     def _identify_move(objs_in, objs_out):
         """Identify which input object the move acted on and what becomes of the
         *unselected* objects, reading both from the input→output comparison (P3/P4)
-        rather than a literal. Returns ``(selected_index, output_object, scene)``
-        where ``scene`` is:
+        rather than a literal. Returns ``(selected_index, output_object, scene,
+        new_color)`` where ``scene`` is:
 
           * ``"drop"``     — the output holds only the moved object; every other
             input object vanishes (easy000c–i and the size/position/colour-selected
@@ -362,8 +393,20 @@ class ExtractPatternOperator(Operator):
             (same pixels at the same place) and exactly one object moved (the
             §2.1 multi-object-*output* concept).
 
-        Returns ``(None, None, None)`` when the pair is not a clean single-object
-        move, so the pair declines rather than guessing."""
+        ``new_color`` is ``None`` for a colour-preserving move (the object keeps its
+        colour) and the object's *new* single colour for a move that *also recolours*
+        the object (translate ∘ recolour — a two-transformation composition no single
+        family handles: object_motion alone gates on colour preserved, object_recolor
+        alone gates on cells unchanged). The recoloured object is matched back to its
+        input by a colour-invariant *shape* signature + size — tried only after the
+        colour-set + size match fails, so every existing colour-preserving move is
+        identified exactly as before (zero regression).
+
+        Returns ``(None, None, None, None)`` when the pair is not a clean
+        single-object move, so the pair declines rather than guessing."""
+        from agent.dsl_expr import color_of
+        from agent.dsl_expr.selection import _shape_signature
+
         # drop: a lone output object, matched back to one input object by the
         # colour-set + size a move preserves.
         if len(objs_out) == 1:
@@ -374,8 +417,21 @@ class ExtractPatternOperator(Operator):
                 if (tuple(o["color_set"]), o["size"]) == key
             ]
             if len(cands) == 1:
-                return cands[0], obj_out, "drop"
-            return None, None, None
+                return cands[0], obj_out, "drop", None
+            # recolour fallback: the colour changed, so match the moved object back
+            # to its input by shape (translation- and colour-invariant signature) +
+            # size instead. A *unique* shape+size match whose single colour differs
+            # is a move that also recolours; its new colour is read from the output
+            # object (P3/P4), never a literal.
+            sig = _shape_signature(obj_out)
+            new_color = color_of(obj_out)
+            shape_cands = [
+                i for i, o in enumerate(objs_in)
+                if o["size"] == obj_out["size"] and _shape_signature(o) == sig
+            ]
+            if len(shape_cands) == 1 and new_color is not None:
+                return shape_cands[0], obj_out, "drop", new_color
+            return None, None, None, None
 
         # preserve: same object count in and out; every object but one is
         # byte-identical (same pixels at the same coordinates → it did not move),
@@ -401,9 +457,9 @@ class ExtractPatternOperator(Operator):
                 oj = objs_out[moved_out[0]]
                 if ((tuple(oi["color_set"]), oi["size"])
                         == (tuple(oj["color_set"]), oj["size"])):
-                    return moved_in[0], oj, "preserve"
+                    return moved_in[0], oj, "preserve", None
 
-        return None, None, None
+        return None, None, None, None
 
     # ---- object-level recolour analysis (R1) ----------------------------
 
@@ -649,6 +705,7 @@ class GeneralizeOperator(Operator):
         if rule is None and self._matches_object_motion(patterns):
             motion = patterns.get("object_motion") or {}
             target_expr = motion.get("target")
+            color_expr = motion.get("color")
             rule = {
                 "type": "object_motion",
                 "condition": {
@@ -668,10 +725,18 @@ class GeneralizeOperator(Operator):
                 # the concrete target from each task's own example comparison (it
                 # reads `wm.s1["patterns"]`, never these args), so the recorded
                 # expression is for generalization/coverage only.
+                # The fitted new-colour expression (when the move also recolours the
+                # object) rides alongside the target as a second argument, so two
+                # move∘recolour tasks whose colour expressions diverge anti-unify the
+                # same way the targets do (R3). Omitted entirely for a pure move, so
+                # the existing colour-preserving rule dict is byte-for-byte unchanged
+                # and still merges with every prior move task.
                 "action": {
                     "dsl": "place_object",
-                    "args": ({"target": target_expr}
-                             if target_expr is not None else {}),
+                    "args": (
+                        {**({"target": target_expr} if target_expr is not None else {}),
+                         **({"color": color_expr} if color_expr is not None else {})}
+                    ),
                 },
                 "confidence": 1.0,
             }
@@ -838,12 +903,14 @@ class PredictOperator(Operator):
         motion_target = None
         motion_out_shape = None
         motion_selector = None
+        motion_color = None
         if rule.get("type") == "object_motion":
             motion = (wm.s1.get("patterns") or {}).get("object_motion") or {}
             motion_target = motion.get("target")
             motion_out_shape = motion.get("out_shape")
             motion_selector = motion.get("selector")
             motion_scene = motion.get("scene")
+            motion_color = motion.get("color")
 
         # R1 object_recolor: the selector + colour-source were fitted from this
         # task's own example comparison — read them here so the recolour is
@@ -872,7 +939,7 @@ class PredictOperator(Operator):
             elif rule.get("type") == "object_motion":
                 predicted = self._render_object_motion(
                     g0, motion_target, motion_out_shape, motion_selector,
-                    motion_scene,
+                    motion_scene, motion_color,
                 )
             elif rule.get("type") == "object_recolor":
                 predicted = self._render_object_recolor(
@@ -935,7 +1002,8 @@ class PredictOperator(Operator):
 
     @staticmethod
     def _render_object_motion(input_grid, target_desc, out_shape_desc=None,
-                              selector_desc=None, scene_desc=None):
+                              selector_desc=None, scene_desc=None,
+                              color_desc=None):
         """Place the object named by `selector_desc` (the selector expression
         fitted from this task's example comparison — unique / largest / smallest)
         at the destination named by `target_desc` (corner / constant / translation
@@ -945,19 +1013,24 @@ class PredictOperator(Operator):
         `scene_desc` fixes the fate of the *unselected* objects: ``"drop"`` (the
         default / legacy behaviour — the canvas holds only the moved object) or
         ``"preserve"`` (every other object is repainted at its original place, the
-        §2.1 multi-object-output concept). Built only from make_grid + coloring
-        (CLAUDE.md §6.2): a fresh background canvas at the output shape, the
-        preserved objects (if any) repainted in place, then each selected-object
-        cell repainted translated so its bbox top-left lands at the resolved
-        destination. No literal coordinate, grid size, or object index lives on the
-        rule — all are expressions resolved per input from G0 alone (P5) — so one
-        rule serves every grid size, move variant, resize, object count, and the
-        drop/preserve scene. Declines (returns None) if the selector picks no object
-        or any painted cell would fall off the output grid."""
+        §2.1 multi-object-output concept). The fitted `color_desc`, when present,
+        names the moved object's *new* colour (another object's colour, or a fitted
+        constant — `agent/dsl_expr.color_source`): the move then *also recolours* the
+        object (translate ∘ recolour); absent it the object keeps its own colours.
+        Built only from make_grid + coloring (CLAUDE.md §6.2): a fresh background
+        canvas at the output shape, the preserved objects (if any) repainted in place,
+        then each selected-object cell repainted translated so its bbox top-left lands
+        at the resolved destination, in the resolved new colour when recolouring. No
+        literal coordinate, grid size, colour, or object index lives on the rule —
+        all are expressions resolved per input from G0 alone (P5) — so one rule serves
+        every grid size, move variant, resize, object count, the drop/preserve scene,
+        and the optional recolour. Declines (returns None) if the selector picks no
+        object, the colour expression resolves to nothing, or any painted cell would
+        fall off the output grid."""
         from procedural_memory.DSL.apply import apply_DSL
         from agent.dsl_expr import (
             objects_of, select_object, background_of, target_position,
-            output_shape,
+            output_shape, color_source,
         )
 
         if target_desc is None:
@@ -1002,6 +1075,15 @@ class PredictOperator(Operator):
         if dst is None:
             return None
 
+        # Resolve the move's new colour (when it also recolours) from G0 alone (P5)
+        # — another object's colour or the fitted constant. Decline if it resolves
+        # to nothing (e.g. a colour-source selector that picks no object here).
+        new_color = None
+        if color_desc is not None:
+            new_color = color_source(color_desc, objs)
+            if new_color is None:
+                return None
+
         r0, c0, _r1, _c1 = obj["bbox"]
         dr, dc = dst[0] - r0, dst[1] - c0
 
@@ -1022,7 +1104,8 @@ class PredictOperator(Operator):
             nr, nc = r + dr, c + dc
             if not (0 <= nr < out_h and 0 <= nc < out_w):
                 return None  # destination pushes the object off-grid → decline
-            out = apply_DSL("coloring", out, selection=(nr, nc), color=color)
+            paint = new_color if new_color is not None else color
+            out = apply_DSL("coloring", out, selection=(nr, nc), color=paint)
         return out
 
     # ---- object-recolour rendering via the two frozen DSL primitives ------

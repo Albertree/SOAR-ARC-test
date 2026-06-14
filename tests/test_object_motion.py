@@ -612,7 +612,7 @@ def test_fit_selector_ranked_when_extremes_and_oddness_fail():
     for pair in spec["train"]:
         objs = objects_of(pair["input"])
         out = objects_of(pair["output"])
-        sel, _o, _s = ExtractPatternOperator._identify_move(objs, out)
+        sel, _o, _s, _nc = ExtractPatternOperator._identify_move(objs, out)
         selections.append({"objects": objs, "selected": sel})
     assert fit_selector(selections) == {"kind": "second_largest"}
 
@@ -842,8 +842,9 @@ def test_identify_move_drop():
                           [0, 0, 0, 4, 0], [0, 0, 0, 0, 0]])
     objs_out = objects_of([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
                            [0, 0, 0, 3, 3], [0, 0, 0, 3, 0]])
-    sel, obj_out, scene = ExtractPatternOperator._identify_move(objs_in, objs_out)
+    sel, obj_out, scene, new_color = ExtractPatternOperator._identify_move(objs_in, objs_out)
     assert scene == "drop"
+    assert new_color is None   # colour preserved → not a recolour
     assert color_of(objs_in[sel]) == 3   # the larger blob moved; the pixel dropped
 
 
@@ -851,8 +852,9 @@ def test_identify_move_preserve():
     # two objects in, two out: one moved (colour 3), the other (colour 4) unchanged
     objs_in = objects_of(MULTI_PRESERVE["train"][0][0])
     objs_out = objects_of(MULTI_PRESERVE["train"][0][1])
-    sel, obj_out, scene = ExtractPatternOperator._identify_move(objs_in, objs_out)
+    sel, obj_out, scene, new_color = ExtractPatternOperator._identify_move(objs_in, objs_out)
     assert scene == "preserve"
+    assert new_color is None   # colour preserved → not a recolour
     assert color_of(objs_in[sel]) == 3   # the blob is the one that moved
     assert color_of(obj_out) == 3
 
@@ -861,8 +863,8 @@ def test_identify_move_declines_on_ambiguous_preserve():
     # if NO object stays put (both moved), the preserve match is ambiguous -> decline
     objs_in = objects_of([[2, 0, 0], [0, 0, 0], [0, 0, 3]])
     objs_out = objects_of([[0, 0, 3], [0, 0, 0], [2, 0, 0]])
-    sel, obj_out, scene = ExtractPatternOperator._identify_move(objs_in, objs_out)
-    assert (sel, obj_out, scene) == (None, None, None)
+    sel, obj_out, scene, new_color = ExtractPatternOperator._identify_move(objs_in, objs_out)
+    assert (sel, obj_out, scene, new_color) == (None, None, None, None)
 
 
 def test_pipeline_solves_multi_object_preserve():
@@ -962,6 +964,59 @@ def test_pipeline_solves_anchor_selection():
     rule = _check_solved(spec, "anchor_select").s1["active-rules"][0]
     assert rule["action"]["args"]["target"] == {
         "kind": "to_anchor", "anchor": {"kind": "largest"}}
+
+
+# ----- move ∘ recolour (translate AND change colour) -----------------------
+
+def test_identify_move_recolor_reports_new_color():
+    # a 2x2 block of colour 3 moves AND becomes colour 4: the colour-set match
+    # fails (colour changed), but the colour-invariant shape match identifies it
+    # and reports the new colour. This is the composition no single family handles.
+    objs_in = objects_of([[3, 3, 0], [3, 3, 0], [0, 0, 0]])
+    objs_out = objects_of([[0, 0, 0], [0, 4, 4], [0, 4, 4]])
+    sel, obj_out, scene, new_color = ExtractPatternOperator._identify_move(
+        objs_in, objs_out)
+    assert scene == "drop"
+    assert new_color == 4               # the move also recoloured 3 -> 4
+    assert color_of(objs_in[sel]) == 3  # matched back to its input by shape, not colour
+
+
+def test_object_motion_fits_constant_color_expr():
+    # across the two move∘recolour pairs the new colour is a constant 4 (no input
+    # object carries it), so the colour fits the `constant` source expression.
+    spec = _load_madeup("mo_move_recolor.json")
+    task = _Task(spec["train"], spec["test"], name="mr")
+    wm = _WM(task)
+    ExtractPatternOperator().effect(wm)
+    motion = wm.s1["patterns"]["object_motion"]
+    assert all(p["recolored"] for p in motion["pairs"])
+    assert motion["color"] == {"kind": "constant", "color": 4}
+
+
+def test_matcher_requires_color_expr_when_recolored():
+    # the object_motion matcher must NOT fire on a recolouring move unless the new
+    # colour itself fitted an expression (else it would bake a literal / guess).
+    motion_no_color = {
+        "pairs": [{"selected_ok": True, "size_preserved": True,
+                   "color_preserved": False, "recolored": True}],
+        "selector": {"kind": "unique"}, "target": {"kind": "constant", "pos": [0, 0]},
+        "out_shape": {"kind": "same"}, "scene": "drop", "color": None,
+    }
+    assert match_condition("object_motion", {"object_motion": motion_no_color},
+                           {"min_evidence": 1}) is False
+    motion_with_color = dict(motion_no_color, color={"kind": "constant", "color": 4})
+    assert match_condition("object_motion", {"object_motion": motion_with_color},
+                           {"min_evidence": 1}) is True
+
+
+def test_pipeline_solves_move_recolor():
+    # the move∘recolour task solves end-to-end via the SAME object_motion rule
+    # family (no new family / no accretion; §2.5-3), with the new colour carried as
+    # a second fitted argument expression alongside the target.
+    spec = _load_madeup("mo_move_recolor.json")
+    wm = _check_solved(spec, "move_recolor")
+    rule = wm.s1["active-rules"][0]
+    assert rule["action"]["args"]["color"] == {"kind": "constant", "color": 4}
 
 
 def test_to_anchor_converges_with_corner_family(tmp_path):
