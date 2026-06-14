@@ -295,6 +295,13 @@ class ExtractPatternOperator(Operator):
                     "W": g1.width,
                     "oh": oh,
                     "ow": ow,
+                    # positions of the *unselected* input objects — the anchor
+                    # candidates for the relational `to_anchor` target (§2.5-1),
+                    # read from G0 alone (P5), never a literal coordinate.
+                    "others": [
+                        position_of(o)
+                        for j, o in enumerate(objs_in) if j != sel_idx
+                    ],
                 })
                 shapes.append({
                     "in": (g0.height, g0.width),
@@ -925,7 +932,8 @@ class PredictOperator(Operator):
                               selector_desc=None, scene_desc=None):
         """Place the object named by `selector_desc` (the selector expression
         fitted from this task's example comparison — unique / largest / smallest)
-        at the destination named by `target_desc` (corner / constant / translation),
+        at the destination named by `target_desc` (corner / constant / translation
+        / on another object — the relational `to_anchor` target),
         on an output canvas whose shape is named by `out_shape_desc` (same /
         input+delta / constant — defaults to the input shape when absent). The fitted
         `scene_desc` fixes the fate of the *unselected* objects: ``"drop"`` (the
@@ -981,7 +989,10 @@ class PredictOperator(Operator):
         if out_h <= 0 or out_w <= 0:
             return None
 
-        dst = target_position(target_desc, (out_h, out_w), obj)
+        # Pass the full object list so the relational `to_anchor` target can name
+        # its anchor (another object) from G0 alone (P5); grid-relative and
+        # constant targets ignore it.
+        dst = target_position(target_desc, (out_h, out_w), obj, objs)
         if dst is None:
             return None
 

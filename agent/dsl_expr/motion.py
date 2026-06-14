@@ -27,6 +27,20 @@ Candidate expressions, tried most-structural first:
     (a pure translation; the delta is common to every pair).
   * ``constant``     — bbox top-left = a constant ``(r, c)`` (every pair's object
     lands at the same absolute position regardless of where it started).
+  * ``to_anchor``    — bbox top-left = the position of *another object* in the
+    same grid (the §2.5-1 *relational* target: the canonical gravity / attraction
+    / alignment pattern where the destination is named not by a grid corner or a
+    constant but by a second object). This is the first target expression whose
+    argument is itself a *selection over the other objects*, not a grid-level or
+    object-own-property reading. The minimal value-agnostic anchor is "the single
+    other object" — when the moved object is one of exactly two, the anchor is the
+    other, with no literal index. Tried LAST (after every grid-relative and
+    constant reading) so it only claims a task no simpler expression explains —
+    e.g. one where both the mover and the anchor sit at varying positions across
+    pairs, defeating ``bottom_right`` / ``offset`` / ``constant``. A future iter
+    lifts the anchor to a fitted *selector* over the other objects (§2.5-2b),
+    generalising past the exactly-two case; until then ``fit_target`` declines
+    when there is not exactly one other object on every pair.
 
 The output grid *shape* is a second, orthogonal argument expression (see
 ``fit_output_shape`` / ``output_shape`` below). In the size-preserving move family
@@ -50,10 +64,14 @@ def fit_target(motions):
 
     `motions` is a list of per-pair dicts, each::
 
-        {"src": (r, c), "dst": (r, c), "H": int, "W": int, "oh": int, "ow": int}
+        {"src": (r, c), "dst": (r, c), "H": int, "W": int, "oh": int, "ow": int,
+         "others": [(r, c), ...]}
 
     where ``src``/``dst`` are the input/output object bbox top-lefts, ``H``/``W``
-    the (size-preserved) grid dims, and ``oh``/``ow`` the object's bbox extent.
+    the (size-preserved) grid dims, ``oh``/``ow`` the object's bbox extent, and
+    ``others`` the bbox top-lefts of the *unselected* input objects (the anchor
+    candidates for the relational ``to_anchor`` reading; absent / empty for
+    single-object grids).
 
     Returns a descriptor dict naming *where the object goes* as an expression
     consistent across every pair, or ``None`` if no single expression fits (so
@@ -84,6 +102,17 @@ def fit_target(motions):
     if len(dsts) == 1:
         r, c = next(iter(dsts))
         return {"kind": "constant", "pos": [r, c]}
+
+    # to_anchor: the object lands on *another object*'s position — the relational
+    # target (§2.5-1). The minimal value-agnostic anchor is "the single other
+    # object": fits only when every pair has exactly one unselected object AND the
+    # moved object's destination equals that object's position. Tried LAST so it
+    # only claims a task no grid-relative or constant reading explains.
+    if all(
+        len(m.get("others") or []) == 1 and m["dst"] == m["others"][0]
+        for m in motions
+    ):
+        return {"kind": "to_anchor"}
 
     return None
 
@@ -192,10 +221,14 @@ def output_shape(descriptor, in_dims, obj=None, count=None):
     return None
 
 
-def target_position(descriptor, grid_dims, obj):
+def target_position(descriptor, grid_dims, obj, objects=None):
     """Resolve a target descriptor to a concrete bbox top-left ``(row, col)`` for
-    one grid + object. Inverse-paired with `fit_target`. Returns ``None`` for an
-    unknown descriptor so callers decline rather than crash."""
+    one grid + object. Inverse-paired with `fit_target`. The optional `objects` is
+    the full list of objects in the grid, needed only by the relational
+    ``to_anchor`` reading (whose destination is another object's position); absent
+    it, ``to_anchor`` declines. Returns ``None`` for an unknown descriptor — or for
+    ``to_anchor`` when the anchor is not uniquely determined — so callers decline
+    rather than crash."""
     if not descriptor:
         return None
     (r0, c0), (oh, ow) = obj_origin_extent(obj)
@@ -210,4 +243,15 @@ def target_position(descriptor, grid_dims, obj):
     if kind == "constant":
         r, c = descriptor["pos"]
         return (r, c)
+    if kind == "to_anchor":
+        if not objects:
+            return None
+        # The anchor is the single *other* object (identity-based, never ==), the
+        # value-agnostic minimal relation fitted by `fit_target`. Declines unless
+        # exactly one other object exists, mirroring the fit-side gate.
+        others = [o for o in objects if o is not obj]
+        if len(others) != 1:
+            return None
+        (ar, ac), _extent = obj_origin_extent(others[0])
+        return (ar, ac)
     return None

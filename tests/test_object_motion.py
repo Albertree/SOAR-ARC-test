@@ -89,6 +89,67 @@ def test_target_position_roundtrip():
     assert target_position({"kind": "constant", "pos": [0, 2]}, (3, 3), obj) == (0, 2)
 
 
+# --- relational target (to_anchor): the destination is another object's position --
+
+def test_fit_to_anchor():
+    # Both the mover and its single anchor sit at varying positions, so neither
+    # bottom_right, offset nor constant fits; the destination equals the anchor's
+    # position on every pair -> the relational `to_anchor` target (§2.5-1).
+    motions = [
+        {"src": (0, 0), "dst": (3, 4), "H": 6, "W": 6, "oh": 2, "ow": 2,
+         "others": [(3, 4)]},
+        {"src": (4, 4), "dst": (1, 1), "H": 6, "W": 6, "oh": 2, "ow": 2,
+         "others": [(1, 1)]},
+    ]
+    assert fit_target(motions) == {"kind": "to_anchor"}
+
+
+def test_fit_to_anchor_loses_to_simpler_readings():
+    # to_anchor is tried LAST: when a constant also fits (every dst the same and
+    # equal to the anchor), the more-structural reading wins, never to_anchor.
+    motions = [
+        {"src": (0, 0), "dst": (1, 1), "H": 6, "W": 6, "oh": 1, "ow": 1,
+         "others": [(1, 1)]},
+        {"src": (4, 4), "dst": (1, 1), "H": 6, "W": 6, "oh": 1, "ow": 1,
+         "others": [(1, 1)]},
+    ]
+    assert fit_target(motions) == {"kind": "constant", "pos": [1, 1]}
+
+
+def test_fit_to_anchor_declines_without_single_other():
+    # zero or multiple anchor candidates -> no value-agnostic single anchor, so it
+    # declines (a future iter lifts a fitted anchor selector past the two-object
+    # case); here every pair has two other objects.
+    motions = [
+        {"src": (0, 0), "dst": (3, 4), "H": 6, "W": 6, "oh": 2, "ow": 2,
+         "others": [(3, 4), (5, 5)]},
+        {"src": (4, 4), "dst": (1, 1), "H": 6, "W": 6, "oh": 2, "ow": 2,
+         "others": [(1, 1), (0, 0)]},
+    ]
+    assert fit_target(motions) is None
+
+
+def test_target_position_to_anchor():
+    # a 2x2 mover and one anchor pixel -> the destination is the anchor's top-left
+    grid = [[3, 3, 0, 0],
+            [3, 3, 0, 0],
+            [0, 0, 0, 4],
+            [0, 0, 0, 0]]
+    objs = objects_of(grid)
+    mover = max(objs, key=lambda o: o["size"])
+    assert target_position({"kind": "to_anchor"}, (4, 4), mover, objs) == (2, 3)
+    # declines without the object list (the fast path's input-only interface)...
+    assert target_position({"kind": "to_anchor"}, (4, 4), mover) is None
+    # ...and when the anchor is not uniquely determined (more than one other)
+    grid2 = [[3, 3, 0, 4],
+             [3, 3, 0, 0],
+             [0, 0, 0, 0],
+             [5, 0, 0, 0]]
+    objs2 = objects_of(grid2)
+    mover2 = max(objs2, key=lambda o: o["size"])
+    assert target_position({"kind": "to_anchor"}, (4, 4), mover2, objs2) is None
+
+
 # --- output-shape fitter ---------------------------------------------------
 
 def _s(in_dims, out_dims):
@@ -832,6 +893,38 @@ def test_one_rule_covers_the_whole_family(tmp_path):
     with open(os.path.join(pm, files[0])) as fh:
         entry = json.load(fh)
     assert set(entry["covers"]) == {"c", "d", "e", "g", "i"}
+    assert str(entry["action"]["args"]["target"]).startswith("?v")
+    assert entry["anti_unification_trace"]
+
+
+def test_pipeline_solves_to_anchor():
+    # the relational-target task solves end-to-end via an object_motion rule whose
+    # fitted target is the new `to_anchor` expression (§2.5-1). Loaded from the
+    # on-disk madeup task so the test and the probe exercise identical data.
+    spec = _load_madeup("mo_to_anchor.json")
+    rule = _check_solved(spec, "to_anchor").s1["active-rules"][0]
+    assert rule["action"]["args"]["target"] == {"kind": "to_anchor"}
+
+
+def test_to_anchor_converges_with_corner_family(tmp_path):
+    # the relational-target task carries a target (to_anchor) that DIVERGES from the
+    # corner family's (bottom_right); save_rule lifts that divergence to a ?v
+    # variable, converging both into ONE covers>1 rule with an au trace — the move
+    # family absorbs the relational target instead of spawning a detector (§2.5-3/4).
+    from agent.memory import save_rule
+
+    pm = str(tmp_path / "pm")
+    em = str(tmp_path / "em")
+    for spec, name in [(EASY_C, "c"),
+                       (_load_madeup("mo_to_anchor.json"), "to_anchor")]:
+        rule = _check_solved(spec, name).s1["active-rules"][0]
+        save_rule(rule, name, procedural_memory_root=pm, episodic_memory_root=em)
+
+    files = [f for f in os.listdir(pm) if f.startswith("rule_")]
+    assert len(files) == 1, "the relational target must fold into the move family"
+    with open(os.path.join(pm, files[0])) as fh:
+        entry = json.load(fh)
+    assert set(entry["covers"]) == {"c", "to_anchor"}
     assert str(entry["action"]["args"]["target"]).startswith("?v")
     assert entry["anti_unification_trace"]
 

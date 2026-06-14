@@ -1,0 +1,79 @@
+{
+  "_comment": "RELATIONAL target (BACKLOG_LOOP sec2.5-1, R1/R4 motion). Each pair holds a 2x2 mover (colour 3) and a single anchor pixel (colour 4) at varying positions; the mover relocates so its bbox top-left lands ON the anchor's position and the anchor is dropped (output = the mover alone). Authored to FAIL the prior target vocabulary: both the mover and the anchor sit at different places on every pair, so the destination is neither a grid corner (bottom_right), a constant translation (offset), nor a constant absolute position (constant) - the per-pair deltas and absolute dsts all differ. Only a target named relative to ANOTHER object (to_anchor) explains every pair. The mover is the size extreme (largest) so the existing selector vocabulary names which object moves; the new content is the relational TARGET. Solved the intended way it merges into the one value-agnostic object_motion rule (covers +1), no new detector and no new transformation primitive.",
+  "train": [
+    {
+      "input": [
+        [3, 3, 0, 0, 0, 0],
+        [3, 3, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 4, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ],
+      "output": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 3, 3],
+        [0, 0, 0, 0, 3, 3],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    },
+    {
+      "input": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 4, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 3, 3],
+        [0, 0, 0, 0, 3, 3]
+      ],
+      "output": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 3, 3, 0, 0, 0],
+        [0, 3, 3, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    },
+    {
+      "input": [
+        [0, 0, 0, 0, 3, 3],
+        [0, 0, 0, 0, 3, 3],
+        [0, 0, 0, 0, 0, 0],
+        [4, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ],
+      "output": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [3, 3, 0, 0, 0, 0],
+        [3, 3, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    }
+  ],
+  "test": [
+    {
+      "input": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 4, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [3, 3, 0, 0, 0, 0],
+        [3, 3, 0, 0, 0, 0]
+      ],
+      "output": [
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 3, 3, 0],
+        [0, 0, 0, 3, 3, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    }
+  ]
+}

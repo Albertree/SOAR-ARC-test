@@ -2077,3 +2077,136 @@ to half-build it rather than land broken scaffolding.
 
 ## Iter 21 [NEUTRAL] — 20260614_182406 — branch test33
 - Probe: [18:24:19] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 18:35
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_183528.log
+
+---
+## Learning Loop -- 2026-06-14 18:35
+
+- Split: None, Tasks: 13
+- Correct: 13 / 13 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 12
+- Time: 5s
+- Log: logs/learn_20260614_183531.log
+
+---
+## Learning Loop -- 2026-06-14 18:35
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_183536.log
+
+---
+## Learning Loop -- 2026-06-14 18:41
+
+- Split: None, Tasks: 14
+- Correct: 13 / 14 (92.9%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 12
+- Time: 5s
+- Log: logs/learn_20260614_184129.log
+
+---
+## Learning Loop -- 2026-06-14 18:42
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 13
+- Time: 5s
+- Log: logs/learn_20260614_184200.log
+
+---
+## Learning Loop -- 2026-06-14 18:42
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 13
+- Time: 5s
+- Log: logs/learn_20260614_184210.log
+
+---
+## Learning Loop -- 2026-06-14 18:42
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_184221.log
+
+---
+## Iter 22 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase, probe 0/3 (all `rule=identity`) — real ARC-AGI-2
+tasks need a multi-step synthesizer that is not a smallest step (iter 21's standing
+analysis). The smallest *defensible, non-duplicate* gap is iter 21's own flagged
+next frontier: every move-target the system can name (`bottom_right`, `offset`,
+`constant`) is a function of the grid or the object's own bbox — none is **relational**
+(destination = another object's position), yet the gravity / attraction / alignment
+pattern that needs exactly that is ubiquitous in real ARC. That gap is a single,
+general *argument-expression* extension (a new target kind), not a detector.
+
+**Change**:
+- `agent/dsl_expr/motion.py` — added the relational target expression `to_anchor`
+  to `fit_target` (tried LAST, after every grid-relative/constant reading, so zero
+  regression) and to `target_position` (new optional `objects` arg; resolves the
+  anchor as the single *other* object, identity-based, declines otherwise). Minimal
+  value-agnostic anchor = "the one other object"; a future iter lifts it to a fitted
+  anchor *selector* over the others (§2.5-2b). Module + fn docstrings updated.
+- `agent/active_operators.py` — `_object_motion` now records each pair's `others`
+  (the unselected objects' bbox top-lefts, from G0 alone, P5) into the motions dict
+  so `fit_target` can read the anchor; `_render_object_motion` passes the object
+  list into `target_position`. (+11 lines; F8 satisfied by the co-touch to
+  `agent/conditions/`.)
+- `agent/conditions/object_motion.py` — matcher docstring now lists the relational
+  `to_anchor` target alongside the corner/constant/translation readings.
+- `data/ARC_madeup/mo_to_anchor.json` (NEW, F1-exempt) — a 2x2 mover + one anchor
+  pixel, both at varying positions across 3 pairs, mover lands ON the anchor (drop
+  scene). Authored to **fail** the prior vocabulary: per-pair deltas and absolute
+  dsts all differ, the anchor is never at a corner, so only `to_anchor` fits.
+- `tests/test_object_motion.py` (+6) — fit/resolve unit tests (fit; loses to a
+  simpler constant; declines without a single other; resolve + declines without the
+  object list / with >1 other) and two pipeline tests (solves end-to-end with
+  target `to_anchor`; folds into the corner family via `save_rule` → one covers>1
+  rule with a `?v` target + au trace).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 13/13; rules 3, rule_002 covers
+17, P1=P2=7.333, P3=0.667. 124 tests.
+**Probe after** : easy_a 9/9, madeup **14/14** (mo_to_anchor CORRECT via
+object_motion, folded into rule_002 covers 17→18, **no new rule**, solved through
+the R5 stored fast path — the relational target re-resolves on the abstract rule).
+130 tests pass (124+6).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P1
++0.333 (7.333→7.667), P2 +0.333 (7.333→7.667)** via covers union (rule count flat
+— §2.5-4 litmus satisfied); P3/P4/P5 ±0; P6 −11 (active_operators grew by the
+anchor-plumbing, the unavoidable cost of a new argument that the fit/render path
+must carry — offset by all real logic living in `agent/dsl_expr/motion.py`). The
+new target grows the LHS argument vocabulary under `agent/`, where §2.5-1 requires
+it; no new `_try_*`, no new transformation primitive.
+
+**Next gap (note for future iter)**: the relational target is now the *minimal*
+two-object case — the anchor is hard-gated to "the single other object". The clear
+next lift is a fitted **anchor selector** over the others (`unique`/`largest`/a
+colour marker), so `to_anchor` survives a grid with 3+ objects and names *which* one
+is the anchor — exactly the §2.5-2b selection-lift, climbed on a madeup task with a
+distractor object. Beyond that, the standing frontier is unchanged: a general
+multi-step Slow-path synthesizer (modules F/G) for real ARC-AGI-2, and R4 (2nd-order
+edge ranking) which remains open-question-blocked.
+
+## Iter 22 [CLEAN] — 20260614_183528 — branch test33
+- Probe: [18:35:42] Correct:     0 / 3  (0.0%)
