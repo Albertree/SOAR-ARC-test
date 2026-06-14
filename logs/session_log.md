@@ -1,6 +1,82 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 59 — 2026-06-15 — branch test33 — NO-OP (5-family single-step frontier probe, all empty)
+
+**Diagnosis**: After iter 58's `periodic_fill` fold, the next-gap note nominated
+two add-only sub-families (ray/line extension, dihedral-OR overlay) and, longer-
+running (iters 53–57), object-correspondence for the recolor cluster. I tested
+the single-step levers directly with five fresh **read-only** scans over all 1000
+training tasks (`synthesize_task`-gated to skip the 123 already-solved, strict
+**full-output** reproduction — background unchanged, not just object cells). The
+gap question for this iter: is there *any* clean single-step schema that folds
+**≥2** currently-failing tasks (the only non-trap, covers-raising direction,
+§2.5-3/4)? Answer: **no** — every probed family came back empty.
+
+**What I did (no code committed)** — five strict probes, each a value-agnostic
+single-step transform on the same-dims failure set (626 tasks; 223 of them
+add-only 0→colour):
+
+1. **ray/cross extension** (every non-bg cell extends to its full row/col in its
+   own colour; cross / h-only / v-only): **0 / 0 / 0**.
+2. **recolor_objects new property** (bbox `width` / `height` / `dims` / enclosed-
+   `holes` count, the iter-49 `rank`-style lever): loose object-cell-only match
+   suggested 15–28 hits, but under **strict full-grid reproduction all collapsed
+   to 0** — the loose hits all silently changed background. (Lesson logged: an
+   object-cell-only fit over-counts; the real `_fit_recolor_objects` gate is
+   `_reproduces`, and nothing in the failing set passes it.) This is first-class
+   evidence the recolor cluster is **not** a property→colour map — it needs
+   input↔output *object correspondence*, confirming iters 53–57.
+3. **dihedral overlay / union (symmetrize)** — output = input unioned with its
+   own mirror/rotation images, conflict-gated; all 1–3-combos of {h,v,rot180,
+   transpose,anti}: **0**. (Distinct from `symfill`, which is consistency-gated;
+   the additive variant folds nothing.)
+4. **keep/erase objects by selector** (largest / smallest / not-singleton /
+   unique-largest / majority-colour, keep-or-erase mode) — the §2.5-2b selection
+   lever: **0** in the *same-dims* set (the real keep-largest family crops the
+   grid → smaller-out, excluded here; in-place erase folds nothing).
+5. **per-object bbox fill / outline** add-only: **0 / 0**.
+
+Harness sanity-checked (object detection + keep-largest reproduction fire on a
+synthetic two-object grid), so the across-the-board zeros are **genuine
+saturation, not a broken probe**.
+
+**Why no commit**: this iter's first-class data *confirms* the iters 53–57
+frontier diagnosis with five independent negatives: the single-step clean-family
+frontier is saturated. The only nameable remaining lever — **object-
+correspondence** (match each input object/region to its output change: the shared
+precondition for the 29 recolor + the add-only same-dims residue) — is a *large,
+multi-iter LHS mechanism*, not a smallest-defensible single commit, and a
+half-built correspondence selector that folds 0 tasks this iter would move no
+positive signal (NEUTRAL) while risking the documented spinning failure.
+Manufacturing a covers-1 const-leaf schema to "have committed" is the mean-
+dilution trap (§2.5-4) — worse than a no-op. Not converged either: object-
+correspondence is a real unfilled gap, so `_LOOP_COMPLETE` is **not** warranted.
+
+**Probe before/after**: training probe 0/3 unchanged (hard multi-step); rules=21
+flat; P1/P2=6.714, P3=0.952, P4=932, P5=4, P6=1433 — all unchanged; easy_a 9/9 +
+madeup 27/27 hold (regression guards green). No code touched ⇒ iter-58's 277
+tests stand. (The only working-tree rule deltas are benign `times_reused`
+counter bumps from the loop's own regression-guard runs — no covers/new-rule
+accretion; left as-is.)
+
+**Invariants**: forbidden=none (check_invariants verdict **NEUTRAL**);
+positives=**none moved** (deliberate, evidence-backed no-op).
+
+**Next gap (note for future iter)**: the single-step frontier is now *probed
+exhausted* across 5 families — stop re-scanning them. The one remaining lever is
+**object-correspondence**: an LHS/util mechanism (lives in `agent/`, not `DSL/`)
+that, from the train pairs, learns a value-agnostic pairing of input objects to
+output changes (recolour / move / per-object edit). Smallest first slice worth a
+commit: a `correspondence` selector that matches input→output objects by
+**same-shape + nearest-position** within a same-dims pair, then exposes the
+*relational* recolour key (e.g. "each object → the colour of its unique
+neighbour") to a new schema — but only land it in an iter where that slice
+demonstrably folds **≥2** real tasks (else it is NEUTRAL infra, defer). The
+alternative higher-yield lever remains widening the **compose** stage-1
+reductions (iter 46 netted +10) rather than a 20th single-step family.
+
+---
 ## Iter 58 — 2026-06-15 — branch test33 — Schema 19 `periodic_fill` (R3, covers=3 AU lift)
 
 **Diagnosis**: The last 5 iters (53–57) all no-op'd, concluding the single-step
@@ -6503,3 +6579,36 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 58 [CLEAN] — 20260615_041130 — branch test33
 - Probe: [04:11:50] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 04:50
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_045013.log
+
+---
+## Learning Loop -- 2026-06-15 04:50
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_045016.log
+
+---
+## Learning Loop -- 2026-06-15 04:50
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_045027.log
+
+## Iter 59 [NEUTRAL] — 20260615_045013 — branch test33
+- Probe: [04:50:33] Correct:     0 / 3  (0.0%)
