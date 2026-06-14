@@ -4838,3 +4838,6 @@ and (b) **object-level recolor-by-property** — recolor each object by a fitted
 size/shape→colour map folds ~10-15 on *train* but only ~4 transfer to held-out
 test (the lookup doesn't generalise to unseen keys), so it needs a property the
 test objects are guaranteed to share, not a raw size table.
+
+## Iter 43 [CLEAN] — 20260614_230108 — branch test33
+- Probe: [23:01:28] Correct:     0 / 3  (0.0%)
