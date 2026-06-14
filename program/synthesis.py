@@ -681,6 +681,55 @@ def run_program(program, input_grid):
                   if pred(A[r][c] != bg, B[r][c] != bg)]
             if on:
                 cur = apply_DSL("coloring", cur, selection=on, color=color)
+        elif kind == "connect":
+            # Connect the dots: for each colour, every two same-colour markers that
+            # are aligned in a row or column get the background gap between them
+            # filled in — drawing the straight segment that joins them. The carried
+            # spec is the line colour: ``"same"`` paints the segment in each pair's
+            # OWN marker colour (the colour read from the markers, never a literal —
+            # value-agnostic), or a fixed colour int paints every segment that one
+            # colour. Composes ONLY the frozen ``coloring`` primitive (``cur`` is
+            # already a copy of the input; each gap cell is painted), so it adds no
+            # transformation vocabulary (§2.5-1, F3-safe). Marker positions and the
+            # "is this cell a background gap" test are read from the FIXED input
+            # (``env``), never the running canvas, so a segment never cascades off a
+            # freshly-drawn cell and the program transfers unchanged to the test
+            # input (P5). The reason (P3/P4) is a COMM result: two markers of the
+            # same colour sharing a row/column are joined. Carried as ONE ``const``
+            # leaf, an own-colour task and a fixed-colour task share the SAME
+            # one-step skeleton ``[("connect", ("const", ?v))]`` and lift via
+            # ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise together).
+            _, spec_expr = step
+            spec = _eval(spec_expr, env)
+            grid = env["grid"]
+            bg = env["bg"]
+            H = len(grid)
+            W = len(grid[0]) if grid else 0
+            by_color = {}
+            for r in range(H):
+                for c in range(W):
+                    v = grid[r][c]
+                    if v != bg:
+                        by_color.setdefault(v, []).append((r, c))
+            for col, cells in by_color.items():
+                line = col if spec == "same" else spec
+                for i in range(len(cells)):
+                    r1, c1 = cells[i]
+                    for j in range(i + 1, len(cells)):
+                        r2, c2 = cells[j]
+                        if r1 == r2:
+                            seg = [(r1, c) for c in range(min(c1, c2) + 1,
+                                                          max(c1, c2))
+                                   if grid[r1][c] == bg]
+                        elif c1 == c2:
+                            seg = [(r, c1) for r in range(min(r1, r2) + 1,
+                                                          max(r1, r2))
+                                   if grid[r][c1] == bg]
+                        else:
+                            continue
+                        if seg:
+                            cur = apply_DSL(
+                                "coloring", cur, selection=seg, color=line)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -871,6 +920,23 @@ def _candidate_programs(pairs):
     boolcombine = _fit_boolcombine(pairs)
     if boolcombine is not None:
         yield boolcombine
+
+    # --- Schema 11: connect the dots --------------------------------------
+    # Same-dims output that is the input with aligned same-colour marker pairs
+    # joined by straight segments — the recurring ARC "connect the dots / draw the
+    # lines between matching cells" family (070dd51e, 22168020, ded97339; and the
+    # fixed-line-colour variants dbc1a6ce, aa18de87). The reason — P3/P4 — is the
+    # COMM "two markers of the same colour sharing a row/column are joined".
+    # ``_fit_connect`` resolves the shared line-colour spec (``"same"`` = the
+    # marker's own colour, or a fixed colour) directly and declines when none
+    # reproduces every pair. Being a pure ``[("connect", ("const", ?v))]``
+    # skeleton, an own-colour task and a fixed-colour task lift via ``unify()``
+    # into one ``covers>1`` rule (R3 — P1·P2·P3 rise together). Yielded last so a
+    # simpler same-dims schema (identity, colour-map, symfill) wins when a task
+    # somehow fits both.
+    connect = _fit_connect(pairs)
+    if connect is not None:
+        yield connect
 
 
 def _is_fractal_dims(pairs):
@@ -1087,6 +1153,85 @@ def _fit_boolcombine(pairs):
             return None
     axis, op, color = sorted(inter)[0]
     return [("boolcombine", ("const", (axis, op, color)))]
+
+
+def _connect_grid(grid, bg, spec):
+    """Return a fresh grid: ``grid`` with every aligned same-colour marker pair
+    joined by filling the background gap between them, in line colour ``spec``
+    (``"same"`` = each pair's own marker colour, else a fixed colour int). Reads
+    marker positions and the gap test from ``grid`` (the fixed input), so the fill
+    is order-independent and value-agnostic."""
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+    out = [row[:] for row in grid]
+    by_color = {}
+    for r in range(H):
+        for c in range(W):
+            v = grid[r][c]
+            if v != bg:
+                by_color.setdefault(v, []).append((r, c))
+    for col, cells in by_color.items():
+        line = col if spec == "same" else spec
+        for i in range(len(cells)):
+            r1, c1 = cells[i]
+            for j in range(i + 1, len(cells)):
+                r2, c2 = cells[j]
+                if r1 == r2:
+                    for c in range(min(c1, c2) + 1, max(c1, c2)):
+                        if grid[r1][c] == bg:
+                            out[r1][c] = line
+                elif c1 == c2:
+                    for r in range(min(r1, r2) + 1, max(r1, r2)):
+                        if grid[r][c1] == bg:
+                            out[r][c1] = line
+    return out
+
+
+def _fit_connect(pairs):
+    """Return a one-step ``connect`` program if every pair's output is the input
+    with aligned same-colour marker pairs joined by straight segments, painted in
+    one shared line-colour spec, else ``None``.
+
+    Each pair must be same-dims. The candidate specs are ``"same"`` (segment in the
+    pair's own marker colour) and each fixed colour 0–9; the task spec is the
+    *intersection* across pairs of the specs that reproduce that output exactly. A
+    spec is accepted only if it actually changes at least one input (an all-no-op
+    connect is the identity schema, already yielded). Carried as ONE ``const`` leaf
+    so an own-colour task and a fixed-colour task lift via ``unify()`` into one
+    ``covers>1`` rule (§2.5-3). ``"same"`` is preferred when several specs fit (the
+    most value-agnostic), then the smallest fixed colour."""
+    candidates = ["same"] + list(range(10))
+    inter = None
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout):
+            return None
+        if gin and (len(gin[0]) != len(gout[0])):
+            return None
+        bg = background_of(gin)
+        local = set()
+        for spec in candidates:
+            if _connect_grid(gin, bg, spec) == gout:
+                local.add(spec)
+        inter = local if inter is None else (inter & local)
+        if not inter:
+            return None
+    # Require the fit to actually draw something on at least one pair.
+    changed = False
+    for p in pairs:
+        gin = p["input"]
+        bg = background_of(gin)
+        if any(_connect_grid(gin, bg, s) != gin for s in inter):
+            changed = True
+            break
+    if not changed:
+        return None
+
+    def _rank(s):
+        return (0, -1) if s == "same" else (1, s)
+
+    spec = sorted(inter, key=_rank)[0]
+    return [("connect", ("const", spec))]
 
 
 def synthesize_task(pairs):

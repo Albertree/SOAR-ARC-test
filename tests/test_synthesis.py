@@ -599,3 +599,85 @@ def test_boolcombine_tasks_share_one_skeleton():
     assert and_v[0][0] == "boolcombine" and or_h[0][0] == "boolcombine"
     assert and_v[0][1] != or_h[0][1]  # different triples
     assert _program_skeleton(and_v) == _program_skeleton(or_h)
+
+
+def test_connect_same_colour_markers_in_own_colour():
+    # Two markers of the same colour aligned in a row/column are joined by filling
+    # the background gap between them, in the marker's OWN colour. Composes only
+    # `coloring`, and the program transfers to a held-out input.
+    pairs = [
+        {"input":  [[0, 0, 0, 0, 0],
+                    [3, 0, 0, 0, 3],
+                    [0, 0, 0, 0, 0]],
+         "output": [[0, 0, 0, 0, 0],
+                    [3, 3, 3, 3, 3],
+                    [0, 0, 0, 0, 0]]},
+        {"input":  [[2, 0, 0],
+                    [0, 0, 0],
+                    [2, 0, 0]],
+         "output": [[2, 0, 0],
+                    [2, 0, 0],
+                    [2, 0, 0]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "connect"
+    assert prog[0][1] == ("const", "same")
+    held = [[0, 0, 0, 0],
+            [4, 0, 0, 4],
+            [0, 0, 0, 0]]
+    assert run_program(prog, held) == [[0, 0, 0, 0],
+                                       [4, 4, 4, 4],
+                                       [0, 0, 0, 0]]
+
+
+def test_connect_fixed_line_colour():
+    # The joining segment is painted in a FIXED colour (here 5) distinct from the
+    # markers' colour — the line-colour spec is the per-task const leaf. The
+    # second row's background stays 0, so this is NOT a global recolour (only the
+    # gap between aligned markers is filled).
+    pairs = [
+        {"input":  [[3, 0, 0, 0, 3],
+                    [0, 0, 0, 0, 0]],
+         "output": [[3, 5, 5, 5, 3],
+                    [0, 0, 0, 0, 0]]},
+        {"input":  [[8, 0, 0, 8],
+                    [0, 0, 0, 0]],
+         "output": [[8, 5, 5, 8],
+                    [0, 0, 0, 0]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "connect"
+    assert prog[0][1] == ("const", 5)
+
+
+def test_connect_declines_when_no_alignment():
+    # Markers that share neither a row nor a column have nothing to join, so the
+    # connect schema must not fabricate a segment (honest miss / identity).
+    pairs = [
+        {"input":  [[3, 0, 0], [0, 0, 0], [0, 0, 2]],
+         "output": [[3, 0, 0], [0, 0, 0], [0, 0, 2]]},
+    ]
+    prog = synthesize_task(pairs)
+    if prog:
+        assert prog[0][0] != "connect"
+
+
+def test_connect_tasks_share_one_skeleton():
+    # An own-colour connect and a fixed-colour connect produce the SAME one-step
+    # skeleton (only the const line-colour leaf differs), so save_rule lifts them
+    # into ONE covers>1 rule rather than two families (R3).
+    from agent.memory import _program_skeleton
+    same = synthesize_task([
+        {"input":  [[3, 0, 0, 3]], "output": [[3, 3, 3, 3]]},
+        {"input":  [[2, 0, 2]],    "output": [[2, 2, 2]]},
+    ])
+    fixed = synthesize_task([
+        {"input":  [[3, 0, 0, 0, 3], [0, 0, 0, 0, 0]],
+         "output": [[3, 5, 5, 5, 3], [0, 0, 0, 0, 0]]},
+        {"input":  [[8, 0, 0, 8], [0, 0, 0, 0]],
+         "output": [[8, 5, 5, 8], [0, 0, 0, 0]]},
+    ])
+    assert same is not None and fixed is not None
+    assert same[0][0] == "connect" and fixed[0][0] == "connect"
+    assert same[0][1] != fixed[0][1]  # different line-colour leaves
+    assert _program_skeleton(same) == _program_skeleton(fixed)

@@ -4584,3 +4584,125 @@ source cell to a target marker) is the smallest defensible next sub-step there.
 
 ## Iter 41 [CLEAN] — 20260614_223226 — branch test33
 - Probe: [22:32:46] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 22:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_224724.log
+
+---
+## Learning Loop -- 2026-06-14 22:47
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_224727.log
+
+---
+## Learning Loop -- 2026-06-14 22:47
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_224737.log
+
+---
+## Learning Loop -- 2026-06-14 22:58
+
+- Split: None, Tasks: 6
+- Correct: 6 / 6 (100.0%)
+- Rules: 11 -> 12 (+1 learned)
+- Stored rule hits: 1
+- Time: 12s
+- Log: logs/learn_20260614_225805.log
+
+---
+## Learning Loop -- 2026-06-14 22:58
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 12 -> 12 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_225831.log
+
+---
+## Learning Loop -- 2026-06-14 22:58
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 12 -> 12 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_225835.log
+
+## Iter 42 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase, synthesizer frontier. I first measured the
+single-schema frontier exhaustively against all 1000 training tasks (throwaway
+scripts, removed): the current synthesizer solves 67; among the 933 misses the
+*clean* structural families left are all small — crop-content 1, crop-largest 3,
+gravity 2, fill-holes 2, pick-unique-panel 2, overlay 1, N-panel combine 0-new.
+The one untaken family with real spread is **connect-the-dots** (join aligned
+same-colour markers with straight segments): 6 training tasks, all transferring
+to held-out test, with *divergent* line-colour leaves ("same"/2/3/8) that lift
+via AU into one rule — the §2.5-3 target. boolcombine's 20 was the last big
+clean family; the frontier has thinned, so the next real prize is composition /
+object-selection, not more single schemas (noted below).
+
+**Change**:
+- `program/synthesis.py` — new **Schema 11 `connect`**. `_connect_grid` (join
+  every aligned same-colour marker pair by filling the background gap between
+  them, in line colour = each pair's OWN marker colour ("same") or a fixed
+  colour), a `connect` step in `run_program` composing ONLY `coloring` (marker
+  positions + gap test read from the FIXED input — no canvas cascade, P5), and
+  `_fit_connect` which fits the shared line-colour spec by intersecting
+  reproducing specs across pairs (line colour read from the comparison, never a
+  bare literal). Carried as ONE const leaf so the skeleton is
+  `[("connect", ("const", ?v))]` — divergent specs lift via `unify()` into one
+  covers>1 rule (R3). Yielded last. No new transformation primitive (F3-safe),
+  no `_try_*` (F2-safe).
+- `procedural_memory/rule_012.json` — the learned rule: ran the learner over the
+  6 connect tasks (22168020, 22eb0ac0, 253bf280, aa18de87, dbc1a6ce, ded97339);
+  all 6 folded into ONE rule (covers=6), program lifted to
+  `[["connect",["const","?v"]]]` with an `anti_unification_trace`. 5 discovered +
+  1 stored-hit, merged — 6 task-specific fits → one argument-parameterised rule,
+  not 6 detectors (§2.5-3).
+- `tests/test_synthesis.py` — 4 connect tests (own-colour with held-out
+  transfer, fixed line colour, declines when no alignment, two divergent tasks
+  share one skeleton). 223 pass.
+
+**Probe before**: training 0/3 (sample); easy_a 9/9, madeup 27/27; 11 rules;
+synthesizer solves 67/1000; P1=8.545, P2=8.545, P3=0.909.
+**Probe after** : connect slice 6/6 (held-out test transfers); easy_a 9/9,
+madeup 27/27; 12 rules (rule_012 covers=6); synthesizer solves 73/1000;
+P1 8.545→8.333, P2 8.545→8.333, P3 0.909→**0.917**.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P3
++0.0076** (au-traced fraction up); P1/P2 dipped −0.21 — the *averaging artifact*
+documented in memory (psignal_saturation_arithmetic / the test33 instrumentation
+trap): a new family whose covers (6) is below the current mean (8.5) lowers the
+mean even as **absolute coverage rose +6 tasks** and rule count rose +1 together
+(the §2.5-4 litmus's real intent — coverage up with rule count, not detector
+accretion — is met; the mean-based P1/P2 just can't see absolute growth once the
+mean is high). P5/P6 unchanged (generic `synthesized_program` matcher; data +
+composition only, no operator-line growth).
+
+**Next gap (note for future iter)**: the *single-schema* structural frontier is
+largely picked clean — the best untaken clean family now folds ~6 tasks (vs
+boolcombine's 20). The two real frontiers left are (a) **multi-step composition**
+(the synthesizer searches one schema per program; many of the 665 same-dims
+misses are "do X then Y" — e.g. dihedral-then-recolor, crop-then-tile), and (b)
+**object-level selection** (crop/keep/move keyed on *which* object by a
+comparison-grounded selector — the R1/§2.5-2b selection-lift). Composition is the
+larger prize but combinatorially riskier; the smallest defensible start is a
+bounded 2-step search reusing the existing fitters.

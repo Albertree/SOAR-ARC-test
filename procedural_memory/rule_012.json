@@ -1,0 +1,81 @@
+{
+  "id": 12,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "connect",
+            [
+              "const",
+              "?v1"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "connect",
+            [
+              "const",
+              "?v2"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "22168020",
+    "22eb0ac0",
+    "253bf280",
+    "aa18de87",
+    "dbc1a6ce",
+    "ded97339"
+  ],
+  "source_task": "22168020",
+  "created_at": "2026-06-14T22:58:06.986804",
+  "times_reused": 1,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "connect",
+          [
+            "const",
+            "?v1"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "connect",
+          [
+            "const",
+            "?v2"
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/253bf280/anti_unification/au_001.json"
+}
