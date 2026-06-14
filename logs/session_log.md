@@ -4221,3 +4221,6 @@ probe's real misses (c9680e90/e5790162) add *obstacles/stacking* (an object stop
 on another) and *rays* (objects grow), neither of which is a rigid translation —
 those need a per-object stop-condition or a growth target, the next structural
 steps.
+
+## Iter 38 [CLEAN] — 20260614_215747 — branch test33
+- Probe: [21:58:06] Correct:     0 / 3  (0.0%)
