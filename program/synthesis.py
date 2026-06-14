@@ -76,6 +76,28 @@ _DIHEDRAL = {
 
 
 # ======================================================================
+# Fractal self-tile conditions (the per-macro-cell selector)
+# ======================================================================
+#
+# A "fractal" output is the input *self-tiled*: an ``ih × iw`` macro grid whose
+# macro-cell ``(R, C)`` is either a full copy of the input or a blank
+# (background) block, decided by a predicate on the input cell ``(R, C)``. The
+# transform composes only the two frozen primitives (``make_grid`` + per-cell
+# ``coloring``) — it is the §2.5-2b case where the AU "hole" is filled by a
+# *selector grounded in the comparison*: which macro-cells get a copy is named by
+# a condition on the cell value vs the background, not by a literal coordinate
+# list. The condition vocabulary is a small *searched* family (cell ≠ bg / cell ==
+# bg), so adding it grows the recognition (selection) vocabulary, not the frozen
+# transformation set (F3-safe; this lives in ``program/``/``agent/``, not
+# ``DSL/``). ``synthesize_task`` keeps the first condition whose program
+# reproduces every pair, exactly as it picks a dihedral map.
+_FRACTAL_CONDS = {
+    "nonbg": lambda v, bg: v != bg,
+    "isbg":  lambda v, bg: v == bg,
+}
+
+
+# ======================================================================
 # Expression evaluation
 # ======================================================================
 #
@@ -270,6 +292,40 @@ def run_program(program, input_grid):
                     block = [(r * rh + dr, c * rw + dc)
                              for dr in range(rh) for dc in range(rw)]
                     cur = apply_DSL("coloring", cur, selection=block, color=v)
+        elif kind == "fractal":
+            # Fractal self-tile: the output is an ``ih × iw`` macro grid of
+            # ``ih × iw`` tiles, where macro-cell ``(R, C)`` is a full copy of the
+            # input iff the input cell ``(R, C)`` satisfies the carried condition,
+            # else a blank (background) block. Like ``dihedral``/``scale`` it
+            # composes ONLY the two frozen primitives — it makes the ``ih² × iw²``
+            # canvas (``make_grid``) and paints each selected tile cell in its
+            # own input colour (``coloring``). The transform is value-agnostic in
+            # the *tile* (the copy never recolours) and selects macro-cells by a
+            # predicate on the input value vs background (§2.5-2b: the variable —
+            # which cells get a copy — is filled by a selector grounded in the
+            # cell↔background comparison, not a literal). Reads the fixed input
+            # (``env``) throughout, so it transfers unchanged to the test input
+            # (P5).
+            _, cond_expr = step
+            cond_name = _eval(cond_expr, env)
+            pred = _FRACTAL_CONDS.get(cond_name)
+            if pred is None:
+                raise _Unevaluable(f"unknown fractal condition: {cond_name!r}")
+            grid = env["grid"]
+            bg = env["bg"]
+            ih = len(grid)
+            iw = len(grid[0]) if grid else 0
+            cur = apply_DSL("make_grid", height=ih * ih, width=iw * iw, color=bg)
+            for R in range(ih):
+                for C in range(iw):
+                    if not pred(grid[R][C], bg):
+                        continue
+                    for r in range(ih):
+                        for c in range(iw):
+                            cur = apply_DSL(
+                                "coloring", cur,
+                                selection=(R * ih + r, C * iw + c),
+                                color=grid[r][c])
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -394,6 +450,36 @@ def _candidate_programs(pairs):
     sc = _fit_scale(pairs)
     if sc is not None:
         yield [("scale", ("const", sc[0]), ("const", sc[1]))]
+
+    # --- Schema 7: fractal self-tile ---------------------------------------
+    # When every pair's output dims are exactly ``(ih², iw²)``, the output may be
+    # the input self-tiled: a macro grid of input-copies gated by a per-cell
+    # condition (007bbfb7 / 5b6cbef5 — copy where the cell is non-background).
+    # Yield one candidate per condition in the searched vocabulary;
+    # ``synthesize_task`` keeps the first whose program reproduces every pair (the
+    # same select-by-search discipline as the dihedral maps). Being a pure
+    # ``[("fractal", ("const", ?v))]`` skeleton, two fractal tasks with divergent
+    # conditions lift via ``unify()`` into one ``covers>1`` rule (R3).
+    if _is_fractal_dims(pairs):
+        for name in _FRACTAL_CONDS:
+            yield [("fractal", ("const", name))]
+
+
+def _is_fractal_dims(pairs):
+    """True iff every pair's output dims are exactly ``(ih·ih, iw·iw)`` — the
+    self-tile shape the fractal schema expresses. A cheap structural gate so the
+    fractal candidates are only offered when they can possibly fit."""
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        ih = len(gin)
+        iw = len(gin[0]) if gin else 0
+        if ih == 0 or iw == 0:
+            return False
+        oh = len(gout)
+        ow = len(gout[0]) if gout else 0
+        if oh != ih * ih or ow != iw * iw:
+            return False
+    return True
 
 
 def _fit_scale(pairs):

@@ -231,6 +231,65 @@ def test_scale_declines_on_non_integer_multiple():
         assert prog[0][0] != "scale"
 
 
+def test_fractal_self_tile_discovered_by_search():
+    # Output is the input self-tiled: an ih×iw macro grid whose macro-cell (R,C)
+    # is a copy of the input iff the cell is non-background, else a blank block.
+    # The selector ("which macro-cells get a copy") is found by search, not
+    # hand-coded — the §2.5-2b "fill the variable by a grounded selector" case.
+    pairs = [
+        {"input": [[0, 1], [1, 0]],
+         "output": [[0, 0, 0, 1],
+                    [0, 0, 1, 0],
+                    [0, 1, 0, 0],
+                    [1, 0, 0, 0]]},
+        {"input": [[2, 0], [2, 2]],
+         "output": [[2, 0, 0, 0],
+                    [2, 2, 0, 0],
+                    [2, 0, 2, 0],
+                    [2, 2, 2, 2]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None
+    assert prog[0][0] == "fractal"
+    assert prog[0][1] == ("const", "nonbg")
+    # transfers unchanged to a held-out input of a different size (P5)
+    assert run_program(prog, [[5]]) == [[5]]
+    assert run_program(prog, [[0, 0], [0, 0]]) == [[0, 0, 0, 0]] * 4
+
+
+def test_fractal_declines_on_non_square_macro():
+    # Output dims that are not exactly (ih², iw²) must not be read as a fractal.
+    pairs = [
+        {"input": [[1, 2]], "output": [[1, 1, 2, 2], [1, 1, 2, 2]]},  # this is a scale
+    ]
+    prog = synthesize_task(pairs)
+    if prog is not None:
+        assert prog[0][0] != "fractal"
+
+
+def test_fractal_conditions_share_one_skeleton():
+    # Two fractal tasks with divergent conditions (copy-where-nonbg vs
+    # copy-where-bg) produce the SAME program skeleton (only the condition leaf
+    # differs), so save_rule lifts them into ONE covers>1 rule rather than two
+    # families. (≥2 distinct pairs each so the constant-output schema declines.)
+    from agent.memory import _program_skeleton
+    nonbg = synthesize_task([
+        {"input": [[0, 1], [1, 0]],
+         "output": [[0, 0, 0, 1], [0, 0, 1, 0], [0, 1, 0, 0], [1, 0, 0, 0]]},
+        {"input": [[1, 0], [0, 1]],
+         "output": [[1, 0, 0, 0], [0, 1, 0, 0], [0, 0, 1, 0], [0, 0, 0, 1]]},
+    ])
+    isbg = synthesize_task([
+        {"input": [[0, 1], [1, 1]],
+         "output": [[0, 1, 0, 0], [1, 1, 0, 0], [0, 0, 0, 0], [0, 0, 0, 0]]},
+        {"input": [[1, 1], [1, 0]],
+         "output": [[0, 0, 0, 0], [0, 0, 0, 0], [0, 0, 1, 1], [0, 0, 1, 0]]},
+    ])
+    assert nonbg is not None and isbg is not None
+    assert nonbg[0][1] != isbg[0][1]  # different condition leaves
+    assert _program_skeleton(nonbg) == _program_skeleton(isbg)
+
+
 def test_scale_factors_share_one_skeleton():
     # The unification payoff: a 2x and a 3x scale must produce the SAME program
     # skeleton (factors are the only divergent leaves), so save_rule lifts them

@@ -3338,3 +3338,124 @@ machinery, a genuine new capability rather than another whole-grid coordinate ma
 
 ## Iter 31 [CLEAN] — 20260614_203328 — branch test33
 - Probe: [20:33:46] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 20:41
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_204107.log
+
+---
+## Learning Loop -- 2026-06-14 20:41
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_204111.log
+
+---
+## Learning Loop -- 2026-06-14 20:41
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_204120.log
+
+---
+## Learning Loop -- 2026-06-14 20:45
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 7 -> 8 (+1 learned)
+- Stored rule hits: 1
+- Time: 4s
+- Log: logs/learn_20260614_204513.log
+
+---
+## Learning Loop -- 2026-06-14 20:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_204749.log
+
+---
+## Learning Loop -- 2026-06-14 20:48
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 8 -> 8 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_204753.log
+
+## Iter 32 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; probe 0/3 (c9680e90/878187ab/e5790162 are
+conditional same-size transforms needing R4 machinery — not a smallest step).
+Following iter-31's "next gap" note, the fractal / conditional self-tile family is
+the next general capability: output is an `ih×iw` macro grid of `ih×iw` tiles where
+macro-cell (R,C) is a copy of the input iff the input cell satisfies a condition.
+A scan of all 1000 training tasks found **exactly two** pure fractal self-tiles
+sharing one skeleton (`007bbfb7` 3×3→9×9, `5b6cbef5` 4×4→16×16, both "copy where
+non-background") — a textbook R3/R5 generalization target the synthesizer could not
+express (the §2.5-2b "fill the AU hole with a selector grounded in the
+cell↔background comparison" case).
+
+**Change**:
+- `program/synthesis.py` — added a `fractal` step to `run_program` (makes the
+  `ih²×iw²` canvas via `make_grid`, then for each macro-cell whose input cell
+  satisfies a searched condition paints a full copy of the input via per-cell
+  `coloring` — a value-agnostic composition of ONLY the two frozen primitives,
+  F3-safe, same discipline as `dihedral`/`scale`). Added a `_FRACTAL_CONDS`
+  searched condition vocabulary (`nonbg` / `isbg` — cell vs background; a
+  *selection/recognition* predicate, not a transformation, so it lives in
+  `program/`, not `DSL/`). Added Schema 7 + `_is_fractal_dims(pairs)` gate: yields
+  one candidate per condition; `synthesize_task` keeps the first that reproduces
+  every pair (same select-by-search as the dihedral maps). Its
+  `[("fractal", ("const", ?v))]` skeleton lets two fractal tasks with divergent
+  conditions lift via `unify()` into one covers>1 rule.
+- `procedural_memory/rule_008.json` (new) — learned from `007bbfb7`; `5b6cbef5`
+  then **reused it via the stored fast path** (R5 — a structurally different grid
+  size, 4×4 vs 3×3, same general rule) and was folded into `covers=2`. Identical
+  programs → plain covers-merge, null `anti_unification_trace` (same sanctioned
+  path as rule_001's constant-output merge — trace is required only when AU
+  actually lifts divergent leaves). All 3 example+test inputs of both tasks solve.
+- `tests/test_synthesis.py` — +3 fractal tests (self-tile discovery + held-out
+  transfer, declines on non-square macro dims, two conditions share one skeleton).
+  180 pass.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 23/23; 7 rules, P1=P2=5.429,
+P3=0.857.
+**Probe after** : easy_a 9/9, madeup 23/23 (guards unchanged); 8 rules; new
+rule_008 covers=2 (2 real ARC-AGI-2 fractal tasks now solve via ONE general rule,
+the 2nd via stored-rule reuse). P1/P2 5.429→5.0, P3 0.857→0.75.
+
+**Invariants**: forbidden=none (check_invariants exit 2, no F-hit). positives=
+NEUTRAL — the documented saturation/blindspot artifact (memory:
+psignal_saturation_arithmetic, reuse_signal_blindspot): a covers=2 rule lowers the
+*mean* covers against high-covers incumbents (rule_002=20), and P3 dips because an
+identical-program merge legitimately carries no AU trace. No P-signal measures the
+real wins here — absolute training-solved +2 with only +1 rule (the efficient
+direction §2.5-4) and R5 reuse firing across a structurally different task. No new
+`_try_*`/`_apply_*`; no new DSL primitive (fractal is a coordinate/selection
+expression composing the two frozen primitives, discovered by SEARCH); no
+`active_operators.py` edit (F8 N/A).
+
+**Next gap (note for future iter)**: the 15 remaining fractal-dim tasks
+(`0692e18c`, `27f8ce4f`, `cce03e0d`, …) use *recolored* or *positionally-keyed*
+tiles (the tile is not a plain input copy — it is recolored, or placement is keyed
+on a property other than non-background). Extending the fractal schema's tile from
+"plain copy" to "copy-with-a-fitted-recolour", and its condition from cell-vs-bg to
+a searched cell-value match, would fold several of those into the same family — but
+verify each is genuinely the same skeleton first, not a new accreted special case.

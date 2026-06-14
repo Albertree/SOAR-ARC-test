@@ -1,0 +1,76 @@
+{
+  "id": 8,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "fractal",
+            [
+              "const",
+              "nonbg"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "fractal",
+            [
+              "const",
+              "nonbg"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "007bbfb7",
+    "5b6cbef5"
+  ],
+  "source_task": "007bbfb7",
+  "created_at": "2026-06-14T20:45:14.866198",
+  "times_reused": 1,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "fractal",
+          [
+            "const",
+            "nonbg"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "fractal",
+          [
+            "const",
+            "nonbg"
+          ]
+        ]
+      ]
+    }
+  }
+}
