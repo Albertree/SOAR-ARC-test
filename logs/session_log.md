@@ -4467,3 +4467,6 @@ has a fixed 9-line that objects settle against from both sides (plus colour-spec
 behaviour beyond rigid fall), which `simulate_gravity_settle` (edge only, no interior
 obstacle) doesn't model. The probe's e5790162/878187ab are ray projection (objects
 *grow* toward a target), a separate non-rigid family still unaddressed.
+
+## Iter 40 [CLEAN] — 20260614_222039 — branch test33
+- Probe: [22:20:59] Correct:     0 / 3  (0.0%)
