@@ -1,6 +1,71 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 26 — 2026-06-14 — branch test33
+
+**Diagnosis**: The Slow-path synthesizer substrate (`program/synthesis.py`, built
+iter25) was OFF the live path — dead scaffolding (a 2nd NEUTRAL substrate iter would
+be spinning). The named frontier (iters 21/23/24/25 all flagged it) is wiring modules
+F/G onto the live `GeneralizeOperator` path so a transformation **no recognition
+family expresses** is solved by general SEARCH over the two frozen primitives, the
+§6.2 "discovered layer is data, not code" way — not by accreting a 21st fitted
+arg-expr onto rule_002. Smallest defensible slice: wire `synthesize_task` as the
+no-family-fired fallback and prove it on one authored task that exercises exactly the
+capability no family has (a multi-object grid resize with **no single mover**).
+
+**Change**:
+- `data/ARC_madeup/resize_keep_objects.json` (NEW, F1-exempt) — 4×4 → fixed 6×6,
+  every object kept in place, padded with background. Confirmed it **failed before**
+  (INCORRECT, `rule=identity`): object_motion declines (zero moved), constant_output
+  declines (outputs differ), object_recolor declines (no recolour). Only the
+  synthesizer's schema-3 (`make_grid(fitted dims, bg)` ∘ `paint_objects`) solves it;
+  verified `synthesize_task` reproduces all train pairs **and** the held-out test
+  before wiring (empirical-first, per [[synthesizer_frontier]]).
+- `agent/conditions/synthesized_program.py` (NEW) + auto-registered — the general
+  synthesizer recognition slot (P5 3→4). Recognises a task by *outcome*: a
+  value-agnostic program reproduces every example pair. ONE general matcher, not a
+  per-shape detector (§2.5-3 anti-accretion).
+- `agent/active_operators.py` — (a) ExtractPattern surfaces `patterns["synthesis_pairs"]`
+  (raw train grids); (b) GeneralizeOperator gains `_synthesize_program` + a fallback
+  branch (after the three families decline, before identity) that calls
+  `synthesize_task`, gates the result through the registered matcher (recognition
+  stays in the registry, mirroring `_matches_constant_output`), and emits a canonical
+  `{condition: synthesized_program, action: {dsl: run_program, args: {program}}}` rule
+  — the searched program carried as *data*; (c) PredictOperator +`_render_synthesized_program`
+  runs the stored program on the test input (slow path) and via `_apply_rule` on the
+  fast path (value-agnostic → reuses straight from a single input grid, R5-ready).
+- `tests/test_synthesis_wired.py` (NEW, +8) — matcher fires/declines (wrong/empty/no
+  pairs); resize task solved end-to-end + program transfers to test; **no hijack**
+  (constant_output / object_motion still own their tasks); two same-program tasks
+  fold into ONE rule (covers=2) via save_rule.
+
+**Probe before**: training 0/3 (microscope); easy_a 9/9, madeup 16/16; rules 3,
+rule_002 covers 20; P1=P2=8.333, P3=0.667, P5=3; 145 tests.
+**Probe after** : training 0/3 (unchanged — synthesize_task returns None on real
+ARC: 0/40 seed-7 scan, **0 new rules**, no pollution / no broken merge); easy_a 9/9
+(no regression, 0 new rules — synthesizer does not hijack family tasks); **madeup
+17/17** (resize_keep_objects CORRECT via `synthesized_program` → NEW rule_004,
+covers=['resize_keep_objects']); rules 4; P1=P2=6.5, P3=0.5, P5=4; 153 tests (+8).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P5 +1
+(3→4)** — the general modules-F/G recognition slot now exists on the live path. P1/P2
+dip 8.333→6.5 and P3 0.667→0.5 are the documented **honest cost of a genuinely-new
+capability** (new rule covers=1, denominator 3→4, no trace yet — exactly the iter15
+object_recolor instrumentation trap, not accretion: this is the *general* mechanism,
+not a 21st detector). P6 +105 lines on active_operators.py (F8 satisfied — co-touched
+agent/conditions/ with the new matcher). F4 clean (rule_004 has condition+action).
+
+**Next gap (note for future iter)**: the synthesizer is live but its rule carries
+**no `anti_unification_trace`** — program-level AU is the real R3-via-synthesizer
+prize: two synthesizer tasks sharing a skeleton but with *divergent programs* should
+lift via `unify()` (currently `_absorb_or_lift` would lift the whole `program` field
+to `?v`, an uninstantiable rule — unify needs to descend into the program's step
+args). Closing that would recover the P1/P2/P3 cost the principled way (covers>1 +
+trace). Also: the synthesizer's grammar is still 3 fixed schemas (identity / constant
+/ object-reconstruction) — broadening it toward genuine multi-STEP composition is
+what real ARC-AGI-2 needs (still 0/40).
+
+---
 ## Iter 20 — 2026-06-14 — branch test33
 
 **Diagnosis**: Training phase; probe 0/3 (real ARC-AGI-2, no smallest gap there —
@@ -2579,3 +2644,83 @@ general mechanism that should eventually let `_try_*`/family matchers be *delete
 
 ## Iter 25 [NEUTRAL] — 20260614_190841 — branch test33
 - Probe: [19:08:57] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 19:18
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_191840.log
+
+---
+## Learning Loop -- 2026-06-14 19:18
+
+- Split: None, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_191844.log
+
+---
+## Learning Loop -- 2026-06-14 19:18
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_191851.log
+
+---
+## Learning Loop -- 2026-06-14 19:27
+
+- Split: None, Tasks: 17
+- Correct: 16 / 17 (94.1%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_192725.log
+
+---
+## Learning Loop -- 2026-06-14 19:28
+
+- Split: None, Tasks: 17
+- Correct: 17 / 17 (100.0%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_192837.log
+
+---
+## Learning Loop -- 2026-06-14 19:28
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_192853.log
+
+---
+## Learning Loop -- 2026-06-14 19:29
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_192857.log
+
+---
+## Learning Loop -- 2026-06-14 19:31
+
+- Split: training, Tasks: 40
+- Correct: 0 / 40 (0.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 0
+- Time: 110s
+- Log: logs/learn_20260614_192910.log

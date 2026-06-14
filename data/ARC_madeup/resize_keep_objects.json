@@ -1,0 +1,55 @@
+{
+  "_comment": "Multi-object grid resize with NO mover: the canvas grows from 4x4 to a fixed 6x6 and every object stays at its own position, padded with background. No single object moves (object_motion declines: zero moved), outputs differ across pairs (constant_output declines), nothing is recoloured (object_recolor declines). Only the general Slow-path synthesizer solves it, by SEARCH over make_grid+coloring (schema 3: make_grid(fitted dims, bg) then paint every input object at its own cells/colour). Isolates the multi-object-reconstruction-onto-a-resized-canvas capability that no recognition family expresses.",
+  "train": [
+    {
+      "input": [
+        [3, 0, 0, 0],
+        [3, 0, 0, 0],
+        [0, 0, 4, 0],
+        [0, 0, 0, 0]
+      ],
+      "output": [
+        [3, 0, 0, 0, 0, 0],
+        [3, 0, 0, 0, 0, 0],
+        [0, 0, 4, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    },
+    {
+      "input": [
+        [0, 0, 0, 5],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [2, 2, 0, 0]
+      ],
+      "output": [
+        [0, 0, 0, 5, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [2, 2, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    }
+  ],
+  "test": [
+    {
+      "input": [
+        [0, 7, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 8],
+        [0, 0, 0, 8]
+      ],
+      "output": [
+        [0, 7, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 8, 0, 0],
+        [0, 0, 0, 8, 0, 0],
+        [0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0]
+      ]
+    }
+  ]
+}

@@ -1,0 +1,127 @@
+{
+  "id": 4,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "make_grid",
+            [
+              "const",
+              6
+            ],
+            [
+              "const",
+              6
+            ],
+            [
+              "bg"
+            ]
+          ],
+          [
+            "paint_objects",
+            [
+              "all_objects"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "make_grid",
+            [
+              "const",
+              6
+            ],
+            [
+              "const",
+              6
+            ],
+            [
+              "bg"
+            ]
+          ],
+          [
+            "paint_objects",
+            [
+              "all_objects"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "resize_keep_objects"
+  ],
+  "source_task": "resize_keep_objects",
+  "created_at": "2026-06-14T19:28:44.221028",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "make_grid",
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            6
+          ],
+          [
+            "bg"
+          ]
+        ],
+        [
+          "paint_objects",
+          [
+            "all_objects"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "make_grid",
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            6
+          ],
+          [
+            "bg"
+          ]
+        ],
+        [
+          "paint_objects",
+          [
+            "all_objects"
+          ]
+        ]
+      ]
+    }
+  }
+}

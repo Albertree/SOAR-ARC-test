@@ -213,6 +213,19 @@ class ExtractPatternOperator(Operator):
         # the legacy value-keyed `_try_color_mapping`.
         patterns["object_recolor"] = self._object_recolor(task)
 
+        # Raw train pairs for the general Slow-path synthesizer (modules F/G,
+        # BACKLOG_LOOP.md R5/R6). The synthesizer SEARCHES a bounded space of
+        # make_grid+coloring programs reproducing every pair, rather than
+        # recognising one hand-picked shape — so it needs the input/output grids
+        # themselves, not the per-shape signals above. Surfaced symbolically here
+        # (raw grids, P7) so GeneralizeOperator can hand them to
+        # `program.synthesis.synthesize_task` as the no-family-fired fallback.
+        patterns["synthesis_pairs"] = [
+            {"input": pair.input_grid.raw, "output": pair.output_grid.raw}
+            for pair in task.example_pairs
+            if pair.input_grid is not None and pair.output_grid is not None
+        ]
+
         wm.s1["patterns"] = patterns
 
     # ---- object-level analysis (R1) -------------------------------------
@@ -786,11 +799,74 @@ class GeneralizeOperator(Operator):
         # family recognises the task, fall through to identity (no rule saved)
         # rather than mint an overfit special case.
 
+        # General Slow-path synthesizer (BACKLOG_LOOP.md R5/R6, arbor-modules F/G).
+        # When NO hand-picked family recognises the task, do not give up to
+        # identity yet — SEARCH a bounded space of programs built only from the two
+        # frozen primitives (make_grid / coloring) for one that reproduces every
+        # example pair (`program.synthesis.synthesize_task`). This is the general
+        # mechanism the families are special cases of: it solves transformations
+        # outside any recognised shape (e.g. a multi-object grid resize with no
+        # single mover) the §6.2 "discovered layer is data, not code" way — the
+        # synthesized program is persisted as the rule's `action.args.program`, a
+        # value-agnostic recipe, not a per-task literal. Recognition stays in the
+        # registry: the synthesized program is gated through the
+        # `synthesized_program` matcher (same discipline as the families above)
+        # before it becomes a rule. A `None` from the search is an honest miss —
+        # fall through to identity rather than fabricate a per-pair literal fit.
+        if rule is None:
+            program = self._synthesize_program(patterns)
+            if program:
+                rule = {
+                    "type": "synthesized_program",
+                    "condition": {
+                        "type": "synthesized_program",
+                        "params": {"program": program, "min_evidence": 1},
+                        "min_evidence": 1,
+                    },
+                    # The searched program is the action argument that
+                    # `anti_unification.unify()` lifts when two synthesizer tasks
+                    # share a skeleton but differ in their programs (R3 via the
+                    # synthesizer — the cross-family frontier the family matchers
+                    # cannot reach). Carried as data, so apply_DSL's discovered
+                    # layer (CLAUDE.md §6.2) runs it without any new primitive.
+                    "action": {"dsl": "run_program", "args": {"program": program}},
+                    "confidence": 1.0,
+                }
+
         # Fallback: identity (copy input as output)
         if rule is None:
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- general Slow-path synthesizer (modules F/G) ---------------------
+
+    @staticmethod
+    def _synthesize_program(patterns):
+        """Search for a value-agnostic make_grid+coloring program reproducing every
+        train pair (`program.synthesis.synthesize_task`), then confirm it through
+        the registered `synthesized_program` matcher so recognition stays in the
+        registry (mirrors `_matches_constant_output` et al.). Returns the program
+        (a non-empty list of steps) or None — an empty program is identity, left to
+        the identity fallback rather than minted as a learned rule."""
+        pairs = patterns.get("synthesis_pairs") if isinstance(patterns, dict) else None
+        if not pairs:
+            return None
+        from program.synthesis import synthesize_task
+        from agent.conditions import match as match_condition
+
+        program = synthesize_task(pairs)
+        if not program:  # None (miss) or [] (identity) → not a learned rule
+            return None
+        try:
+            if match_condition(
+                "synthesized_program", patterns,
+                {"program": program, "min_evidence": 1},
+            ):
+                return program
+        except KeyError:
+            return None
+        return None
 
     # ---- recognition: delegate to the condition-matcher registry ---------
 
@@ -945,6 +1021,12 @@ class PredictOperator(Operator):
                 predicted = self._render_object_recolor(
                     g0, recolor_selector, recolor_source,
                 )
+            elif rule.get("type") == "synthesized_program":
+                # General Slow-path synthesizer (modules F/G): run the searched
+                # value-agnostic program on this test input. Every variable
+                # originates in G0 (P5), so the program transfers unchanged from
+                # the train pairs to the test input.
+                predicted = self._render_synthesized_program(rule, g0)
             else:
                 predicted = self._apply_rule(rule, g0)
             if predicted is not None:
@@ -996,7 +1078,30 @@ class PredictOperator(Operator):
         # comparison-fitted rules is a separate, later gap.)
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
+        if rule_type == "synthesized_program":
+            # Fast-path reuse of a stored synthesizer rule (R5): the program is
+            # value-agnostic, so it applies straight from a single input grid (no
+            # example comparison needed), unlike the comparison-fitted families.
+            return PredictOperator._render_synthesized_program(rule, input_grid)
         return None
+
+    @staticmethod
+    def _render_synthesized_program(rule, input_grid):
+        """Run the rule's searched make_grid+coloring program on `input_grid`.
+        Reads the program from `action.args.program` (the canonical store) and
+        declines (None) when an expression does not resolve against this input —
+        renderers must decline, not raise (memory: runtime_resolvable_speculative_apply)."""
+        program = (
+            (rule.get("action") or {}).get("args", {}).get("program")
+            if isinstance(rule.get("action"), dict) else None
+        )
+        if not program:
+            return None
+        from program.synthesis import run_program, _Unevaluable
+        try:
+            return run_program(program, input_grid.raw)
+        except _Unevaluable:
+            return None
 
     # ---- object-move rendering via the two frozen DSL primitives ----------
 
