@@ -1,0 +1,111 @@
+{
+  "id": 11,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "boolcombine",
+            [
+              "const",
+              [
+                "?v1",
+                "?v2",
+                "?v3"
+              ]
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "boolcombine",
+            [
+              "const",
+              [
+                "?v4",
+                "?v5",
+                "?v6"
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "0520fde7",
+    "0c9aba6e",
+    "195ba7dc",
+    "1b2d62fb",
+    "31d5ba1a",
+    "3428a4f5",
+    "34b99a2b",
+    "506d28a5",
+    "5d2a5c43",
+    "6430c8c4",
+    "66f2d22f",
+    "94f9d214",
+    "99b1bc43",
+    "ce4f8723",
+    "d19f7514",
+    "dae9d2b5",
+    "e133d23d",
+    "e345f17b",
+    "f2829549",
+    "fafffa47"
+  ],
+  "source_task": "0520fde7",
+  "created_at": "2026-06-14T22:42:18.185253",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "boolcombine",
+          [
+            "const",
+            [
+              "?v1",
+              "?v2",
+              "?v3"
+            ]
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "boolcombine",
+          [
+            "const",
+            [
+              "?v4",
+              "?v5",
+              "?v6"
+            ]
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/0c9aba6e/anti_unification/au_001.json"
+}

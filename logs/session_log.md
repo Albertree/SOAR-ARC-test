@@ -4470,3 +4470,114 @@ obstacle) doesn't model. The probe's e5790162/878187ab are ray projection (objec
 
 ## Iter 40 [CLEAN] — 20260614_222039 — branch test33
 - Probe: [22:20:59] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 22:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_223226.log
+
+---
+## Learning Loop -- 2026-06-14 22:32
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_223230.log
+
+---
+## Learning Loop -- 2026-06-14 22:32
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_223240.log
+
+---
+## Learning Loop -- 2026-06-14 22:42
+
+- Split: None, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 10 -> 11 (+1 learned)
+- Stored rule hits: 0
+- Time: 17s
+- Log: logs/learn_20260614_224217.log
+
+---
+## Learning Loop -- 2026-06-14 22:44
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_224425.log
+
+---
+## Learning Loop -- 2026-06-14 22:44
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 11 -> 11 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_224429.log
+
+## Iter 41 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase. The three sampled tasks (c9680e90 diagonal
+ricochet, 878187ab histogram, e5790162 bouncing rays) are all multi-step and
+beyond a single clean gap — and iters 38–40 had piled four gravity variants onto
+`object_motion` (covers-positive but reads as spinning). Stepping back to the
+real general engine (the Slow-path *synthesizer*, rule_006–010, each schema a
+frozen-primitive composition that AU-lifts to covers>1), I found a large
+recurring ARC family it misses entirely: **two-panel cell-wise boolean combine**
+(two equal panels split by a uniform separator → output is their AND/OR/XOR/NOR/…
+painted one colour). A scan of the 1000-task training set shows the synthesizer
+fails *all* of them; a prototype solves **20**, verified on held-out test inputs.
+
+**Change**:
+- `program/synthesis.py` — new **Schema 10 `boolcombine`**. `_BOOL_OPS` (8
+  predicates over panel occupancy), `_split_for_axis` (uniform-separator or
+  even-midpoint split, purely structural/value-agnostic), a `boolcombine`
+  step in `run_program` composing ONLY `make_grid`+`coloring` (half-size canvas
+  + paint the cells the predicate selects), and `_fit_boolcombine` which fits the
+  shared `(axis, op, colour)` triple by intersecting reproducing triples across
+  pairs (colour read from the output's unique non-bg colour, never a literal).
+  Carried as ONE const leaf so the skeleton is `[("boolcombine", ("const",?v))]`
+  — divergent triples lift via `unify()` into one covers>1 rule (R3). Yielded
+  last in `_candidate_programs`. No new transformation primitive (F3-safe), no
+  `_try_*` (F2-safe).
+- `procedural_memory/rule_011.json` — the learned rule: ran the learner over the
+  20 boolcombine tasks; all 20 folded into ONE rule (covers=20), program lifted
+  to `[["boolcombine",["const",["?v4","?v5","?v6"]]]]` with an
+  `anti_unification_trace`. The intended §2.5-3 outcome: 20 task-specific
+  programs → one argument-parameterised rule, not 20 detectors.
+- `tests/test_synthesis.py` — 4 boolcombine tests (and/vertical with held-out
+  transfer, xor/horizontal, declines a non-panel recolour, two divergent tasks
+  share one skeleton). 219 pass.
+
+**Probe before**: training 0/3 (sample); easy_a 9/9, madeup 27/27; 10 rules;
+P1=7.4, P2=7.4, P3=0.90.
+**Probe after** : 20/20 on the boolcombine slice; easy_a 9/9, madeup 27/27;
+11 rules (rule_011 covers=20); P1 7.4→**8.55**, P2 7.4→**8.55**, P3 0.90→**0.909**.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1
++1.15, P2 +1.15, P3 +0.009** — the three rise *together* (§2.5-4 litmus: covers
+up via lift, not detector accretion). P5/P6 unchanged (the generic
+`synthesized_program` matcher already handles `run_program` rules; the new schema
+is data + composition, no operator-line growth, no new matcher).
+
+**Next gap (note for future iter)**: the synthesizer still has no schema for the
+*ray/line* family (e5790162 — a marker shoots a coloured ray that bounces off
+obstacles) nor the *histogram/count* family (878187ab — count objects per colour
+and draw bars). A non-bouncing single ray (fill the straight segment from a
+source cell to a target marker) is the smallest defensible next sub-step there.

@@ -528,3 +528,74 @@ def test_symfill_sets_share_one_skeleton():
     assert vmirror[0][0] == "symfill" and hmirror[0][0] == "symfill"
     assert vmirror[0][1] != hmirror[0][1]  # different symmetry sets
     assert _program_skeleton(vmirror) == _program_skeleton(hmirror)
+
+
+# --- Schema 10: two-panel boolean combine ------------------------------------
+
+def test_boolcombine_and_two_vertical_panels():
+    # Two equal panels separated by a uniform column; output = paint (colour 2)
+    # where BOTH panels are non-background (the `and` combine). Composes only
+    # make_grid + coloring, and the program transfers to a held-out input.
+    pairs = [
+        {"input":  [[1, 0, 5, 0, 1], [0, 1, 5, 1, 1]],
+         "output": [[0, 0], [0, 2]]},
+        {"input":  [[1, 1, 5, 0, 1], [0, 0, 5, 0, 0]],
+         "output": [[0, 2], [0, 0]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "boolcombine"
+    # held-out input: left&right both on only at (0,0)
+    held = [[1, 0, 5, 1, 0], [0, 0, 5, 1, 1]]
+    assert run_program(prog, held) == [[2, 0], [0, 0]]
+
+
+def test_boolcombine_xor_horizontal_panels():
+    # Two stacked panels separated by a uniform row; output = paint where EXACTLY
+    # ONE panel is on (xor). The paint colour (3) differs from both panels'
+    # colours — the combine is value-agnostic (occupancy, not colour).
+    pairs = [
+        {"input":  [[1, 0], [0, 1], [4, 4], [0, 2], [0, 2]],
+         "output": [[1, 1], [0, 0]]},
+        {"input":  [[2, 2], [0, 0], [4, 4], [0, 2], [2, 0]],
+         "output": [[1, 0], [1, 0]]},
+    ]
+    # colour fitted from the outputs: pair0 paints colour 1, pair1 paints colour 1
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "boolcombine"
+    axis, op, color = prog[0][1][1]
+    assert axis == "h" and op == "xor"
+
+
+def test_boolcombine_declines_non_panel_task():
+    # A same-dims recolour is not a two-panel combine (its output is not half the
+    # input), so the boolcombine schema must not claim it.
+    pairs = [
+        {"input": [[1, 1], [1, 1]], "output": [[2, 2], [2, 2]]},
+        {"input": [[3, 3], [3, 3]], "output": [[2, 2], [2, 2]]},
+    ]
+    prog = synthesize_task(pairs)
+    if prog is not None:
+        assert prog[0][0] != "boolcombine"
+
+
+def test_boolcombine_tasks_share_one_skeleton():
+    # Two combine tasks with DIFFERENT (axis, op, colour) triples produce the same
+    # one-step skeleton (only the const triple leaf differs), so save_rule lifts
+    # them into ONE covers>1 rule rather than two families (R3).
+    from agent.memory import _program_skeleton
+    and_v = synthesize_task([
+        {"input":  [[1, 0, 5, 0, 1], [0, 1, 5, 1, 1]],
+         "output": [[0, 0], [0, 2]]},
+        {"input":  [[1, 1, 5, 0, 1], [0, 0, 5, 0, 0]],
+         "output": [[0, 2], [0, 0]]},
+    ])
+    or_h = synthesize_task([
+        {"input":  [[1, 0], [0, 0], [4, 4], [0, 2], [0, 0]],
+         "output": [[7, 7], [0, 0]]},
+        {"input":  [[0, 0], [2, 0], [4, 4], [0, 0], [2, 2]],
+         "output": [[0, 0], [7, 7]]},
+    ])
+    assert and_v is not None and or_h is not None
+    assert and_v[0][0] == "boolcombine" and or_h[0][0] == "boolcombine"
+    assert and_v[0][1] != or_h[0][1]  # different triples
+    assert _program_skeleton(and_v) == _program_skeleton(or_h)

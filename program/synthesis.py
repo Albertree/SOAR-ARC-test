@@ -251,6 +251,80 @@ _FRACTAL_CONDS = {
 
 
 # ======================================================================
+# Two-panel boolean combine (the cell-wise logic family)
+# ======================================================================
+#
+# A huge, recurring ARC family: the input is *two equal panels* (separated by a
+# uniform full row/column, or split at the even midpoint), and the output — half
+# the input's size — is the **cell-wise boolean combination** of the panels'
+# *occupancy* (a cell counts as "on" iff it is non-background), painted in ONE
+# fixed colour on a blank canvas. The reason (P3/P4) is a COMM result: the same
+# on/off pattern of the two panels always yields the same output cell — e.g.
+# "paint where BOTH panels are on" (and), "where EITHER is" (or), "where exactly
+# one is" (xor), "where NEITHER is" (nor), …
+#
+# Like ``dihedral``/``fractal``/``tile`` it composes ONLY the two frozen
+# primitives (``make_grid`` for the half-size canvas, ``coloring`` for the cells
+# the predicate selects) — it adds no transformation vocabulary (§2.5-1, F3-safe).
+# The per-task content is just the triple ``(axis, op, colour)``: the split
+# orientation, the boolean predicate, and the paint colour, all *read from the
+# example comparison* (the colour is the output's unique non-bg colour, never a
+# literal coordinate). Carried as ONE ``const`` leaf, two combine tasks with
+# divergent triples share the SAME one-step skeleton ``[("boolcombine",
+# ("const", ?v))]`` and lift via ``unify()`` into one ``covers>1`` rule (R3 —
+# P1·P2·P3 rise together), exactly as ``recolor_map`` carries its whole colour
+# map in one leaf. Reads the fixed input throughout, so a triple fitted on the
+# train pairs combines the test input unchanged (P5).
+#
+# The occupancy binarisation (on == non-bg) is what makes the predicate
+# value-agnostic: the two panels may use *different* colours and the output a
+# *third*, yet the same logical rule applies — so this is genuinely a new
+# *general* capability, not a per-task recolour.
+
+_BOOL_OPS = {
+    "and":   lambda a, b: a and b,
+    "or":    lambda a, b: a or b,
+    "xor":   lambda a, b: a != b,
+    "nand":  lambda a, b: not (a and b),
+    "nor":   lambda a, b: not (a or b),
+    "xnor":  lambda a, b: a == b,
+    "lonly": lambda a, b: a and not b,
+    "ronly": lambda a, b: b and not a,
+}
+
+
+def _split_for_axis(grid, axis):
+    """Split ``grid`` into its two equal panels along ``axis`` (``"v"`` =
+    side-by-side, ``"h"`` = stacked), or ``None`` if it does not split.
+
+    For an *odd*-length axis the middle row/column must be a uniform separator
+    line (excluded from both panels); for an *even*-length axis the grid is split
+    at the midpoint (no separator). Purely structural — never inspects a colour —
+    so the same split is recovered on the test input (P5)."""
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+    if axis == "v":
+        if W % 2 == 1:
+            sc = W // 2
+            if len({grid[r][sc] for r in range(H)}) != 1:
+                return None
+            return ([row[:sc] for row in grid], [row[sc + 1:] for row in grid])
+        if W >= 2:
+            return ([row[:W // 2] for row in grid], [row[W // 2:] for row in grid])
+        return None
+    if axis == "h":
+        if H % 2 == 1:
+            sr = H // 2
+            if len(set(grid[sr])) != 1:
+                return None
+            return (grid[:sr], grid[sr + 1:])
+        if H >= 2:
+            return (grid[:H // 2], grid[H // 2:])
+        return None
+    return None
+
+
+# ======================================================================
 # Expression evaluation
 # ======================================================================
 #
@@ -576,6 +650,37 @@ def run_program(program, input_grid):
                        for c, v in enumerate(row) if v == frm]
                 if sel:
                     cur = apply_DSL("coloring", cur, selection=sel, color=to)
+        elif kind == "boolcombine":
+            # Two-panel boolean combine: split the input into its two equal
+            # panels along the carried axis, then paint — on a fresh half-size
+            # canvas — every cell where the boolean predicate over the panels'
+            # occupancy (cell != bg) holds, in the carried colour. Composes ONLY
+            # the two frozen primitives (``make_grid`` + ``coloring``); the
+            # predicate and colour are a value-agnostic const leaf read from the
+            # example comparison, so two combine tasks lift into one ``covers>1``
+            # rule (R3). Reads the fixed input (``env``), so it transfers
+            # unchanged to the test input (P5).
+            _, spec_expr = step
+            axis, op, color = _eval(spec_expr, env)
+            pred = _BOOL_OPS.get(op)
+            if pred is None:
+                raise _Unevaluable(f"unknown boolean combine op: {op!r}")
+            grid = env["grid"]
+            bg = env["bg"]
+            panels = _split_for_axis(grid, axis)
+            if panels is None:
+                raise _Unevaluable(
+                    f"input does not split into two {axis!r} panels")
+            A, B = panels
+            h = len(A)
+            w = len(A[0]) if A else 0
+            if (len(B), len(B[0]) if B else 0) != (h, w):
+                raise _Unevaluable("boolcombine panels are not equal-sized")
+            cur = apply_DSL("make_grid", height=h, width=w, color=bg)
+            on = [(r, c) for r in range(h) for c in range(w)
+                  if pred(A[r][c] != bg, B[r][c] != bg)]
+            if on:
+                cur = apply_DSL("coloring", cur, selection=on, color=color)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -751,6 +856,22 @@ def _candidate_programs(pairs):
     if symfill is not None:
         yield symfill
 
+    # --- Schema 10: two-panel boolean combine ------------------------------
+    # The input is two equal panels (separated by a uniform row/col or split at
+    # the even midpoint) and the output — half the size — is their cell-wise
+    # boolean combination (and / or / xor / nor / …) painted in one fixed colour
+    # (0520fde7, 99b1bc43, 34b99a2b, 1b2d62fb, … — a large recurring ARC family).
+    # The reason — P3/P4 — is the COMM "the same on/off pattern of the two panels
+    # always yields the same output cell". ``_fit_boolcombine`` resolves the
+    # shared ``(axis, op, colour)`` triple directly and declines when no
+    # consistent one exists. Being a pure ``[("boolcombine", ("const", ?v))]``
+    # skeleton, two combine tasks with divergent triples lift via ``unify()`` into
+    # one ``covers>1`` rule (R3). Yielded last so a simpler same-or-smaller-dims
+    # schema wins when a task somehow fits both.
+    boolcombine = _fit_boolcombine(pairs)
+    if boolcombine is not None:
+        yield boolcombine
+
 
 def _is_fractal_dims(pairs):
     """True iff every pair's output dims are exactly ``(ih·ih, iw·iw)`` — the
@@ -912,6 +1033,60 @@ def _fit_color_map(pairs):
     # ``unify()`` into one ``covers>1`` rule, instead of one rule per arity.
     pairs_leaf = tuple((c, cmap[c]) for c in changed)
     return [("recolor_map", ("const", pairs_leaf))]
+
+
+def _fit_boolcombine(pairs):
+    """Return a one-step ``boolcombine`` program if every pair's output is the
+    cell-wise boolean combination of the input's two equal panels (split by a
+    uniform separator row/col or at the even midpoint), painted in one fixed
+    colour, else ``None``.
+
+    The ``(axis, op, colour)`` triple must be shared across *all* pairs — fitted
+    by intersecting, per pair, the triples that reproduce that output exactly.
+    The candidate colour is the output's unique non-background colour (read from
+    the comparison, never a literal), so a uniform-background output (no cells to
+    paint) has no combine to fit. Because the whole triple lives in ONE const
+    leaf, two combine tasks with divergent triples share the SAME one-step
+    skeleton ``[("boolcombine", ("const", ?v))]`` and lift via ``unify()`` into
+    one ``covers>1`` rule (R3 — §2.5-3)."""
+    inter = None
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        bg = background_of(gin)
+        oh = len(gout)
+        ow = len(gout[0]) if gout else 0
+        local = set()
+        for axis in ("v", "h"):
+            panels = _split_for_axis(gin, axis)
+            if panels is None:
+                continue
+            A, B = panels
+            h = len(A)
+            w = len(A[0]) if A else 0
+            if (h, w) != (oh, ow) or (len(B), len(B[0]) if B else 0) != (h, w):
+                continue
+            out_colors = {gout[r][c] for r in range(h) for c in range(w)
+                          if gout[r][c] != bg}
+            if len(out_colors) != 1:
+                continue
+            (color,) = tuple(out_colors)
+            for op, pred in _BOOL_OPS.items():
+                ok = True
+                for r in range(h):
+                    for c in range(w):
+                        want = color if pred(A[r][c] != bg, B[r][c] != bg) else bg
+                        if gout[r][c] != want:
+                            ok = False
+                            break
+                    if not ok:
+                        break
+                if ok:
+                    local.add((axis, op, color))
+        inter = local if inter is None else (inter & local)
+        if not inter:
+            return None
+    axis, op, color = sorted(inter)[0]
+    return [("boolcombine", ("const", (axis, op, color)))]
 
 
 def synthesize_task(pairs):
