@@ -1,0 +1,41 @@
+{
+  "_comment": "Whole-grid 180-degree rotation (flip both axes). Third sibling of the dihedral family (flip_h.json, flip_v.json): same concept, the composed map (ih-1-r, iw-1-c). Solved by the Slow-path synthesizer schema 5 (make_grid(in_h,in_w,bg) + paint_remap('rot180')). Output dims equal input dims, so it lands in the same make_grid+paint_remap skeleton family; once flip_h and flip_v have lifted the map leaf to ?v with a trace, this task is simply absorbed into covers (covers 2 -> 3), demonstrating the lifted ?v map generalises across three distinct maps rather than a per-task literal.",
+  "train": [
+    {
+      "input": [
+        [1, 2, 0],
+        [0, 3, 0],
+        [4, 0, 0]
+      ],
+      "output": [
+        [0, 0, 4],
+        [0, 3, 0],
+        [0, 2, 1]
+      ]
+    },
+    {
+      "input": [
+        [0, 0, 5, 0],
+        [6, 0, 0, 7]
+      ],
+      "output": [
+        [7, 0, 0, 6],
+        [0, 5, 0, 0]
+      ]
+    }
+  ],
+  "test": [
+    {
+      "input": [
+        [8, 0, 0],
+        [0, 0, 9],
+        [0, 2, 0]
+      ],
+      "output": [
+        [0, 2, 0],
+        [9, 0, 0],
+        [0, 0, 8]
+      ]
+    }
+  ]
+}

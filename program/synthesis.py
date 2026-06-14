@@ -48,6 +48,32 @@ from agent.dsl_expr.selection import objects_of, background_of, color_of
 
 
 # ======================================================================
+# Dihedral coordinate maps (the symmetry group of the square)
+# ======================================================================
+#
+# The eight geometric transforms ARC keeps asking for — flip / rotate /
+# transpose — are NOT new transformation primitives (F3 forbids that). Each is a
+# *coordinate remap* fed to the frozen ``coloring`` primitive: a cell of colour
+# ``v`` at input ``(r, c)`` is painted at output ``D(r, c)`` in the **same**
+# colour (value-agnostic — the transform never touches the value). This is the
+# §2.5-1 discipline verbatim ("flip_h = source 각 셀에 coloring((r, W-1-c),
+# color) — 좌표 변환식"): a new transformation is two frozen primitives + a
+# coordinate expression, discovered by SEARCH here, not written into the DSL.
+#
+# ``swaps`` marks the four transforms whose output dims are the input dims
+# transposed (the canvas is ``in_w × in_h``, not ``in_h × in_w``).
+_DIHEDRAL = {
+    "flip_h":        (lambda r, c, ih, iw: (r, iw - 1 - c),        False),
+    "flip_v":        (lambda r, c, ih, iw: (ih - 1 - r, c),        False),
+    "rot180":        (lambda r, c, ih, iw: (ih - 1 - r, iw - 1 - c), False),
+    "transpose":     (lambda r, c, ih, iw: (c, r),                 True),
+    "rot90":         (lambda r, c, ih, iw: (c, ih - 1 - r),        True),
+    "rot270":        (lambda r, c, ih, iw: (iw - 1 - c, r),        True),
+    "antitranspose": (lambda r, c, ih, iw: (iw - 1 - c, ih - 1 - r), True),
+}
+
+
+# ======================================================================
 # Expression evaluation
 # ======================================================================
 #
@@ -185,6 +211,30 @@ def run_program(program, input_grid):
                 else:
                     cur = apply_DSL(
                         "coloring", cur, selection=sorted(o["cells"]), color=col)
+        elif kind == "paint_remap":
+            # Apply a fixed dihedral coordinate map to the input: every non-bg
+            # input cell is painted, in its own colour, at its remapped output
+            # position (`_DIHEDRAL`). ONE structure-agnostic step that composes
+            # only `coloring` (F3-safe) — the transform is a coordinate
+            # expression, never a new primitive (§2.5-1). The selection reads the
+            # fixed input grid (`env`), so it never cascades off the running
+            # canvas and transfers unchanged to the test input (P5).
+            _, name_expr = step
+            name = _eval(name_expr, env)
+            spec = _DIHEDRAL.get(name)
+            if spec is None:
+                raise _Unevaluable(f"unknown dihedral transform: {name!r}")
+            remap, _swaps = spec
+            ih = len(env["grid"])
+            iw = len(env["grid"][0]) if env["grid"] else 0
+            bg = env["bg"]
+            for r, row in enumerate(env["grid"]):
+                for c, v in enumerate(row):
+                    if v == bg:
+                        continue
+                    cur = apply_DSL(
+                        "coloring", cur,
+                        selection=remap(r, c, ih, iw), color=v)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -279,6 +329,25 @@ def _candidate_programs(pairs):
     prog = _fit_color_map(pairs)
     if prog is not None:
         yield prog
+
+    # --- Schema 5: dihedral geometric transform ----------------------------
+    # A whole-grid flip / rotate / transpose. Each candidate is the canvas (the
+    # fitted output dims) plus one ``paint_remap`` step carrying a fixed
+    # coordinate map (`_DIHEDRAL`); `synthesize_task` keeps the first whose
+    # remap reproduces every pair. The transform is value-agnostic (the cell's
+    # colour is copied, only its position changes), so two tasks that differ
+    # only in *which* map (e.g. flip_h vs flip_v, same output dims) share the
+    # ``make_grid + paint_remap`` skeleton and lift via `unify()` into one
+    # ``covers>1`` rule whose map leaf is a ``?v`` (R3 — P1·P2·P3 rise together).
+    for name, (_remap, swaps) in _DIHEDRAL.items():
+        if swaps:
+            dh_expr, dw_expr = ("in_w",), ("in_h",)
+        else:
+            dh_expr, dw_expr = ("in_h",), ("in_w",)
+        yield [
+            ("make_grid", dh_expr, dw_expr, ("bg",)),
+            ("paint_remap", ("const", name)),
+        ]
 
 
 def _fit_color_map(pairs):

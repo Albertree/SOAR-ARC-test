@@ -113,3 +113,58 @@ def test_honest_miss_on_object_move():
 
 def test_no_pairs_returns_none():
     assert synthesize_task([]) is None
+
+
+# --- Schema 5: dihedral geometric transform (flip / rotate / transpose) ------
+
+def test_dihedral_flip_h_discovered_by_search():
+    # A whole-grid horizontal mirror — value-agnostic, no colour changes. The
+    # search must express it as make_grid + paint_remap('flip_h') (a coordinate
+    # expression fed to the frozen `coloring`, NOT a new primitive) and transfer
+    # unchanged to a held-out input (P5).
+    pairs = [
+        {"input": [[1, 2, 0], [0, 3, 0]], "output": [[0, 2, 1], [0, 3, 0]]},
+        {"input": [[4, 0, 5]], "output": [[5, 0, 4]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None
+    assert prog[1][0] == "paint_remap" and prog[1][1] == ("const", "flip_h")
+    held = [[7, 0, 0, 8]]
+    assert run_program(prog, held) == [[8, 0, 0, 7]]
+
+
+def test_dihedral_transpose_swaps_canvas_dims():
+    # Transpose is a dims-swapping map: the fitted canvas must be in_w x in_h.
+    pairs = [
+        {"input": [[1, 2, 3], [4, 5, 6]],
+         "output": [[1, 4], [2, 5], [3, 6]]},
+        {"input": [[7, 8]], "output": [[7], [8]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None
+    assert prog[1][1] == ("const", "transpose")
+    # transfers to a held-out 1x3 -> 3x1
+    assert run_program(prog, [[9, 0, 2]]) == [[9], [0], [2]]
+
+
+def test_dihedral_rot180_discovered():
+    pairs = [
+        {"input": [[1, 0], [0, 2]], "output": [[2, 0], [0, 1]]},
+        {"input": [[3, 4, 0]], "output": [[0, 4, 3]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[1][1] == ("const", "rot180")
+
+
+def test_dihedral_does_not_fire_on_non_symmetric():
+    # An arbitrary recolour-and-move that is no dihedral transform must not be
+    # mislabelled as one (honest miss for this schema; another schema may still
+    # decline too -> None overall, never a fabricated map).
+    pairs = [
+        {"input": [[1, 0, 0], [0, 0, 0]], "output": [[0, 0, 0], [0, 0, 7]]},
+        {"input": [[2, 0, 0], [0, 0, 0]], "output": [[0, 0, 0], [0, 0, 8]]},
+    ]
+    prog = synthesize_task(pairs)
+    # no dihedral map reproduces this; the schema declines
+    if prog is not None:
+        assert prog[1][0] != "paint_remap"

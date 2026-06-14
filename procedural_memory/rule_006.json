@@ -1,0 +1,126 @@
+{
+  "id": 6,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "make_grid",
+            [
+              "in_h"
+            ],
+            [
+              "in_w"
+            ],
+            [
+              "bg"
+            ]
+          ],
+          [
+            "paint_remap",
+            [
+              "const",
+              "?v1"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "make_grid",
+            [
+              "in_h"
+            ],
+            [
+              "in_w"
+            ],
+            [
+              "bg"
+            ]
+          ],
+          [
+            "paint_remap",
+            [
+              "const",
+              "?v2"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "flip_h",
+    "flip_v",
+    "rot180"
+  ],
+  "source_task": "flip_h",
+  "created_at": "2026-06-14T20:14:00.875071",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "make_grid",
+          [
+            "in_h"
+          ],
+          [
+            "in_w"
+          ],
+          [
+            "bg"
+          ]
+        ],
+        [
+          "paint_remap",
+          [
+            "const",
+            "?v1"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "make_grid",
+          [
+            "in_h"
+          ],
+          [
+            "in_w"
+          ],
+          [
+            "bg"
+          ]
+        ],
+        [
+          "paint_remap",
+          [
+            "const",
+            "?v2"
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/flip_v/anti_unification/au_001.json"
+}

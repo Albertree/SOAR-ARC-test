@@ -1,0 +1,41 @@
+{
+  "_comment": "Whole-grid horizontal flip (mirror left<->right). A geometric/dihedral transform: no family matcher recognises it (object_motion declines - the whole scene moves, not one object; constant_output declines - outputs differ; object_recolor/colour-map decline - no value changes), so the general Slow-path synthesizer solves it by SEARCH (schema 5: make_grid(in_h,in_w,bg) then paint_remap('flip_h'), a coordinate expression fed to the frozen coloring primitive - NOT a new DSL primitive, per BACKLOG_LOOP.md 2.5-1). Value-agnostic: each cell's colour is copied, only its position changes, so the program transfers unchanged to the test input (P5). Grounds the R3 lift: shares the make_grid+paint_remap skeleton with flip_v.json and rot180.json (same output dims), diverging only in the map leaf, so unify() lifts that leaf to ?v and folds all three into ONE covers=3 rule with a trace (P1/P2/P3 rise together) instead of one rule per transform.",
+  "train": [
+    {
+      "input": [
+        [1, 2, 0],
+        [0, 3, 0],
+        [4, 0, 0]
+      ],
+      "output": [
+        [0, 2, 1],
+        [0, 3, 0],
+        [0, 0, 4]
+      ]
+    },
+    {
+      "input": [
+        [0, 0, 5, 0],
+        [6, 0, 0, 7]
+      ],
+      "output": [
+        [0, 5, 0, 0],
+        [7, 0, 0, 6]
+      ]
+    }
+  ],
+  "test": [
+    {
+      "input": [
+        [8, 0, 0],
+        [0, 0, 9],
+        [0, 2, 0]
+      ],
+      "output": [
+        [0, 0, 8],
+        [9, 0, 0],
+        [0, 2, 0]
+      ]
+    }
+  ]
+}

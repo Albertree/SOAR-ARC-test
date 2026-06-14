@@ -2997,3 +2997,109 @@ general mechanism that should eventually let `_try_*`/family matchers be *delete
 
 ## Iter 28 [CLEAN] — 20260614_194855 — branch test33
 - Probe: [19:49:11] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 20:05
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_200550.log
+
+---
+## Learning Loop -- 2026-06-14 20:06
+
+- Split: None, Tasks: 20
+- Correct: 20 / 20 (100.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 14
+- Time: 7s
+- Log: logs/learn_20260614_200554.log
+
+---
+## Learning Loop -- 2026-06-14 20:06
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 5 -> 5 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_200602.log
+
+---
+## Learning Loop -- 2026-06-14 20:14
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 5 -> 6 (+1 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_201359.log
+
+---
+## Learning Loop -- 2026-06-14 20:14
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_201425.log
+
+## Iter 29 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase, probe 0/3 (all `rule=identity`). The Slow-path
+synthesizer (`program/synthesis.py`, built iters 25–28) has 4 schemas — identity,
+constant-output, object-reconstruct-onto-canvas, global colour-substitution — but
+the most canonical ARC class is still unhandled: the **dihedral geometric
+transforms** (flip / rotate / transpose). A scan of 1000 training tasks finds ≥7
+that are a single whole-grid dihedral transform (flip_h 67a3c6ac, flip_v 68b16354,
+rot180 3c9b0459+6150a2bd, transpose 74dd1130+9dfd6313, rot270 ed36ccf7) and the
+synthesizer returned `None` on all of them. This is exactly the CLAUDE.md §6 case
+("rotate/flip must be *discovered as compositions*, not hand-coded") and §2.5-1
+gives flip_h as the canonical coordinate-expression example — so it is a search-
+grammar gap, not a missing primitive. Picked it because it is general (one schema
+covers all 8 maps), value-agnostic, common, and fires the R3 lift (multiple maps
+sharing the make_grid+paint_remap skeleton → `unify()` lifts the map leaf to `?v`).
+
+**Change**:
+- `program/synthesis.py` — added `_DIHEDRAL` (7 coordinate maps, each a `(remap,
+  swaps)`), a `paint_remap` step in `run_program` (paints every non-bg input cell,
+  in its own colour, at its remapped position — composes ONLY the frozen `coloring`
+  primitive, F3-safe), and **Schema 5** in `_candidate_programs` (yields one
+  `make_grid(fitted dims) + paint_remap(name)` candidate per map; `synthesize_task`
+  keeps the first reproducing every pair). Dims-swapping maps (transpose/rot90/
+  rot270/anti) fit an `in_w × in_h` canvas.
+- `data/ARC_madeup/{flip_h,flip_v,rot180}.json` (NEW, F1-exempt) — ground the R3
+  lift: same output dims → shared make_grid+paint_remap skeleton, diverging only in
+  the map leaf, so all three fold into ONE `covers=3` rule.
+- `tests/test_synthesis.py` (+4) — flip_h discovered & transfers to held-out input;
+  transpose swaps canvas dims; rot180 discovered; a non-symmetric task does not get
+  mislabelled as a dihedral map (honest decline).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 20/20; rules 5, P1=P2=5.8,
+P3=0.8. 168 tests.
+**Probe after** : easy_a 9/9, madeup 23/23 (incl. 3 new dihedral, all via
+`synthesized_program`); rules 6; rule_006 = dihedral family `covers=3` (flip_h,
+flip_v, rot180) with `anti_unification_trace`, map leaf lifted to `?v2`. P3
+0.8→0.833. P1/P2 5.8→5.333 (arithmetic dilution by the covers=20 rule_002 — the
+documented instrumentation trap; the new rule itself is covers=3, not an accreted
+covers=1 detector). 172 tests. The same schema solves 7 real ARC-AGI-2 training
+tasks (67a3c6ac/68b16354/3c9b0459/6150a2bd/74dd1130/9dfd6313/ed36ccf7), incl. their
+held-out test inputs — generality, not memorised.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=P3
++0.033 (au_traced_frac); P1/P2 −0.467 (dilution, not accretion — covers up with
+rule count, §2.5-4 litmus held); P4/P5/P6 Δ0. No `active_operators.py` edit (F8
+N/A); no new `_try_*`/DSL primitive; the new transform is a coordinate expression
+over the two frozen primitives, discovered by SEARCH.
+
+**Next gap (note for future iter)**: the dims-swapping dihedral maps (transpose,
+rot90, rot270, antitranspose) form a *second* skeleton family (in_w×in_h canvas) —
+two such madeup/real tasks would lift them too. Beyond geometry, the dominant
+training miss is same-size *conditional* recolours/rearrangements (gravity,
+symmetry-repair, neighbourhood maps) that no current schema expresses; and P1/P2
+remain pinned by rule_002's covers=20 — the instrumentation still punishes any new
+family arithmetically, so P3 is the truer progress signal here.
