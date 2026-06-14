@@ -2994,3 +2994,6 @@ general mechanism that should eventually let `_try_*`/family matchers be *delete
 - Stored rule hits: 0
 - Time: 166s
 - Log: logs/learn_20260614_195800.log
+
+## Iter 28 [CLEAN] — 20260614_194855 — branch test33
+- Probe: [19:49:11] Correct:     0 / 3  (0.0%)
