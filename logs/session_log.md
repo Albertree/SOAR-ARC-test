@@ -3222,3 +3222,6 @@ yet express (which cells move/recolour as a function of neighbourhood or alignme
 not another whole-grid map. That is genuinely new machinery (R4 second-order
 relation / conditional selection), not a smallest step; the cheap geometric wins are
 now exhausted.
+
+## Iter 30 [CLEAN] — 20260614_201733 — branch test33
+- Probe: [20:17:51] Correct:     0 / 3  (0.0%)
