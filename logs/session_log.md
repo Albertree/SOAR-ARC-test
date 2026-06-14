@@ -6863,3 +6863,98 @@ whole-grid reductions — both are now exhaustively refuted (iter59, iter61, ite
 
 ## Iter 62 [NEUTRAL] — 20260615_053636 — branch test33
 - Probe: [05:36:56] Correct:     0 / 3  (0.0%)
+
+> STAGNATION at iter 62 — 4 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-06-15 06:02
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_060201.log
+
+---
+## Learning Loop -- 2026-06-15 06:02
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260615_060205.log
+
+---
+## Learning Loop -- 2026-06-15 06:02
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_060216.log
+
+## Iter 63 — 2026-06-15 — branch test33 — no defensible step found (analysis only)
+
+**Diagnosis**: Training probe 0/3 (c9680e90/878187ab/e5790162 — all hard, expected);
+easy_a 9/9 + madeup 27/27 regression guards hold. STAGNATION flagged (4 prior
+neutrals). The iter62 next-gap nominated the **object-correspondence** lever and asked
+the next iter to find a *value-agnostic relational key that survives full-grid
+reproduction AND held-out test transfer on ≥2* of the recolour-correspondence corpus.
+I attacked exactly that with two FRESH probes (a new angle not run in iters 59/61/62).
+
+**What I tested (fresh, read-only, full 1000-task scan + held-out test)**:
+- `scripts/probe_corr.py` (re-run): the recolour-by-correspondence corpus (input/output
+  share object footprints, only colours change) is **36** currently-failing tasks —
+  larger than iter62's hand-picked 11.
+- `scripts/probe_legend.py` (NEW): "legend/marker correspondence recolour" — markers =
+  smallest-size distinct-colour objects, targets recoloured by the marker they match
+  under ONE of 4 value-agnostic spatial predicates {col_overlap, row_overlap,
+  nearest-centroid, contains}. Result: **only 1** task folds full-train AND held-out
+  (`ddf7fa4f`, under col_overlap & nearest) — a **singleton**, not a ≥2-fold lift.
+  Union across all 4 predicates = 1.
+- `scripts/probe_anchor.py` (NEW, then removed): "nearest unique-colour anchor recolour"
+  — anchors = unique-colour objects, targets = repeated-colour objects, recolour to
+  nearest anchor. O(n²) cell-distance made it impractically slow (killed); the legend
+  result is already decisive, so it was removed rather than kept as a slow diagnostic.
+
+**Why no ≥2-fold slice exists (root cause, sharper than iter62)**: I read the three
+representative corpus tasks directly and they are STRUCTURALLY HETEROGENEOUS —
+`ddf7fa4f` markers are small top-row pixels matched by column to large grey blobs;
+`2204b7a8` the "legend" is two **full-column borders** and targets are size-1 cells
+matched by nearer border; `d94c3b52` is pattern-replication, not legend at all. No
+single fixed (marker-definition × predicate) folds ≥2. The design DOES sanction the
+correspondence primitive — `pair-by(set_a, set_b, prop)` is in the util seed set
+(`arbor-dsl-taxonomy §8`) — but *which* matching key to use per task is precisely
+**Q-B3 "self-introduced primitive / concept invention"**, the design's sole
+本질적-미해결 open question (`arbor-open-questions.md`, B3 ❌). Per `BACKLOG_LOOP.md §5`,
+when a rung's progress requires deciding an open question I must NOT invent the answer
+— I surface it. A flexible correspondence engine that searches marker-defs × predicates
+per task IS the Q-B3 enumeration mechanism; landing it now would either require
+inventing that answer (forbidden) or produce per-task singletons (accretion, forbidden
+by §2.5-3/4). So there is no smallest-defensible single-commit slice this iter.
+
+**Change**: none to the system. Kept `scripts/probe_legend.py` (fast, decisive) as a
+permanent diagnostic so iter64+ does not re-scan this hypothesis; removed the slow
+`probe_anchor.py` and temp `_err.txt` files.
+
+**Probe before**: training 0/3, 24 rules, sum-covers 147, P3 0.833.
+**Probe after** : unchanged (no commit).
+
+**Invariants**: forbidden=none (no code touched), positives=no deltas (intentional no-op).
+
+**Next gap (note for future iter)**: object-correspondence recolour is now shown to be
+**Q-B3-blocked** (per-task concept/predicate invention), not merely "lacking a small
+slice" — do NOT re-scan fixed correspondence predicates (legend col/row/nearest/contains
+and nearest-anchor are now refuted at ≤1 held-out fold; see scripts/probe_legend.py).
+The non-open-question lever still worth a swing is the **compose** widening that paid off
+before (iter46 crop/dihedral +10, iter61 dedup +6): a *panel-SELECT* stage-1 (pick the
+unique/odd-one-out or content-differing panel of a separator-split grid — distinct from
+iter62's refuted panel-*split* that takes a fixed half) or a "largest single-colour
+rectangle" extraction. Not converged (compose widenings remain testable + object-corr is
+a real Q-B3-blocked gap), so NO `_LOOP_COMPLETE.md`.
+
+## Iter 63 [NEUTRAL] — 20260615_060201 — branch test33
+- Probe: [06:02:22] Correct:     0 / 3  (0.0%)
