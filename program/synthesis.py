@@ -246,6 +246,30 @@ def run_program(program, input_grid):
                     cur = apply_DSL(
                         "coloring", cur,
                         selection=remap(r, c, ih, iw), color=v)
+        elif kind == "scale":
+            # Pixel scaling (block upsample): every input cell becomes an
+            # ``rh × rw`` block of its OWN colour. Like ``dihedral`` it is a
+            # purely positional, value-agnostic coordinate expression composing
+            # ONLY the two frozen primitives — it makes a canvas ``rh·in_h ×
+            # rw·in_w`` (``make_grid``) and paints each cell's block at
+            # ``(r·rh, c·rw)`` (``coloring``). The transform never inspects a
+            # value, so a program fitted on the train pairs (factors are shared
+            # constants, §6.2 data) runs unchanged on the test input (P5: dims
+            # come from the input grid). Every cell is painted — including the
+            # background — so the result equals the block-upsample exactly,
+            # without depending on background detection.
+            _, h_expr, w_expr = step
+            rh = _eval(h_expr, env)
+            rw = _eval(w_expr, env)
+            grid = env["grid"]
+            ih = len(grid)
+            iw = len(grid[0]) if grid else 0
+            cur = apply_DSL("make_grid", height=ih * rh, width=iw * rw, color=0)
+            for r, row in enumerate(grid):
+                for c, v in enumerate(row):
+                    block = [(r * rh + dr, c * rw + dc)
+                             for dr in range(rh) for dc in range(rw)]
+                    cur = apply_DSL("coloring", cur, selection=block, color=v)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -356,6 +380,44 @@ def _candidate_programs(pairs):
     # families).
     for name in _DIHEDRAL:
         yield [("dihedral", ("const", name))]
+
+    # --- Schema 6: pixel scaling (block upsample) --------------------------
+    # The output is the input with every cell blown up to an ``rh × rw`` block,
+    # when a single integer factor pair holds across *every* train pair (the
+    # reason — P3/P4 — is the COMM result "output dims are always the same
+    # integer multiple of input dims"). One ``scale`` step carries the fitted
+    # factors as ``const`` leaves; being a pure ``[("scale", ("const",?),
+    # ("const",?))]`` skeleton, two scale tasks with different factors lift via
+    # ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise together), the
+    # same way the dihedral maps do. The step composes only the two frozen
+    # primitives (§2.5-1, F3-safe).
+    sc = _fit_scale(pairs)
+    if sc is not None:
+        yield [("scale", ("const", sc[0]), ("const", sc[1]))]
+
+
+def _fit_scale(pairs):
+    """Return ``(rh, rw)`` integer scale factors if every pair's output is the
+    input upsampled by one shared factor pair (at least one factor > 1), else
+    ``None``. The factors are value-agnostic constants shared across all pairs,
+    so the program transfers to the test input (P5)."""
+    rhs, rws = set(), set()
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        ih = len(gin)
+        iw = len(gin[0]) if gin else 0
+        oh = len(gout)
+        ow = len(gout[0]) if gout else 0
+        if ih == 0 or iw == 0 or oh % ih or ow % iw:
+            return None
+        rhs.add(oh // ih)
+        rws.add(ow // iw)
+    if len(rhs) != 1 or len(rws) != 1:
+        return None
+    rh, rw = rhs.pop(), rws.pop()
+    if rh < 1 or rw < 1 or (rh == 1 and rw == 1):
+        return None
+    return (rh, rw)
 
 
 def _fit_color_map(pairs):

@@ -187,3 +187,67 @@ def test_swap_and_nonswap_dihedral_share_one_skeleton():
     assert flip is not None and transpose is not None
     assert flip[0][1] != transpose[0][1]  # different map leaves
     assert _program_skeleton(flip) == _program_skeleton(transpose)
+
+
+# --- Schema 6: pixel scaling (block upsample) --------------------------------
+
+def test_scale_2x_discovered_by_search():
+    # Every cell blown up to a 2x2 block of its own colour — a value-agnostic
+    # coordinate expression composing the frozen primitives, not a new one.
+    pairs = [
+        {"input": [[1, 2]], "output": [[1, 1, 2, 2], [1, 1, 2, 2]]},
+        {"input": [[3, 0], [0, 4]],
+         "output": [[3, 3, 0, 0], [3, 3, 0, 0],
+                    [0, 0, 4, 4], [0, 0, 4, 4]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None
+    assert prog[0][0] == "scale"
+    assert prog[0][1] == ("const", 2) and prog[0][2] == ("const", 2)
+    # transfers unchanged to a held-out input (P5)
+    assert run_program(prog, [[5]]) == [[5, 5], [5, 5]]
+
+
+def test_scale_non_square_factors():
+    # Distinct row/col factors (rh=2, rw=3) must both be fitted.
+    pairs = [
+        {"input": [[7]], "output": [[7, 7, 7], [7, 7, 7]]},
+        {"input": [[1, 2]],
+         "output": [[1, 1, 1, 2, 2, 2], [1, 1, 1, 2, 2, 2]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "scale"
+    assert prog[0][1] == ("const", 2) and prog[0][2] == ("const", 3)
+
+
+def test_scale_declines_on_non_integer_multiple():
+    # Output dims that are not an integer multiple of the input must not be
+    # mislabelled as a scale (honest miss for this schema).
+    pairs = [
+        {"input": [[1, 2, 3]], "output": [[1, 2, 3, 0, 0]]},
+    ]
+    prog = synthesize_task(pairs)
+    if prog is not None:
+        assert prog[0][0] != "scale"
+
+
+def test_scale_factors_share_one_skeleton():
+    # The unification payoff: a 2x and a 3x scale must produce the SAME program
+    # skeleton (factors are the only divergent leaves), so save_rule lifts them
+    # into ONE covers>1 rule rather than two families.
+    # (≥2 distinct pairs each, so the constant-output schema declines and the
+    # scale schema is what fires.)
+    from agent.memory import _program_skeleton
+    two = synthesize_task([
+        {"input": [[1, 2]], "output": [[1, 1, 2, 2], [1, 1, 2, 2]]},
+        {"input": [[3]], "output": [[3, 3], [3, 3]]},
+    ])
+    three = synthesize_task([
+        {"input": [[1]], "output": [[1, 1, 1], [1, 1, 1], [1, 1, 1]]},
+        {"input": [[5, 6]],
+         "output": [[5, 5, 5, 6, 6, 6], [5, 5, 5, 6, 6, 6],
+                    [5, 5, 5, 6, 6, 6]]},
+    ])
+    assert two is not None and three is not None
+    assert two[0][1] != three[0][1]  # different factor leaves
+    assert _program_skeleton(two) == _program_skeleton(three)

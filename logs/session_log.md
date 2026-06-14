@@ -3225,3 +3225,113 @@ now exhausted.
 
 ## Iter 30 [CLEAN] — 20260614_201733 — branch test33
 - Probe: [20:17:51] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 20:33
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_203328.log
+
+---
+## Learning Loop -- 2026-06-14 20:33
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_203332.log
+
+---
+## Learning Loop -- 2026-06-14 20:33
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_203340.log
+
+---
+## Learning Loop -- 2026-06-14 20:37
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 6 -> 7 (+1 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_203727.log
+
+---
+## Learning Loop -- 2026-06-14 20:37
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_203743.log
+
+---
+## Learning Loop -- 2026-06-14 20:37
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 7 -> 7 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_203747.log
+
+## Iter 31 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase, probe 0/3 (c9680e90/878187ab/e5790162 are
+same-size conditional transforms needing R4 machinery — not a smallest step, per
+iter-30's note). Scanning all 1000 training tasks for a *general* gap whose fix is
+a clean coordinate-expression composition of the two frozen primitives surfaced
+**pixel scaling (block upsample)**: 51 tasks have integer-multiple output dims, and
+3 are pure block-upsamples (`60c09cac`/`c59eb873` at 2×, `9172f3a0` at 3×) the
+synthesizer cannot express — yet they share one skeleton with two distinct factor
+pairs, the textbook R3 lift target (PROMPT §2.2.3 "generalize across what is
+already solved").
+
+**Change**:
+- `program/synthesis.py` — added a `scale` step to `run_program` (makes an
+  `rh·in_h × rw·in_w` canvas via `make_grid`, paints every cell's `rh×rw` block in
+  its own colour via `coloring` — a value-agnostic coordinate expression composing
+  ONLY the two frozen primitives, F3-safe, exactly like `dihedral`). Added Schema 6
+  + `_fit_scale(pairs)`: fits one shared integer factor pair across all pairs, emits
+  `[("scale", ("const",rh), ("const",rw))]`. Its `(("scale",("const",None),
+  ("const",None)),)` skeleton lets two scale tasks with different factors lift via
+  `unify()` into one `covers>1` rule.
+- `procedural_memory/rule_007.json` (new) — learned from the 3 scale tasks: covers
+  all three, program lifted to `[["scale", ["const","?v3"], ["const","?v4"]]]`,
+  `anti_unification_trace` set (au across factors (2,2) and (3,3)). All 3 solve
+  incl. held-out test inputs.
+- `tests/test_synthesis.py` — +4 scale tests (2× discovery+transfer, non-square
+  factors, declines on non-integer-multiple, factors-share-one-skeleton). 177 pass.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 23/23; 6 rules, P1=P2=5.833,
+P3=0.833.
+**Probe after** : easy_a 9/9, madeup 23/23 (guards unchanged); 7 rules; new
+rule_007 covers=3 (3 real ARC-AGI-2 scale tasks now solve via ONE lifted rule).
+P1/P2 5.833→5.429, P3 0.833→0.857.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=P3
++0.024 (au-traced fraction up — AU genuinely fired across two factor pairs).
+P1/P2 dipped −0.40: the documented saturation artifact — a covers=3 family lowers
+the *mean* only because existing rules carry unusually high covers (rule_002=20);
+the *absolute* solved count rose +3 with only +1 rule (3 tasks/rule, the efficient
+direction §2.5-4). No new `_try_*`/`_apply_*`; no new DSL primitive (scale is a
+coordinate expression composing the two frozen primitives, discovered by SEARCH);
+no `active_operators.py` edit (F8 N/A).
+
+**Next gap (note for future iter)**: the dominant remaining integer-multiple family
+is *conditional tiling* (~47 tasks, e.g. fractal 007bbfb7: output is an rh×rw macro
+grid of tiles, each tile = a copy of the input iff input[R][C] satisfies a
+condition). That needs a per-macro-cell *selection/condition* keyed on the input
+cell value — the §2.5-2b "fill the variable by a selector grounded in COMM/DIFF"
+machinery, a genuine new capability rather than another whole-grid coordinate map.
