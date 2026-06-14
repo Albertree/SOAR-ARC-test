@@ -22,11 +22,16 @@ Reads the `object_motion` signal surfaced by ExtractPatternOperator::
             "single_out": bool,   # exactly one object in G1
             "color_preserved": bool,
             "size_preserved":  bool,
-            "grid_size_preserved": bool,
+            "grid_size_preserved": bool,   # informational; resizes are allowed
             ... per-pair geometry (src/dst/H/W/oh/ow) ...
         }, ... ],
-        "target": {"kind": ...} | None,   # fitted target expression, or None
+        "target":    {"kind": ...} | None,  # fitted target expression, or None
+        "out_shape": {"kind": ...} | None,  # fitted output-shape expr, or None
     }
+
+The grid size need not be preserved: a resizing move (easy000i, 6×6 → 5×5) is
+still one object_motion as long as the output shape is itself describable by a
+value-agnostic expression (`out_shape`). In-place moves fit `out_shape == same`.
 """
 
 from agent.conditions import register
@@ -34,11 +39,13 @@ from agent.conditions import register
 
 @register("object_motion")
 def object_motion(patterns: dict, params: dict | None = None) -> bool:
-    """True iff every example pair is a single-object move with the object and
-    grid size preserved AND one target expression fits all pairs.
+    """True iff every example pair is a single-object move with the object
+    (colour + shape) preserved AND both a target expression and an output-shape
+    expression fit all pairs. The grid size itself may change — that is captured
+    by the fitted output-shape expression, not required to be constant.
 
-    `params.min_evidence` (default 2) guards against concluding a target
-    expression from a single pair.
+    `params.min_evidence` (default 2) guards against concluding either expression
+    from a single pair.
     """
     if not isinstance(patterns, dict):
         return False
@@ -60,10 +67,13 @@ def object_motion(patterns: dict, params: dict | None = None) -> bool:
             and p.get("single_out")
             and p.get("color_preserved")
             and p.get("size_preserved")
-            and p.get("grid_size_preserved")
         ):
             return False
 
-    # A consistent target expression must have been fitted across the pairs;
-    # absent one, the move is not value-agnostically describable and we decline.
-    return motion.get("target") is not None
+    # Both a target expression and an output-shape expression must have been
+    # fitted across the pairs; absent either, the move is not value-agnostically
+    # describable and we decline rather than guess.
+    return (
+        motion.get("target") is not None
+        and motion.get("out_shape") is not None
+    )

@@ -28,9 +28,14 @@ Candidate expressions, tried most-structural first:
   * ``constant``     — bbox top-left = a constant ``(r, c)`` (every pair's object
     lands at the same absolute position regardless of where it started).
 
-`top_left` and grid-resize targets are deliberately *not* here yet — no current
-task exercises them, and an untested candidate is dead vocabulary. They join when
-a task (e.g. easy000i, which resizes) needs them.
+The output grid *shape* is a second, orthogonal argument expression (see
+``fit_output_shape`` / ``output_shape`` below). In the size-preserving move family
+(easy000c–h) the output is the same shape as the input; a *resizing* move
+(easy000i: 6×6 → 5×5, object to the top-left) needs the output shape re-derived
+from the examples too — fitted, never a literal — so the same one
+``object_motion`` rule covers resizing moves alongside in-place ones. Like the
+target position, the shape's destination comes from the comparison (P3/P4), and
+the most-structural reading wins (a relation over a coincidental constant).
 """
 
 
@@ -80,6 +85,61 @@ def fit_target(motions):
         r, c = next(iter(dsts))
         return {"kind": "constant", "pos": [r, c]}
 
+    return None
+
+
+def fit_output_shape(shapes):
+    """Fit a value-agnostic output-grid-shape expression across example pairs.
+
+    `shapes` is a list of per-pair dicts ``{"in": (h, w), "out": (h, w)}`` giving
+    the input and output grid dimensions. Returns a descriptor naming the output
+    shape as an expression consistent across every pair, or ``None`` if none fits
+    (so the caller declines rather than guessing). Tried most-structural first —
+    an identity, then a relation (input + constant delta), then a coincidental
+    absolute constant — mirroring `fit_target`'s ordering.
+    """
+    if not shapes:
+        return None
+
+    # same: the output is the same shape as the input on every pair.
+    if all(s["out"] == s["in"] for s in shapes):
+        return {"kind": "same"}
+
+    # delta: a single (dh, dw) relates input shape to output shape on every pair.
+    deltas = {
+        (s["out"][0] - s["in"][0], s["out"][1] - s["in"][1])
+        for s in shapes
+    }
+    if len(deltas) == 1:
+        dh, dw = next(iter(deltas))
+        return {"kind": "delta", "delta": [dh, dw]}
+
+    # constant: every output grid is the same absolute size.
+    outs = {s["out"] for s in shapes}
+    if len(outs) == 1:
+        h, w = next(iter(outs))
+        return {"kind": "constant", "dims": [h, w]}
+
+    return None
+
+
+def output_shape(descriptor, in_dims):
+    """Resolve an output-shape descriptor to concrete ``(height, width)`` for one
+    input grid. Inverse-paired with `fit_output_shape`. Returns ``None`` for an
+    unknown descriptor so callers decline rather than crash."""
+    if not descriptor:
+        return None
+    h, w = in_dims
+    kind = descriptor.get("kind")
+
+    if kind == "same":
+        return (h, w)
+    if kind == "delta":
+        dh, dw = descriptor["delta"]
+        return (h + dh, w + dw)
+    if kind == "constant":
+        oh, ow = descriptor["dims"]
+        return (oh, ow)
     return None
 
 

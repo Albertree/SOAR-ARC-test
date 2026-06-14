@@ -215,11 +215,12 @@ class ExtractPatternOperator(Operator):
         pairs so the move family resolves to a single rule (§2.5-2b)."""
         from agent.dsl_expr import (
             objects_of, unique_object, position_of, color_of, obj_origin_extent,
-            fit_target,
+            fit_target, fit_output_shape,
         )
 
         pairs = []
         motions = []  # geometry feeding fit_target, only for clean pairs
+        shapes = []   # in/out grid dims feeding fit_output_shape (same pairs)
         for pair in task.example_pairs:
             g0, g1 = pair.input_grid, pair.output_grid
             if g0 is None or g1 is None:
@@ -247,33 +248,48 @@ class ExtractPatternOperator(Operator):
                 "grid_size_preserved": grid_size_preserved,
             }
 
-            # Record geometry for the target fit only when the pair is a clean
-            # object-preserving, size-preserving single-object move.
+            # Record geometry for the target/shape fits only when the pair is a
+            # clean object-preserving, size-preserving single-object move. The
+            # *grid* size may change (easy000i resizes) — that is fitted
+            # separately as an output-shape expression — so it is NOT a gate here.
             if (
                 obj_in is not None and obj_out is not None
-                and color_preserved and size_preserved and grid_size_preserved
+                and color_preserved and size_preserved
             ):
                 (oh, ow) = obj_origin_extent(obj_in)[1]
+                # H/W are the *output* grid dims so a corner target lands flush in
+                # the output grid even when it resizes (size-preserved tasks have
+                # output dims == input dims, so this is unchanged for them).
                 motions.append({
                     "src": position_of(obj_in),
                     "dst": position_of(obj_out),
-                    "H": g0.height,
-                    "W": g0.width,
+                    "H": g1.height,
+                    "W": g1.width,
                     "oh": oh,
                     "ow": ow,
+                })
+                shapes.append({
+                    "in": (g0.height, g0.width),
+                    "out": (g1.height, g1.width),
                 })
 
             pairs.append(entry)
 
-        # Fit a target expression only if every recorded pair is clean (so a
-        # task with any dirty pair declines rather than over-generalising).
-        target = (
-            fit_target(motions)
-            if motions and len(motions) == len(pairs)
-            else None
-        )
+        # Fit target + output-shape expressions only if every recorded pair is
+        # clean (so a task with any dirty pair declines rather than
+        # over-generalising). The output shape is its own value-agnostic argument
+        # expression (same / input+delta / constant), letting one rule cover both
+        # in-place and resizing moves.
+        clean = bool(motions) and len(motions) == len(pairs)
+        target = fit_target(motions) if clean else None
+        out_shape = fit_output_shape(shapes) if clean else None
 
-        return {"evidence_count": len(pairs), "pairs": pairs, "target": target}
+        return {
+            "evidence_count": len(pairs),
+            "pairs": pairs,
+            "target": target,
+            "out_shape": out_shape,
+        }
 
     # ---- internal helpers ------------------------------------------------
 
@@ -635,9 +651,11 @@ class PredictOperator(Operator):
         # keeps a single value-agnostic rule covering the whole move family, the
         # same way constant_output re-derives its common output per task.
         motion_target = None
+        motion_out_shape = None
         if rule.get("type") == "object_motion":
             motion = (wm.s1.get("patterns") or {}).get("object_motion") or {}
             motion_target = motion.get("target")
+            motion_out_shape = motion.get("out_shape")
 
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
@@ -653,7 +671,9 @@ class PredictOperator(Operator):
                     else None
                 )
             elif rule.get("type") == "object_motion":
-                predicted = self._render_object_motion(g0, motion_target)
+                predicted = self._render_object_motion(
+                    g0, motion_target, motion_out_shape
+                )
             else:
                 predicted = self._apply_rule(rule, g0)
             if predicted is not None:
@@ -714,44 +734,61 @@ class PredictOperator(Operator):
     # ---- object-move rendering via the two frozen DSL primitives ----------
 
     @staticmethod
-    def _render_object_motion(input_grid, target_desc):
+    def _render_object_motion(input_grid, target_desc, out_shape_desc=None):
         """Place the single foreground object at the destination named by
         `target_desc` (the target expression fitted from this task's example
-        comparison — corner / constant / translation). Built only from make_grid
-        + coloring (CLAUDE.md §6.2): start a fresh background canvas (erasing the
-        object's old position) and repaint each object cell, translated so the
-        object's bbox top-left lands at the resolved destination. No literal
-        coordinate lives on the rule — the destination is `target_desc`, resolved
-        per input — so one rule serves every grid size and every move variant.
-        Declines (returns None) if the move would push the object off-grid."""
+        comparison — corner / constant / translation), on an output canvas whose
+        shape is named by `out_shape_desc` (same / input+delta / constant, also
+        fitted from the comparison — defaults to the input shape when absent).
+        Built only from make_grid + coloring (CLAUDE.md §6.2): start a fresh
+        background canvas at the output shape (erasing the object's old position)
+        and repaint each object cell, translated so the object's bbox top-left
+        lands at the resolved destination. No literal coordinate or grid size
+        lives on the rule — both are expressions resolved per input — so one rule
+        serves every grid size, move variant, and resize. Declines (returns None)
+        if the move would push the object off the output grid."""
         from procedural_memory.DSL.apply import apply_DSL
         from agent.dsl_expr import (
             objects_of, unique_object, background_of, target_position,
+            output_shape,
         )
 
         if target_desc is None:
             return None
 
         raw = input_grid.raw
-        h = len(raw)
-        w = len(raw[0]) if h else 0
+        in_h = len(raw)
+        in_w = len(raw[0]) if in_h else 0
         bg = background_of(raw)
 
         obj = unique_object(objects_of(raw, bg))
-        if obj is None or h == 0 or w == 0:
+        if obj is None or in_h == 0 or in_w == 0:
             return None
 
-        dst = target_position(target_desc, (h, w), obj)
+        # Output grid shape: a fitted expression over the input shape, defaulting
+        # to the input shape itself when no descriptor is supplied (in-place move).
+        out_dims = (
+            output_shape(out_shape_desc, (in_h, in_w))
+            if out_shape_desc is not None
+            else (in_h, in_w)
+        )
+        if out_dims is None:
+            return None
+        out_h, out_w = out_dims
+        if out_h <= 0 or out_w <= 0:
+            return None
+
+        dst = target_position(target_desc, (out_h, out_w), obj)
         if dst is None:
             return None
 
         r0, c0, _r1, _c1 = obj["bbox"]
         dr, dc = dst[0] - r0, dst[1] - c0
 
-        out = apply_DSL("make_grid", height=h, width=w, color=bg)
+        out = apply_DSL("make_grid", height=out_h, width=out_w, color=bg)
         for (r, c), color in obj["pixels"].items():
             nr, nc = r + dr, c + dc
-            if not (0 <= nr < h and 0 <= nc < w):
+            if not (0 <= nr < out_h and 0 <= nc < out_w):
                 return None  # destination pushes the object off-grid → decline
             out = apply_DSL("coloring", out, selection=(nr, nc), color=color)
         return out

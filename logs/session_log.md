@@ -1,6 +1,56 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 5 — 2026-06-14 — branch test33
+
+**Diagnosis**: easy_a was 8/9; the only blind spot was **easy000i**, which moves
+a single object to (0,0) *while resizing the grid* (6×6 → 5×5). The `object_motion`
+family declined it because the matcher required `grid_size_preserved` per pair and
+the render built the output canvas at the *input* shape — there was no way to
+express "the output grid is a different, fitted shape." This is the genuinely new
+R1 capability (the R1→graduation step): an **output-shape argument expression**,
+orthogonal to the already-lifted target-position expression. Smallest defensible
+step: add that one expression to the *argument* vocabulary (no new transformation
+primitive, no new matcher, no `_try_*`), so the same single rule covers resizing
+moves alongside in-place ones.
+
+**Change**:
+- `agent/dsl_expr/motion.py` — added `fit_output_shape` (same / input+delta /
+  constant, most-structural first, mirroring `fit_target`) + `output_shape`
+  resolver. Value-agnostic: the output shape is re-derived from each task's
+  comparison, never a literal (P3/P4).
+- `agent/dsl_expr/__init__.py` — export the two new expressions.
+- `agent/active_operators.py` — `_object_motion` now records per-pair output
+  dims, fits an `out_shape` expression, and stops gating the geometry record on
+  `grid_size_preserved` (motion H/W now use *output* dims so a corner target lands
+  flush even on resize; unchanged for same-size tasks). `PredictOperator` reads
+  `out_shape` and passes it to `_render_object_motion`, which builds the canvas at
+  the fitted output shape (defaults to input shape when absent).
+- `agent/conditions/object_motion.py` — matcher drops the per-pair
+  `grid_size_preserved` requirement (resizes are allowed) and now also requires a
+  fitted `out_shape`; in-place moves fit `out_shape == same`, so c–h are unchanged.
+- `tests/test_object_motion.py` — added output-shape fitter/resolver tests, a
+  matcher-declines-without-out_shape test, and an end-to-end resize task (easy000i)
+  that resolves to the *same* rule object as the corner/constant/offset tasks.
+
+**Probe before**: easy_a 8/9; rule_count 2; rule_002 covers=6 (c–h); P1/P2 4.0.
+**Probe after** : easy_a 9/9; rule_count 2 (no accretion); rule_002 covers=7
+(c–i, easy000i *merged*); P1/P2 4.5.
+
+**Invariants**: forbidden=none (check_invariants CLEAN); positives=P1 +0.5
+(4.0→4.5), P2 +0.5 (4.0→4.5), P5 ±0, P6 −37 lines (net add, no new matcher). All
+30 unit tests pass.
+
+**Next gap (note for future iter)**: easy_a is now 100% — the loop should graduate
+toward `madeup` after K clean iters. The standing unfired big-ticket rungs are
+**R3** (anti_unification: P3 still 0.0 — no rule has been *lifted* across a shared
+skeleton by `unify()`; rule_001 and rule_002 each generalize within their own
+matcher, not across) and **R5** (fast-path reuse: both `constant_output` and
+`object_motion` decline the fast path because their arguments are fitted from the
+example comparison, so stored-rule hits stay 0). A `madeup` task isolating
+multi-object *selection* would be the natural next probe.
+
+---
 ## Iter 1 — 2026-06-12 — branch test31
 
 **Diagnosis**: Lowest unproven rung is **R0 (GRID-level COMM-copy)** — this is a
@@ -320,3 +370,26 @@ rules) remain unfired.
 
 ## Iter 4 [CLEAN] — 20260614_152429 — branch test33
 - Probe: easy_a: [15:24:32] Correct:     4 / 9  (44.4%)
+
+---
+## Learning Loop -- 2026-06-14 15:35
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_153540.log
+
+---
+## Learning Loop -- 2026-06-14 15:40
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_154037.log
+
+## Iter 5 [CLEAN] — 20260614_153540 — branch test33
+- Probe: easy_a: [15:35:43] Correct:     8 / 9  (88.9%)

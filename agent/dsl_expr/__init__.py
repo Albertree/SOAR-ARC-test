@@ -30,6 +30,8 @@ from agent.dsl_expr.selection import (
 from agent.dsl_expr.motion import (
     fit_target,
     target_position,
+    fit_output_shape,
+    output_shape,
     obj_origin_extent,
 )
 
@@ -43,5 +45,7 @@ __all__ = [
     "cells_of",
     "fit_target",
     "target_position",
+    "fit_output_shape",
+    "output_shape",
     "obj_origin_extent",
 ]
