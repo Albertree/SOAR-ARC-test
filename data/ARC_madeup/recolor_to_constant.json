@@ -1,0 +1,19 @@
+{
+  "_comment": "Two objects per grid; the LARGEST object is recoloured in place to a FIXED colour (2) that appears on no input object (smaller object unchanged, grid unchanged). Isolates a colour-source reading the recolor family cannot yet name: the new colour is a constant agreed across the examples, NOT color_of(some other object). The selected object's own colour VARIES across pairs (3,5,7) and the constant 2 is absent from every input, so neither the value-keyed legacy color map nor the existing source-selector (color_of(another object)) fits. selector=largest, source=constant(2). Value-agnostic the way constant_output is: the constant is fitted from the example outputs at solve time, never hand-coded.",
+  "train": [
+    {
+      "input":  [[3,3,0,0,0],[3,3,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,4]],
+      "output": [[2,2,0,0,0],[2,2,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,4]]
+    },
+    {
+      "input":  [[0,0,0,0,0],[0,5,5,0,0],[0,5,5,0,0],[0,0,0,0,0],[6,0,0,0,0]],
+      "output": [[0,0,0,0,0],[0,2,2,0,0],[0,2,2,0,0],[0,0,0,0,0],[6,0,0,0,0]]
+    }
+  ],
+  "test": [
+    {
+      "input":  [[0,0,0,0,0],[0,0,7,7,0],[0,0,7,7,0],[0,0,0,0,0],[0,0,0,0,8]],
+      "output": [[0,0,0,0,0],[0,0,2,2,0],[0,0,2,2,0],[0,0,0,0,0],[0,0,0,0,8]]
+    }
+  ]
+}

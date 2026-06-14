@@ -22,7 +22,8 @@
   },
   "covers": [
     "recolor_to_largest",
-    "recolor_to_smallest"
+    "recolor_to_smallest",
+    "recolor_to_constant"
   ],
   "source_task": "recolor_to_largest",
   "created_at": "2026-06-14T17:30:01.641006",

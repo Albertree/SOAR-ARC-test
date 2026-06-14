@@ -49,11 +49,38 @@ def test_fit_color_source_smallest():
     assert fit_color_source([{"objects": objs, "color": 4}]) == {"kind": "smallest"}
 
 
-def test_fit_color_source_declines_when_no_object_has_color():
+def test_fit_color_source_constant_when_no_object_has_color():
+    # colour 9 belongs to no object -> no selector fits -> the constant fallback
+    # reads the agreed new colour directly (the recolour lands on a fixed colour,
+    # like constant_output's common grid). Fitted from the examples, not literal.
+    g1 = [[3, 3, 0], [3, 3, 0], [0, 0, 4]]
+    g2 = [[5, 5, 0], [5, 5, 0], [0, 0, 6]]
+    objs1, objs2 = _objs(g1), _objs(g2)
+    # both pairs land on the same absent colour 9 -> constant(9).
+    assert fit_color_source([
+        {"objects": objs1, "color": 9},
+        {"objects": objs2, "color": 9},
+    ]) == {"kind": "constant", "color": 9}
+
+
+def test_fit_color_source_declines_when_constant_disagrees():
+    # new colours differ across pairs (8 then 9) and neither names a source object
+    # -> no selector fits AND the constant disagrees -> decline rather than guess.
+    g1 = [[3, 3, 0], [3, 3, 0], [0, 0, 4]]
+    g2 = [[5, 5, 0], [5, 5, 0], [0, 0, 6]]
+    objs1, objs2 = _objs(g1), _objs(g2)
+    assert fit_color_source([
+        {"objects": objs1, "color": 8},
+        {"objects": objs2, "color": 9},
+    ]) is None
+
+
+def test_fit_color_source_prefers_selector_over_constant():
+    # the new colour (3) is the largest object's colour AND constant across the
+    # single pair; the structural selector reading must win over the constant.
     g = [[3, 3, 0], [3, 3, 0], [0, 0, 4]]
     objs = _objs(g)
-    # colour 9 belongs to no object -> no selector fits -> decline.
-    assert fit_color_source([{"objects": objs, "color": 9}]) is None
+    assert fit_color_source([{"objects": objs, "color": 3}]) == {"kind": "largest"}
 
 
 def test_color_source_resolves_and_declines():
@@ -61,6 +88,7 @@ def test_color_source_resolves_and_declines():
     objs = _objs(g)
     assert color_source({"kind": "largest"}, objs) == 3
     assert color_source({"kind": "smallest"}, objs) == 4
+    assert color_source({"kind": "constant", "color": 7}, objs) == 7
     assert color_source(None, objs) is None
 
 

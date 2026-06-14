@@ -14,25 +14,40 @@ recoloured (the *target* selector, via `fit_selector`) and whose colour it takes
 (target, source) selectors diverge anti-unify into one covers>1 rule (R3,
 `agent/memory.save_rule` -> `program.anti_unification.unify`).
 
-The new colour is therefore an *argument expression* — `color_of(select_object(
-inputs, source))` — not a stored colour value, so the rule stays value-agnostic
-and computable from G0 alone at test time (P5).
+The new colour is therefore an *argument expression*. Two readings, tried
+most-structural first (mirroring `motion.fit_target`'s corner/offset/constant
+ordering):
+
+  1. ``color_of(select_object(inputs, source))`` — the colour of another object
+     named by a value-agnostic selector (most structural; the colour is read from
+     a fitted source object at predict time, so the rule needs no stored value).
+  2. ``constant(c)`` — a single colour the recolour lands on in *every* example,
+     fitted (not hand-coded) from the agreement of the example outputs, exactly
+     as `constant_output` (R0) fits the common output grid. Used only when no
+     source object carries the new colour (e.g. the target colour appears on no
+     input object). Value-agnostic in the same sense `constant_output` is: the
+     constant is re-fitted from each task's own examples at solve time and never
+     baked into Python; it is supplied by the training examples, not the test
+     input, so it does not require test G1 (P5).
 """
 
 from agent.dsl_expr.selection import select_object, color_of, _SELECTOR_KINDS
 
 
 def fit_color_source(sources):
-    """Fit a value-agnostic colour-source selector across example pairs.
+    """Fit a value-agnostic colour source across example pairs.
 
     `sources` is a list of per-pair dicts ``{"objects": [...], "color": int}``
     where ``objects`` are the input objects (from `objects_of`) and ``color`` is
-    the recoloured object's *new* colour. Returns a selector descriptor naming the
-    object whose single colour equals that new colour in *every* pair, or ``None``
-    if none fits (so the matcher declines rather than guessing). Tried
-    most-structural first, mirroring `fit_selector`'s ordering. Never returns a
-    literal colour — the colour is always read from a fitted source object at
-    predict time, keeping the rule value-agnostic and G0-computable (P5).
+    the recoloured object's *new* colour. Returns a descriptor, or ``None`` if
+    neither reading fits (so the matcher declines rather than guessing):
+
+      - ``{"kind": <selector>}`` when some selector names the object whose single
+        colour equals the new colour in *every* pair (tried first, most structural);
+      - ``{"kind": "constant", "color": c}`` when the new colour is the same ``c``
+        in every pair (the constant fallback — tried only after every selector
+        fails, so a source-object reading always wins where it applies and existing
+        recolour tasks are unaffected).
     """
     if not sources:
         return None
@@ -45,16 +60,23 @@ def fit_color_source(sources):
                 break
         if ok:
             return {"kind": kind}
+    # Fallback: the new colour is a single constant agreed across all pairs.
+    colors = {s["color"] for s in sources}
+    if len(colors) == 1:
+        return {"kind": "constant", "color": next(iter(colors))}
     return None
 
 
 def color_source(descriptor, objects):
-    """Resolve a colour-source descriptor to a concrete colour for one input grid:
-    the single colour of the object the descriptor's selector picks. Returns
-    ``None`` when the selector picks no object (or a multi-coloured one), so
-    callers decline rather than crash. Inverse-paired with `fit_color_source`."""
+    """Resolve a colour-source descriptor to a concrete colour for one input grid.
+    For a selector descriptor, the single colour of the object it picks; for a
+    ``constant`` descriptor, the fitted constant colour directly. Returns ``None``
+    when a selector picks no object (or a multi-coloured one), so callers decline
+    rather than crash. Inverse-paired with `fit_color_source`."""
     if not descriptor:
         return None
+    if descriptor.get("kind") == "constant":
+        return descriptor.get("color")
     obj = select_object(objects, descriptor)
     if obj is None:
         return None

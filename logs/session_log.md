@@ -1321,3 +1321,93 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 15 [CLEAN] — 20260614_171456 — branch test33
 - Probe: madeup: [17:15:03] Correct:     8 / 8  (100.0%) | easy_a: [17:14:59] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 17:32
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173208.log
+
+---
+## Learning Loop -- 2026-06-14 17:32
+
+- Split: None, Tasks: 10
+- Correct: 10 / 10 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173212.log
+
+---
+## Learning Loop -- 2026-06-14 17:35
+
+- Split: None, Tasks: 11
+- Correct: 10 / 11 (90.9%)
+- Rules: 3 -> 4 (+1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_173508.log
+
+---
+## Learning Loop -- 2026-06-14 17:35
+
+- Split: None, Tasks: 11
+- Correct: 10 / 11 (90.9%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 1
+- Time: 3s
+- Log: logs/learn_20260614_173541.log
+
+---
+## Learning Loop -- 2026-06-14 17:36
+
+- Split: None, Tasks: 11
+- Correct: 11 / 11 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173558.log
+
+---
+## Learning Loop -- 2026-06-14 17:36
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173606.log
+
+---
+## Learning Loop -- 2026-06-14 17:36
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173613.log
+
+## Iter 16 — 2026-06-14 — branch test33
+
+**Diagnosis**: The object_recolor family (new iter15) could only name the new colour as `color_of(select_object(inputs, source))` — another object's colour. A recolour whose target colour appears on NO input object (and varies in the object's *own* colour across pairs) fits neither that source-selector nor the legacy value-keyed color map, so the structure declined and a spurious overfit recolor_sequential rule leaked. This is the recolour analog of object_motion's corner-vs-constant target split: the missing reading is a *constant* colour fitted from the example agreement (exactly how constant_output/R0 fits its common grid).
+
+**Change**:
+- `agent/dsl_expr/recolor.py`: `fit_color_source` gains a `constant` fallback — tried AFTER every source-selector (most-structural-first), returns `{kind:constant,color:c}` only when the new colour is one value agreed across all pairs; `color_source` resolves a constant descriptor to its colour directly. Value-agnostic in the constant_output sense: the constant is re-fitted from each task's own examples at solve time, supplied by training outputs not test G1 (P5-clean).
+- `data/ARC_madeup/recolor_to_constant.json` (new, F1-exempt): largest object recoloured to fixed colour 2 (absent from every input, object's own colour varies 3/5/7) — confirmed FAILED before (declined -> spurious recolor_sequential), now solved via object_recolor.
+- `tests/test_object_recolor.py`: replaced the now-obsolete "declines when no object has colour" test with constant-fallback / constant-disagreement-declines / selector-preferred-over-constant / constant-resolution coverage (+2 net).
+- Deleted the leaked `procedural_memory/rule_004.json` (overfit recolor_sequential from the pre-fix failed run).
+
+**Probe before**: easy_a 9/9, madeup 10/11 (recolor_to_constant INCORRECT); rules 3; P1/P2=6.33; P3=0.667; P5=3.
+**Probe after** : easy_a 9/9, madeup 11/11 (constant task via object_recolor); rules 3; rule_003 covers 2->3 (absorbed into the abstract `?v1/?v2` rule, trace intact).
+
+**Invariants**: forbidden=none (no active_operators.py edit -> F8 not engaged; render/generalize route through color_source generically; F2/F3 clean). positives=P1 6.33->6.67 (+0.33), P2 6.33->6.67 (+0.33); P3/P5 held. 102 tests pass (+2).
+
+**Next gap (note for future iter)**: recolor source now = {another-object's-colour} U {constant}; still no *relational* colour reading (e.g. new colour = colour absent from a fixed palette, or swap two objects' colours). Bigger standing frontiers unchanged: cross-family AU lift (object_motion <-> object_recolor share select_object but differ in action.dsl — needs object-level lifting) and R5 fast-path reuse (still 0; both families fit args from the example comparison the input-only fast path can't supply).
+
+## Iter 16 [CLEAN] — 20260614_173208 — branch test33
+- Probe: madeup: [17:32:15] Correct:     10 / 10  (100.0%) | easy_a: [17:32:11] Correct:     9 / 9  (100.0%)
