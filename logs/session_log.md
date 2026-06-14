@@ -1952,3 +1952,128 @@ on a *structurally different* task (true R5 done-when) is untested.
 
 ## Iter 20 [CLEAN] — 20260614_180937 — branch test33
 - Probe: [18:09:50] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 18:24
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_182406.log
+
+---
+## Learning Loop -- 2026-06-14 18:24
+
+- Split: None, Tasks: 13
+- Correct: 13 / 13 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 12
+- Time: 5s
+- Log: logs/learn_20260614_182409.log
+
+---
+## Learning Loop -- 2026-06-14 18:24
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_182414.log
+
+---
+## Learning Loop -- 2026-06-14 18:29
+
+- Split: training, Tasks: 60
+- Correct: 0 / 60 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 168s
+- Log: logs/learn_20260614_182646.log
+
+---
+## Learning Loop -- 2026-06-14 18:32
+
+- Split: training, Tasks: 60
+- Correct: 0 / 60 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 164s
+- Log: logs/learn_20260614_183011.log
+
+## Iter 21 — 2026-06-14 — branch test33
+
+**Iter 21: no defensible step found — analysis only.**
+
+**Diagnosis (grounded)**: Training phase. I scanned ~100 real ARC-AGI-2 training
+tasks this iter — the seed-42 probe (0/3), a seed-7 ×60 run (0/60), plus iter-18's
+×40 (0/40) — and **every single one falls to `rule=identity`: zero firings of any
+of the three descriptor families** (constant_output / object_motion /
+object_recolor). These are *not near-misses* a small fix could tip; the families
+recognise single-dominant-transformation toy structure (one object moved, one
+object recoloured, an all-equal output) and real ARC-AGI-2 tasks are multi-step
+(c9680e90 = divider-gravity, e5790162 = colored-ray projection, 878187ab = framed
+fill). The gap between "beginner curriculum mastered" and "real ARC" is the
+**missing general Slow-path program synthesizer (modules F/G)** that composes
+`make_grid`/`coloring` into multi-step programs — a large architectural piece, not
+a smallest step — plus the relational / 2nd-order argument vocabulary those programs
+need.
+
+**State**: easy_a 9/9, madeup 13/13 (all §2.1 beginner concepts solved the intended
+way). 3 rules, covers 2/17/3, P1=P2=7.33, P3=0.667, P4=932, P5=3, P6=1109. R0–R3
+proven, R5 fast-path wired (iter 19). `background_of` already 0-is-canvas (verified —
+not a gap here).
+
+**Escalation paths evaluated and rejected (per §2.2/§5, in order)**:
+- *A failing training task with a nameable small fix* — none exists: all-identity,
+  no family engages, so there is no near-miss to repair, only the absent synthesizer.
+- *A new transformation family/matcher for a real ARC pattern* — would land at
+  covers=1, lowering P1 (§2.5-4 litmus: rule-count up without covers up = accretion,
+  not progress); the documented `_try_*`/168-rule failure direction
+  (`generalize_not_accrete_families`). Rejected.
+- *Relational selection / target* (`adjacent`, "move toward object B", the canonical
+  gravity/attraction pattern) — a genuinely missing and broadly-useful capability
+  (§2.5-1 lists `same-color`/`adjacent` as LHS vocabulary to grow), but it is a
+  *multi-iter* feature (new `agent/dsl_expr/relation.py` + ExtractPattern signal +
+  fit integration + applier), not a smallest defensible single-commit step.
+- *R4 — 2nd-order edge ranking* — **blocked on an open question**: `ranking.py`'s own
+  docstring records that ranking over *comparison receipts* (`arbor-modules §2`
+  "edge-of-edge", Q "가장 긴 derived 속성") is deliberately deferred, and BACKLOG_LOOP
+  §5 says to surface (not invent) an answer when a rung touches an open question.
+  Surfaced here; rung held.
+- *Author another madeup task* — every §2.1 concept (size≠1, count≠1, multi-object
+  selection, resize, unequal sizes, size↔property, pairs≠2) is already exercised and
+  solved; a new one I can already pass is the busywork §2.2 explicitly forbids, and I
+  found no selector gap that both fails today and is a *small* general extension.
+- *Route rule_001 through AU to raise P3 0.667→1.0* — the two constant-output
+  programs are identical (no varying args), so the "lift" would record zero
+  substitutions: cosmetic P3-gaming, not a real generalization. Rejected.
+
+**Change**: none. No code, no rule, no new task. (Working tree carries only
+incidental probe-driven `times_reused` bumps and the snapshot/counter the loop
+manages.)
+
+**Probe before / after**: unchanged — easy_a 9/9, madeup 13/13, training 0/60. Rules
+3, covers mean 7.33.
+
+**Invariants**: forbidden=none; positives=all Δ0 → NEUTRAL by construction (a
+no-op iter is sanctioned, PROMPT.md §5.3 / INVARIANTS §2–3). **Not** termination:
+the system is *not* converged — the synthesizer frontier is real and large, just not
+a one-iter step, so `_LOOP_COMPLETE.md` would be premature/dishonest (§2.2).
+
+**Next gap (note for future iter)**: the single highest-value real frontier is the
+**general Slow-path program synthesizer** (modules F/G) — a producer that searches
+multi-step `make_grid`/`coloring` compositions with §2.5 argument expressions, so a
+family can fire on a real multi-step task at all. Its prerequisite vocabulary is
+**relational** selection/target (`adjacent`, "toward object B") — the canonical
+gravity/projection pattern that every sampled training task needs and no current
+selector can name. A defensible *first* slice for a future iter: seed
+`agent/dsl_expr/relation.py` (`adjacent` / `toward`) as pure, tested util, driven by
+one madeup gravity task authored to fail — then wire it as a fitted target in a
+later iter. That is a real multi-step capability, not a detector; this iter declines
+to half-build it rather than land broken scaffolding.
+
+## Iter 21 [NEUTRAL] — 20260614_182406 — branch test33
+- Probe: [18:24:19] Correct:     0 / 3  (0.0%)
