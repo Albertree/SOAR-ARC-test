@@ -5218,3 +5218,6 @@ an ordinal/relational property like size-rank, which transfers to unseen keys,
 rather than a raw colour table). Composition could also deepen to 3 stages, but the
 single-2-step yield (+10) already dwarfs the single-schema frontier, so breadth of
 stage-1 reductions (e.g. extract-one-panel) is the cheaper next probe.
+
+## Iter 46 [CLEAN] — 20260614_234318 — branch test33
+- Probe: [23:43:38] Correct:     0 / 3  (0.0%)
