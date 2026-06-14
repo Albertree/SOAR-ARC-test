@@ -9,31 +9,19 @@
       "params": {
         "program": [
           [
-            "coloring",
-            [
-              "cells_with_color",
-              [
-                "const",
-                "?v1"
-              ]
-            ],
+            "recolor_map",
             [
               "const",
-              "?v2"
-            ]
-          ],
-          [
-            "coloring",
-            [
-              "cells_with_color",
               [
-                "const",
-                "?v3"
+                [
+                  "?v5",
+                  "?v6"
+                ],
+                [
+                  "?v7",
+                  "?v8"
+                ]
               ]
-            ],
-            [
-              "const",
-              "?v4"
             ]
           ]
         ],
@@ -46,31 +34,19 @@
       "args": {
         "program": [
           [
-            "coloring",
-            [
-              "cells_with_color",
-              [
-                "const",
-                "?v5"
-              ]
-            ],
+            "recolor_map",
             [
               "const",
-              "?v6"
-            ]
-          ],
-          [
-            "coloring",
-            [
-              "cells_with_color",
               [
-                "const",
-                "?v7"
+                [
+                  "?v5",
+                  "?v6"
+                ],
+                [
+                  "?v7",
+                  "?v8"
+                ]
               ]
-            ],
-            [
-              "const",
-              "?v8"
             ]
           ]
         ]
@@ -80,7 +56,8 @@
   },
   "covers": [
     "color_remap_a",
-    "color_remap_b"
+    "color_remap_b",
+    "b1948b0a"
   ],
   "source_task": "color_remap_a",
   "created_at": "2026-06-14T19:56:24.403206",
@@ -90,31 +67,19 @@
     "params": {
       "program": [
         [
-          "coloring",
-          [
-            "cells_with_color",
-            [
-              "const",
-              "?v1"
-            ]
-          ],
+          "recolor_map",
           [
             "const",
-            "?v2"
-          ]
-        ],
-        [
-          "coloring",
-          [
-            "cells_with_color",
             [
-              "const",
-              "?v3"
+              [
+                "?v5",
+                "?v6"
+              ],
+              [
+                "?v7",
+                "?v8"
+              ]
             ]
-          ],
-          [
-            "const",
-            "?v4"
           ]
         ]
       ],
@@ -127,35 +92,23 @@
     "args": {
       "program": [
         [
-          "coloring",
-          [
-            "cells_with_color",
-            [
-              "const",
-              "?v5"
-            ]
-          ],
+          "recolor_map",
           [
             "const",
-            "?v6"
-          ]
-        ],
-        [
-          "coloring",
-          [
-            "cells_with_color",
             [
-              "const",
-              "?v7"
+              [
+                "?v5",
+                "?v6"
+              ],
+              [
+                "?v7",
+                "?v8"
+              ]
             ]
-          ],
-          [
-            "const",
-            "?v8"
           ]
         ]
       ]
     }
   },
-  "anti_unification_trace": "episodic_memory/color_remap_b/anti_unification/au_001.json"
+  "anti_unification_trace": "episodic_memory/color_remap_b/anti_unification/au_003.json"
 }

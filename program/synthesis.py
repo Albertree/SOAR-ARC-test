@@ -552,6 +552,30 @@ def run_program(program, input_grid):
                         cur = apply_DSL(
                             "coloring", cur,
                             selection=(r, c), color=filled[r][c])
+        elif kind == "recolor_map":
+            # Global colour substitution: a shape-preserved, cell-wise recolour
+            # under one colour map ``from -> to`` shared across every pair (the
+            # reason — P3/P4 — is the COMM "the same colour always becomes the
+            # same colour"). The WHOLE map is carried as ONE structure-agnostic
+            # const leaf (a list of ``[from, to]`` pairs), exactly the way
+            # ``tile``/``fractal``/``symfill`` carry their per-task data — so a
+            # task that changes one colour and a task that changes three share the
+            # SAME one-step skeleton ``[("recolor_map", ("const", ?v))]`` and lift
+            # via ``unify()`` into one ``covers>1`` rule (R3), instead of
+            # fragmenting into an arity-keyed rule per changed-colour count (the
+            # 168-rule accretion failure, §2.5-3/4). Composes ONLY the frozen
+            # ``coloring`` primitive — one ``coloring`` per pair, each selecting
+            # the FIXED input's cells of that colour (``env``, not the running
+            # canvas), so a colour used as both a source and a target never
+            # cascades and the program transfers unchanged to the test input (P5).
+            _, map_expr = step
+            cmap = _eval(map_expr, env)
+            grid = env["grid"]
+            for frm, to in cmap:
+                sel = [(r, c) for r, row in enumerate(grid)
+                       for c, v in enumerate(row) if v == frm]
+                if sel:
+                    cur = apply_DSL("coloring", cur, selection=sel, color=to)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -636,13 +660,17 @@ def _candidate_programs(pairs):
     # --- Schema 4: global colour substitution ------------------------------
     # A shape-preserved, cell-wise recolour: a single colour map ``c -> f(c)``
     # holds across *every* pair (the reason — P3/P4 — is the COMM result "the
-    # same colour always becomes the same colour"). Expressed as one `coloring`
-    # step per *changed* colour, painting that colour's input cells in their
-    # mapped colour. Distinct colours may map to distinct colours, so this is the
-    # general case no single-colour `object_recolor` family fits — and, being a
-    # pure (`cells_with_color`, `const`) skeleton, two such tasks with divergent
-    # maps lift via `unify()` into one covers>1 rule (R3). The selections read the
-    # fixed input (see `cells_with_color`), so map order is irrelevant.
+    # same colour always becomes the same colour"). Expressed as ONE
+    # ``recolor_map`` step carrying the whole map as a single const leaf (a tuple
+    # of ``(from, to)`` pairs), composed from the frozen ``coloring`` primitive at
+    # run time. Distinct colours may map to distinct colours, so this is the
+    # general case no single-colour `object_recolor` family fits — and, because
+    # the entire map lives in ONE const leaf, a task that changes one colour and a
+    # task that changes three share the SAME ``[("recolor_map", ("const", ?v))]``
+    # skeleton and lift via `unify()` into one covers>1 rule (R3), rather than
+    # fragmenting into a separate covers=1 rule per changed-colour count (the
+    # arity-keyed accretion that minted rule-per-task, §2.5-3/4). The selections
+    # read the fixed input, so map order is irrelevant.
     prog = _fit_color_map(pairs)
     if prog is not None:
         yield prog
@@ -878,10 +906,12 @@ def _fit_color_map(pairs):
     changed = sorted(c for c, t in cmap.items() if c != t)
     if not changed:
         return None
-    return [
-        ("coloring", ("cells_with_color", ("const", c)), ("const", cmap[c]))
-        for c in changed
-    ]
+    # Carry the whole map as ONE const leaf (a tuple of ``(from, to)`` pairs), so
+    # every colour-substitution task — whatever its changed-colour count — shares
+    # the single ``[("recolor_map", ("const", ?v))]`` skeleton and lifts via
+    # ``unify()`` into one ``covers>1`` rule, instead of one rule per arity.
+    pairs_leaf = tuple((c, cmap[c]) for c in changed)
+    return [("recolor_map", ("const", pairs_leaf))]
 
 
 def synthesize_task(pairs):

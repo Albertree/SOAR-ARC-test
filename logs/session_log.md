@@ -3833,3 +3833,136 @@ move P5) rather than another positional macro-grid schema.
 
 ## Iter 35 [CLEAN] — 20260614_211055 — branch test33
 - Probe: [21:11:13] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 21:23
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_212341.log
+
+---
+## Learning Loop -- 2026-06-14 21:23
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_212344.log
+
+---
+## Learning Loop -- 2026-06-14 21:23
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_212353.log
+
+---
+## Learning Loop -- 2026-06-14 21:44
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 14
+- Time: 9s
+- Log: logs/learn_20260614_214420.log
+
+---
+## Learning Loop -- 2026-06-14 21:44
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260614_214429.log
+
+---
+## Learning Loop -- 2026-06-14 21:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_214737.log
+
+---
+## Learning Loop -- 2026-06-14 21:47
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 14
+- Time: 9s
+- Log: logs/learn_20260614_214741.log
+
+---
+## Learning Loop -- 2026-06-14 21:47
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 0s
+- Log: logs/learn_20260614_214750.log
+
+## Iter 36 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase. A broad 180-task training sweep (seed 7) surfaced
+the real gap behind a covers=1 mint: the synthesizer's colour-substitution schema
+(Schema 4) emitted **one `coloring` step per changed colour**, so two colour-map
+tasks that change a *different number* of colours get *different program
+skeletons* (`[coloring]` vs `[coloring,coloring]`) and can never lift together.
+Result: each changed-colour arity fragments into its own covers=1 family —
+training task `b1948b0a` (single 6→2 map) was minting a fresh rule beside the
+existing 2-colour `rule_005`. That is the §2.5-3/4 arity-keyed accretion (the
+168-rule failure mode), and Schema 4 was the lone synthesizer schema *not* using
+the one-step-with-one-const-leaf shape that `tile`/`fractal`/`symfill` all use.
+
+**Change**:
+- `program/synthesis.py` — collapsed Schema 4 to a single **`recolor_map`** step
+  carrying the whole colour map as ONE const leaf (a tuple of `(from,to)` pairs).
+  Added the `recolor_map` branch to `run_program` (composes ONLY the frozen
+  `coloring` primitive — one `coloring` per pair, each selecting the *fixed*
+  input's cells of that colour, so a source==target colour never cascades and the
+  program transfers to the test input, P5). `_fit_color_map` now returns the
+  single-step form. No new DSL primitive (F3), no `_try_*` (F2), no
+  `active_operators.py` edit (F8 N/A — all in `program/`).
+- `procedural_memory/rule_005.json` — migrated in place to the `recolor_map`
+  abstract form (`[["recolor_map",["const",[["?v5","?v6"],["?v7","?v8"]]]]]`) with
+  a freshly-written AU trace (`au_003.json`), then folded the real training task
+  `b1948b0a` (a 1-colour map) into it via the sanctioned `save_rule` path —
+  covers 2→**3**, *across changed-colour arity*, in ONE rule (the whole point).
+  Kept rule_005's number deliberately: I found a latent `save_rule_to_ltm`
+  numbering bug (`next_id = len(existing)+1` clobbers a higher-numbered file when
+  a lower one was deleted — deleting rule_005 silently overwrote the symfill
+  rule_010). Not this iter's target; avoided by migrating in place, noted here.
+- `tests/test_synthesis_colormap.py` — updated assertions to the single-step form
+  and added `test_recolor_map_of_different_arity_share_one_skeleton` +
+  arity-crossing fold test (1-colour + two 2-colour → one covers=3 rule). 192 pass.
+
+**Probe before**: training probe 0/3; easy_a 9/9, madeup 23/23; 10 rules; P1=6.9,
+P2=6.9, P3=0.9; solved=69.
+**Probe after** : easy_a 9/9, madeup 23/23 (guards unchanged); 10 rules (no new
+file); rule_005 covers 2→3 (real ARC-AGI-2 task `b1948b0a` folded in, not minted
+as a fresh covers=1 rule); P1 6.9→**7.0**, P2 6.9→**7.0**, P3 0.9 held.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives =
+**P1 +0.1, P2 +0.1** — and, structurally, the colour-map family can no longer
+fragment by arity: every future colour-substitution task of any changed-colour
+count now folds into this one rule instead of minting covers=1 rules.
+
+**Next gap (note for future iter)**: same-size *conditional* transforms remain the
+standing miss (probe's gravity/ray/occlusion: c9680e90 / e5790162 / 878187ab) —
+each needs a per-cell neighbourhood/projection selector (the first genuinely new
+*recognition* vocabulary, would move P5), not another whole-grid macro schema.
+Also worth a cheap fix: the `save_rule_to_ltm` `len+1` id collision on a deleted
+rule.
