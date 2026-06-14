@@ -4347,3 +4347,6 @@ the heart of the probe's c9680e90 (gravity with obstacles): a falling object sto
 on another rather than reaching the edge — a per-object stop-condition, the next
 structural step on the motion frontier. The probe's e5790162/878187ab are ray
 projection (objects *grow* toward a target), a separate non-rigid family.
+
+## Iter 39 [CLEAN] — 20260614_221048 — branch test33
+- Probe: [22:11:07] Correct:     0 / 3  (0.0%)
