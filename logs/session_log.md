@@ -1,6 +1,68 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 55 — 2026-06-15 — branch test33 — NO-OP (no defensible signal-moving step)
+
+**Diagnosis**: iter54's nominated gap (background-occluder symmetry_repair) was
+confirmed a **DEAD END** by oracle scan — using the actual changed region as the
+mask, only **1** training task (8eb1be9a) reconstructs under symmetry, and its mask
+is not derivable from the input alone, so it cannot transfer. (4th consecutive iter
+whose nominated next-gap evaporated under scanning.) I then fresh-scanned the 880
+`synthesize_task` failures across several hypotheses: new `compose` stage-1
+reductions (panel-extract / downscale) = **0**; new `recolor_objects` property keys
+(color/width/height/holes, strict reproduce) = **0**; rigid-shift = 1; denoise = 0;
+object-gravity = **2** (5ffb2104, d282b262, both rightward). Object-gravity looked
+like a clean covers-raising fold into the existing cell-gravity `rule_017`.
+
+**Why no commit**: I built the object-gravity schema (rigid-body sliding as a
+`{"mode":"object"}` leaf on the existing `gravity` step, F3-safe, +5 tests, 274/274
+pass) and `synthesize_task` solved both tasks. But when run through the **live
+pipeline**, both tasks are claimed by the legacy `object_motion` family matcher
+**before** the synthesizer fallback is reached — and the on-disk result is
+**byte-identical with vs. without my change** (d282b262 CORRECT, 5ffb2104 INCORRECT,
+both folded into `rule_002`, not `rule_017`). So the change moves **no** positive
+signal: the live solve set is unchanged, `rule_017.covers` does not grow (synthesizer
+never runs for these), rule count flat. It is shadowed latent capability — committing
+it would be the cosmetic/spinning pattern the project forbids (PROMPT §2.2/§4). Change
+reverted; working tree clean.
+
+**Methodology finding (for next iter)**: my whole scan used `synthesize_task` in
+isolation, but the **live solver = family matchers (constant_output / object_motion /
+object_recolor) + synthesizer fallback**. The "880 failures" set is therefore NOT the
+true live-failure set — the families solve more. Any future gap scan must diagnose
+against the *live pipeline*, not `synthesize_task` alone, or it will keep nominating
+gaps the legacy families already cover.
+
+**Real (but non-small) gap surfaced**: the legacy `object_motion` matcher **shadows
+the general synthesizer and is sometimes wrong** (5ffb2104: object_motion INCORRECT
+on test where rigid-body gravity would be correct). The intended architecture
+(INVARIANTS P6, BACKLOG_LOOP §2.5) is the synthesizer *replacing* the legacy family
+matchers — so the defensible direction is synthesizer-vs-legacy **precedence / family
+retirement**, not adding more shadowed synthesizer schemas. That is a larger, riskier
+change (object_motion correctly solves many tasks today), not this iter's smallest
+step.
+
+**Probe before/after**: training 0/3 unchanged; rules=20 flat; P1/P2=6.85, P3=0.95
+unchanged; easy_a 9/9 + madeup 27/27 hold; 274 tests pass (with the reverted change).
+
+**Invariants**: forbidden=none; positives=**none moved by this iter** (NO-OP). NB
+`check_invariants --check` reports P1/P2 +0.05 (6.85→6.9), but this is a **stale-
+snapshot artifact**, not iter-55 work: the snapshot base hash is `026de447` (iter
+**53**) and its P1=6.85 reflects iter-53 covers (137); iter **54** already committed
+the e729b7be→rule_010 fold (→138 covers, 6.9), so the +0.05 is iter-54's committed
+work re-counted against a baseline one iter behind. A pure no-op shows the identical
+delta. No rule files were changed by this iter (only probe times_reused bumps +
+this log entry).
+
+**Next gap (note for future iter)**: do a **live-pipeline** failure scan (families +
+synthesizer), not a `synthesize_task`-only scan. The highest-value lever is no longer
+adding const-leaf synthesizer schemas (shadowed by / redundant with the legacy
+families, and the clean single-step frontier is saturated) but **retiring the legacy
+`object_motion`/`object_recolor` family matchers in favour of the general synthesizer**
+(P6 — net-negative `active_operators.py`), handled carefully to avoid regressing the
+tasks they currently solve. The remaining same-dims failures need object-correspondence.
+
+---
 ## Iter 54 — 2026-06-15 — branch test33
 
 **Diagnosis**: iter53's nominated next gap (symmetry_repair with a *background*
@@ -6147,3 +6209,36 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 54 [CLEAN] — 20260615_014829 — branch test33
 - Probe: [01:48:49] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 03:06
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260615_030630.log
+
+---
+## Learning Loop -- 2026-06-15 03:06
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_030637.log
+
+---
+## Learning Loop -- 2026-06-15 03:06
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260615_030640.log
+
+## Iter 55 [CLEAN] — 20260615_021533 — branch test33
+- Probe: [02:15:53] Correct:     0 / 3  (0.0%)
