@@ -3103,3 +3103,6 @@ training miss is same-size *conditional* recolours/rearrangements (gravity,
 symmetry-repair, neighbourhood maps) that no current schema expresses; and P1/P2
 remain pinned by rule_002's covers=20 — the instrumentation still punishes any new
 family arithmetically, so P3 is the truer progress signal here.
+
+## Iter 29 [CLEAN] — 20260614_200550 — branch test33
+- Probe: [20:06:07] Correct:     0 / 3  (0.0%)
