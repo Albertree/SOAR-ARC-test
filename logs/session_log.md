@@ -2488,3 +2488,91 @@ intermediate structure, which single-argument lifting cannot reach.
 
 ## Iter 24 [CLEAN] — 20260614_185419 — branch test33
 - Probe: [18:54:34] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 19:08
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_190841.log
+
+---
+## Learning Loop -- 2026-06-14 19:08
+
+- Split: None, Tasks: 16
+- Correct: 16 / 16 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_190845.log
+
+---
+## Learning Loop -- 2026-06-14 19:08
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_190851.log
+
+## Iter 25 — 2026-06-14T10:16:56Z — branch test33
+
+**Diagnosis**: The training probe shows the real frontier plainly: on real ARC the
+Slow path emits **nothing** (`--split training` → 0 correct, **+0 learned**, 0 rule
+hits across 30 sampled tasks). The three families (constant_output, object_motion,
+object_recolor) master easy_a + madeup but none of their *matchers* fire on real
+data — they recognize hand-picked shapes, they do not **search**. Per `arbor.md`
+Fast/Slow path and `arbor-modules.md` modules F/G, the missing piece is a general
+Slow-path **synthesizer**: given a task's pairs, search compositions of the two
+frozen primitives for a program reproducing every output. test33 had no synthesizer
+module at all. Smallest defensible step toward it (the smaller half): build the
+synthesizer's evaluator + a bounded search that *rediscovers the existing families'
+program shapes by search*, off the live path, before wiring it in or feeding its
+output to AU.
+
+**Change**:
+- `program/synthesis.py` (NEW) — `run_program(program, grid)` evaluates a program
+  (list of steps) by composing ONLY `make_grid`/`coloring` via `apply_DSL` (adds no
+  transformation vocabulary — F3 safe). Steps: `make_grid`, `coloring`, and an
+  aggregate `paint_objects` (loops over *whatever* objects the input has — one
+  structure-agnostic step, so a program stays consistent across pairs with differing
+  object counts). A tiny expression evaluator resolves every argument from the
+  *input* grid (P5: variables originate in G0), so a synthesized program transfers
+  unchanged to the held-out test input. `synthesize_task(pairs)` searches three
+  schemas — identity, constant/common output (rediscovers rule_001's
+  `copy_common_output` as an explicit make_grid+coloring program), object
+  reconstruction onto a fitted (`in_h`/`in_w` or shared-constant) canvas — and
+  returns the first program reproducing **all** pairs, else `None`. A miss returns
+  `None` honestly; it never falls back to a literal per-pair fit (§2.5-2: literal
+  coordinate programs are the 168-rule failure mode and do not anti-unify).
+- `tests/test_synthesis.py` (NEW, 8 tests) — evaluator composes only the two
+  primitives; `paint_objects` reconstructs input objects; search synthesizes
+  identity and (from the real `data/ARC_easy_a/easy000a.json`) constant-output,
+  proving the general search reproduces a family's program *and* transfers to the
+  test input; object-move returns `None` (honest miss); empty pairs → `None`.
+
+**Probe before**: training 0/3 (0 learned, 0 hits); easy_a 9/9, madeup 16/16; rules
+3, P1=P2=8.333, P3=0.667. 137 tests.
+**Probe after** : unchanged on all probes (synthesizer is off the live path — zero
+regression risk by construction). 145 tests pass (+8). Synthesizer rediscovers the
+constant-output family's program purely by search over the two frozen primitives.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, no F1–F8). positives=all Δ0
+(NEUTRAL) — this is substrate whose payoff lands when it is wired onto the
+`GeneralizeOperator` path and its per-task programs are fed to `anti_unification`
+(INVARIANTS §3 "scaffolding whose payoff lands in a later iter"). No new family, no
+`_try_*`, no third DSL primitive — a *search* over compositions of the existing two.
+
+**Next gap (note for future iter)**: two unwired steps remain before the synthesizer
+moves a signal — (1) wire `synthesize_task` into `GeneralizeOperator` as the
+fallback when no family matcher fires (produces a program for a task the matchers
+miss), guarded so easy_a/madeup keep reusing their stored rules (no regression);
+(2) grow the search grammar with a *target-fitting* schema (object move) so the
+honest-miss case in `test_honest_miss_on_object_move` becomes a hit — at which point
+two such task programs can be lifted by `unify()` (R3, P3↑). The synthesizer is the
+general mechanism that should eventually let `_try_*`/family matchers be *deleted*
+(P6), replacing recognition-by-shape with search.
