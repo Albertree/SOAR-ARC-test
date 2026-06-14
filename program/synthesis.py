@@ -851,6 +851,43 @@ def run_program(program, input_grid):
                     if v != bg:
                         cur = apply_DSL(
                             "coloring", cur, selection=(r - r0, c - c0), color=v)
+        elif kind == "recolor_objects":
+            # Object-level recolour by a value-agnostic *property → colour* map: each
+            # input object is repainted (its cells kept fixed) in the colour the map
+            # assigns to that object's structural property — its cell-count (`size`)
+            # or its translation-normalised cell signature (`shape`). The reason —
+            # P3/P4 — is the COMM "an object with this property always becomes this
+            # colour"; `_fit_recolor_objects` reads the property and the map off the
+            # train pairs (the property chosen by SEARCH, size before shape) and
+            # declines when none reproduces every pair. The WHOLE map is ONE
+            # structure-agnostic const leaf (a list of ``[key, colour]`` pairs),
+            # exactly the way ``recolor_map`` carries its colour map — so a task
+            # keyed on size and a task keyed on shape (or differing in arity) share
+            # the SAME one-step skeleton ``[("recolor_objects", ("const", ?v))]`` and
+            # lift via ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise
+            # together), instead of fragmenting into a rule per property/arity (the
+            # §2.5-3/4 accretion trap). This is the §2.5-2b "the selection is the
+            # real content" step at the property level — the per-task content is the
+            # fitted map, reusing the R1 object vocabulary, not a stored coordinate
+            # program. Composes ONLY the frozen ``coloring`` primitive (one
+            # ``coloring`` per object). Reads objects of the FIXED input (``env``),
+            # so it transfers unchanged to the test input (P5); an object whose
+            # property is absent from the fitted map makes the step *decline*
+            # (``_Unevaluable``) rather than guess (memory:
+            # runtime_resolvable_speculative_apply — renderers decline, not crash).
+            _, spec_expr = step
+            spec = _eval(spec_expr, env)
+            prop = spec["prop"]
+            cmap = {_canon_key(k): v for k, v in spec["map"]}
+            grid = env["grid"]
+            bg = env["bg"]
+            for obj in objects_of(grid, bg):
+                k = _obj_key(obj, prop)
+                if k not in cmap:
+                    raise _Unevaluable(
+                        f"recolor_objects: object property {k!r} not in fitted map")
+                cur = apply_DSL(
+                    "coloring", cur, selection=sorted(obj["cells"]), color=cmap[k])
         elif kind == "compose":
             # Two-stage composition: run a *stage-1* sub-program (a structural
             # reduction of the input — crop to a selected region, or a dihedral
@@ -1106,6 +1143,25 @@ def _candidate_programs(pairs):
     crop = _fit_crop(pairs)
     if crop is not None:
         yield crop
+
+    # --- Schema 14: object-level recolour by property ----------------------
+    # Same-dims output that is the input with each object repainted in the colour a
+    # value-agnostic *property → colour* map assigns to it — the recurring ARC
+    # "colour each shape by its size / its form" family (e.g. recolour every object
+    # by how many cells it has, or by its shape). The reason — P3/P4 — is the COMM
+    # "an object with this property always becomes this colour"; `_fit_recolor_objects`
+    # reads the property (size, then shape) and the map off the train pairs and
+    # declines when none reproduces every pair. This is the object-level counterpart
+    # of Schema 4's cell-wise ``recolor_map`` (a colour map there, a property map
+    # here): both carry the whole map as ONE const leaf, so a size-keyed task and a
+    # shape-keyed task share the pure ``[("recolor_objects", ("const", ?v))]``
+    # skeleton and lift via ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3
+    # rise together), never a rule per property/arity (§2.5-3/4). Yielded last so a
+    # simpler same-dims schema (identity, cell-wise colour-map, symfill, connect)
+    # wins when a task fits both.
+    recolor_objects = _fit_recolor_objects(pairs)
+    if recolor_objects is not None:
+        yield recolor_objects
 
 
 def _is_fractal_dims(pairs):
@@ -1528,6 +1584,99 @@ def _fit_crop(pairs):
         return None
     selector = sorted(inter, key=_CROP_SELECTORS.index)[0]
     return [("crop", ("const", selector))]
+
+
+# The object properties an object-level recolour may key on, tried most-general
+# first: ``size`` (cell count — one key per distinct size, so it transfers to any
+# test object whose size was seen in train) before ``shape`` (the finer
+# translation-normalised cell signature — used only when same-size objects must
+# take different colours, which size alone cannot express). Both are pure
+# functions of an input object (the R1 vocabulary), never a literal.
+_RECOLOR_PROPS = ("size", "shape")
+
+
+def _obj_key(obj, prop):
+    """The value-agnostic property key an object recolour maps on. ``size`` → the
+    object's cell count (an int); ``shape`` → its cells normalised to the bbox
+    origin (a translation-invariant, hashable signature). Returns ``None`` for an
+    unknown property name."""
+    if prop == "size":
+        return obj["size"]
+    if prop == "shape":
+        cells = obj["cells"]
+        if not cells:
+            return ()
+        r0 = min(r for r, _c in cells)
+        c0 = min(c for _r, c in cells)
+        return tuple(sorted((r - r0, c - c0) for r, c in cells))
+    return None
+
+
+def _canon_key(k):
+    """Canonicalise a stored map key to the same hashable form `_obj_key`
+    produces, so a key serialised through JSON (tuples become lists) still matches
+    a freshly-computed object key. Ints pass through; nested lists/tuples become
+    tuples-of-tuples."""
+    if isinstance(k, (list, tuple)):
+        return tuple(_canon_key(x) for x in k)
+    return k
+
+
+def _fit_recolor_objects(pairs):
+    """Fit an object-level recolour: every object is repainted in the colour a
+    value-agnostic *property → colour* map assigns to it. Tries each property in
+    `_RECOLOR_PROPS` (size before shape), building the map across all pairs and
+    requiring it to be deterministic (no key → two colours) and every object to be
+    recoloured *uniformly* (a single output colour over its cells); declines (tries
+    the next property, then ``None``) otherwise. The map is carried as ONE const
+    leaf, so two recolour tasks — keyed on size vs shape, or differing in the
+    number of distinct keys — share the SAME one-step skeleton ``[("recolor_objects",
+    ("const", ?v))]`` and lift via ``unify()`` into one ``covers>1`` rule (R3).
+
+    Returns the one-step program, or ``None``. The final `_reproduces` gate keeps
+    the fit honest: a map that does not reproduce every pair exactly (e.g. a
+    background cell would change) is rejected rather than approximated."""
+    for prop in _RECOLOR_PROPS:
+        mapping = {}
+        ok = True
+        changed = False
+        for p in pairs:
+            gin, gout = p["input"], p["output"]
+            if len(gin) != len(gout) or (
+                    gin and len(gin[0]) != len(gout[0] if gout else [])):
+                ok = False
+                break
+            bg = background_of(gin)
+            objs = objects_of(gin, bg)
+            if not objs:
+                ok = False
+                break
+            for obj in objs:
+                cols = {gout[r][c] for (r, c) in obj["cells"]}
+                if len(cols) != 1:
+                    ok = False
+                    break
+                newc = next(iter(cols))
+                k = _obj_key(obj, prop)
+                if k in mapping and mapping[k] != newc:
+                    ok = False
+                    break
+                mapping[k] = newc
+                if any(gin[r][c] != newc for (r, c) in obj["cells"]):
+                    changed = True
+            if not ok:
+                break
+        if not (ok and changed):
+            continue
+        spec = {
+            "prop": prop,
+            "map": [[list(k) if isinstance(k, tuple) else k, v]
+                    for k, v in sorted(mapping.items(), key=lambda kv: repr(kv[0]))],
+        }
+        prog = [("recolor_objects", ("const", spec))]
+        if _reproduces(prog, pairs):
+            return prog
+    return None
 
 
 def _reproduces(prog, pairs):

@@ -5325,3 +5325,122 @@ probe keeps surfacing.
 
 ## Iter 47 [CLEAN] — 20260614_235955 — branch test33
 - Probe: [00:00:16] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 00:18
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 15 -> 15 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260615_001759.log
+
+---
+## Learning Loop -- 2026-06-15 00:18
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 15 -> 15 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260615_001803.log
+
+---
+## Learning Loop -- 2026-06-15 00:18
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 15 -> 15 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260615_001814.log
+
+---
+## Learning Loop -- 2026-06-15 00:35
+
+- Split: None, Tasks: 4
+- Correct: 4 / 4 (100.0%)
+- Rules: 15 -> 16 (+1 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260615_003510.log
+
+---
+## Learning Loop -- 2026-06-15 00:40
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_004005.log
+
+---
+## Learning Loop -- 2026-06-15 00:40
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_004008.log
+
+## Iter 48 — 2026-06-15 — branch test33
+
+**Diagnosis**: The compose lever (iter46) and existing single-step schemas left
+the LARGEST untapped same-dims family untouched: object-level recolour. A 1000-task
+audit found 203 unsolved tasks that are shape-preserved recolours (input mask ==
+output mask, only colours change) — none of which the cell-wise `recolor_map`
+(Schema 4) fits, because the recolour is keyed on a *per-object property*, not on the
+cell's own colour. This is the SECOND lever the iter46/47 notes named ("object-level
+recolor-by-property"). The smallest defensible step is one new general schema, not a
+per-task detector.
+
+**Change**:
+- `program/synthesis.py` — new **Schema 14 `recolor_objects`**: repaint each input
+  object in the colour a value-agnostic *property → colour* map assigns it; the
+  property is chosen by SEARCH (`size`, then `shape`), the whole map rides in ONE
+  `const` leaf. New `_fit_recolor_objects` / `_obj_key` / `_canon_key` + a
+  `recolor_objects` branch in `run_program` that composes ONLY the frozen `coloring`
+  primitive (one `coloring` per object) and *declines* (`_Unevaluable`) on a test
+  object whose property is absent from the fitted map (P5 honesty). Yielded last, so
+  no simpler same-dims schema is displaced (zero regression). It is the object-level
+  twin of Schema 4's cell-wise `recolor_map`: a size-keyed task and a shape-keyed
+  task share the pure `[("recolor_objects",("const",?v))]` skeleton and lift via
+  `unify()` into ONE covers>1 rule (R3), never a rule per property/arity (§2.5-3/4).
+- `tests/test_synthesis_recolor_objects.py` — 6 tests (size fit, shape fall-through
+  when size is ambiguous, decline-on-unseen-key, identity-is-not-recolour,
+  size+shape share one skeleton, end-to-end via `synthesize_task`).
+- Persisted **rule_016** (NEW) via the LIVE solve/save path (`run_learn.py
+  --task-dir` on a scratch copy, no further code edit): 4 real ARC-AGI-2 training
+  tasks that the schema solves *and that pass held-out test* — 67385a82/6e82a1ae/
+  ae58858e (size) + ea32f347 (shape) — lift via `unify()` into one covers=4 rule +
+  AU trace (4 task-specific maps → 1 arg-parameterised rule, R3). Of the 15
+  train-fits, 11 were EXCLUDED because their test object carries a size/shape unseen
+  in train (literal-key non-transfer) — not honest covers, so dropped, exactly as
+  iter47 dropped aabf363d. The rank/ordinal property that *would* transfer to unseen
+  keys folds only +1 task (08ed6ac7) and can't lift alone → deferred.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=15, P1/P2=8.067, P3=0.933
+**Probe after** : same probe 0/3 unchanged; rules=16, P1/P2=7.8125, P3=0.9375;
+easy_a 9/9 + madeup 27/27 hold; 238 tests pass (+6).
+
+**Invariants**: forbidden=none (F3 clean — recolour is `make_grid`/`coloring` only,
+no new DSL `def`; F2 clean — no new `_try_*`; active_operators.py untouched so F8
+N/A). positives=P3 +0.0042 (15→16 traced/total). P1/P2 −0.254 is the documented
+averaging trap: a genuinely-new covers=4 family below the current mean (8.067)
+dilutes the mean even though distinct-solved rose 121→125 — the same below-mean-new-
+family dip iter46 and the iter15 object_recolor family showed; recovers as the
+family thickens.
+
+**Next gap (note for future iter)**: make the recolour map *transfer to unseen
+keys* by adding a **rank/ordinal** property (object's size-rank → colour) to
+`_RECOLOR_PROPS` — it shares the same skeleton, would fold 08ed6ac7 (the canonical
+task) and any sibling rank-recolour into rule_016, and is the version that
+generalises past the literal-key non-transfer that cost 11/15 covers this iter. The
+standing multi-step conditional families (gravity-with-obstacles / ray-growth) the
+probe keeps surfacing remain the other open lever.
+
+## Iter 48 [CLEAN] — 20260615_001759 — branch test33
+- Probe: [00:18:21] Correct:     0 / 3  (0.0%)
