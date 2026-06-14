@@ -40,6 +40,7 @@ from agent.dsl_expr.recolor import (
     fit_color_source,
     color_source,
 )
+from agent.dsl_expr import ranking
 
 __all__ = [
     "background_of",
@@ -58,4 +59,5 @@ __all__ = [
     "obj_origin_extent",
     "fit_color_source",
     "color_source",
+    "ranking",
 ]

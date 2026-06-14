@@ -124,12 +124,26 @@ def unique_object(objects):
 # AND colour and none reaches a position extreme, differing only in shape (e.g.
 # three identical I-trominoes and one L-tromino). Appended last so size, position
 # and colour selectors still win when they apply (zero regression).
+#
+# `second_largest` / `second_smallest` are *ranked* size selectors — the first
+# criteria that name a member which is neither the extreme nor the odd one out.
+# `largest`/`smallest` pick rank 1 by size; these pick rank 2 (the n-th by size,
+# the smallest useful rank beyond the extreme), via the answered Q-C3 ranking
+# utils (`agent/dsl_expr/ranking.nth_by_desc` / `nth_by_asc`). They are the only
+# criteria that pick the acted-on object when it is the middle of three strictly
+# size-ordered objects — neither the biggest (`largest`) nor the smallest
+# (`smallest`), no colour/shape odd-one-out, and at no position extreme. Appended
+# LAST so every extreme / position / odd-one-out selector still wins when it
+# applies (zero regression); a ranked pick only claims a selection nothing earlier
+# explains.
 _SELECTOR_KINDS = (
     "unique",
     "largest", "smallest",
     "topmost", "bottommost", "leftmost", "rightmost",
     "odd_color",
     "odd_shape",
+    "second_largest",
+    "second_smallest",
 )
 
 # Each position selector reads one edge of an object's bounding box; the extreme
@@ -144,18 +158,48 @@ _POSITION_EDGE = {
 }
 
 
+def _size(obj):
+    """The object's cell count — the key the size selectors rank on."""
+    return obj["size"]
+
+
+def _index_of(objects, item):
+    """The position of `item` in `objects` by *identity*, or None. Identity (not
+    ``==``) so two value-equal object dicts are never confused."""
+    if item is None:
+        return None
+    for i, o in enumerate(objects):
+        if o is item:
+            return i
+    return None
+
+
 def _argextreme_index(objects, want_max):
     """Index of the *unique* size-extreme object, or None on a tie / no objects.
 
     A tie means the criterion does not pick a single object, so it must decline
     rather than guess — the selector has to be unambiguous to be value-agnostic.
+    Delegates to the registered ranking utils (`ranking.argmax` / `argmin`, the
+    rank-1 special case) so every size selector shares one tie-aware backing
+    vocabulary (Q-C3, §2.5-1) rather than re-implementing the extreme.
     """
-    if not objects:
-        return None
-    sizes = [o["size"] for o in objects]
-    target = max(sizes) if want_max else min(sizes)
-    idxs = [i for i, s in enumerate(sizes) if s == target]
-    return idxs[0] if len(idxs) == 1 else None
+    from agent.dsl_expr import ranking
+    pick = ranking.argmax(objects, _size) if want_max else ranking.argmin(objects, _size)
+    return _index_of(objects, pick)
+
+
+def _nth_size_index(objects, n, from_top):
+    """Index of the unique object at size rank `n` (1-based) — counted from the
+    largest when `from_top`, else from the smallest — or None when that rank is
+    tied / absent. The *ranked* selector beyond the extreme (Q-C3 `nth_by_desc` /
+    `nth_by_asc`); declines on a tie like the extreme selectors, keeping the pick
+    value-agnostic."""
+    from agent.dsl_expr import ranking
+    pick = (
+        ranking.nth_by_desc(objects, _size, n) if from_top
+        else ranking.nth_by_asc(objects, _size, n)
+    )
+    return _index_of(objects, pick)
 
 
 def _position_index(objects, edge, want_max):
@@ -246,6 +290,10 @@ def _selection_index(objects, kind):
         return _odd_color_index(objects)
     if kind == "odd_shape":
         return _odd_shape_index(objects)
+    if kind == "second_largest":
+        return _nth_size_index(objects, 2, from_top=True)
+    if kind == "second_smallest":
+        return _nth_size_index(objects, 2, from_top=False)
     return None
 
 
@@ -259,8 +307,10 @@ def select_object(objects, descriptor):
     ``smallest`` (the unique size extremal object), the position extremes
     ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost`` (the unique object
     whose bounding box reaches furthest to that edge), ``odd_color`` (the object
-    whose colour is unique among the objects — the odd-one-out), and ``odd_shape``
-    (the object whose shape is unique among the objects).
+    whose colour is unique among the objects — the odd-one-out), ``odd_shape``
+    (the object whose shape is unique among the objects), and the *ranked* size
+    selectors ``second_largest`` / ``second_smallest`` (the unique object at size
+    rank 2 from the top / bottom — neither the extreme nor an odd-one-out).
     """
     if not descriptor or not isinstance(objects, list) or not objects:
         return None
@@ -281,14 +331,16 @@ def fit_selector(selections):
     Tried most-structural first — ``unique`` (every pair has a sole object), then
     the size extremes ``largest`` / ``smallest``, then the position extremes
     ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost``, then the colour
-    odd-one-out ``odd_color``, and finally the shape odd-one-out ``odd_shape`` —
-    mirroring `fit_target`'s ordering so the degenerate single-object case reads as
-    ``unique`` rather than an accidental size/position/colour/shape criterion, and
-    a size-describable selection is preferred over a positional, colour or shape
-    one. A task whose acted-on object is a size extreme on every pair still fits
-    ``largest`` / ``smallest`` first; only a selection that *no* size, position or
-    colour criterion explains (equal-sized, equal-coloured blobs, none at a
-    position extreme, differing only in shape) falls through to ``odd_shape``.
+    odd-one-out ``odd_color``, the shape odd-one-out ``odd_shape``, and finally the
+    *ranked* size selectors ``second_largest`` / ``second_smallest`` — mirroring
+    `fit_target`'s ordering so the degenerate single-object case reads as ``unique``
+    rather than an accidental criterion, and an extreme / odd-one-out selection is
+    preferred over a ranked one. A task whose acted-on object is a size extreme on
+    every pair still fits ``largest`` / ``smallest`` first; only a selection that
+    *no* extreme, position or odd-one-out criterion explains — the middle of three
+    strictly size-ordered objects, at no position extreme, with all colours and
+    shapes distinct — falls through to the ranked ``second_largest`` /
+    ``second_smallest``.
     """
     if not selections:
         return None

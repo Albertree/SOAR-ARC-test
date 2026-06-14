@@ -1,6 +1,73 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 20 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; probe 0/3 (real ARC-AGI-2, no smallest gap there —
+hacking one is the F2 trap). Every §2.1 beginner concept is already exercised, and
+an 8th selector-fold would read as §2.2 spinning. The *non-duplicate* smallest gap
+is a documented one: `arbor-open-questions.md` Q-C3 ("Ranking util DSL 의 적정
+set", module D) is **answered and "등록 대기"** — the 7-util set `(argmax, argmin,
+nth_by_desc, sort_by, count, filter, unique)` was never registered. Every existing
+selector names the *extreme* (rank-1 size) or the *odd-one-out* (unique count);
+none can name a **ranked** member (the k-th by a property) — exactly the answered
+ranking capability. (The *separate*, still-open item — `arbor-modules §2`
+"2차 relation 미지원 / 가장 긴 derived 속성 표현", ranking over comparison
+*receipts* — I deliberately did NOT touch; these utils rank a 1st-order per-object
+property, surfaced in the ranking.py header per BACKLOG §5.)
+
+**Change**:
+- `agent/dsl_expr/ranking.py` (NEW) — registers the answered Q-C3 util set under
+  `agent/` (NOT the frozen transformation DSL dir, §2.5-1/F3): `sort_by`, `count`,
+  `filter_by`, `unique`, `nth_by_desc` (+ ascending mirror `nth_by_asc`), `argmax`,
+  `argmin`. Decline-on-tie shared with selection.py: a ranked pick resolves only
+  when the n-th **distinct** key value names exactly one item (value-agnostic, P5).
+- `agent/dsl_expr/selection.py` — added `second_largest` / `second_smallest`
+  selector kinds (size rank 2 from top/bottom) via `_nth_size_index` →
+  `ranking.nth_by_*`; appended LAST in `_SELECTOR_KINDS` (zero regression — every
+  extreme/position/odd-one-out selector still wins first). Refactored
+  `_argextreme_index` to delegate to `ranking.argmax`/`argmin` (the rank-1 case) so
+  every size selector shares one tie-aware backing vocabulary; added `_index_of`
+  (identity-based, never `==`). Docstrings updated.
+- `agent/dsl_expr/__init__.py` — export the `ranking` module.
+- `data/ARC_madeup/mo_second_largest.json` (NEW, F1-exempt) — three strictly
+  size-ordered objects; the **middle** (2nd-largest) moves to the bottom-right
+  corner, others dropped. Authored to *fail* before the fix: `largest`→biggest,
+  `smallest`→smallest, all colours+shapes distinct (odd_color/odd_shape decline),
+  the middle at no position extreme → only a ranked selector names it. Confirmed
+  pre-fix it would decline to identity (no `second_*` kind existed).
+- `tests/test_ranking.py` (NEW, +9) — the util set: unique extreme, decline-on-tie,
+  distinct-value ranks, ascending mirror, absent/tied-rank decline, pure sort,
+  count/filter/unique.
+- `tests/test_object_motion.py` (+4) — `second_largest`/`second_smallest` pick +
+  decline-on-tie; `fit_selector` resolves to `second_largest` on the madeup train
+  pairs when every extreme/odd-one-out criterion fails; end-to-end solve via the
+  **same** rule object as easy000c (no accretion). NO `agent/active_operators.py`
+  edit (F8 N/A): `fit_selector`/`select_object` dispatch the new kinds unchanged.
+
+**Probe before**: training 0/3 (microscope); easy_a 9/9, madeup 12/12; rules 3,
+rule_002 covers 16, P1=P2=7.0, P3=0.667.
+**Probe after** : easy_a 9/9, madeup **13/13** (mo_second_largest CORRECT via
+object_motion, folded into rule_002 covers 16→17, **no new rule**; solved via the
+R5 stored fast path — the ranked selector re-fits on the abstract rule). 124 tests
+pass (112+12).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P1
++0.333 (7.0→7.333), P2 +0.333 (7.0→7.333)** via covers union (rule count flat —
+§2.5-4 litmus satisfied); P3/P4/P5 ±0; P6 ±0 (no active_operators edit). The new
+ranking vocabulary grows the LHS under `agent/`, where §2.5-1 requires it.
+
+**Next gap (note for future iter)**: ranked selection now exists (rank-2 by size),
+but the genuinely-unproven **R4** rung — 2nd-order ranking over *comparison
+receipts* (`ARCKG/comparison.py` edge-of-edge), the "가장 긴 derived 속성" still
+recorded as an *open question* (`arbor-modules §2`, surfaced this iter) — remains
+untouched; closing it needs a design decision on how derived/ranking properties are
+represented, so it is BACKLOG §5 open-question-blocked, not a free smallest step.
+Otherwise the standing frontiers are unchanged: cross-family AU (rule_001 ↔
+rule_002 share no skeleton; needs a Slow-path synthesizer) and R5's done-when (a
+stored rule reused on a *structurally different* task, still untested).
+
+---
 ## Iter 14 — 2026-06-14 — branch test33
 
 **Diagnosis**: In `madeup` (7/7, easy_a 9/9) the object_motion selector vocabulary
@@ -1822,3 +1889,66 @@ on a *structurally different* task (true R5 done-when) is untested.
 
 ## Iter 19 [NEUTRAL] — 20260614_175604 — branch test33
 - Probe: [17:56:17] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 18:09
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_180937.log
+
+---
+## Learning Loop -- 2026-06-14 18:09
+
+- Split: None, Tasks: 12
+- Correct: 12 / 12 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 11
+- Time: 4s
+- Log: logs/learn_20260614_180940.log
+
+---
+## Learning Loop -- 2026-06-14 18:09
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_180945.log
+
+---
+## Learning Loop -- 2026-06-14 18:19
+
+- Split: None, Tasks: 13
+- Correct: 13 / 13 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 12
+- Time: 5s
+- Log: logs/learn_20260614_181952.log
+
+---
+## Learning Loop -- 2026-06-14 18:20
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_182007.log
+
+---
+## Learning Loop -- 2026-06-14 18:20
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_182014.log
+
+## Iter 20 [CLEAN] — 20260614_180937 — branch test33
+- Probe: [18:09:50] Correct:     0 / 3  (0.0%)

@@ -462,6 +462,75 @@ def test_fit_selector_odd_shape_when_size_position_colour_fail():
     assert sel == {"kind": "odd_shape"}
 
 
+def test_select_object_second_largest_and_smallest():
+    # three strictly size-ordered objects (sizes 4, 2, 1); the middle one is
+    # neither the largest nor the smallest -> only a *ranked* selector names it.
+    grid = [[2, 2, 0, 0, 0, 0],
+            [2, 2, 0, 0, 0, 0],
+            [0, 0, 3, 3, 0, 0],
+            [0, 0, 0, 0, 0, 0],
+            [0, 0, 0, 0, 0, 4]]
+    objs = objects_of(grid)
+    assert color_of(select_object(objs, {"kind": "second_largest"})) == 3
+    # with three objects the middle is also second-from-smallest
+    assert color_of(select_object(objs, {"kind": "second_smallest"})) == 3
+    # ...and the extremes still go to largest/smallest, not the ranked selector
+    assert color_of(select_object(objs, {"kind": "largest"})) == 2
+    assert color_of(select_object(objs, {"kind": "smallest"})) == 4
+
+
+def test_select_object_second_largest_declines_on_tie():
+    # the second-largest *value* is shared by two objects (sizes 4, 2, 2) -> the
+    # rank-2 pick is ambiguous, so it declines rather than guessing.
+    grid = [[2, 2, 0, 0, 0],
+            [2, 2, 0, 0, 0],
+            [0, 0, 3, 3, 0],
+            [0, 0, 0, 0, 0],
+            [4, 4, 0, 0, 0]]
+    objs = objects_of(grid)
+    # sizes: 4 (block), 2 (domino), 2 (domino) -> distinct values {4,2}; rank-2
+    # value is 2, held by two objects -> decline
+    assert select_object(objs, {"kind": "second_largest"}) is None
+
+
+def test_fit_selector_ranked_when_extremes_and_oddness_fail():
+    # The moved object is the *middle* of three strictly size-ordered objects on
+    # every pair, at no position extreme, with all colours and shapes distinct, and
+    # its size varies across pairs -- so no extreme, position, or odd-one-out
+    # criterion fits; only `second_largest` survives (mirrors
+    # data/ARC_madeup/mo_second_largest.json).
+    spec = json.load(open(os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data", "ARC_madeup", "mo_second_largest.json")))
+    selections = []
+    for pair in spec["train"]:
+        objs = objects_of(pair["input"])
+        out = objects_of(pair["output"])
+        sel, _o, _s = ExtractPatternOperator._identify_move(objs, out)
+        selections.append({"objects": objs, "selected": sel})
+    assert fit_selector(selections) == {"kind": "second_largest"}
+
+
+def _load_madeup(name):
+    """Load a data/ARC_madeup task into the (input, output)-tuple spec form the
+    test pipeline helpers expect (the on-disk JSON uses {"input","output"} dicts)."""
+    spec = json.load(open(os.path.join(
+        os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+        "data", "ARC_madeup", name)))
+    to_tuples = lambda pairs: [(p["input"], p["output"]) for p in pairs]
+    return {"train": to_tuples(spec["train"]), "test": to_tuples(spec["test"])}
+
+
+def test_pipeline_solves_second_largest():
+    # the ranked (2nd-largest) selection task solves end-to-end via the SAME rule
+    # object as the rest of the move family (no accretion; §2.5-3). Loaded from the
+    # on-disk madeup task so the test and the probe exercise identical data.
+    spec = _load_madeup("mo_second_largest.json")
+    rr = _check_solved(spec, "second_largest").s1["active-rules"][0]
+    rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
+    assert rr == rc
+
+
 def _selection_index_oddshape(objs):
     # the L-tromino is the only object whose bbox is 2x2 (the others are 1x3)
     for i, o in enumerate(objs):
