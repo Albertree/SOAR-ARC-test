@@ -1,0 +1,52 @@
+{
+  "_comment": "Grid size is a function of object COUNT (PROMPT.md section 2.1 'grid size is a function of an object property/feature'; here the feature is the number of objects, a grid-level count rather than one object's extent, the extent case being crop_to_object.json). Each pair holds several distinct single-pixel objects; the output is a square canvas whose side equals the NUMBER of input objects, holding only the TOPMOST object placed at (0,0). Input grids are 5x5 with object counts 3 then 4, so the output sides (3, 4) are explained by neither a constant delta from the input size (deltas -2 vs -1), nor a constant absolute size, nor the selected object's own bbox extent (1x1): only by the object count. Exposes the gap left by the same/delta/constant/object_extent output-shape vocabulary (no object_count reading). Solved the intended way it merges into the one value-agnostic object_motion rule (covers +1), no new detector.",
+  "train": [
+    {
+      "input": [
+        [0, 0, 3, 0, 0],
+        [0, 0, 0, 0, 0],
+        [4, 0, 0, 0, 0],
+        [0, 0, 0, 0, 7],
+        [0, 0, 0, 0, 0]
+      ],
+      "output": [
+        [3, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0]
+      ]
+    },
+    {
+      "input": [
+        [0, 0, 0, 6, 0],
+        [0, 0, 0, 0, 0],
+        [0, 4, 0, 0, 0],
+        [0, 0, 0, 0, 7],
+        [8, 0, 0, 0, 0]
+      ],
+      "output": [
+        [6, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0],
+        [0, 0, 0, 0]
+      ]
+    }
+  ],
+  "test": [
+    {
+      "input": [
+        [0, 0, 0, 0, 2],
+        [0, 4, 0, 0, 0],
+        [0, 0, 0, 6, 0],
+        [0, 0, 0, 0, 0],
+        [7, 0, 8, 0, 0]
+      ],
+      "output": [
+        [2, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ]
+    }
+  ]
+}

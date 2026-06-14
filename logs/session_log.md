@@ -1,6 +1,56 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 11 — 2026-06-14 — branch test33
+
+**Diagnosis**: In the `madeup` phase (authored 5/7) the remaining §2.1 concept
+the structure could not yet express is **"grid size is a function of the object
+*count*"** — distinct from the object-*extent* reading closed iter7. The
+`fit_output_shape` vocabulary had only same / delta / constant / object_extent,
+so a task whose output side equals the number of input objects falls through to
+`identity`. Smallest defensible step: author one task isolating that concept and
+add the single `object_count` output-shape *argument expression* so the existing
+`object_motion` rule covers it (merge, no new family / detector / DSL primitive).
+
+**Change**:
+- `data/ARC_madeup/mo_size_by_count.json` (NEW, F1-exempt corner) — 2 pairs, both
+  5×5 inputs with object counts 3 then 4; output is a count×count square holding
+  the topmost object at (0,0). Inputs are constant size so the output sides (3,4)
+  defeat `delta` (−2 vs −1), `constant`, and `object_extent` (1×1); only the
+  object count explains them. Confirmed it failed → `identity` before the fix.
+- `agent/dsl_expr/motion.py` — added the `object_count` reading to
+  `fit_output_shape` (last, after `object_extent`, so no input-relative or
+  single-object reading is overridden) + its resolver in `output_shape`
+  (`count×count`; declines when no count supplied). Value-agnostic: the count is
+  re-derived from each task's G0 (P5), never stored.
+- `agent/active_operators.py` — `_object_motion` records each pair's input object
+  count on the shape entry; `_render_object_motion` passes `len(objs)` to
+  `output_shape` so the canvas side resolves per test input.
+- `agent/conditions/object_motion.py` — docstring extended to name the
+  `object_count` reading (F8 pairing for the active_operators edit; no logic
+  change — the matcher already only requires *a* fitted `out_shape`).
+- `tests/test_object_motion.py` — +4 tests: object_count fit, loses-to-input-
+  relative ordering, declines on non-square output, resolver needs-count.
+
+**Probe before**: madeup 5/5 (pre-authored set); easy_a 9/9; rules=2; rule_002
+covers=12; P1=P2=7.0; 67 tests.
+**Probe after** : madeup 6/6 (mo_size_by_count *merged* into object_motion, not a
+new rule); easy_a 9/9; rules=2 (no accretion); rule_002 covers=13; P1=P2=7.5;
+71 tests pass.
+
+**Invariants**: forbidden=none (check_invariants CLEAN); positives=P1 +0.5
+(7.0→7.5), P2 +0.5 (7.0→7.5), P3/P4/P5 ±0, P6 +7 lines (net add, no new matcher
+or primitive). F8 satisfied (active_operators paired with conditions/ edit).
+
+**Next gap (note for future iter)**: output-shape vocabulary now reads same /
+delta / constant / object_extent / object_count; selection reads size ∪ position
+∪ colour. The output-shape readings still only produce *square* count grids and
+*single-object* outputs — a task whose output keeps the *unselected* objects, or
+whose size is a non-square function of a feature, is untouched. The standing
+big-ticket frontier is unchanged: **R3** (P3=0.0 — `unify()` is implemented but
+the live `save_rule_to_ltm` merges by exact equality and never calls it; needs a
+Slow-path synthesizer emitting per-pair programs with *divergent* args) and
+**R5** (fast-path reuse: object_motion declines the fast path, stored hits 0).
 ## Iter 9 — 2026-06-14 — branch test33
 
 **Diagnosis**: easy_a is mastered (9/9, clean-streak 4/5) and the #1 gap named
@@ -793,3 +843,66 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 10 [CLEAN] — 20260614_162050 — branch test33
 - Probe: easy_a: [16:20:53] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 16:29
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_162916.log
+
+---
+## Learning Loop -- 2026-06-14 16:29
+
+- Split: None, Tasks: 5
+- Correct: 5 / 5 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_162919.log
+
+---
+## Learning Loop -- 2026-06-14 16:33
+
+- Split: None, Tasks: 6
+- Correct: 5 / 6 (83.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_163259.log
+
+---
+## Learning Loop -- 2026-06-14 16:33
+
+- Split: None, Tasks: 6
+- Correct: 5 / 6 (83.3%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_163321.log
+
+---
+## Learning Loop -- 2026-06-14 16:34
+
+- Split: None, Tasks: 6
+- Correct: 6 / 6 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_163444.log
+
+---
+## Learning Loop -- 2026-06-14 16:35
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_163502.log
+
+## Iter 11 [CLEAN] — 20260614_162915 — branch test33
+- Probe: madeup: [16:29:21] Correct:     5 / 5  (100.0%) | easy_a: [16:29:18] Correct:     9 / 9  (100.0%)

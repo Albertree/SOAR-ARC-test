@@ -151,6 +151,39 @@ def test_output_shape_object_extent_needs_obj():
     assert output_shape({"kind": "object_extent"}, (5, 5)) is None
 
 
+def _sc(in_dims, out_dims, count):
+    return {"in": in_dims, "out": out_dims, "count": count}
+
+
+def test_fit_output_shape_object_count():
+    # Same input size both pairs but differing object counts (3, 4): the output
+    # side tracks the count, which no input-relative or extent reading explains.
+    assert fit_output_shape([
+        _sc((5, 5), (3, 3), 3),
+        _sc((5, 5), (4, 4), 4),
+    ]) == {"kind": "object_count"}
+
+
+def test_object_count_loses_to_input_relative_readings():
+    # object_count is tried last: an input-relative reading wins when one also fits.
+    same = [_sc((4, 4), (4, 4), 4), _sc((6, 6), (6, 6), 6)]
+    assert fit_output_shape(same) == {"kind": "same"}
+
+
+def test_fit_output_shape_object_count_declines_non_square():
+    # A non-square output is not a count×count square → object_count declines.
+    assert fit_output_shape([
+        _sc((5, 5), (3, 4), 3),
+        _sc((5, 5), (4, 5), 4),
+    ]) is None
+
+
+def test_output_shape_object_count_needs_count():
+    assert output_shape({"kind": "object_count"}, (5, 5), None, 4) == (4, 4)
+    # No count supplied → decline rather than crash.
+    assert output_shape({"kind": "object_count"}, (5, 5)) is None
+
+
 # --- matcher ---------------------------------------------------------------
 
 def _motion(n=2, target=None, out_shape=None, selector=None, **overrides):

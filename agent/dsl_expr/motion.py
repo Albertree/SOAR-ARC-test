@@ -92,13 +92,15 @@ def fit_output_shape(shapes):
     """Fit a value-agnostic output-grid-shape expression across example pairs.
 
     `shapes` is a list of per-pair dicts ``{"in": (h, w), "out": (h, w),
-    "obj": (oh, ow)}`` giving the input and output grid dimensions and the
-    (size-preserved) selected object's bbox extent. Returns a descriptor naming
-    the output shape as an expression consistent across every pair, or ``None``
-    if none fits (so the caller declines rather than guessing). Tried
-    most-structural first — an identity, then a relation (input + constant
-    delta), then a coincidental absolute constant, and finally an *object
-    property* relation — mirroring `fit_target`'s ordering.
+    "obj": (oh, ow), "count": int}`` giving the input and output grid dimensions,
+    the (size-preserved) selected object's bbox extent, and the number of objects
+    in the input. Returns a descriptor naming the output shape as an expression
+    consistent across every pair, or ``None`` if none fits (so the caller declines
+    rather than guessing). Tried most-structural first — an identity, then a
+    relation (input + constant delta), then a coincidental absolute constant, then
+    an *object-property* relation (one object's own extent), and finally an
+    *object-count* relation (a grid-level feature) — mirroring `fit_target`'s
+    ordering.
     """
     if not shapes:
         return None
@@ -136,15 +138,35 @@ def fit_output_shape(shapes):
     ):
         return {"kind": "object_extent"}
 
+    # object_count: every output grid is a square whose side equals the *number
+    # of objects* in the input — the output size is a function of a grid-level
+    # feature (the object count), the §2.1 "grid size is a function of an object's
+    # feature" concept read at the grid level rather than from one object's extent
+    # (which is `object_extent` above). Tried last (after every input-relative and
+    # single-object reading) so it only claims a task no other expression explains
+    # — e.g. one where input size is constant but the count, and thus the output
+    # side, varies across pairs, defeating delta/constant/object_extent. Needs the
+    # per-pair object count, carried on each shape entry as "count"; absent it (or
+    # a non-square output), this declines.
+    if all(
+        s.get("count") is not None
+        and tuple(s["out"]) == (s["count"], s["count"])
+        for s in shapes
+    ):
+        return {"kind": "object_count"}
+
     return None
 
 
-def output_shape(descriptor, in_dims, obj=None):
+def output_shape(descriptor, in_dims, obj=None, count=None):
     """Resolve an output-shape descriptor to concrete ``(height, width)`` for one
     input grid. Inverse-paired with `fit_output_shape`. The optional `obj` is the
     selected object, needed only by the `object_extent` reading (whose output size
-    is that object's own bbox extent). Returns ``None`` for an unknown descriptor —
-    or for `object_extent` with no object — so callers decline rather than crash."""
+    is that object's own bbox extent); the optional `count` is the number of input
+    objects, needed only by the `object_count` reading (whose output is a
+    ``count x count`` square). Returns ``None`` for an unknown descriptor — or for
+    `object_extent`/`object_count` missing its object/count — so callers decline
+    rather than crash."""
     if not descriptor:
         return None
     h, w = in_dims
@@ -163,6 +185,10 @@ def output_shape(descriptor, in_dims, obj=None):
             return None
         (_origin, (oh, ow)) = obj_origin_extent(obj)
         return (oh, ow)
+    if kind == "object_count":
+        if count is None:
+            return None
+        return (count, count)
     return None
 
 
