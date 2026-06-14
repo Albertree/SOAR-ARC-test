@@ -992,6 +992,50 @@ def run_program(program, input_grid):
                     raise _Unevaluable(
                         f"enclosed_fill_by: pocket size {size!r} not in fitted map")
                 cur = apply_DSL("coloring", cur, selection=comp, color=cmap[size])
+        elif kind == "symmetry_repair":
+            # Occlusion repair by symmetry: the input is a symmetric picture
+            # (mirror / rotation / periodic) with one solid block of a single
+            # *mask* colour hiding part of it, and every masked cell is repainted
+            # with the colour read from its symmetric counterpart on the unmasked
+            # support — the recurring ARC "a coloured square covers part of a
+            # symmetric pattern; restore what is underneath" family. The reason —
+            # P3/P4 — is the COMM that the rest of the grid is invariant under a
+            # symmetry group, so a hidden cell's colour is *entailed* by its
+            # visible partner; `_fit_symmetry_repair` reads which dihedral ops and
+            # which axis periods the unmasked support obeys (chosen by SEARCH) and
+            # declines when the restored grid does not reproduce every pair. The
+            # whole symmetry spec (mask colour + valid ops/periods) is ONE
+            # structure-agnostic const leaf, so two symmetry-repair tasks with
+            # different masks/symmetries share the pure ``[("symmetry_repair",
+            # ("const", ?v))]`` skeleton and lift via ``unify()`` into one
+            # ``covers>1`` rule (R3 — P1·P2·P3 rise together), never a rule per
+            # symmetry (§2.5-3/4). The masked cells are a *selection* (a util/LHS
+            # computation on the input, §2.5-1), painted only by the frozen
+            # ``coloring`` primitive (F3-safe). Reads the FIXED input (``env``), so
+            # it transfers to the test input unchanged (P5); a masked cell with no
+            # unmasked symmetric source makes the step *decline* (``_Unevaluable``)
+            # rather than guess (memory: runtime_resolvable_speculative_apply —
+            # renderers decline, not crash).
+            _, spec_expr = step
+            spec = _eval(spec_expr, env)
+            grid = env["grid"]
+            H = len(grid)
+            W = len(grid[0]) if grid else 0
+            mask = spec["mask"]
+            for r in range(H):
+                for c in range(W):
+                    if grid[r][c] != mask:
+                        continue
+                    val = None
+                    for (tr, tc) in _symmetry_partners(r, c, H, W, spec):
+                        if grid[tr][tc] != mask:
+                            val = grid[tr][tc]
+                            break
+                    if val is None:
+                        raise _Unevaluable(
+                            "symmetry_repair: masked cell "
+                            f"{(r, c)!r} has no unmasked symmetric source")
+                    cur = apply_DSL("coloring", cur, selection=(r, c), color=val)
         elif kind == "compose":
             # Two-stage composition: run a *stage-1* sub-program (a structural
             # reduction of the input — crop to a selected region, or a dihedral
@@ -1316,6 +1360,25 @@ def _candidate_programs(pairs):
     enclosed_by = _fit_enclosed_fill_by(pairs)
     if enclosed_by is not None:
         yield enclosed_by
+
+    # --- Schema 18: symmetry / occlusion repair ----------------------------
+    # Same-dims output that is the input with one solid block of a single *mask*
+    # colour replaced by the content its symmetric counterpart entails — the
+    # recurring ARC "a coloured square hides part of a symmetric / periodic
+    # pattern; restore what is underneath" family. The reason — P3/P4 — is the COMM
+    # that the rest of the grid is invariant under a symmetry group, so a hidden
+    # cell's colour is *entailed* by its visible partner (no guessing).
+    # `_fit_symmetry_repair` reads the mask colour and which dihedral ops / axis
+    # periods the unmasked support obeys (chosen by SEARCH) and declines when the
+    # restored grid does not reproduce every pair. The whole symmetry spec is ONE
+    # const leaf, so two symmetry-repair tasks with divergent masks/symmetries share
+    # the pure ``[("symmetry_repair", ("const", ?v))]`` skeleton and lift via
+    # ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise together), never a
+    # rule per symmetry (§2.5-3/4). Yielded last so a simpler same-dims schema wins
+    # when a task fits both (a symmetric grid with no occluder is owned by identity).
+    sym_repair = _fit_symmetry_repair(pairs)
+    if sym_repair is not None:
+        yield sym_repair
 
 
 def _is_fractal_dims(pairs):
@@ -2041,6 +2104,147 @@ def _fit_enclosed_fill_by(pairs):
         "map": [[k, v] for k, v in sorted(mapping.items())],
     }
     prog = [("enclosed_fill_by", ("const", spec))]
+    if _reproduces(prog, pairs):
+        return prog
+    return None
+
+
+# The dihedral (D4) symmetries a symmetry-repair fill may copy a masked cell's
+# colour from: the two mirrors, the 180° rotation, and (square grids only) the two
+# transposes. Each is a pure *coordinate* map ``(r, c) -> partner`` — the §2.5-1
+# LHS vocabulary, never a stored colour. ``transpose``/``anti`` return ``None`` off
+# a square grid, where they are undefined, so the fitter drops them there. The 90°
+# rotations are deliberately *not* included as separate generators: on a square
+# grid they are compositions of a transpose and a mirror, both already present, so
+# the orbit they reach is covered.
+_DIHEDRAL_SYMS = {
+    "hmir": lambda r, c, H, W: (r, W - 1 - c),
+    "vmir": lambda r, c, H, W: (H - 1 - r, c),
+    "rot180": lambda r, c, H, W: (H - 1 - r, W - 1 - c),
+    "transpose": lambda r, c, H, W: (c, r) if H == W else None,
+    "anti": lambda r, c, H, W: (W - 1 - c, H - 1 - r) if H == W else None,
+}
+
+
+def _symmetry_partners(r, c, H, W, spec):
+    """Every in-bounds symmetric counterpart of cell ``(r, c)`` under the fitted
+    symmetry ``spec`` — each named dihedral op (`_DIHEDRAL_SYMS`) plus every
+    translation by a whole multiple of the vertical/horizontal period. A
+    symmetry-repair fill copies the cell's colour from the first *unmasked* partner
+    in this list; the fit guarantees the partners agree on the unmasked support, so
+    the order only affects which equal value is read. A pure selection (coordinate
+    arithmetic on the FIXED input), never a stored colour."""
+    out = []
+    for name in spec["dih"]:
+        t = _DIHEDRAL_SYMS[name](r, c, H, W)
+        if t is not None:
+            out.append(t)
+    pv = spec.get("pv")
+    if pv:
+        for k in range(1, H // pv + 1):
+            out.append((r - k * pv, c))
+            out.append((r + k * pv, c))
+    ph = spec.get("ph")
+    if ph:
+        for k in range(1, W // ph + 1):
+            out.append((r, c - k * ph))
+            out.append((r, c + k * ph))
+    return [(tr, tc) for (tr, tc) in out if 0 <= tr < H and 0 <= tc < W]
+
+
+def _fit_symmetry_repair(pairs):
+    """Fit an occlusion repair by symmetry: the input is a symmetric picture
+    (mirror / rotation / periodic tiling) with one solid block of a single *mask*
+    colour hiding part of it, and the output restores each hidden cell from its
+    symmetric counterpart on the still-visible support. The recurring ARC family
+    where a coloured square covers part of a symmetric design and the task is to
+    reconstruct what is underneath.
+
+    The mask colour is the single colour shared by *every* changed cell across all
+    pairs (declines if the changed cells are not one consistent colour — that is not
+    a clean occlusion). A dihedral op is *valid* iff the unmasked support is
+    invariant under it in every pair (masked cells excused); the smallest
+    translational period on each axis is found the same way. The whole spec —
+    ``{"mask", "dih", "pv", "ph"}`` — is carried as ONE const leaf, so two
+    symmetry-repair tasks with different masks/symmetries share the SAME one-step
+    skeleton ``[("symmetry_repair", ("const", ?v))]`` and lift via ``unify()`` into
+    one ``covers>1`` rule (R3 — P1·P2·P3 rise together), never a rule per symmetry
+    (§2.5-3/4). The final `_reproduces` gate keeps the fit honest — a spec whose
+    reconstruction does not reproduce a pair exactly is rejected, not approximated.
+
+    Returns the one-step program, or ``None``."""
+    mask_cols = set()
+    any_change = False
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout) or (
+                gin and len(gin[0]) != len(gout[0] if gout else [])):
+            return None
+        for r in range(len(gin)):
+            row_in, row_out = gin[r], gout[r]
+            for c in range(len(row_in)):
+                if row_in[c] != row_out[c]:
+                    any_change = True
+                    mask_cols.add(row_in[c])
+    if not any_change or len(mask_cols) != 1:
+        return None
+    mask = next(iter(mask_cols))
+
+    dih = []
+    for name, fn in _DIHEDRAL_SYMS.items():
+        ok = True
+        for p in pairs:
+            gin = p["input"]
+            H = len(gin)
+            W = len(gin[0]) if gin else 0
+            for r in range(H):
+                for c in range(W):
+                    if gin[r][c] == mask:
+                        continue
+                    t = fn(r, c, H, W)
+                    if t is None:
+                        ok = False
+                        break
+                    tr, tc = t
+                    if gin[tr][tc] == mask:
+                        continue
+                    if gin[tr][tc] != gin[r][c]:
+                        ok = False
+                        break
+                if not ok:
+                    break
+            if not ok:
+                break
+        if ok:
+            dih.append(name)
+
+    def _period_ok(axis, pv):
+        for p in pairs:
+            gin = p["input"]
+            H = len(gin)
+            W = len(gin[0]) if gin else 0
+            for r in range(H):
+                for c in range(W):
+                    if gin[r][c] == mask:
+                        continue
+                    tr, tc = (r + pv, c) if axis == "v" else (r, c + pv)
+                    if not (0 <= tr < H and 0 <= tc < W):
+                        continue
+                    if gin[tr][tc] == mask:
+                        continue
+                    if gin[tr][tc] != gin[r][c]:
+                        return False
+        return True
+
+    g0 = pairs[0]["input"]
+    H0 = len(g0)
+    W0 = len(g0[0]) if g0 else 0
+    pv = next((k for k in range(1, H0) if _period_ok("v", k)), None)
+    ph = next((k for k in range(1, W0) if _period_ok("h", k)), None)
+    if not dih and pv is None and ph is None:
+        return None
+    spec = {"mask": mask, "dih": dih, "pv": pv, "ph": ph}
+    prog = [("symmetry_repair", ("const", spec))]
     if _reproduces(prog, pairs):
         return prog
     return None

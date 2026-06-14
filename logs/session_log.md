@@ -1,6 +1,64 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 53 — 2026-06-15 — branch test33
+
+**Diagnosis**: iter52's nominated next gap (an *ordinal pocket key* — size-`rank`
+for `enclosed_fill_by`) turned out a dead end: a fresh scan over all 1000 training
+tasks showed a rank-keyed pocket fill lands **0** tasks `size` does not already
+cover (only c0f76784, already covered) — speculative capability, no covers gain,
+§2.5-4 forbids. Re-diagnosing from a fresh failure scan (sample 150: ~11% solved,
+91/133 failures same-dims), the biggest *general, absent* family surfaced:
+**symmetry / occlusion repair** — a solid block of one colour hides part of a
+symmetric (mirror/rotation/periodic) picture and the output restores it from the
+symmetric counterpart. The synthesizer had no symmetry vocabulary at all.
+
+**Change**:
+- `program/synthesis.py`: added **Schema 18 `symmetry_repair`**. New
+  `_fit_symmetry_repair` identifies the single *mask* colour (the consistent colour
+  of every changed cell), then by SEARCH which dihedral ops (`_DIHEDRAL_SYMS`: two
+  mirrors, rot180, the two square-only transposes) and which smallest axis periods
+  the unmasked support obeys; carries the whole spec `{mask,dih,pv,ph}` as ONE const
+  leaf. New `_symmetry_partners` helper enumerates a cell's in-bounds dihedral +
+  periodic counterparts. Dispatch fills each masked cell from its first *unmasked*
+  symmetric partner, painting ONLY the frozen `coloring` primitive (F3-safe) and
+  *declining* (`_Unevaluable`) on a masked cell with no unmasked source (memory:
+  runtime_resolvable_speculative_apply). Yielded LAST in `_candidate_programs` so a
+  simpler same-dims schema always wins (zero regression; verified 120-sample —
+  symmetry_repair hijacks nothing).
+- `tests/test_synthesis_symmetry_repair.py`: +8 tests (mirror fit, periodic fit,
+  multi-colour-change declines, two divergent specs share one skeleton → lift,
+  no-unmasked-source declines-not-crash, partner enumeration, full-search reach,
+  unoccluded grid stays identity).
+- `procedural_memory/rule_020.json` (+ `episodic_memory/f823c43c/anti_unification/au_001.json`):
+  persisted **2 real ARC tasks** (b8825c91 dihedral+periodic mask=4, f823c43c
+  hmir/vmir/rot180 mask=6 — *divergent* specs) via the LIVE solve/save path
+  (`run_learn --task-dir` on a deleted scratch copy — no further edit): both discover
+  `symmetry_repair` and `save_rule`'s `unify()` lifts their two specs into ONE
+  abstract rule `[("symmetry_repair",("const","?v2"))]`, covers=2,
+  `anti_unification_trace` set — the R3 prize, one rule abstracting 2 tasks.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=19, P1/P2=7.105, P3=0.9474, distinct-solved=135
+**Probe after** : same hard probe unchanged; rules=19→20, P1/P2=6.85, P3=0.95,
+distinct-solved 135→137; easy_a 9/9 + madeup 27/27 hold; 268 tests pass (+8).
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN; F3 clean —
+`symmetry_repair` composes only `coloring`; F2 clean — no new `_try_*`;
+active_operators.py untouched so F8 N/A). positives=P3 +0.0026 (18/19→19/20 traced);
+P1/P2 −0.255 — the documented §2.5-4 averaging trap: a NEW-skeleton covers=2 family
+lands 2 real new tasks via R3 (distinct-solved +2) but sits below the 7.1 mean, so it
+dilutes the average even though it is real progress (P3 up, breadth up, both folded
+into one lifted rule). Both tasks solve the held-out test too.
+
+**Next gap (note for future iter)**: `symmetry_repair`'s fit requires *every*
+changed cell to share one mask colour, so tasks where the occluder is the
+*background* itself (the hidden region reads as bg, not a distinct noise colour) are
+missed — the mask would need to be identified positionally (the rectangular hole)
+rather than by colour. A defensible extension: also admit a mask given by a
+contiguous bg rectangle whose symmetric image is non-bg, folded into the SAME
+`symmetry_repair` skeleton (a second mask-source, not a new schema).
+
+---
 ## Iter 52 — 2026-06-15 — branch test33
 
 **Diagnosis**: iter51's nominated next gap (per-region fill keyed on the enclosing
@@ -5913,3 +5971,63 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 52 [CLEAN] — 20260615_011655 — branch test33
 - Probe: [01:17:16] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 01:33
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_013314.log
+
+---
+## Learning Loop -- 2026-06-15 01:33
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_013317.log
+
+---
+## Learning Loop -- 2026-06-15 01:33
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_013328.log
+
+---
+## Learning Loop -- 2026-06-15 01:45
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 19 -> 20 (+1 learned)
+- Stored rule hits: 0
+- Time: 10s
+- Log: logs/learn_20260615_014457.log
+
+---
+## Learning Loop -- 2026-06-15 01:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_014545.log
+
+---
+## Learning Loop -- 2026-06-15 01:45
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_014548.log
