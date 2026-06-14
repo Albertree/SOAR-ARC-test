@@ -1,0 +1,10 @@
+=== family routing over 120 tasks ===
+  (no family)                  120
+
+=== family fired but test WRONG: 0 ===
+  (repro=True means family reproduces train yet fails test = honest-but-overfit;
+   repro=False means family fired WITHOUT reproducing train = the shadow bug)
+
+--- of those, did NOT reproduce train (reproduce-gate would free them): 0 ---
+
+=== RESCUABLE (family-no-repro, synthesizer alone correct on test): 0 ===

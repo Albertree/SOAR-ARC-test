@@ -6242,3 +6242,36 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 55 [CLEAN] — 20260615_021533 — branch test33
 - Probe: [02:15:53] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 03:09
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_030914.log
+
+---
+## Learning Loop -- 2026-06-15 03:09
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_030918.log
+
+---
+## Learning Loop -- 2026-06-15 03:09
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_030928.log
+
+## Iter 56 [NEUTRAL] — 20260615_030914 — branch test33
+- Probe: [03:09:33] Correct:     0 / 3  (0.0%)
