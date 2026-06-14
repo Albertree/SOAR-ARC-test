@@ -5221,3 +5221,104 @@ stage-1 reductions (e.g. extract-one-panel) is the cheaper next probe.
 
 ## Iter 46 [CLEAN] — 20260614_234318 — branch test33
 - Probe: [23:43:38] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 23:59
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_235956.log
+
+---
+## Learning Loop -- 2026-06-15 00:00
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_235959.log
+
+---
+## Learning Loop -- 2026-06-15 00:00
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_000010.log
+
+---
+## Learning Loop -- 2026-06-15 00:11
+
+- Split: None, Tasks: 10
+- Correct: 10 / 10 (100.0%)
+- Rules: 14 -> 15 (+1 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260615_001055.log
+
+---
+## Learning Loop -- 2026-06-15 00:15
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 15 -> 15 (+0 learned)
+- Stored rule hits: 9
+- Time: 4s
+- Log: logs/learn_20260615_001548.log
+
+---
+## Learning Loop -- 2026-06-15 00:16
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 15 -> 15 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260615_001552.log
+
+---
+## Iter 47 — 2026-06-15 — branch test33
+
+**Diagnosis**: The training probe (c9680e90 / 878187ab / e5790162) is the standing
+multi-step conditional family no schema yet expresses — no *small* gap there. iter46
+flagged the immediate next step: the compose mechanism it added (Schema 13) had only
+ONE of its folds persisted (crop-then-tile rule_014, covers=2). A 1000-task audit of
+`synthesize_task` confirmed the compose mechanism generalises to a 2nd stage-2 schema
+(**crop-then-paint_objects**, 3 held-out-OK real tasks sharing one skeleton) and also
+revealed two single-step families with real held-out solves never persisted
+(dihedral +4, recolor_map +3). Per PROMPT §2.2.3 ("generalize across what is already
+solved") + §2.5-3 ("every overfit program must lift to covers>1"), the gap is these
+un-persisted lifts, not a new schema.
+
+**Change**: persisted 10 real ARC-AGI-2 training tasks through the LIVE
+solve/save path (`run_learn.py --task-dir` on a scratch copy, no code edit):
+- rule_006 (dihedral) covers 6→10 — folded 3c9b0459/6150a2bd/67a3c6ac/68b16354
+  (same abstract skeleton → idempotent covers absorb, existing trace).
+- rule_005 (recolor_map) covers 3→6 — folded 0d3d703e/c8f0f002/d511f180
+  (aabf363d excluded: train-only, fails held-out test → not an honest cover).
+- rule_015 (NEW) — crop-then-paint_objects compose family: 1a2e2828/2013d3e2/73182012
+  lift via unify() into one covers=3 rule + AU trace (the iter46-flagged 2nd compose
+  fold; 3 task-specific programs → 1 arg-parameterised rule, §2.5-3, R3).
+- No `agent/` or `program/` code touched; only learned procedural memory grew.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=14, P1/P2=7.929, P3=0.929
+**Probe after** : same probe 0/3 unchanged; rules=15, P1/P2=8.067, P3=0.933;
+easy_a 9/9 + madeup 27/27 hold; 232 tests pass.
+
+**Invariants**: forbidden=none, positives=P1 +0.138 / P2 +0.138 / P3 +0.0048
+(all three rise together — the §2.5-4 real-progress signature, the non-trap direction:
+the existing-family folds outweigh the single new covers=3 compose rule's dilution).
+
+**Next gap (note for future iter)**: the compose mechanism still leaves singleton
+folds unpersisted (crop-then-dihedral 7468f01a, crop-then-fractal 8f2ea7aa,
+crop-then-scale f25fbde4, dihedral-then-paint be03b35f) — each covers=1, would dilute
+until a sibling appears; the real lever remains the SECOND one iter46 named:
+object-level recolor-by-property (ordinal/rank, transfers to unseen keys), and the
+standing multi-step conditional family (gravity-with-obstacles / ray-growth) the
+probe keeps surfacing.

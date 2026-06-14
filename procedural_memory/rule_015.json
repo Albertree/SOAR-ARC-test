@@ -1,0 +1,178 @@
+{
+  "id": 15,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "crop",
+                [
+                  "const",
+                  "?v1"
+                ]
+              ]
+            ]
+          ],
+          [
+            "make_grid",
+            [
+              "const",
+              "?v2"
+            ],
+            [
+              "const",
+              "?v3"
+            ],
+            [
+              "bg"
+            ]
+          ],
+          [
+            "paint_objects",
+            [
+              "all_objects"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "crop",
+                [
+                  "const",
+                  "?v4"
+                ]
+              ]
+            ]
+          ],
+          [
+            "make_grid",
+            [
+              "const",
+              "?v5"
+            ],
+            [
+              "const",
+              "?v6"
+            ],
+            [
+              "bg"
+            ]
+          ],
+          [
+            "paint_objects",
+            [
+              "all_objects"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "1a2e2828",
+    "2013d3e2",
+    "73182012"
+  ],
+  "source_task": "1a2e2828",
+  "created_at": "2026-06-15T00:10:56.916263",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "crop",
+              [
+                "const",
+                "?v1"
+              ]
+            ]
+          ]
+        ],
+        [
+          "make_grid",
+          [
+            "const",
+            "?v2"
+          ],
+          [
+            "const",
+            "?v3"
+          ],
+          [
+            "bg"
+          ]
+        ],
+        [
+          "paint_objects",
+          [
+            "all_objects"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "crop",
+              [
+                "const",
+                "?v4"
+              ]
+            ]
+          ]
+        ],
+        [
+          "make_grid",
+          [
+            "const",
+            "?v5"
+          ],
+          [
+            "const",
+            "?v6"
+          ],
+          [
+            "bg"
+          ]
+        ],
+        [
+          "paint_objects",
+          [
+            "all_objects"
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/2013d3e2/anti_unification/au_001.json"
+}
