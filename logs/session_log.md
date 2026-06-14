@@ -4087,3 +4087,6 @@ fast path selects one object). The probe's real misses (c9680e90/e5790162) are
 place_object machinery generalized from select-one to map-all (a multi-object
 apply), the genuinely new structural step. Also still open: the latent
 `save_rule_to_ltm` `len+1` id-collision on a deleted rule (iter-36 note).
+
+## Iter 37 [CLEAN] — 20260614_215039 — branch test33
+- Probe: [21:50:57] Correct:     0 / 3  (0.0%)
