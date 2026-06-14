@@ -4706,3 +4706,6 @@ misses are "do X then Y" — e.g. dihedral-then-recolor, crop-then-tile), and (b
 comparison-grounded selector — the R1/§2.5-2b selection-lift). Composition is the
 larger prize but combinatorially riskier; the smallest defensible start is a
 bounded 2-step search reusing the existing fitters.
+
+## Iter 42 [CLEAN] — 20260614_224723 — branch test33
+- Probe: [22:47:43] Correct:     0 / 3  (0.0%)
