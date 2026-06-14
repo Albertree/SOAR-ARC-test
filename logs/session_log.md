@@ -1411,3 +1411,109 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 16 [CLEAN] — 20260614_173208 — branch test33
 - Probe: madeup: [17:32:15] Correct:     10 / 10  (100.0%) | easy_a: [17:32:11] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 17:38
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173810.log
+
+---
+## Learning Loop -- 2026-06-14 17:38
+
+- Split: None, Tasks: 11
+- Correct: 11 / 11 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_173813.log
+
+> **PHASE GRADUATION** at iter 17 — madeup → training.
+> data/ARC_madeup/ (11 tasks) + easy_a solved 100% for 5 consecutive iters (K=5).
+> The structure now expresses task-specific rules for beginner concepts unaided.
+> Probe now samples data/ARC_AGI/training/ (ARC-AGI-2). easy_a + madeup kept as regression guard.
+
+---
+## Learning Loop -- 2026-06-14 17:39
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 6 (+3 learned)
+- Stored rule hits: 0
+- Time: 26s
+- Log: logs/learn_20260614_173846.log
+
+---
+## Learning Loop -- 2026-06-14 17:43
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_174304.log
+
+---
+## Learning Loop -- 2026-06-14 17:43
+
+- Split: None, Tasks: 11
+- Correct: 11 / 11 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_174307.log
+
+---
+## Learning Loop -- 2026-06-14 17:43
+
+- Split: training, Tasks: 12
+- Correct: 0 / 12 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 25s
+- Log: logs/learn_20260614_174325.log
+
+## Iter 17 — 2026-06-14 — branch test33
+
+**Diagnosis**: First training-phase iter (graduated easy_a→madeup→training this
+iter). A self-run training probe (`--split training --limit 12 --shuffle --seed
+42`) scored 0/12 but **minted 3 new rules** (3→6) — and all three were the legacy
+format (top-level `rule`, **no `condition` key**), overfit single-`covers` literal
+colour maps that did not even generalize to test. Root cause: the closed `_try_*`
+family still contained two superseded color-transform detectors
+(`_try_recolor_sequential`, `_try_color_mapping`) that fire whenever the
+principled families decline, baking literals into conditionless per-task rules —
+arbor.md 진단 #4/#5, the 168-rule accretion failure mode in miniature.
+
+**Change**:
+- `agent/active_operators.py`: removed the two legacy color-transform strategies
+  and their appliers — `_try_recolor_sequential`, `_check_sort_key`,
+  `_try_color_mapping`, `_apply_recolor_sequential`, `_apply_color_mapping`, and
+  the now-orphaned `_group_positions` helper — plus their two call sites in
+  `GeneralizeOperator.effect` and two dispatch arms in `_apply_rule`. These are
+  superseded by the value-agnostic `object_recolor` family (iters 15/16).
+  CLAUDE.md §5.1 ("Removal of methods superseded by anti-unification") + INVARIANTS
+  P6. Net −162 lines; pure deletion (F8 exception).
+- Deleted the 3 spurious conditionless rules the diagnostic probe created
+  (`rule_004/005/006.json`, untracked — never committed).
+
+**Probe before**: training 0/12, but probe **added 3 conditionless overfit rules**
+(3→6); easy_a 9/9, madeup 11/11.
+**Probe after** : training 0/12 with **0 rules discovered** (3→3, no pollution);
+easy_a 9/9 (no new rules), madeup 11/11 (no new rules). 102 tests pass.
+
+**Invariants**: forbidden=none, positives=P6 Δ+162 lines removed (1271→1109);
+P1/P2/P3/P4/P5 held (6.667 / 6.667 / 0.667 / 932 / 3). Verdict CLEAN.
+
+**Next gap (note for future iter)**: training is 0/N — no principled family fires
+on real ARC-AGI-2 tasks. With the legacy wrong-way detectors gone, the path is
+clear to take on one failing training task for a *nameable* reason and add a
+*general* mechanism (new compare capability / condition matcher / fitted arg-expr)
+rather than a literal detector. R5 fast-path reuse still unfired.
+
+## Iter 17 [CLEAN] — 20260614_173809 — branch test33
+- Probe: madeup: [17:38:16] Correct:     11 / 11  (100.0%) | easy_a: [17:38:12] Correct:     9 / 9  (100.0%)

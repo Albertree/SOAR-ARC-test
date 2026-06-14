@@ -1,5 +1,5 @@
 {
-  "phase": "madeup",
-  "clean_streak": 4,
-  "graduated_at_iter": null
+  "phase": "training",
+  "clean_streak": 0,
+  "graduated_at_iter": 17
 }
