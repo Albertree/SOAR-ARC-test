@@ -85,15 +85,61 @@ _DIHEDRAL = {
 # transform composes only the two frozen primitives (``make_grid`` + per-cell
 # ``coloring``) — it is the §2.5-2b case where the AU "hole" is filled by a
 # *selector grounded in the comparison*: which macro-cells get a copy is named by
-# a condition on the cell value vs the background, not by a literal coordinate
-# list. The condition vocabulary is a small *searched* family (cell ≠ bg / cell ==
-# bg), so adding it grows the recognition (selection) vocabulary, not the frozen
+# a condition on the cell value, not by a literal coordinate list. The condition
+# vocabulary is a small *searched* family of value-agnostic selectors, so adding
+# to it grows the recognition (selection) vocabulary, not the frozen
 # transformation set (F3-safe; this lives in ``program/``/``agent/``, not
-# ``DSL/``). ``synthesize_task`` keeps the first condition whose program
-# reproduces every pair, exactly as it picks a dihedral map.
+# ``DSL/``):
+#
+#   * ``nonbg`` / ``isbg`` — key on the background (cell ≠ bg / cell == bg);
+#   * ``most`` / ``least`` — key on the *unique* most-/least-frequent
+#     non-background colour of THIS grid (a frequency selector: the distinguished
+#     colour varies per grid, so it is value-agnostic, never a literal — copy the
+#     tile wherever the cell holds that colour);
+#   * ``all`` — copy every macro-cell (the unconditional self-tile).
+#
+# Each entry is a *predicate maker* ``(grid, bg) -> (v -> bool) | None``; it
+# returns ``None`` to decline on an input where the selector does not resolve
+# (e.g. a frequency-keyed colour that is tied or absent), so the candidate is
+# simply discarded rather than guessing. ``synthesize_task`` keeps the first
+# condition whose program reproduces every pair, exactly as it picks a dihedral
+# map. The frequency-keyed members fold real ARC self-tiles (27f8ce4f /
+# c3e719e8 / ad7e01d0 "copy where most-frequent colour", 48f8583b "least",
+# ccd554ac "always") into the same ``[("fractal", ("const", ?v))]`` skeleton, so
+# they lift via ``unify()`` into one ``covers>1`` rule (R3).
+
+
+def _distinguished_color(grid, bg, which):
+    """The *unique* most-/least-frequent NON-background colour of ``grid``, or
+    ``None`` if there is none or the extreme is tied (ambiguous → the fractal
+    candidate declines on this input rather than guessing). Value-agnostic: the
+    colour is read from the grid's own frequencies, never a literal."""
+    counts = {}
+    for row in grid:
+        for v in row:
+            if v != bg:
+                counts[v] = counts.get(v, 0) + 1
+    if not counts:
+        return None
+    target = max(counts.values()) if which == "most" else min(counts.values())
+    winners = [c for c, n in counts.items() if n == target]
+    return winners[0] if len(winners) == 1 else None
+
+
+def _color_eq(color):
+    """Predicate ``v == color`` (copy-where-cell-is-``color``), or ``None`` to
+    decline when ``color`` did not resolve."""
+    if color is None:
+        return None
+    return lambda v: v == color
+
+
 _FRACTAL_CONDS = {
-    "nonbg": lambda v, bg: v != bg,
-    "isbg":  lambda v, bg: v == bg,
+    "nonbg": lambda grid, bg: (lambda v: v != bg),
+    "isbg":  lambda grid, bg: (lambda v: v == bg),
+    "most":  lambda grid, bg: _color_eq(_distinguished_color(grid, bg, "most")),
+    "least": lambda grid, bg: _color_eq(_distinguished_color(grid, bg, "least")),
+    "all":   lambda grid, bg: (lambda v: True),
 }
 
 
@@ -308,17 +354,22 @@ def run_program(program, input_grid):
             # (P5).
             _, cond_expr = step
             cond_name = _eval(cond_expr, env)
-            pred = _FRACTAL_CONDS.get(cond_name)
-            if pred is None:
+            make_pred = _FRACTAL_CONDS.get(cond_name)
+            if make_pred is None:
                 raise _Unevaluable(f"unknown fractal condition: {cond_name!r}")
             grid = env["grid"]
             bg = env["bg"]
+            pred = make_pred(grid, bg)
+            if pred is None:
+                raise _Unevaluable(
+                    f"fractal condition {cond_name!r} does not resolve on this "
+                    "input (e.g. a tied/absent frequency-keyed colour)")
             ih = len(grid)
             iw = len(grid[0]) if grid else 0
             cur = apply_DSL("make_grid", height=ih * ih, width=iw * iw, color=bg)
             for R in range(ih):
                 for C in range(iw):
-                    if not pred(grid[R][C], bg):
+                    if not pred(grid[R][C]):
                         continue
                     for r in range(ih):
                         for c in range(iw):
@@ -454,7 +505,10 @@ def _candidate_programs(pairs):
     # --- Schema 7: fractal self-tile ---------------------------------------
     # When every pair's output dims are exactly ``(ih², iw²)``, the output may be
     # the input self-tiled: a macro grid of input-copies gated by a per-cell
-    # condition (007bbfb7 / 5b6cbef5 — copy where the cell is non-background).
+    # condition — copy where the cell is non-background (007bbfb7 / 5b6cbef5),
+    # where it holds the most-/least-frequent colour (27f8ce4f / c3e719e8 /
+    # ad7e01d0 / 48f8583b), or unconditionally (ccd554ac). All are value-agnostic
+    # frequency/background selectors (`_FRACTAL_CONDS`), never literal colours.
     # Yield one candidate per condition in the searched vocabulary;
     # ``synthesize_task`` keeps the first whose program reproduces every pair (the
     # same select-by-search discipline as the dihedral maps). Being a pure

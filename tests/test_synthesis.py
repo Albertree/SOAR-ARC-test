@@ -290,6 +290,80 @@ def test_fractal_conditions_share_one_skeleton():
     assert _program_skeleton(nonbg) == _program_skeleton(isbg)
 
 
+def test_fractal_copy_where_most_frequent_colour():
+    # Copy the tile where the cell holds the UNIQUE most-frequent non-background
+    # colour of THIS grid — a frequency selector, value-agnostic (the
+    # distinguished colour varies per grid). Two pairs whose most-frequent colour
+    # differs (3 then 2) are reproduced by the SAME `most` condition.
+    pairs = [
+        {"input": [[3, 1], [3, 0]],            # most-freq non-bg = 3
+         "output": [[3, 1, 0, 0],
+                    [3, 0, 0, 0],
+                    [3, 1, 0, 0],
+                    [3, 0, 0, 0]]},
+        {"input": [[2, 2], [2, 5]],            # most-freq non-bg = 2
+         "output": [[2, 2, 2, 2],
+                    [2, 5, 2, 5],
+                    [2, 2, 0, 0],
+                    [2, 5, 0, 0]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "fractal"
+    assert prog[0][1] == ("const", "most")
+
+
+def test_fractal_copy_where_least_frequent_colour():
+    # The least-frequent non-background colour names the copied tiles. (bg=0 is
+    # present so "least" is distinct from "nonbg"; two distinct pairs so the
+    # constant-output schema declines.)
+    pairs = [
+        {"input": [[0, 1], [7, 7]],            # bg 0; least non-bg = 1 → (0,1)
+         "output": [[0, 0, 0, 1],
+                    [0, 0, 7, 7],
+                    [0, 0, 0, 0],
+                    [0, 0, 0, 0]]},
+        {"input": [[7, 0], [1, 7]],            # bg 0; least non-bg = 1 → (1,0)
+         "output": [[0, 0, 0, 0],
+                    [0, 0, 0, 0],
+                    [7, 0, 0, 0],
+                    [1, 7, 0, 0]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "fractal"
+    assert prog[0][1] == ("const", "least")
+
+
+def test_fractal_all_unconditional_self_tile():
+    # Every macro-cell is a copy (the unconditional self-tile, even the bg=0
+    # cells — so "all" is distinct from "nonbg"). Two distinct pairs so the
+    # constant-output schema declines.
+    pairs = [
+        {"input": [[2, 0], [0, 2]],
+         "output": [[2, 0, 2, 0],
+                    [0, 2, 0, 2],
+                    [2, 0, 2, 0],
+                    [0, 2, 0, 2]]},
+        {"input": [[5, 0], [5, 5]],
+         "output": [[5, 0, 5, 0],
+                    [5, 5, 5, 5],
+                    [5, 0, 5, 0],
+                    [5, 5, 5, 5]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "fractal"
+    assert prog[0][1] == ("const", "all")
+
+
+def test_fractal_frequency_conditions_share_skeleton_with_nonbg():
+    # most/least/all all share the one fractal skeleton, so a divergent-condition
+    # task lifts into the SAME covers>1 rule via unify() (R3) — not a new family.
+    from agent.memory import _program_skeleton
+    base = [("fractal", ("const", "nonbg"))]
+    for cond in ("most", "least", "all", "isbg"):
+        variant = [("fractal", ("const", cond))]
+        assert _program_skeleton(variant) == _program_skeleton(base)
+
+
 def test_scale_factors_share_one_skeleton():
     # The unification payoff: a 2x and a 3x scale must produce the SAME program
     # skeleton (factors are the only divergent leaves), so save_rule lifts them
