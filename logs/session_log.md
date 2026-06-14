@@ -242,3 +242,81 @@ family.
 
 ## Iter 3 [CLEAN] — 20260614_151338 — branch test33
 - Probe: easy_a: [15:13:41] Correct:     2 / 9  (22.2%)
+
+---
+## Learning Loop -- 2026-06-14 15:24
+
+- Split: None, Tasks: 9
+- Correct: 4 / 9 (44.4%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 2
+- Time: 3s
+- Log: logs/learn_20260614_152429.log
+
+---
+## Learning Loop -- 2026-06-14 15:33
+
+- Split: None, Tasks: 9
+- Correct: 8 / 9 (88.9%)
+- Rules: 1 -> 2 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_153343.log
+
+## Iter 4 — 2026-06-14 — branch test33
+
+**Diagnosis**: R1 is the lowest unproven rung and iter3's own next-gap note
+warned that the remaining easy_a move tasks (d,e,f,h constant/translation
+targets) would each become a *separate* matcher — the §2.5-3 accretion trap.
+The real R1 content (§2.5-2b) is the *selection / target expression*: the
+move's destination is a value-agnostic argument expression fitted from the
+example comparison (the user's easy000a prose says "bottom-right *or* fixed
+(5,5)"), not a literal per task. The smallest defensible step that does NOT
+accrete is to generalize the corner-only matcher into ONE `object_motion`
+mechanism whose target is fitted from {corner, constant, translation}.
+
+**Change**:
+- `agent/dsl_expr/motion.py` (new) — the target-position *expression* vocabulary
+  (`fit_target` → corner/offset/constant, `target_position`, `obj_origin_extent`).
+  Fitted from the example comparison; tried most-structural first. Placed under
+  `agent/` (not the frozen DSL dir) per §2.5-1. Exported via `dsl_expr/__init__`.
+- `agent/conditions/object_motion.py` (new) — replaces `object_corner_target.py`
+  (git rm'd). Fires when every pair is an object/size/grid-preserving single
+  move AND one target expression fits all pairs. P5 net 0 (one matcher swapped
+  for a more general one).
+- `agent/active_operators.py` — ExtractPattern now computes per-pair move
+  geometry (src/dst/dims) and fits the target expression; Generalize emits one
+  `object_motion` rule with `action.args = {}` (NO literal target, so every move
+  task's rule dict is identical → save_rule merges covers); Predict renders via
+  `_render_object_motion` (make_grid + coloring) using the fitted target read
+  from patterns. Removed the corner-specific renderer + the object_corner_target
+  branch in `_apply_rule` (object_motion declines the fast path like
+  constant_output, since its target needs the example comparison). No new
+  `_try_*`/`_apply_*` (F2-clean); F8 companion = conditions/ edits.
+- `procedural_memory/rule_002.json` — deleted (superseded object_corner_target);
+  regenerated as the unified object_motion rule.
+- `tests/test_object_motion.py` (new, replaces test_object_corner_target.py) —
+  fitter (corner/constant/offset), matcher, and end-to-end that c/d/e/g resolve
+  to the *same* rule object. 16/16 pass (23/23 suite).
+
+**Probe before**: easy_a 4/9; rules=2 (constant_output covers a,b;
+object_corner_target covers c,g); P1/P2=2.0, P5=2
+**Probe after** : easy_a 8/9; rules=2 (constant_output covers a,b; object_motion
+covers c,d,e,f,g,h — ONE rule); P1/P2=4.0, P5=2
+
+**Invariants**: forbidden=none; positives = P1 +2.0 (2.0→4.0), P2 +2.0
+(2.0→4.0). P5 held (matcher swap), P6 +60 lines (F8 companion = conditions/).
+The six new solved tasks folded into ONE covers=6 rule — generalization, not
+accretion. Verdict CLEAN.
+
+**Next gap (note for future iter)**: only easy000i remains in easy_a — it
+*resizes* the grid (6×6 → 5×5) and moves the object to top-left, so object_motion
+declines (grid_size_preserved=False). Closing it needs (a) a `top_left` target
+expression and (b) an output-grid-shape expression (the "grid size changes"
+concept, §2.1). That output-shape reasoning is the genuinely new capability —
+distinct from the in-place move family — and likely the R1→graduation step.
+Separately, R3 (anti_unification) and R5 (fast-path reuse of comparison-fitted
+rules) remain unfired.
+
+## Iter 4 [CLEAN] — 20260614_152429 — branch test33
+- Probe: easy_a: [15:24:32] Correct:     4 / 9  (44.4%)

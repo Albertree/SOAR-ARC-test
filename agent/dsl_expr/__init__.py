@@ -27,6 +27,11 @@ from agent.dsl_expr.selection import (
     color_of,
     cells_of,
 )
+from agent.dsl_expr.motion import (
+    fit_target,
+    target_position,
+    obj_origin_extent,
+)
 
 __all__ = [
     "background_of",
@@ -36,4 +41,7 @@ __all__ = [
     "bottom_right_of",
     "color_of",
     "cells_of",
+    "fit_target",
+    "target_position",
+    "obj_origin_extent",
 ]

@@ -1,11 +1,11 @@
 {
   "id": 2,
-  "concept": "object corner target",
+  "concept": "object motion",
   "category": "other",
   "rule": {
-    "type": "object_corner_target",
+    "type": "object_motion",
     "condition": {
-      "type": "object_corner_target",
+      "type": "object_motion",
       "params": {
         "min_evidence": 2
       },
@@ -13,21 +13,23 @@
     },
     "action": {
       "dsl": "place_object",
-      "args": {
-        "target": "bottom_right"
-      }
+      "args": {}
     },
     "confidence": 1.0
   },
   "covers": [
     "easy000c",
-    "easy000g"
+    "easy000d",
+    "easy000e",
+    "easy000f",
+    "easy000g",
+    "easy000h"
   ],
   "source_task": "easy000c",
-  "created_at": "2026-06-14T15:21:37.292908",
-  "times_reused": 3,
+  "created_at": "2026-06-14T15:33:44.260545",
+  "times_reused": 0,
   "condition": {
-    "type": "object_corner_target",
+    "type": "object_motion",
     "params": {
       "min_evidence": 2
     },
@@ -35,8 +37,6 @@
   },
   "action": {
     "dsl": "place_object",
-    "args": {
-      "target": "bottom_right"
-    }
+    "args": {}
   }
 }
