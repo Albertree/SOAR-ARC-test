@@ -3459,3 +3459,6 @@ on a property other than non-background). Extending the fractal schema's tile fr
 "plain copy" to "copy-with-a-fitted-recolour", and its condition from cell-vs-bg to
 a searched cell-value match, would fold several of those into the same family — but
 verify each is genuinely the same skeleton first, not a new accreted special case.
+
+## Iter 32 [NEUTRAL] — 20260614_204107 — branch test33
+- Probe: [20:41:25] Correct:     0 / 3  (0.0%)
