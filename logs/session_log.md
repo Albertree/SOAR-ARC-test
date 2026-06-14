@@ -5790,3 +5790,6 @@ or size) — same pocket-selection, but the fill becomes a property→colour map
 Schema 14's `recolor_objects`, folding the "colour each enclosed region by its host"
 tasks. Object gravity (d282b262) remains a real but covers=1 task best deferred until
 a second object-gravity task surfaces to lift against.
+
+## Iter 51 [CLEAN] — 20260615_010637 — branch test33
+- Probe: [01:06:57] Correct:     0 / 3  (0.0%)
