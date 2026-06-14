@@ -202,6 +202,80 @@ def _symfill_grid(grid, bg, syms):
     return out
 
 
+def _period_axes(grid, bg):
+    """The smallest *translational* period of ``grid`` on each axis, read from its
+    own structure (a value-agnostic selector — never a literal, §2.5-2b). Returns
+    ``(pv, ph)`` where ``pv`` (``ph``) is the smallest shift ``k`` < height (width)
+    under which every non-``bg`` cell agrees with its non-``bg`` counterpart ``k``
+    rows (columns) away, or ``None`` on that axis when no proper period exists.
+
+    This is the periodic analogue of the dihedral set ``symfill`` reads: the COMM
+    that the visible texture repeats with period ``(pv, ph)``, so a ``bg`` hole's
+    colour is *entailed* by a same-phase cell elsewhere (P3/P4). Crucially the
+    period is a property of *each input* (the same task shows different periods in
+    different pairs — 1d0a4b61), so it is resolved per grid here rather than stored
+    as a task-const; that is what lets the fitted rule transfer to a test grid whose
+    own period was never seen in train (P5)."""
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+
+    def _axis_period(span, step_ok):
+        for k in range(1, span):
+            if step_ok(k):
+                return k
+        return None
+
+    def _v_ok(k):
+        for r in range(H - k):
+            for c in range(W):
+                a = grid[r][c]
+                b = grid[r + k][c]
+                if a != bg and b != bg and a != b:
+                    return False
+        return True
+
+    def _h_ok(k):
+        for r in range(H):
+            for c in range(W - k):
+                a = grid[r][c]
+                b = grid[r][c + k]
+                if a != bg and b != bg and a != b:
+                    return False
+        return True
+
+    pv = _axis_period(H, _v_ok)
+    ph = _axis_period(W, _h_ok)
+    return pv, ph
+
+
+def _periodic_fill_grid(grid, bg, pv, ph):
+    """Return a fresh grid: ``grid`` with every ``bg`` cell repainted to the colour
+    of its translational phase class ``(r mod pv, c mod ph)`` when that class holds
+    a non-``bg`` cell, else left ``bg``. With ``pv`` (or ``ph``) ``None`` the cell's
+    own row (column) index is used unfolded, so a one-axis period still fills. Pure
+    coordinate arithmetic on the grid — no stored colour (§2.5-1, F3-safe)."""
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+
+    def _key(r, c):
+        return (r % pv if pv else r, c % ph if ph else c)
+
+    phase = {}
+    for r in range(H):
+        for c in range(W):
+            v = grid[r][c]
+            if v != bg:
+                phase.setdefault(_key(r, c), v)
+    out = [row[:] for row in grid]
+    for r in range(H):
+        for c in range(W):
+            if out[r][c] == bg:
+                fill = phase.get(_key(r, c))
+                if fill is not None:
+                    out[r][c] = fill
+    return out
+
+
 # ======================================================================
 # Fractal self-tile conditions (the per-macro-cell selector)
 # ======================================================================
@@ -720,6 +794,37 @@ def run_program(program, input_grid):
                 bg = env["bg"]
                 syms = spec
             filled = _symfill_grid(grid, bg, syms)
+            for r, row in enumerate(grid):
+                for c, v in enumerate(row):
+                    if filled[r][c] != v:
+                        cur = apply_DSL(
+                            "coloring", cur,
+                            selection=(r, c), color=filled[r][c])
+        elif kind == "periodic_fill":
+            # Periodic completion: copy the input and fill each background hole from
+            # the colour its translational phase class shows, the period read from
+            # *this* grid's own structure (`_period_axes`). The translational sibling
+            # of ``symfill``: the COMM is that the visible texture repeats with period
+            # (pv, ph), so a hidden cell's colour is *entailed* by a same-phase cell
+            # (P3/P4 — no guessing). Composes ONLY the frozen ``coloring`` primitive
+            # (``cur`` is already a copy of the input; each resolved hole is painted
+            # in its phase-mate's own colour, never a literal: §2.5-1, F3-safe). The
+            # leaf is just the value-agnostic background *mode* — the period is
+            # resolved per grid, so the fit transfers to a test input whose own period
+            # was never seen in train (P5); a grid with no proper period makes the
+            # step *decline* (``_Unevaluable``) rather than guess (memory:
+            # runtime_resolvable_speculative_apply — renderers decline, not crash).
+            # Two periodic-fill tasks share the one-step skeleton ``[("periodic_fill",
+            # ("const", ?v))]`` and lift via ``unify()`` into one ``covers>1`` rule.
+            _, mode_expr = step
+            bgmode = _eval(mode_expr, env)
+            grid = env["grid"]
+            bg = 0 if bgmode == "zero" else _most_frequent_color(grid)
+            pv, ph = _period_axes(grid, bg)
+            if pv is None and ph is None:
+                raise _Unevaluable(
+                    "periodic_fill: grid has no proper translational period")
+            filled = _periodic_fill_grid(grid, bg, pv, ph)
             for r, row in enumerate(grid):
                 for c, v in enumerate(row):
                     if filled[r][c] != v:
@@ -1409,6 +1514,21 @@ def _candidate_programs(pairs):
     sym_repair = _fit_symmetry_repair(pairs)
     if sym_repair is not None:
         yield sym_repair
+
+    # --- Schema 19: periodic (translational) fill --------------------------
+    # Same-dims output that is the input with its background holes completed from
+    # the grid's own *repeating* texture — the recurring ARC "a tiled pattern with a
+    # blank patch; continue the tiling into the patch" family. The translational
+    # sibling of ``symfill`` (dihedral) and distinct from ``symmetry_repair`` (a
+    # distinct-colour occluder under a task-const period): here the mask is the
+    # background and the period is a per-input property (the same task shows a
+    # different period in each pair), so it is resolved per grid, not stored. The
+    # reason — P3/P4 — is the COMM that the visible texture is invariant under a
+    # translation, so a hole's colour is *entailed* by its same-phase cell.
+    # Yielded last so a simpler same-dims schema wins when a task fits both.
+    periodic = _fit_periodic_fill(pairs)
+    if periodic is not None:
+        yield periodic
 
 
 def _is_fractal_dims(pairs):
@@ -2328,6 +2448,57 @@ def _fit_symmetry_repair(pairs):
     prog = [("symmetry_repair", ("const", spec))]
     if _reproduces(prog, pairs):
         return prog
+    return None
+
+
+def _fit_periodic_fill(pairs):
+    """Fit a *periodic* completion: every pair's output is the input with its
+    background holes filled from the grid's own repeating texture, the period read
+    per-input by `_period_axes`. Returns the one-step program
+    ``[("periodic_fill", ("const", bgmode))]`` or ``None``.
+
+    This is the translational sibling of ``symfill`` (which completes a *dihedral*
+    symmetry) and is distinct from ``symmetry_repair`` (which restores a solid
+    occluder block of a *distinct* mask colour under a task-const period): here the
+    mask is the background itself and the period is **not** a task-const — the same
+    task shows a different period in each pair (1d0a4b61: 6, 7, 4), so a stored
+    period cannot fit. The only fitted leaf is the value-agnostic background *mode*
+    (canonical 0 vs the grid's most-frequent colour, mirroring ``symfill``); the
+    period is resolved per grid in `run_program`, so two periodic-fill tasks share
+    the SAME ``[("periodic_fill", ("const", ?v))]`` skeleton and lift via
+    ``unify()`` into one ``covers>1`` rule (R3 — never a rule per task, §2.5-3/4).
+
+    Gated by exact reproduction *and* by actually changing some input (an already
+    complete texture is the identity schema, already yielded). Yielded last so a
+    simpler same-dims schema (identity, symfill, symmetry_repair) wins when a task
+    fits both."""
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout) or (
+                gin and len(gin[0]) != len(gout[0] if gout else [])):
+            return None
+    for bgmode in ("zero", "mostfreq"):
+        def _bg(g, _m=bgmode):
+            return 0 if _m == "zero" else _most_frequent_color(g)
+        changed = False
+        ok = True
+        for p in pairs:
+            gin = p["input"]
+            bg = _bg(gin)
+            pv, ph = _period_axes(gin, bg)
+            if pv is None and ph is None:
+                ok = False
+                break
+            filled = _periodic_fill_grid(gin, bg, pv, ph)
+            if filled != p["output"]:
+                ok = False
+                break
+            if filled != gin:
+                changed = True
+        if ok and changed:
+            prog = [("periodic_fill", ("const", bgmode))]
+            if _reproduces(prog, pairs):
+                return prog
     return None
 
 

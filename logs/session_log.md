@@ -1,6 +1,62 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 58 — 2026-06-15 — branch test33 — Schema 19 `periodic_fill` (R3, covers=3 AU lift)
+
+**Diagnosis**: The last 5 iters (53–57) all no-op'd, concluding the single-step
+synthesizer frontier saturated and the only levers left were "large" (object-
+correspondence, panel-combine, family-retirement). I re-tested that claim with a
+fresh read-only `synthesize_task` scan over all 1000 training tasks: 120 solved,
+631 same-dims fails, of which **228 are add-only (0/bg→colour) — the dominant
+cluster and one the legacy families do NOT shadow** (so a new schema there moves
+real signal, addressing iter-55's shadowing lesson). Within it, a clean sub-family
+surfaced: **periodic (translational) hole completion** — a repeating texture with a
+background patch (e.g. 1d0a4b61, 484b58aa, ea959feb). The existing `symfill` is
+*dihedral* only and `symmetry_repair` stores the period as a **task-const**, which
+structurally cannot fit these because the **period varies per pair** (1d0a4b61:
+6, 7, 4) — the period must be a per-input selector (§2.5-2b grounding).
+
+**Change**:
+- `program/synthesis.py`: added **Schema 19 `periodic_fill`** (the translational
+  sibling of `symfill`). New value-agnostic selectors `_period_axes` (smallest
+  per-axis translational period read from *each* grid — never a task-const) and
+  `_periodic_fill_grid` (fill each bg cell from its translational phase class).
+  `_fit_periodic_fill` searches the background mode {0, most-frequent} like symfill
+  and carries ONLY that mode as the const leaf (the period is resolved per grid in
+  `run_program`, so it transfers to a test input whose own period was never seen —
+  P5). The `run_program` `periodic_fill` branch composes only the frozen `coloring`
+  primitive (F3-safe) and *declines* (`_Unevaluable`) on a non-periodic grid.
+  Yielded last among same-dims schemas (a constant-period texture stays owned by
+  the simpler symfill/symmetry_repair).
+- `tests/test_synthesis.py`: +6 tests (period helpers, per-input-period fit,
+  decline-on-non-periodic, non-zero-bg via real task ea959feb, mode-share-skeleton,
+  end-to-end on real task 1d0a4b61). 277 pass.
+- `procedural_memory/rule_021.json` (new): minted via the live solve→`save_rule`→
+  `unify()` path on the 3 tasks. The two fitted bgmodes (zero/mostfreq) **lifted to
+  `?v`** → one rule, **covers=3** (1d0a4b61, 484b58aa, ea959feb), `condition`+
+  `action` present, `anti_unification_trace` set. 484b58aa solved via
+  **stored(1d0a4b61)** — fast-path reuse fired (R5 signal). Zero regression: the
+  synthesizer's solved set only grew (120→123), nothing displaced.
+
+**Probe before**: training probe 0/3 (hard multi-step, unchanged); rules=20,
+P1/P2=6.9, P3=0.95, sum-covers 138.
+**Probe after** : same hard probe unchanged; rules=21, P1/P2=6.714 (mean-dilution
+artifact — sum-covers ROSE 138→141, +3 distinct-solved, the §2.5-4 non-trap
+direction: a covers>1 AU lift, not per-task accretion), P3 0.95→0.952; easy_a 9/9 +
+madeup 27/27 hold; 277 tests pass (+6).
+
+**Invariants**: forbidden=none (check_invariants verdict **CLEAN**); positives=P3
++0.0024 (P1/P2 −0.186 mean-dilution artifact, sum-covers +3; P4–P6 flat).
+
+**Next gap (note for future iter)**: the add-only cluster (228 tasks) is the
+biggest unshadowed failure mass and still mostly open — periodic_fill took the
+clean translational sub-family; the next sub-families to probe are **ray/line
+extension** (extend a coloured segment to an edge or until blocked) and
+**scatter-by-symmetry-OR** (overlay dihedral images additively rather than
+hole-fill). The same-dims recolor cluster still needs object-correspondence (a
+larger, multi-iter LHS mechanism).
+
+---
 ## Iter 57 — 2026-06-15 — branch test33 — NO-OP (live-pipeline scan; no defensible fold)
 
 **Diagnosis**: Iter 55's standing next-gap note was a methodology fix, not a code
@@ -6384,3 +6440,66 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 57 [NEUTRAL] — 20260615_035147 — branch test33
 - Probe: [03:52:10] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 04:11
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_041130.log
+
+---
+## Learning Loop -- 2026-06-15 04:11
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_041134.log
+
+---
+## Learning Loop -- 2026-06-15 04:11
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_041144.log
+
+---
+## Learning Loop -- 2026-06-15 04:46
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 20 -> 21 (+1 learned)
+- Stored rule hits: 1
+- Time: 51s
+- Log: logs/learn_20260615_044532.log
+
+---
+## Learning Loop -- 2026-06-15 04:46
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_044650.log
+
+---
+## Learning Loop -- 2026-06-15 04:47
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_044653.log
+
+## Iter 58 [CLEAN] — 20260615_041130 — branch test33
+- Probe: [04:11:50] Correct:     0 / 3  (0.0%)

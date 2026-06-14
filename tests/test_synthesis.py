@@ -930,3 +930,82 @@ def test_composition_skeletons_lift_across_tasks():
     assert a is not None and b is not None
     assert a[0][0] == "compose" and b[0][0] == "compose"
     assert _program_skeleton(a) == _program_skeleton(b)
+
+
+# --- Schema 19: periodic (translational) fill --------------------------------
+#
+# These tests target `_fit_periodic_fill` / the helpers directly: on small toy
+# grids a constant-period texture is legitimately claimed first by the earlier
+# `symfill` / `symmetry_repair` schemas (yielded before periodic_fill), so the
+# schema-specific behaviour is exercised at the fitter level, with one end-to-end
+# `synthesize_task` test on a real ARC task where only periodic_fill fits.
+
+def test_period_axes_reads_repeating_texture():
+    from program.synthesis import _period_axes, _periodic_fill_grid
+    grid = [[1, 2, 1, 2], [3, 4, 3, 4], [1, 2, 0, 0], [3, 4, 0, 0]]
+    assert _period_axes(grid, 0) == (2, 2)
+    assert _periodic_fill_grid(grid, 0, 2, 2) == \
+        [[1, 2, 1, 2], [3, 4, 3, 4], [1, 2, 1, 2], [3, 4, 3, 4]]
+
+
+def test_periodic_fill_fits_per_input_period():
+    # The crux that rules out a task-const period (and is why symmetry_repair
+    # cannot fit this family): the SAME task shows a different period in each pair
+    # (pair0 horizontal period 2, pair1 period 3). The period is resolved per input,
+    # so the fitter still fits and the program transfers to a held-out input (P5).
+    from program.synthesis import _fit_periodic_fill
+    pairs = [
+        {"input":  [[1, 2, 1, 2, 1, 2], [1, 2, 0, 0, 1, 2]],
+         "output": [[1, 2, 1, 2, 1, 2], [1, 2, 1, 2, 1, 2]]},
+        {"input":  [[3, 4, 5, 3, 4, 5], [3, 4, 5, 0, 0, 0]],
+         "output": [[3, 4, 5, 3, 4, 5], [3, 4, 5, 3, 4, 5]]},
+    ]
+    prog = _fit_periodic_fill(pairs)
+    assert prog == [("periodic_fill", ("const", "zero"))]
+    assert run_program(prog, [[6, 7, 6, 7], [6, 7, 0, 0]]) == \
+        [[6, 7, 6, 7], [6, 7, 6, 7]]
+
+
+def test_periodic_fill_declines_on_non_periodic():
+    # A same-dims edit with no repeating texture must make the fitter decline.
+    from program.synthesis import _fit_periodic_fill
+    assert _fit_periodic_fill([
+        {"input": [[1, 2], [3, 4]], "output": [[1, 2], [3, 9]]},
+        {"input": [[5, 6], [7, 8]], "output": [[5, 6], [7, 9]]},
+    ]) is None
+
+
+def test_periodic_fill_searches_nonzero_background_mode():
+    # A real ARC task (ea959feb) whose repeating texture is completed over a
+    # NON-zero background: the fitter must search the background mode (most-frequent
+    # colour) like symfill — the canonical bg=0 path does not fit — and the leaf is
+    # the value-agnostic mode, not a literal. Transfers to the held-out test (P5).
+    task = _load("data/ARC_AGI/training/ea959feb.json")
+    pairs = [{"input": p["input"], "output": p["output"]} for p in task["train"]]
+    prog = synthesize_task(pairs)
+    assert prog == [("periodic_fill", ("const", "mostfreq"))]
+    for tp in task["test"]:
+        assert run_program(prog, tp["input"]) == tp["output"]
+
+
+def test_periodic_fill_modes_share_one_skeleton():
+    # Two periodic-fill tasks whose fitted background modes differ (zero vs
+    # most-frequent) produce the SAME one-step skeleton, so save_rule lifts them
+    # into ONE covers>1 rule rather than two families (R3 — P1/P2/P3 rise together).
+    from agent.memory import _program_skeleton
+    a = [("periodic_fill", ("const", "zero"))]
+    b = [("periodic_fill", ("const", "mostfreq"))]
+    assert a != b
+    assert _program_skeleton(a) == _program_skeleton(b)
+
+
+def test_periodic_fill_solves_real_arc_task_end_to_end():
+    # End-to-end on a genuine ARC task (1d0a4b61): a repeating texture with a 0
+    # patch, period varying per pair (6, 7, 4) — only periodic_fill fits, and the
+    # value-agnostic fit restores the held-out test input (P5).
+    task = _load("data/ARC_AGI/training/1d0a4b61.json")
+    pairs = [{"input": p["input"], "output": p["output"]} for p in task["train"]]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "periodic_fill"
+    for tp in task["test"]:
+        assert run_program(prog, tp["input"]) == tp["output"]
