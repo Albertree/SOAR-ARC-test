@@ -208,26 +208,46 @@ class ExtractPatternOperator(Operator):
 
     @staticmethod
     def _object_motion(task):
-        """Per-pair single-object motion analysis using the seed selection
-        vocabulary (agent/dsl_expr). Reads only G0/G1 properties — no literal
-        coordinates are baked in, so the resulting signal is value-agnostic. Also
-        fits one target *expression* (corner/constant/translation) across the
-        pairs so the move family resolves to a single rule (§2.5-2b)."""
+        """Per-pair object motion analysis using the seed selection vocabulary
+        (agent/dsl_expr). Reads only G0/G1 properties — no literal coordinates or
+        object indices are baked in, so the resulting signal is value-agnostic.
+        Fits three orthogonal argument *expressions* across the pairs so the move
+        family resolves to a single rule (§2.5-2b): a *selector* naming which
+        object moves (unique/largest/smallest), a *target* naming where it lands
+        (corner/constant/translation), and an *output-shape* expression."""
         from agent.dsl_expr import (
-            objects_of, unique_object, position_of, color_of, obj_origin_extent,
-            fit_target, fit_output_shape,
+            objects_of, position_of, color_of, obj_origin_extent,
+            fit_target, fit_output_shape, fit_selector,
         )
 
         pairs = []
-        motions = []  # geometry feeding fit_target, only for clean pairs
-        shapes = []   # in/out grid dims feeding fit_output_shape (same pairs)
+        motions = []     # geometry feeding fit_target, only for clean pairs
+        shapes = []      # in/out grid dims feeding fit_output_shape (same pairs)
+        selections = []  # (objects, selected idx) feeding fit_selector
         for pair in task.example_pairs:
             g0, g1 = pair.input_grid, pair.output_grid
             if g0 is None or g1 is None:
                 continue
 
-            obj_in = unique_object(objects_of(g0.raw))
-            obj_out = unique_object(objects_of(g1.raw))
+            objs_in = objects_of(g0.raw)
+            objs_out = objects_of(g1.raw)
+
+            # The output is a single object — the one the move acted on. Identify
+            # *which* input object it is by matching colour-set + size (both
+            # preserved by a move), so a multi-object input can name which object
+            # moved without a literal index (§2.5-2b). An absent / ambiguous match
+            # leaves the selection undefined and the pair declines.
+            obj_out = objs_out[0] if len(objs_out) == 1 else None
+            sel_idx = None
+            if obj_out is not None:
+                key = (tuple(obj_out["color_set"]), obj_out["size"])
+                cands = [
+                    i for i, o in enumerate(objs_in)
+                    if (tuple(o["color_set"]), o["size"]) == key
+                ]
+                if len(cands) == 1:
+                    sel_idx = cands[0]
+            obj_in = objs_in[sel_idx] if sel_idx is not None else None
 
             color_preserved = (
                 obj_in is not None and obj_out is not None
@@ -241,17 +261,18 @@ class ExtractPatternOperator(Operator):
             grid_size_preserved = g0.height == g1.height and g0.width == g1.width
 
             entry = {
-                "single_in": obj_in is not None,
                 "single_out": obj_out is not None,
+                "selected_ok": obj_in is not None,
                 "color_preserved": color_preserved,
                 "size_preserved": size_preserved,
                 "grid_size_preserved": grid_size_preserved,
             }
 
-            # Record geometry for the target/shape fits only when the pair is a
-            # clean object-preserving, size-preserving single-object move. The
-            # *grid* size may change (easy000i resizes) — that is fitted
-            # separately as an output-shape expression — so it is NOT a gate here.
+            # Record geometry for the target/shape/selector fits only when the
+            # pair is a clean object-preserving, size-preserving move of an
+            # identified object. The *grid* size may change (easy000i resizes) —
+            # that is fitted separately as an output-shape expression — so it is
+            # NOT a gate here.
             if (
                 obj_in is not None and obj_out is not None
                 and color_preserved and size_preserved
@@ -272,23 +293,27 @@ class ExtractPatternOperator(Operator):
                     "in": (g0.height, g0.width),
                     "out": (g1.height, g1.width),
                 })
+                selections.append({"objects": objs_in, "selected": sel_idx})
 
             pairs.append(entry)
 
-        # Fit target + output-shape expressions only if every recorded pair is
-        # clean (so a task with any dirty pair declines rather than
-        # over-generalising). The output shape is its own value-agnostic argument
-        # expression (same / input+delta / constant), letting one rule cover both
-        # in-place and resizing moves.
+        # Fit selector + target + output-shape expressions only if every recorded
+        # pair is clean (so a task with any dirty pair declines rather than
+        # over-generalising). Each is an independent value-agnostic argument
+        # expression — which object moves (selector), where it lands (target),
+        # and the output shape — letting one rule cover the single- and
+        # multi-object move families alike.
         clean = bool(motions) and len(motions) == len(pairs)
         target = fit_target(motions) if clean else None
         out_shape = fit_output_shape(shapes) if clean else None
+        selector = fit_selector(selections) if clean else None
 
         return {
             "evidence_count": len(pairs),
             "pairs": pairs,
             "target": target,
             "out_shape": out_shape,
+            "selector": selector,
         }
 
     # ---- internal helpers ------------------------------------------------
@@ -652,10 +677,12 @@ class PredictOperator(Operator):
         # same way constant_output re-derives its common output per task.
         motion_target = None
         motion_out_shape = None
+        motion_selector = None
         if rule.get("type") == "object_motion":
             motion = (wm.s1.get("patterns") or {}).get("object_motion") or {}
             motion_target = motion.get("target")
             motion_out_shape = motion.get("out_shape")
+            motion_selector = motion.get("selector")
 
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
@@ -672,7 +699,7 @@ class PredictOperator(Operator):
                 )
             elif rule.get("type") == "object_motion":
                 predicted = self._render_object_motion(
-                    g0, motion_target, motion_out_shape
+                    g0, motion_target, motion_out_shape, motion_selector
                 )
             else:
                 predicted = self._apply_rule(rule, g0)
@@ -734,22 +761,24 @@ class PredictOperator(Operator):
     # ---- object-move rendering via the two frozen DSL primitives ----------
 
     @staticmethod
-    def _render_object_motion(input_grid, target_desc, out_shape_desc=None):
-        """Place the single foreground object at the destination named by
-        `target_desc` (the target expression fitted from this task's example
-        comparison — corner / constant / translation), on an output canvas whose
-        shape is named by `out_shape_desc` (same / input+delta / constant, also
-        fitted from the comparison — defaults to the input shape when absent).
-        Built only from make_grid + coloring (CLAUDE.md §6.2): start a fresh
-        background canvas at the output shape (erasing the object's old position)
-        and repaint each object cell, translated so the object's bbox top-left
-        lands at the resolved destination. No literal coordinate or grid size
-        lives on the rule — both are expressions resolved per input — so one rule
-        serves every grid size, move variant, and resize. Declines (returns None)
-        if the move would push the object off the output grid."""
+    def _render_object_motion(input_grid, target_desc, out_shape_desc=None,
+                              selector_desc=None):
+        """Place the object named by `selector_desc` (the selector expression
+        fitted from this task's example comparison — unique / largest / smallest)
+        at the destination named by `target_desc` (corner / constant / translation),
+        on an output canvas whose shape is named by `out_shape_desc` (same /
+        input+delta / constant — defaults to the input shape when absent). Built
+        only from make_grid + coloring (CLAUDE.md §6.2): start a fresh background
+        canvas at the output shape (which also drops every *unselected* object) and
+        repaint each selected-object cell, translated so its bbox top-left lands at
+        the resolved destination. No literal coordinate, grid size, or object index
+        lives on the rule — all are expressions resolved per input from G0 alone
+        (P5) — so one rule serves every grid size, move variant, resize, and
+        object count. Declines (returns None) if the selector picks no object or
+        the move would push the object off the output grid."""
         from procedural_memory.DSL.apply import apply_DSL
         from agent.dsl_expr import (
-            objects_of, unique_object, background_of, target_position,
+            objects_of, select_object, background_of, target_position,
             output_shape,
         )
 
@@ -761,7 +790,14 @@ class PredictOperator(Operator):
         in_w = len(raw[0]) if in_h else 0
         bg = background_of(raw)
 
-        obj = unique_object(objects_of(raw, bg))
+        objs = objects_of(raw, bg)
+        # Default to the sole object when no selector was fitted (in-place callers),
+        # otherwise resolve the fitted selector — which names the object from G0
+        # alone, so the multi-object case stays value-agnostic.
+        obj = (
+            select_object(objs, selector_desc) if selector_desc is not None
+            else (objs[0] if len(objs) == 1 else None)
+        )
         if obj is None or in_h == 0 or in_w == 0:
             return None
 

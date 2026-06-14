@@ -16,7 +16,8 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from agent.dsl_expr import (
-    objects_of, unique_object, bottom_right_of, color_of,
+    objects_of, unique_object, select_object, fit_selector,
+    bottom_right_of, color_of,
     fit_target, target_position, fit_output_shape, output_shape,
 )
 from agent.conditions import match as match_condition
@@ -124,9 +125,9 @@ def test_output_shape_roundtrip():
 
 # --- matcher ---------------------------------------------------------------
 
-def _motion(n=2, target=None, out_shape=None, **overrides):
+def _motion(n=2, target=None, out_shape=None, selector=None, **overrides):
     pair = {
-        "single_in": True, "single_out": True,
+        "single_out": True, "selected_ok": True,
         "color_preserved": True, "size_preserved": True,
         "grid_size_preserved": True,
     }
@@ -134,6 +135,7 @@ def _motion(n=2, target=None, out_shape=None, **overrides):
     return {"object_motion": {
         "evidence_count": n,
         "pairs": [dict(pair) for _ in range(n)],
+        "selector": selector if selector is not None else {"kind": "unique"},
         "target": target if target is not None else {"kind": "bottom_right"},
         "out_shape": out_shape if out_shape is not None else {"kind": "same"},
     }}
@@ -163,6 +165,70 @@ def test_matcher_rejects_recolor():
     p = _motion(2)
     p["object_motion"]["pairs"][1]["color_preserved"] = False
     assert match_condition("object_motion", p) is False
+
+
+def test_matcher_declines_without_selector():
+    p = _motion(2)
+    p["object_motion"]["selector"] = None
+    assert match_condition("object_motion", p) is False
+
+
+def test_matcher_rejects_unidentified_object():
+    p = _motion(2)
+    p["object_motion"]["pairs"][1]["selected_ok"] = False
+    assert match_condition("object_motion", p) is False
+
+
+# --- selection vocabulary (multi-object selection, §2.5-2b) -----------------
+
+def test_select_object_unique():
+    objs = objects_of([[0, 0, 0], [0, 5, 0], [0, 0, 0]])
+    assert select_object(objs, {"kind": "unique"})["size"] == 1
+    # with two objects, `unique` declines rather than guessing
+    two = objects_of([[2, 0, 0], [0, 0, 0], [0, 0, 3]])
+    assert select_object(two, {"kind": "unique"}) is None
+
+
+def test_select_object_largest_and_smallest():
+    # a 3-cell blob (colour 3) and a single pixel (colour 4)
+    grid = [[3, 3, 0, 0], [3, 0, 0, 0], [0, 0, 0, 0], [0, 0, 0, 4]]
+    objs = objects_of(grid)
+    assert color_of(select_object(objs, {"kind": "largest"})) == 3
+    assert color_of(select_object(objs, {"kind": "smallest"})) == 4
+
+
+def test_select_object_declines_on_size_tie():
+    # two single pixels: no unique size extreme, so largest/smallest decline
+    grid = [[2, 0, 0], [0, 0, 0], [0, 0, 3]]
+    objs = objects_of(grid)
+    assert select_object(objs, {"kind": "largest"}) is None
+    assert select_object(objs, {"kind": "smallest"}) is None
+
+
+def test_fit_selector_prefers_unique():
+    # single object per pair -> unique wins over a size criterion
+    one = objects_of([[0, 0, 0], [0, 7, 0], [0, 0, 0]])
+    sel = fit_selector([{"objects": one, "selected": 0},
+                        {"objects": one, "selected": 0}])
+    assert sel == {"kind": "unique"}
+
+
+def test_fit_selector_largest():
+    big = [[5, 5, 0], [5, 0, 0], [0, 0, 1]]   # blob(0) size3, pixel(1) size1
+    objs = objects_of(big)
+    big_idx = max(range(len(objs)), key=lambda i: objs[i]["size"])
+    sel = fit_selector([{"objects": objs, "selected": big_idx},
+                        {"objects": objs, "selected": big_idx}])
+    assert sel == {"kind": "largest"}
+
+
+def test_fit_selector_none_when_inconsistent():
+    objs = objects_of([[5, 5, 0], [5, 0, 0], [0, 0, 1]])
+    big_idx = max(range(len(objs)), key=lambda i: objs[i]["size"])
+    small_idx = min(range(len(objs)), key=lambda i: objs[i]["size"])
+    # one pair selects the big object, the other the small one -> no criterion fits
+    assert fit_selector([{"objects": objs, "selected": big_idx},
+                         {"objects": objs, "selected": small_idx}]) is None
 
 
 # --- end-to-end via the real pipeline operators ----------------------------
@@ -264,6 +330,37 @@ EASY_E = {
          [[0]*6, [0]*6, [0]*6, [0]*6, [0]*6, [0,4,0,0,0,0]]),
     ],
 }
+
+
+# multi-object selection: two objects in, the LARGEST one moves to the
+# bottom-right corner, the smaller one is dropped. The crux is *which* object
+# moves — named by a fitted `largest` selector, not a literal index.
+MULTI_LARGEST = {
+    "train": [
+        ([[3, 3, 0, 0, 0], [3, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 4, 0], [0, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 3, 3], [0, 0, 0, 3, 0]]),
+        ([[2, 2, 2, 0, 0], [0, 0, 0, 0, 0], [0, 5, 0, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 2, 2, 2]]),
+    ],
+    "test": [
+        ([[0, 0, 0, 7, 0], [0, 0, 0, 0, 0], [6, 6, 0, 0, 0],
+          [6, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 6, 6], [0, 0, 0, 6, 0]]),
+    ],
+}
+
+
+def test_pipeline_solves_multi_object_largest():
+    # the multi-object selection task solves end-to-end, and via the SAME rule
+    # object as the single-object move family (no accretion; §2.5-3).
+    rm = _check_solved(MULTI_LARGEST, "multi_largest").s1["active-rules"][0]
+    rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
+    assert rm == rc
 
 
 def _solve(spec, name="t"):

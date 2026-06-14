@@ -95,6 +95,86 @@ def unique_object(objects):
     return None
 
 
+# --- multi-object selection (R1, §2.5-2b: "which object the rule acts on") ---
+#
+# `unique_object` is the degenerate selector — it only names an object when there
+# is exactly one. The moment a grid holds several objects, *which one* a rule acts
+# on becomes the crux (the §2.1 "multi-object selection" concept). That choice is
+# itself an *argument expression*, fitted from the example comparison and computed
+# at test time from G0 alone (P5) — never a stored literal index. The vocabulary
+# below is the smallest set of input-only criteria that can name the acted-on
+# object: the sole one (`unique`) or a size extreme (`largest` / `smallest`).
+# New criteria are added here (the growing LHS), never as transformations (F3).
+
+_SELECTOR_KINDS = ("unique", "largest", "smallest")
+
+
+def _argextreme_index(objects, want_max):
+    """Index of the *unique* size-extreme object, or None on a tie / no objects.
+
+    A tie means the criterion does not pick a single object, so it must decline
+    rather than guess — the selector has to be unambiguous to be value-agnostic.
+    """
+    if not objects:
+        return None
+    sizes = [o["size"] for o in objects]
+    target = max(sizes) if want_max else min(sizes)
+    idxs = [i for i, s in enumerate(sizes) if s == target]
+    return idxs[0] if len(idxs) == 1 else None
+
+
+def _selection_index(objects, kind):
+    """Index the criterion `kind` picks from `objects`, or None if it declines."""
+    if kind == "unique":
+        return 0 if isinstance(objects, list) and len(objects) == 1 else None
+    if kind == "largest":
+        return _argextreme_index(objects, want_max=True)
+    if kind == "smallest":
+        return _argextreme_index(objects, want_max=False)
+    return None
+
+
+def select_object(objects, descriptor):
+    """Resolve a fitted *selector* descriptor to a single object using input-only
+    criteria (§2.5-2b). Returns None when the criterion does not pick exactly one
+    object, so callers decline rather than guess — keeping the choice value-agnostic
+    and computable from G0 alone at test time (P5).
+
+    Kinds (mirrors `_SELECTOR_KINDS`): ``unique`` (the sole object), ``largest``
+    (the unique size-maximal object), ``smallest`` (the unique size-minimal one).
+    """
+    if not descriptor or not isinstance(objects, list) or not objects:
+        return None
+    idx = _selection_index(objects, descriptor.get("kind"))
+    return objects[idx] if idx is not None else None
+
+
+def fit_selector(selections):
+    """Fit a value-agnostic *selector* expression across example pairs.
+
+    `selections` is a list of per-pair dicts ``{"objects": [...], "selected": idx}``
+    where ``objects`` are the input objects (from `objects_of`) and ``selected`` is
+    the index of the one the transformation acted on (identified by the caller from
+    the output). Returns a descriptor naming an input-only criterion that picks the
+    selected object in *every* pair, or None if none fits (so the matcher declines
+    rather than guessing).
+
+    Tried most-structural first — ``unique`` (every pair has a sole object), then
+    the size extremes ``largest`` / ``smallest`` — mirroring `fit_target`'s ordering
+    so the degenerate single-object case reads as ``unique`` rather than an
+    accidental size criterion.
+    """
+    if not selections:
+        return None
+    for kind in _SELECTOR_KINDS:
+        if all(
+            _selection_index(s["objects"], kind) == s["selected"]
+            for s in selections
+        ):
+            return {"kind": kind}
+    return None
+
+
 def position_of(obj):
     """Top-left `(row, col)` of the object's bounding box."""
     if not obj:

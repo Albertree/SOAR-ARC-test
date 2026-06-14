@@ -393,3 +393,83 @@ rules) remain unfired.
 
 ## Iter 5 [CLEAN] — 20260614_153540 — branch test33
 - Probe: easy_a: [15:35:43] Correct:     8 / 9  (88.9%)
+
+---
+## Learning Loop -- 2026-06-14 15:43
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_154322.log
+
+---
+## Learning Loop -- 2026-06-14 15:51
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_155158.log
+
+---
+## Learning Loop -- 2026-06-14 15:52
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_155216.log
+
+---
+## Iter 6 — 2026-06-14 — branch test33
+
+**Diagnosis**: easy_a is mastered (9/9), so per PROMPT §2.2/§5 the move is to
+escalate by exposing the next gap rather than polish it. The object-move path
+hardcoded `unique_object` in both `_object_motion` (analysis) and
+`_render_object_motion` (prediction): the instant a grid holds >1 object the path
+declines — the structure cannot name *which* object the rule acts on (the §2.1
+"multi-object selection" concept, BACKLOG_LOOP R1 §2.5-2b selection-lift). That is
+the smallest defensible next gap: lift object selection from the degenerate
+`unique` to a *fitted selector expression*, exactly as `target`/`out_shape` are
+already fitted.
+
+**Change**:
+- `agent/dsl_expr/selection.py` — added `select_object` + `fit_selector` (and
+  helpers) with a small input-only selector vocabulary `unique`/`largest`/
+  `smallest` (argextreme by size, declines on ties). Value-agnostic, G0-only (P5).
+- `agent/dsl_expr/__init__.py` — export the two new functions.
+- `agent/active_operators.py` — `_object_motion` now identifies the moved object
+  in each pair by matching the single output object's colour-set+size back to an
+  input object, records `(objects, selected idx)`, and fits a `selector` alongside
+  `target`/`out_shape`. `_render_object_motion` resolves the fitted selector via
+  `select_object` instead of `unique_object`. Predict threads `selector` through.
+  (Net +36 lines; companion edit to `agent/conditions/` satisfies F8.)
+- `agent/conditions/object_motion.py` — gate per-pair on `single_out`+
+  `selected_ok` (was `single_in`) and require a fitted `selector` (plus target,
+  out_shape). Docstrings updated.
+- `data/ARC_madeup/mo_select_largest.json`, `mo_select_smallest.json` — two new
+  authored tasks isolating multi-object selection (largest vs smallest moves to
+  the bottom-right corner, others dropped). Proves the fitter *chooses* among
+  criteria, not a hardcoded "largest".
+- `tests/test_object_motion.py` — updated matcher helper to the new pair keys;
+  added selector unit tests + an end-to-end multi-object test asserting it
+  resolves to the SAME rule object as the single-object family.
+
+**Probe before**: easy_a 9/9; rules=2; P1/P2=4.5/4.5
+**Probe after** : easy_a 9/9; madeup 2/2; rules=2; rule_002 covers 7→9 (c–i +
+  both madeup); P1/P2=5.5/5.5
+
+**Invariants**: forbidden=none, positives=P1 +1.0, P2 +1.0 (CLEAN). 39 tests pass.
+
+**Next gap (note for future iter)**: multi-object selection now covers size
+extremes only; richer selectors (by colour, by position, by uniqueness-of-a-
+property) and multi-object *outputs* (where unselected objects survive) are
+untouched. R3 (anti_unification, P3=0) and R5 (fast-path reuse, stored hits 0)
+remain the two standing big-ticket unfired rungs.
+
+## Iter 6 [CLEAN] — 20260614_154322 — branch test33
+- Probe: easy_a: [15:43:25] Correct:     9 / 9  (100.0%)
