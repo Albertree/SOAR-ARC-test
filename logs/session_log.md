@@ -3830,3 +3830,6 @@ CONDITIONAL transforms (the probe's gravity/ray/occlusion 3) need a
 neighbourhood/alignment selector (R4-adjacent: edge-of-edge / per-cell
 neighbour predicates), the first genuinely new *recognition* vocabulary (would
 move P5) rather than another positional macro-grid schema.
+
+## Iter 35 [CLEAN] — 20260614_211055 — branch test33
+- Probe: [21:11:13] Correct:     0 / 3  (0.0%)
