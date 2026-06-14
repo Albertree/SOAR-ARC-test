@@ -1259,3 +1259,65 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 14 [CLEAN] — 20260614_170307 — branch test33
 - Probe: madeup: [17:03:13] Correct:     7 / 7  (100.0%) | easy_a: [17:03:10] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 17:14
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_171456.log
+
+---
+## Learning Loop -- 2026-06-14 17:15
+
+- Split: None, Tasks: 8
+- Correct: 8 / 8 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_171500.log
+
+---
+## Learning Loop -- 2026-06-14 17:29
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_172955.log
+
+---
+## Learning Loop -- 2026-06-14 17:30
+
+- Split: None, Tasks: 10
+- Correct: 10 / 10 (100.0%)
+- Rules: 2 -> 3 (+1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_172958.log
+
+## Iter 15 — 2026-06-14 — branch test33
+
+**Diagnosis**: The object_motion family is saturated across selection (size/position/colour/shape), output-shape (extent/count) and scene (drop/preserve) dimensions — every §2.1 madeup concept now merges into rule_002, so adding a 5th arg-expr would be near-duplicate spinning. The genuinely-missing capability is a *non-positional* transformation: the structure can MOVE an object but has never CHANGED a colour the intended (value-agnostic) way — the only recolour handling is the legacy value-keyed `_try_color_mapping`, which bakes a literal input→output colour map and cannot generalise to a held-out colour. Picked this gap because it is a real new transformation family AND it is the first chance to fire `unify()` on genuinely divergent args (the R3 prize, inert all branch), since two recolour tasks with swapped (selector,source) share a skeleton but diverge.
+
+**Change**:
+- `agent/dsl_expr/recolor.py` (new): `fit_color_source` / `color_source` — the new colour as an argument expression `color_of(select_object(inputs, source))`, fitted from the example comparison, never a literal. Reuses the existing selector vocabulary.
+- `agent/conditions/object_recolor.py` (new matcher, P5 +1): fires on an in-place recolour with both a target *selector* and a colour *source* fitted.
+- `agent/active_operators.py`: ExtractPattern surfaces an `object_recolor` signal (`_object_recolor` + `_identify_recolor`: one object, same cells, single new colour, others byte-identical, grid preserved); GeneralizeOperator emits a `{condition:object_recolor, action:recolor_object, args:{selector,source}}` rule (checked before the legacy `_try_color_mapping`); PredictOperator renders via `_render_object_recolor` (make_grid + coloring only), re-deriving both selectors from this task's own patterns so the recorded args never affect solving.
+- `agent/dsl_expr/__init__.py`: export the two new expressions.
+- `data/ARC_madeup/recolor_to_largest.json`, `recolor_to_smallest.json` (new, F1-exempt): mirror tasks (selector/source swapped) so their args diverge and force an AU lift.
+- `tests/test_object_recolor.py` (new, +14 tests incl. the AU-lift end-to-end).
+
+**Probe before**: easy_a 9/9, madeup 8/8; rules 2; P1/P2=8.5; P3=0.5; P5=2.
+**Probe after** : easy_a 9/9, madeup 10/10 (both recolour tasks solved via `object_recolor`); rules 3; rule_003 = AU-lifted abstract recolour (args `?v1`/`?v2`, covers=2, anti_unification_trace set).
+
+**Invariants**: forbidden=none (F8 satisfied: active_operators paired with new agent/conditions/ matcher + memory.py save path; F2/F3 clean — recolour is make_grid+coloring, matcher not `_try_*`). positives=P3 0.5→0.667 (+0.167), P5 2→3 (+1). P1/P2 8.5→6.33 (down) — the honest, expected cost of a brand-new family (covers=2) against a mean dominated by rule_002's covers=15; recovers as the recolour family generalises, exactly as object_motion did at covers=2 in iter3. 100 tests pass (+14).
+
+**Next gap (note for future iter)**: P1/P2 mechanically punish any new family while one rule (covers≈15) dominates the mean — the instrumentation biases toward feeding rule_002 over building new capability. The real frontier now: a *cross-family* AU lift (object_motion ↔ object_recolor share the `select_object` selection skeleton but differ in action.dsl, so unify() can't bridge them without object-level lifting), and R5 fast-path reuse (both families still decline the input-only fast path because args are fitted from the example comparison).
+
+## Iter 15 [CLEAN] — 20260614_171456 — branch test33
+- Probe: madeup: [17:15:03] Correct:     8 / 8  (100.0%) | easy_a: [17:14:59] Correct:     9 / 9  (100.0%)

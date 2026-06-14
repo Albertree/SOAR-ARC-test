@@ -1,0 +1,45 @@
+{
+  "id": 3,
+  "concept": "object recolor",
+  "category": "color_transform",
+  "rule": {
+    "type": "object_recolor",
+    "condition": {
+      "type": "object_recolor",
+      "params": {
+        "min_evidence": 2
+      },
+      "min_evidence": 2
+    },
+    "action": {
+      "dsl": "recolor_object",
+      "args": {
+        "selector": "?v1",
+        "source": "?v2"
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "recolor_to_largest",
+    "recolor_to_smallest"
+  ],
+  "source_task": "recolor_to_largest",
+  "created_at": "2026-06-14T17:30:01.641006",
+  "times_reused": 0,
+  "condition": {
+    "type": "object_recolor",
+    "params": {
+      "min_evidence": 2
+    },
+    "min_evidence": 2
+  },
+  "action": {
+    "dsl": "recolor_object",
+    "args": {
+      "selector": "?v1",
+      "source": "?v2"
+    }
+  },
+  "anti_unification_trace": "episodic_memory/recolor_to_smallest/anti_unification/au_001.json"
+}

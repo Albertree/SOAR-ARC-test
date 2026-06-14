@@ -1,0 +1,19 @@
+{
+  "_comment": "Two objects per grid; the LARGER object is recoloured in place to match the SMALLER object's colour (smaller unchanged, grid unchanged). The mirror of recolor_to_largest.json: selector=largest, source=smallest. Authored so the recolour family's (selector, source) DIVERGE across two tasks, forcing save_rule -> anti_unification.unify() to lift both to ?v and produce ONE covers=2 rule with a trace (R3), proving the selectors are fitted not hardcoded. Value-agnostic: colours/sizes differ across pairs.",
+  "train": [
+    {
+      "input":  [[3,3,0,0,0],[3,3,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,6]],
+      "output": [[6,6,0,0,0],[6,6,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,6]]
+    },
+    {
+      "input":  [[7,7,7,0],[0,0,0,0],[0,0,0,0],[0,2,0,0]],
+      "output": [[2,2,2,0],[0,0,0,0],[0,0,0,0],[0,2,0,0]]
+    }
+  ],
+  "test": [
+    {
+      "input":  [[5,5,0,0,0],[5,5,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,9]],
+      "output": [[9,9,0,0,0],[9,9,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,9]]
+    }
+  ]
+}

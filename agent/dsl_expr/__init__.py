@@ -36,6 +36,10 @@ from agent.dsl_expr.motion import (
     output_shape,
     obj_origin_extent,
 )
+from agent.dsl_expr.recolor import (
+    fit_color_source,
+    color_source,
+)
 
 __all__ = [
     "background_of",
@@ -52,4 +56,6 @@ __all__ = [
     "fit_output_shape",
     "output_shape",
     "obj_origin_extent",
+    "fit_color_source",
+    "color_source",
 ]

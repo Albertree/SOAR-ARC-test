@@ -1,0 +1,19 @@
+{
+  "_comment": "Two objects per grid; the SMALLER object is recoloured in place to match the LARGER object's colour (larger unchanged, grid unchanged). Isolates the in-place recolour concept: no object moves. selector=smallest, source=largest. Paired with recolor_to_smallest.json whose selector/source are swapped, so the two anti-unify into one covers>1 object_recolor rule (R3). Value-agnostic: colours/sizes differ across pairs, so the new colour is color_of(largest), never a literal.",
+  "train": [
+    {
+      "input":  [[3,3,0,0,0],[3,3,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,4,4]],
+      "output": [[3,3,0,0,0],[3,3,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,3,3]]
+    },
+    {
+      "input":  [[7,7,7,0],[0,0,0,0],[0,0,0,0],[0,2,0,0]],
+      "output": [[7,7,7,0],[0,0,0,0],[0,0,0,0],[0,7,0,0]]
+    }
+  ],
+  "test": [
+    {
+      "input":  [[5,5,0,0,0],[5,5,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,8]],
+      "output": [[5,5,0,0,0],[5,5,0,0,0],[0,0,0,0,0],[0,0,0,0,0],[0,0,0,0,5]]
+    }
+  ]
+}

@@ -202,6 +202,17 @@ class ExtractPatternOperator(Operator):
         # fitted argument expression*, never a literal baked per task.
         patterns["object_motion"] = self._object_motion(task)
 
+        # Object-level *recolour* signal (BACKLOG_LOOP.md R1, §2.5-2b). For each
+        # pair, is exactly one object recoloured in place (cells unchanged, colour
+        # changed, others untouched, grid size preserved)? Then fit two
+        # value-agnostic selector expressions across the pairs: which object is
+        # recoloured (`fit_selector`) and whose colour it takes
+        # (`fit_color_source`). This is the evidence the `object_recolor` matcher
+        # keys on — the first non-positional transformation family, recognised the
+        # intended way (one rule with fitted argument expressions) rather than via
+        # the legacy value-keyed `_try_color_mapping`.
+        patterns["object_recolor"] = self._object_recolor(task)
+
         wm.s1["patterns"] = patterns
 
     # ---- object-level analysis (R1) -------------------------------------
@@ -380,6 +391,97 @@ class ExtractPatternOperator(Operator):
                     return moved_in[0], oj, "preserve"
 
         return None, None, None
+
+    # ---- object-level recolour analysis (R1) ----------------------------
+
+    @staticmethod
+    def _object_recolor(task):
+        """Per-pair in-place *recolour* analysis using the seed selection
+        vocabulary (agent/dsl_expr). Reads only G0/G1 properties — no literal
+        colour or object index is baked in, so the signal is value-agnostic. Fits
+        two orthogonal selector *expressions* across the pairs (§2.5-2b): a
+        *selector* naming which object is recoloured, and a *source* naming the
+        object whose colour it takes (the new colour is `color_of` that object,
+        never a stored literal)."""
+        from agent.dsl_expr import objects_of, fit_selector, fit_color_source
+
+        pairs = []
+        selections = []   # (objects, recoloured idx) feeding fit_selector
+        sources = []      # (objects, new colour) feeding fit_color_source
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                continue
+
+            grid_size_preserved = (
+                g0.height == g1.height and g0.width == g1.width
+            )
+            objs_in = objects_of(g0.raw)
+            sel_idx, new_color = (None, None)
+            if grid_size_preserved:
+                sel_idx, new_color = ExtractPatternOperator._identify_recolor(
+                    objs_in, objects_of(g1.raw)
+                )
+
+            recolor_ok = sel_idx is not None and new_color is not None
+            if recolor_ok:
+                selections.append({"objects": objs_in, "selected": sel_idx})
+                sources.append({"objects": objs_in, "color": new_color})
+
+            pairs.append({
+                "recolor_ok": recolor_ok,
+                "grid_size_preserved": grid_size_preserved,
+            })
+
+        # Fit both selector expressions only if every pair is a clean recolour
+        # (so a task with any dirty pair declines rather than over-generalising).
+        clean = bool(selections) and len(selections) == len(pairs)
+        selector = fit_selector(selections) if clean else None
+        source = fit_color_source(sources) if clean else None
+
+        return {
+            "evidence_count": len(pairs),
+            "pairs": pairs,
+            "selector": selector,
+            "source": source,
+        }
+
+    @staticmethod
+    def _identify_recolor(objs_in, objs_out):
+        """Identify the single object recoloured *in place*: same cells, a
+        different single colour, with every *other* object byte-identical in and
+        out. Returns ``(selected_index, new_color)`` or ``(None, None)`` when the
+        pair is not a clean single-object in-place recolour (so the pair declines
+        rather than guessing). Reads the change from the input->output comparison
+        (P3/P4), never a literal."""
+        from agent.dsl_expr import color_of
+
+        if len(objs_in) != len(objs_out) or len(objs_in) == 0:
+            return None, None
+
+        # Map each output object by its (frozen) cell-set so an input object can
+        # be matched to the output object occupying the SAME cells. A moved or
+        # merged object has no same-cell twin and makes the pair decline.
+        out_by_cells = {}
+        for oj in objs_out:
+            out_by_cells.setdefault(oj["cells"], []).append(oj)
+
+        recoloured = []
+        for i, oi in enumerate(objs_in):
+            matches = out_by_cells.get(oi["cells"])
+            if not matches or len(matches) != 1:
+                return None, None  # cells must align one-to-one (no move/merge)
+            oj = matches[0]
+            if oj["pixels"] == oi["pixels"]:
+                continue  # unchanged object — left untouched
+            new_color = color_of(oj)
+            if new_color is None:
+                return None, None  # recoloured to multi-colour — not a recolour
+            recoloured.append((i, new_color))
+
+        if len(recoloured) == 1:
+            return recoloured[0]
+        return None, None
 
     # ---- internal helpers ------------------------------------------------
 
@@ -561,6 +663,40 @@ class GeneralizeOperator(Operator):
                 "confidence": 1.0,
             }
 
+        # R1 (BACKLOG_LOOP.md §2.5-2b): object-level *recolour* with fitted
+        # selector + colour-source expressions. When every example recolours one
+        # selected object in place to a colour read from another object (both named
+        # by value-agnostic selectors fitted by ExtractPattern), emit one
+        # {condition, action} rule. The recoloured object's selector and the
+        # colour-source selector are recorded as the action's arguments so two
+        # recolour tasks whose (selector, source) diverge become anti-unifiable:
+        # `agent/memory.save_rule` lifts the divergent positions to `?v` variables
+        # via `anti_unification.unify()` (R3), converging the family to ONE rule
+        # with covers>1 + an anti_unification_trace instead of one value-keyed
+        # color_mapping per task (the legacy `_try_color_mapping` failure mode;
+        # P1·P2·P3 together, §2.5-4). This does NOT change solving: PredictOperator
+        # re-derives both selectors from each task's own example comparison (it
+        # reads `wm.s1["patterns"]`, never these args), so the recorded expressions
+        # are for generalization/coverage only. Checked before the legacy
+        # color-strategies so a recolour task is solved the intended way.
+        if rule is None and self._matches_object_recolor(patterns):
+            rec = patterns.get("object_recolor") or {}
+            args = {}
+            if rec.get("selector") is not None:
+                args["selector"] = rec.get("selector")
+            if rec.get("source") is not None:
+                args["source"] = rec.get("source")
+            rule = {
+                "type": "object_recolor",
+                "condition": {
+                    "type": "object_recolor",
+                    "params": {"min_evidence": 2},
+                    "min_evidence": 2,
+                },
+                "action": {"dsl": "recolor_object", "args": args},
+                "confidence": 1.0,
+            }
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -600,6 +736,19 @@ class GeneralizeOperator(Operator):
         try:
             return match_condition(
                 "object_motion", patterns, {"min_evidence": 2}
+            )
+        except KeyError:
+            return False
+
+    @staticmethod
+    def _matches_object_recolor(patterns):
+        """True iff the registered `object_recolor` matcher fires. Thin wrapper so
+        the matcher (agent/conditions) stays the single source of truth for the
+        recognition (mirrors `_matches_object_motion`)."""
+        from agent.conditions import match as match_condition
+        try:
+            return match_condition(
+                "object_recolor", patterns, {"min_evidence": 2}
             )
         except KeyError:
             return False
@@ -768,6 +917,17 @@ class PredictOperator(Operator):
             motion_selector = motion.get("selector")
             motion_scene = motion.get("scene")
 
+        # R1 object_recolor: the selector + colour-source were fitted from this
+        # task's own example comparison — read them here so the recolour is
+        # re-derived per task, never stored as a literal on the rule (same
+        # value-agnostic discipline as object_motion's target).
+        recolor_selector = None
+        recolor_source = None
+        if rule.get("type") == "object_recolor":
+            rec = (wm.s1.get("patterns") or {}).get("object_recolor") or {}
+            recolor_selector = rec.get("selector")
+            recolor_source = rec.get("source")
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -785,6 +945,10 @@ class PredictOperator(Operator):
                 predicted = self._render_object_motion(
                     g0, motion_target, motion_out_shape, motion_selector,
                     motion_scene,
+                )
+            elif rule.get("type") == "object_recolor":
+                predicted = self._render_object_recolor(
+                    g0, recolor_selector, recolor_source,
                 )
             else:
                 predicted = self._apply_rule(rule, g0)
@@ -931,6 +1095,48 @@ class PredictOperator(Operator):
             if not (0 <= nr < out_h and 0 <= nc < out_w):
                 return None  # destination pushes the object off-grid → decline
             out = apply_DSL("coloring", out, selection=(nr, nc), color=color)
+        return out
+
+    # ---- object-recolour rendering via the two frozen DSL primitives ------
+
+    @staticmethod
+    def _render_object_recolor(input_grid, selector_desc, source_desc):
+        """Recolour the object named by `selector_desc` to the colour of the
+        object named by `source_desc` (both selector expressions fitted from this
+        task's example comparison), in place on a same-shape canvas. Built only
+        from make_grid + coloring (CLAUDE.md §6.2): a fresh background canvas, every
+        object repainted at its original cells, and the selected object's cells
+        repainted in the sourced colour instead of its own. No literal colour or
+        object index lives on the rule — both are expressions resolved per input
+        from G0 alone (P5) — so one rule serves every recolour in the family.
+        Declines (returns None) if either selector picks no object or the source
+        object has no single colour."""
+        from procedural_memory.DSL.apply import apply_DSL
+        from agent.dsl_expr import (
+            objects_of, select_object, background_of, color_source,
+        )
+
+        if selector_desc is None or source_desc is None:
+            return None
+
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if h else 0
+        if h == 0 or w == 0:
+            return None
+
+        bg = background_of(raw)
+        objs = objects_of(raw, bg)
+        target = select_object(objs, selector_desc)
+        new_color = color_source(source_desc, objs)
+        if target is None or new_color is None:
+            return None
+
+        out = apply_DSL("make_grid", height=h, width=w, color=bg)
+        for obj in objs:
+            for (r, c), color in obj["pixels"].items():
+                paint = new_color if obj is target else color
+                out = apply_DSL("coloring", out, selection=(r, c), color=paint)
         return out
 
     def _apply_recolor_sequential(self, rule, input_grid):
