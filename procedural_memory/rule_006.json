@@ -9,19 +9,7 @@
       "params": {
         "program": [
           [
-            "make_grid",
-            [
-              "in_h"
-            ],
-            [
-              "in_w"
-            ],
-            [
-              "bg"
-            ]
-          ],
-          [
-            "paint_remap",
+            "dihedral",
             [
               "const",
               "?v1"
@@ -37,19 +25,7 @@
       "args": {
         "program": [
           [
-            "make_grid",
-            [
-              "in_h"
-            ],
-            [
-              "in_w"
-            ],
-            [
-              "bg"
-            ]
-          ],
-          [
-            "paint_remap",
+            "dihedral",
             [
               "const",
               "?v2"
@@ -63,29 +39,20 @@
   "covers": [
     "flip_h",
     "flip_v",
-    "rot180"
+    "rot180",
+    "74dd1130",
+    "9dfd6313",
+    "ed36ccf7"
   ],
   "source_task": "flip_h",
-  "created_at": "2026-06-14T20:14:00.875071",
+  "created_at": "2026-06-14T20:28:29.447039",
   "times_reused": 0,
   "condition": {
     "type": "synthesized_program",
     "params": {
       "program": [
         [
-          "make_grid",
-          [
-            "in_h"
-          ],
-          [
-            "in_w"
-          ],
-          [
-            "bg"
-          ]
-        ],
-        [
-          "paint_remap",
+          "dihedral",
           [
             "const",
             "?v1"
@@ -101,19 +68,7 @@
     "args": {
       "program": [
         [
-          "make_grid",
-          [
-            "in_h"
-          ],
-          [
-            "in_w"
-          ],
-          [
-            "bg"
-          ]
-        ],
-        [
-          "paint_remap",
+          "dihedral",
           [
             "const",
             "?v2"
@@ -122,5 +77,5 @@
       ]
     }
   },
-  "anti_unification_trace": "episodic_memory/flip_v/anti_unification/au_001.json"
+  "anti_unification_trace": "episodic_memory/flip_v/anti_unification/au_002.json"
 }

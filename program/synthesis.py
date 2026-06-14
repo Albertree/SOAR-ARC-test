@@ -61,7 +61,9 @@ from agent.dsl_expr.selection import objects_of, background_of, color_of
 # coordinate expression, discovered by SEARCH here, not written into the DSL.
 #
 # ``swaps`` marks the four transforms whose output dims are the input dims
-# transposed (the canvas is ``in_w × in_h``, not ``in_h × in_w``).
+# transposed (the canvas is ``in_w × in_h``, not ``in_h × in_w``). The single
+# ``dihedral`` step consults this flag to size its own canvas, so swap and
+# non-swap maps share one program skeleton and lift into one rule.
 _DIHEDRAL = {
     "flip_h":        (lambda r, c, ih, iw: (r, iw - 1 - c),        False),
     "flip_v":        (lambda r, c, ih, iw: (ih - 1 - r, c),        False),
@@ -211,23 +213,32 @@ def run_program(program, input_grid):
                 else:
                     cur = apply_DSL(
                         "coloring", cur, selection=sorted(o["cells"]), color=col)
-        elif kind == "paint_remap":
-            # Apply a fixed dihedral coordinate map to the input: every non-bg
-            # input cell is painted, in its own colour, at its remapped output
-            # position (`_DIHEDRAL`). ONE structure-agnostic step that composes
-            # only `coloring` (F3-safe) — the transform is a coordinate
-            # expression, never a new primitive (§2.5-1). The selection reads the
-            # fixed input grid (`env`), so it never cascades off the running
-            # canvas and transfers unchanged to the test input (P5).
+        elif kind == "dihedral":
+            # A whole-grid flip / rotate / transpose, expressed as ONE
+            # structure-agnostic step that *composes only the two frozen
+            # primitives*: it makes the correctly-sized output canvas
+            # (``make_grid`` — dims swapped for the dims-swapping maps) and then
+            # paints every non-bg input cell, in its own colour, at its remapped
+            # position (``coloring``). The transform is a coordinate expression,
+            # never a new primitive (§2.5-1, F3-safe). Folding the canvas into
+            # this single step is what lets *all eight* maps share ONE program
+            # skeleton ``[("dihedral", ("const", ?v))]`` — so swap and non-swap
+            # maps lift into a *single* ``covers>1`` rule rather than two
+            # separate families (the canvas-dim divergence no longer splits the
+            # skeleton). The selection reads the fixed input grid (``env``), so it
+            # never cascades off the running canvas and transfers unchanged to the
+            # test input (P5).
             _, name_expr = step
             name = _eval(name_expr, env)
             spec = _DIHEDRAL.get(name)
             if spec is None:
                 raise _Unevaluable(f"unknown dihedral transform: {name!r}")
-            remap, _swaps = spec
+            remap, swaps = spec
             ih = len(env["grid"])
             iw = len(env["grid"][0]) if env["grid"] else 0
             bg = env["bg"]
+            oh, ow = (iw, ih) if swaps else (ih, iw)
+            cur = apply_DSL("make_grid", height=oh, width=ow, color=bg)
             for r, row in enumerate(env["grid"]):
                 for c, v in enumerate(row):
                     if v == bg:
@@ -331,23 +342,20 @@ def _candidate_programs(pairs):
         yield prog
 
     # --- Schema 5: dihedral geometric transform ----------------------------
-    # A whole-grid flip / rotate / transpose. Each candidate is the canvas (the
-    # fitted output dims) plus one ``paint_remap`` step carrying a fixed
-    # coordinate map (`_DIHEDRAL`); `synthesize_task` keeps the first whose
-    # remap reproduces every pair. The transform is value-agnostic (the cell's
-    # colour is copied, only its position changes), so two tasks that differ
-    # only in *which* map (e.g. flip_h vs flip_v, same output dims) share the
-    # ``make_grid + paint_remap`` skeleton and lift via `unify()` into one
-    # ``covers>1`` rule whose map leaf is a ``?v`` (R3 — P1·P2·P3 rise together).
-    for name, (_remap, swaps) in _DIHEDRAL.items():
-        if swaps:
-            dh_expr, dw_expr = ("in_w",), ("in_h",)
-        else:
-            dh_expr, dw_expr = ("in_h",), ("in_w",)
-        yield [
-            ("make_grid", dh_expr, dw_expr, ("bg",)),
-            ("paint_remap", ("const", name)),
-        ]
+    # A whole-grid flip / rotate / transpose. Each candidate is a single
+    # ``dihedral`` step carrying a fixed coordinate map (`_DIHEDRAL`);
+    # `synthesize_task` keeps the first whose map reproduces every pair. The
+    # step composes only the two frozen primitives (it makes its own
+    # correctly-sized canvas, dims swapped for the dims-swapping maps, then
+    # paints). The transform is value-agnostic (only a cell's position changes),
+    # so *every* map — flip, rotate, transpose alike — shares the SAME one-step
+    # skeleton ``[("dihedral", ("const", ?v))]`` and they all lift via `unify()`
+    # into a *single* ``covers>1`` rule whose map leaf is a ``?v`` (R3 —
+    # P1·P2·P3 rise together; the canvas-dim difference between swap and non-swap
+    # maps lives inside the step, so it no longer splits the skeleton into two
+    # families).
+    for name in _DIHEDRAL:
+        yield [("dihedral", ("const", name))]
 
 
 def _fit_color_map(pairs):

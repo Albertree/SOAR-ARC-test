@@ -3106,3 +3106,119 @@ family arithmetically, so P3 is the truer progress signal here.
 
 ## Iter 29 [CLEAN] — 20260614_200550 — branch test33
 - Probe: [20:06:07] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 20:17
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_201734.log
+
+---
+## Learning Loop -- 2026-06-14 20:17
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_201737.log
+
+---
+## Learning Loop -- 2026-06-14 20:17
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_201745.log
+
+---
+## Learning Loop -- 2026-06-14 20:28
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 5 -> 6 (+1 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_202828.log
+
+---
+## Learning Loop -- 2026-06-14 20:28
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_202842.log
+
+---
+## Learning Loop -- 2026-06-14 20:29
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 6 -> 6 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_202908.log
+
+## Iter 30 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase, probe 0/3 (all `rule=identity` — the three sampled
+tasks c9680e90/878187ab/e5790162 are conditional/spatial transforms no schema yet
+expresses). Iter 29's next-gap note flagged that the dims-swapping dihedral maps
+(transpose/rot90/rot270/antitranspose) form a *second* skeleton family because
+their canvas is `in_w×in_h` not `in_h×in_w`, so the two-step `make_grid +
+paint_remap` schema split flips (rule_006, covers=3) from transposes into separate
+rules — and grounding the second family the iter-29 way would dilute P1/P2 *again*
+via the covers=20 rule_002. The smaller, *non*-duplicative gap: **collapse the
+schema so all eight dihedral maps share one program skeleton**, lifting them into a
+single rule instead of two families (the §2.5-4 litmus — covers up, rule count
+flat).
+
+**Change**:
+- `program/synthesis.py` — replaced the two-step dihedral candidate (`make_grid` +
+  `paint_remap`) with a single `dihedral` step that builds its *own* correctly-sized
+  canvas (dims swapped for the swap maps, read from `_DIHEDRAL`'s flag) and then
+  paints the remap. It composes ONLY the two frozen primitives internally
+  (`make_grid`→`coloring`), so it is F3-safe — exactly as `paint_objects` does. Now
+  every map yields the same skeleton `[("dihedral", ("const", ?v))]`, so swap and
+  non-swap maps anti-unify into ONE `covers>1` rule. Removed the now-dead
+  `paint_remap` step. Schema 5 yields one single-step candidate per map.
+- `procedural_memory/rule_006.json` — deleted the stale two-step flip-only rule and
+  re-learned the unified rule: it now `covers` all six dihedral tasks — `flip_h`,
+  `flip_v`, `rot180` (madeup) **plus** `74dd1130`, `9dfd6313` (transpose),
+  `ed36ccf7` (rot270) (real ARC-AGI-2 training tasks the synthesizer already
+  solves, folded in per PROMPT §2.2.3 "generalize across what is already solved").
+  Program `[["dihedral", ["const", "?v1"]]]`, `anti_unification_trace` set.
+- `tests/test_synthesis.py` — updated the 4 dihedral assertions to the single-step
+  shape and added `test_swap_and_nonswap_dihedral_share_one_skeleton` (flip_h and
+  transpose now produce the *same* `_program_skeleton` despite different map leaves
+  — the unification payoff). 173 tests pass (was 172).
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 23/23; 6 rules, P1=P2=5.333,
+P3=0.833. rule_006 = two-step flip family covers=3.
+**Probe after** : easy_a 9/9, madeup 23/23 (unchanged guards); 6 rules; unified
+rule_006 covers=6 (all 8 dihedral maps share its skeleton). All 7 real dihedral
+training tasks (67a3c6ac/68b16354/3c9b0459/6150a2bd/74dd1130/9dfd6313/ed36ccf7)
+still solve incl. held-out test inputs. P1/P2 5.333→5.833, P3 0.833 (flat).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=P1 +0.5,
+P2 +0.5 (covers up *with* rule count flat — the §2.5-4 real-progress signature, the
+opposite of iter 29's dilution); P3/P4/P5/P6 Δ0. No new `_try_*`/`_apply_*`; no new
+DSL primitive (the `dihedral` step is a coordinate expression composing the two
+frozen primitives, discovered by SEARCH); no `active_operators.py` edit (F8 N/A).
+
+**Next gap (note for future iter)**: the dihedral family is now maximally general
+(one rule, all 8 maps). The dominant remaining training miss is same-size
+*conditional* transforms (gravity 1e0a9b12, ray/projection e5790162, occlusion
+878187ab, symmetry-repair) — each needs a *selection/condition* the grammar can't
+yet express (which cells move/recolour as a function of neighbourhood or alignment),
+not another whole-grid map. That is genuinely new machinery (R4 second-order
+relation / conditional selection), not a smallest step; the cheap geometric wins are
+now exhausted.

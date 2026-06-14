@@ -119,16 +119,16 @@ def test_no_pairs_returns_none():
 
 def test_dihedral_flip_h_discovered_by_search():
     # A whole-grid horizontal mirror — value-agnostic, no colour changes. The
-    # search must express it as make_grid + paint_remap('flip_h') (a coordinate
-    # expression fed to the frozen `coloring`, NOT a new primitive) and transfer
-    # unchanged to a held-out input (P5).
+    # search must express it as a single `dihedral('flip_h')` step (a coordinate
+    # expression composing the frozen `make_grid`+`coloring`, NOT a new
+    # primitive) and transfer unchanged to a held-out input (P5).
     pairs = [
         {"input": [[1, 2, 0], [0, 3, 0]], "output": [[0, 2, 1], [0, 3, 0]]},
         {"input": [[4, 0, 5]], "output": [[5, 0, 4]]},
     ]
     prog = synthesize_task(pairs)
     assert prog is not None
-    assert prog[1][0] == "paint_remap" and prog[1][1] == ("const", "flip_h")
+    assert prog[0][0] == "dihedral" and prog[0][1] == ("const", "flip_h")
     held = [[7, 0, 0, 8]]
     assert run_program(prog, held) == [[8, 0, 0, 7]]
 
@@ -142,7 +142,7 @@ def test_dihedral_transpose_swaps_canvas_dims():
     ]
     prog = synthesize_task(pairs)
     assert prog is not None
-    assert prog[1][1] == ("const", "transpose")
+    assert prog[0][0] == "dihedral" and prog[0][1] == ("const", "transpose")
     # transfers to a held-out 1x3 -> 3x1
     assert run_program(prog, [[9, 0, 2]]) == [[9], [0], [2]]
 
@@ -153,7 +153,7 @@ def test_dihedral_rot180_discovered():
         {"input": [[3, 4, 0]], "output": [[0, 4, 3]]},
     ]
     prog = synthesize_task(pairs)
-    assert prog is not None and prog[1][1] == ("const", "rot180")
+    assert prog is not None and prog[0][1] == ("const", "rot180")
 
 
 def test_dihedral_does_not_fire_on_non_symmetric():
@@ -167,4 +167,23 @@ def test_dihedral_does_not_fire_on_non_symmetric():
     prog = synthesize_task(pairs)
     # no dihedral map reproduces this; the schema declines
     if prog is not None:
-        assert prog[1][0] != "paint_remap"
+        assert prog[0][0] != "dihedral"
+
+
+def test_swap_and_nonswap_dihedral_share_one_skeleton():
+    # The unification payoff: a non-swap map (flip_h) and a dims-swapping map
+    # (transpose) must produce the SAME program skeleton, so save_rule lifts them
+    # into ONE covers>1 rule instead of two families (the canvas-dim difference
+    # now lives inside the single `dihedral` step, not in a separate make_grid).
+    from agent.memory import _program_skeleton
+    flip = synthesize_task([
+        {"input": [[1, 2, 0], [0, 3, 0]], "output": [[0, 2, 1], [0, 3, 0]]},
+        {"input": [[4, 0, 5]], "output": [[5, 0, 4]]},
+    ])
+    transpose = synthesize_task([
+        {"input": [[1, 2, 3], [4, 5, 6]], "output": [[1, 4], [2, 5], [3, 6]]},
+        {"input": [[7, 8]], "output": [[7], [8]]},
+    ])
+    assert flip is not None and transpose is not None
+    assert flip[0][1] != transpose[0][1]  # different map leaves
+    assert _program_skeleton(flip) == _program_skeleton(transpose)
