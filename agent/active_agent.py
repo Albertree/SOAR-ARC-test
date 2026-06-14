@@ -15,7 +15,9 @@ from agent.elaboration_rules import build_elaborator
 from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
-from agent.memory import load_all_rules, save_rule_to_ltm, increment_reuse_count
+from agent.memory import (
+    load_all_rules, save_rule_to_ltm, increment_reuse_count, record_cover,
+)
 from agent.wm_logger import reset_wm_snapshot
 
 
@@ -66,6 +68,9 @@ class ActiveSoarAgent:
                 predicted = self._apply_rule_to_tests(rule, task)
                 if predicted:
                     increment_reuse_count(entry)
+                    # The reused rule just handled a task it was not yet credited
+                    # for — record it in covers so coverage (P1/P2) stays honest.
+                    record_cover(entry, task.task_hex)
                     self.last_solve_info.update({
                         "method": "stored_rule",
                         "rule_type": rule.get("type", "unknown"),

@@ -191,7 +191,60 @@ class ExtractPatternOperator(Operator):
             "common_output": example_outputs[0] if all_equal else None,
         }
 
+        # Object-level motion signal (BACKLOG_LOOP.md R1). For each example pair,
+        # describe what happens to *the single foreground object*: is it unique,
+        # is its colour/shape preserved, is the grid size preserved, and does it
+        # land in the bottom-right corner? This is the evidence the object-level
+        # matchers (agent/conditions/object_*) key on — surfaced symbolically here
+        # so the recognition lives in the matcher, not in this operator.
+        patterns["object_motion"] = self._object_motion(task)
+
         wm.s1["patterns"] = patterns
+
+    # ---- object-level analysis (R1) -------------------------------------
+
+    @staticmethod
+    def _object_motion(task):
+        """Per-pair single-object motion analysis using the seed selection
+        vocabulary (agent/dsl_expr). Reads only G0/G1 properties — no literal
+        coordinates are baked in, so the resulting signal is value-agnostic."""
+        from agent.dsl_expr import objects_of, unique_object, bottom_right_of, color_of
+
+        pairs = []
+        for pair in task.example_pairs:
+            g0, g1 = pair.input_grid, pair.output_grid
+            if g0 is None or g1 is None:
+                continue
+
+            obj_in = unique_object(objects_of(g0.raw))
+            obj_out = unique_object(objects_of(g1.raw))
+            h_out = len(g1.raw)
+            w_out = len(g1.raw[0]) if h_out else 0
+
+            color_preserved = (
+                obj_in is not None and obj_out is not None
+                and color_of(obj_in) is not None
+                and color_of(obj_in) == color_of(obj_out)
+            )
+            size_preserved = (
+                obj_in is not None and obj_out is not None
+                and obj_in["size"] == obj_out["size"]
+            )
+            out_br = bottom_right_of(obj_out) if obj_out is not None else None
+            out_at_corner = out_br is not None and out_br == (h_out - 1, w_out - 1)
+
+            pairs.append({
+                "single_in": obj_in is not None,
+                "single_out": obj_out is not None,
+                "color_preserved": color_preserved,
+                "size_preserved": size_preserved,
+                "grid_size_preserved": (
+                    g0.height == g1.height and g0.width == g1.width
+                ),
+                "out_at_corner": out_at_corner,
+            })
+
+        return {"evidence_count": len(pairs), "pairs": pairs}
 
     # ---- internal helpers ------------------------------------------------
 
@@ -331,6 +384,27 @@ class GeneralizeOperator(Operator):
                 "confidence": 1.0,
             }
 
+        # R1 (BACKLOG_LOOP.md): object-level move to the bottom-right corner.
+        # When every example moves the single foreground object to its grid's
+        # corner with colour/shape preserved, emit one value-agnostic
+        # {condition, action} rule. The action carries no literal target — the
+        # target is the argument expression (H-1, W-1), reconstructed per input
+        # at predict time from make_grid + coloring. This keeps a single rule
+        # covering easy000c and easy000g (different grid sizes) rather than one
+        # detector per task (§2.5-3). Consulted via the matcher registry so the
+        # recognition stays in agent/conditions, not re-implemented here.
+        if rule is None and self._matches_object_corner_target(patterns):
+            rule = {
+                "type": "object_corner_target",
+                "condition": {
+                    "type": "object_corner_target",
+                    "params": {"min_evidence": 2},
+                    "min_evidence": 2,
+                },
+                "action": {"dsl": "place_object", "args": {"target": "bottom_right"}},
+                "confidence": 1.0,
+            }
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
         if rule is None:
             rule = self._try_recolor_sequential(patterns)
@@ -357,6 +431,19 @@ class GeneralizeOperator(Operator):
         try:
             return match_condition(
                 "constant_output", patterns, {"min_evidence": 2}
+            )
+        except KeyError:
+            return False
+
+    @staticmethod
+    def _matches_object_corner_target(patterns):
+        """True iff the registered `object_corner_target` matcher fires. Thin
+        wrapper so the matcher (agent/conditions) stays the single source of
+        truth for the recognition (mirrors `_matches_constant_output`)."""
+        from agent.conditions import match as match_condition
+        try:
+            return match_condition(
+                "object_corner_target", patterns, {"min_evidence": 2}
             )
         except KeyError:
             return False
@@ -525,6 +612,9 @@ class PredictOperator(Operator):
                 )
             else:
                 predicted = self._apply_rule(rule, g0)
+            # Note: object_corner_target is rendered through _apply_rule below,
+            # which reconstructs the move from G0 alone (no G1) — so the same
+            # path serves both this slow-path predict and the fast-path reuse.
             if predicted is not None:
                 predictions[key] = predicted
 
@@ -565,6 +655,8 @@ class PredictOperator(Operator):
 
     def _apply_rule(self, rule, input_grid):
         rule_type = rule.get("type")
+        if rule_type == "object_corner_target":
+            return self._render_object_corner_target(input_grid)
         if rule_type == "recolor_sequential":
             return self._apply_recolor_sequential(rule, input_grid)
         if rule_type == "color_mapping":
@@ -572,6 +664,37 @@ class PredictOperator(Operator):
         if rule_type == "identity":
             return [row[:] for row in input_grid.raw]
         return None
+
+    # ---- object-move rendering via the two frozen DSL primitives ----------
+
+    @staticmethod
+    def _render_object_corner_target(input_grid):
+        """Place the single foreground object at the grid's bottom-right corner
+        (R1). Built only from make_grid + coloring (CLAUDE.md §6.2): start a
+        fresh background canvas (this erases the object's old position) and
+        repaint each object cell, translated so the object's bbox bottom-right
+        lands at (H-1, W-1). The target is the argument expression (H-1, W-1) —
+        no literal coordinate — so the same renderer serves any grid size.
+        Reconstructs from G0 alone, which is what lets the fast path reuse it."""
+        from procedural_memory.DSL.apply import apply_DSL
+        from agent.dsl_expr import objects_of, unique_object, background_of
+
+        raw = input_grid.raw
+        h = len(raw)
+        w = len(raw[0]) if h else 0
+        bg = background_of(raw)
+
+        obj = unique_object(objects_of(raw, bg))
+        if obj is None or h == 0 or w == 0:
+            return None
+
+        _r0, _c0, r1, c1 = obj["bbox"]
+        dr, dc = (h - 1) - r1, (w - 1) - c1
+
+        out = apply_DSL("make_grid", height=h, width=w, color=bg)
+        for (r, c), color in obj["pixels"].items():
+            out = apply_DSL("coloring", out, selection=(r + dr, c + dc), color=color)
+        return out
 
     def _apply_recolor_sequential(self, rule, input_grid):
         raw = input_grid.raw

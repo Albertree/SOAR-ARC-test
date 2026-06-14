@@ -140,6 +140,29 @@ def increment_reuse_count(entry: dict) -> None:
         pass
 
 
+def record_cover(entry: dict, task_hex: str) -> None:
+    """Record that a stored rule successfully handled `task_hex` (fast-path
+    reuse). `covers` means "all tasks this rule has handled" (see module
+    docstring); a reused rule that solves a *new* task must extend its covers,
+    or the coverage signal (P1/P2) silently undercounts genuine generalization.
+    This is the reuse-side analogue of save_rule_to_ltm's slow-path covers merge.
+    """
+    path = entry.get("_path")
+    if not path or not os.path.exists(path):
+        return
+    try:
+        with open(path, "r") as fh:
+            data = json.load(fh)
+        covers = data.get("covers", [data.get("source_task", "")])
+        if task_hex and task_hex not in covers:
+            covers.append(task_hex)
+            data["covers"] = covers
+            with open(path, "w") as fh:
+                json.dump(data, fh, indent=2)
+    except (json.JSONDecodeError, IOError):
+        pass
+
+
 def load_rules_from_ltm(task_hex: str,
                         semantic_memory_root: str = "semantic_memory") -> list:
     """Legacy interface — task_hex unused, loads all rules."""

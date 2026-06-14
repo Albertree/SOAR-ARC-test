@@ -142,3 +142,103 @@ which the constant_output matcher correctly does not fire on.
 
 ## Iter 2 [CLEAN] — 20260614_150115 — branch test33
 - Probe: easy_a: [15:01:18] Correct:     0 / 9  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 15:13
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 1 -> 1 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_151338.log
+
+---
+## Learning Loop -- 2026-06-14 15:20
+
+- Split: None, Tasks: 9
+- Correct: 4 / 9 (44.4%)
+- Rules: 0 -> 2 (+2 learned)
+- Stored rule hits: 1
+- Time: 3s
+- Log: logs/learn_20260614_152034.log
+
+---
+## Learning Loop -- 2026-06-14 15:21
+
+- Split: None, Tasks: 9
+- Correct: 4 / 9 (44.4%)
+- Rules: 0 -> 2 (+2 learned)
+- Stored rule hits: 1
+- Time: 3s
+- Log: logs/learn_20260614_152136.log
+
+---
+## Iter 3 — 2026-06-14 — branch test33
+
+**Diagnosis**: R0 (constant_output) is cleared; the lowest unproven rung is **R1
+— object-level analysis** (BACKLOG_LOOP.md). The probe showed easy000c–i all
+INCORRECT: the pipeline had no object-level perception, so the cell-diff path
+mis-read a single moved object as a bg↔fg color_mapping (or fell to identity).
+The smallest defensible R1 step is one *value-agnostic* family proven the
+intended way: "move the single foreground object to the grid's **bottom-right
+corner**, preserving colour/shape." easy000c (6×6) and easy000g (varying sizes)
+both belong to it, so a single size-relative rule (target = the argument
+expression `(H-1, W-1)`, not a literal) covers *both* — the R1 analogue of R0,
+avoiding the §2.5-3/4 accretion trap (no per-task rule).
+
+**Change**:
+- `agent/dsl_expr/{__init__,selection}.py` (new) — the seed *selection/argument*
+  vocabulary R1 calls for (`objects_of`, `unique_object`, `position_of`,
+  `bottom_right_of`, `color_of`, `background_of`). Placed under `agent/` (not the
+  frozen `procedural_memory/DSL/`) per BACKLOG_LOOP §2.5-1. Background is the
+  canonical canvas colour 0 (test32 `background_convention_fix`), not
+  most-frequent.
+- `agent/conditions/object_corner_target.py` (new matcher, P5 +1) — fires when
+  every example moves the unique object to the bottom-right corner with
+  colour/shape/grid-size preserved. Consumes a new `object_motion` signal.
+- `agent/active_operators.py` — ExtractPattern surfaces `object_motion`
+  (per-pair single-object analysis via the seed vocabulary); Generalize emits a
+  canonical `{condition, action}` object_corner_target rule (no literal target);
+  Predict reconstructs the move from **make_grid + coloring** only
+  (`_render_object_corner_target`), from G0 alone — so the fast path reuses it.
+  No new `_try_*`/`_apply_*` (F2-clean); F8 companions = conditions/ + memory.py.
+- `agent/memory.py` + `agent/active_agent.py` — `record_cover()`: fast-path
+  reuse now records the newly-handled task in the rule's `covers` (it bumped
+  `times_reused` but never extended covers, so genuine generalization
+  undercounted P1/P2). This is the reuse-side analogue of the slow-path covers
+  merge.
+- `tests/test_object_corner_target.py` (new) — selection vocab + matcher + an
+  end-to-end check that easy000c and easy000g resolve to the *same* rule object.
+  15/15 pass.
+
+**Probe before**: easy_a 2/9; rules=1 (constant_output, covers a,b); P1/P2=2.0, P5=1
+**Probe after** : easy_a 4/9; rules=2 (constant_output covers a,b;
+object_corner_target covers c,g via reuse); P1/P2=2.0, P5=2
+
+**Invariants**: forbidden=none; positives = P5 +1 (1→2). P1/P2 held at 2.0 (the
+two new solved tasks folded into one covers=2 rule — no accretion). P6 +123
+lines (active_operators grew; F8 companion = conditions/ + memory.py). Verdict
+CLEAN.
+
+**Next gap (note for future iter)**: the remaining easy_a families are other
+*argument expressions* of the same object-move skeleton — constant-target
+(easy000d → (1,2), easy000h → (4,4)), constant-offset/translation (easy000e
++1/-1, easy000f 0/+1), and grid-resize+corner (easy000i, 6×6→5×5 top-left).
+Each is a new matcher over the same `object_motion` signal; the prize is getting
+R3 `anti_unification.unify()` to lift these sibling object-move rules into one
+`place_object(target=$expr)` rule with covers>1, instead of one matcher per
+family.
+
+---
+## Learning Loop -- 2026-06-14 15:24
+
+- Split: None, Tasks: 9
+- Correct: 4 / 9 (44.4%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 2
+- Time: 3s
+- Log: logs/learn_20260614_152404.log
+
+## Iter 3 [CLEAN] — 20260614_151338 — branch test33
+- Probe: easy_a: [15:13:41] Correct:     2 / 9  (22.2%)
