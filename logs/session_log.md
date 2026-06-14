@@ -72,3 +72,73 @@ intended way and stops the stale pipeline from regenerating F4-dirty
 - Stored rule hits: 0
 - Time: 3s
 - Log: logs/learn_20260612_112313.log
+
+---
+## Learning Loop -- 2026-06-14 15:01
+
+- Split: None, Tasks: 9
+- Correct: 0 / 9 (0.0%)
+- Rules: 0 -> 2 (+2 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_150115.log
+
+---
+## Learning Loop -- 2026-06-14 15:10
+
+- Split: None, Tasks: 9
+- Correct: 2 / 9 (22.2%)
+- Rules: 0 -> 1 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_151043.log
+
+---
+## Iter 2 — 2026-06-14 — branch test33
+
+**Diagnosis**: R0 was half-built — the prior iter added the `output_invariant`
+COMM evidence (ExtractPatternOperator) and the `constant_output` matcher, but
+*nothing consumed them*: GeneralizeOperator ran only the legacy
+`_try_recolor_sequential`/`_try_color_mapping`, so easy000a/b (constant-output)
+were mis-generalized into per-task `color_mapping` rules that solved nothing
+(probe 0/9) and were schema-dirty (no `condition`/`action`, latent F4). On top of
+that the two frozen DSL primitives (`make_grid`/`coloring`) existed only as
+orphaned `.pyc` with no source (the `cleanstart_orphaned_pyc` trap). Smallest
+defensible step = close R0's prediction path: rebuild the DSL substrate and wire
+the existing matcher → generalize → predict → save into one **value-agnostic**
+COMM-copy rule.
+
+**Change**:
+- `procedural_memory/DSL/{__init__,apply,make_grid,coloring}.py` — rebuilt the
+  two frozen transformation primitives + `apply_DSL` dispatcher as source (F3:
+  exactly these two registered).
+- `agent/active_operators.py` — GeneralizeOperator now consults the
+  `constant_output` matcher *first* (via the condition registry, `_matches_
+  constant_output`) and emits a canonical `{condition, action}` rule with
+  `action.dsl=copy_common_output` and **no literal grid** (value-agnostic).
+  PredictOperator reconstructs the common example output from `make_grid` +
+  `coloring` (`_render_common_output`) — no new `_try_*`/`_apply_*`.
+- `agent/memory.py` — `save_rule_to_ltm` now surfaces top-level
+  `condition`/`action` when the rule carries them (F4-clean, F8 companion edit).
+- `tests/test_constant_output.py`, `managers/arc_manager.py` — migrate the
+  retired `easy0001` reference to the current `easy000a`; add `ARC_easy_a`/
+  `ARC_madeup` to `load_task` candidate paths.
+- Deleted stale F4-dirty untracked `rule_001/002.json` (legacy color_mapping);
+  re-run produced one canonical `rule_001.json`.
+
+**Probe before**: easy_a 0/9; rules=2 (color_mapping, dead, covers paper-only)
+**Probe after** : easy_a 2/9; rules=1 constant_output, covers=[easy000a,easy000b]
+
+**Invariants**: forbidden=none, positives=P1 1.0→2.0 (+1.0), P2 1.0→2.0 (+1.0),
+P6 +86 lines (within F8: memory.py touched). Verdict CLEAN.
+
+**Next gap (note for future iter)**: R0 slow path is done; the fast-path reuse
+(`active_agent.solve` lines 60-75) still declines `constant_output` because
+`_apply_rule(rule, input_grid)` cannot reconstruct the common output without the
+examples — Stored-rule hits stay 0. Wiring value-agnostic reuse there (compute
+common output from `task.example_pairs`) is R5. The lowest *unproven* rung is now
+R1: easy000c–i need object-level analysis (color = input color, position fixed),
+which the constant_output matcher correctly does not fire on.
+
+## Iter 2 [CLEAN] — 20260614_150115 — branch test33
+- Probe: easy_a: [15:01:18] Correct:     0 / 9  (0.0%)

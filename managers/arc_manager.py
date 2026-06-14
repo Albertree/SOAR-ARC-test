@@ -61,6 +61,11 @@ class ARCManager:
             os.path.join(self.data_root, f"{task_file}.json"),
             os.path.join(self.data_root, "ARC_AGI", "training", f"{task_hex}.json"),
             os.path.join(self.data_root, "ARC_AGI", "evaluation", f"{task_hex}.json"),
+            # Beginner suites of the current three-phase curriculum (PROMPT.md §2.1):
+            # easy_a is supplied, madeup is loop-authored. ARC_easy is retired but
+            # kept last for backward compatibility with any lingering reference.
+            os.path.join(self.data_root, "ARC_easy_a", f"{task_hex}.json"),
+            os.path.join(self.data_root, "ARC_madeup", f"{task_hex}.json"),
             os.path.join(self.data_root, "ARC_easy", f"{task_hex}.json"),
             os.path.join(self.data_root, f"{task_hex}.json"),
         ]

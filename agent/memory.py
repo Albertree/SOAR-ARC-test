@@ -82,6 +82,16 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
         "times_reused": 0,
     }
 
+    # Canonical {condition, action} surfacing (CLAUDE.md §3.2, docs/RULE_FORMAT.md,
+    # INVARIANTS F4). When the discovered rule carries a condition/action pair,
+    # persist them at the top level so the saved file is a valid {condition,
+    # action} manual — looked up by the fast path, not dead memory. Rules that
+    # still lack a condition (legacy color_mapping etc.) are left as-is; they are
+    # the un-lifted material that R3 anti-unification is meant to retire.
+    if isinstance(rule, dict) and "condition" in rule and "action" in rule:
+        entry["condition"] = rule["condition"]
+        entry["action"] = rule["action"]
+
     filename = f"rule_{next_id:03d}.json"
     path = os.path.join(procedural_memory_root, filename)
     with open(path, "w") as fh:

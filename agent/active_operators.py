@@ -310,8 +310,30 @@ class GeneralizeOperator(Operator):
 
         rule = None
 
+        # R0 (BACKLOG_LOOP.md): value-agnostic COMM-copy. When every example
+        # output is the same grid, the answer is that common output — recognized
+        # by the registered `constant_output` matcher (agent/conditions). This is
+        # checked *before* the legacy strategies so a constant-output task is
+        # solved the intended way — one general {condition, action} rule for the
+        # whole family — rather than mis-generalized into a per-task color_mapping.
+        # The action carries no literal grid (the grid is reconstructed at predict
+        # time from make_grid + coloring), which is what keeps a single rule
+        # covering easy000a, easy000b and every other constant-output task.
+        if self._matches_constant_output(patterns):
+            rule = {
+                "type": "constant_output",
+                "condition": {
+                    "type": "constant_output",
+                    "params": {"min_evidence": 2},
+                    "min_evidence": 2,
+                },
+                "action": {"dsl": "copy_common_output", "args": {}},
+                "confidence": 1.0,
+            }
+
         # Strategy 1: sequential recoloring (e.g., color objects 1, 2, 3, ...)
-        rule = self._try_recolor_sequential(patterns)
+        if rule is None:
+            rule = self._try_recolor_sequential(patterns)
 
         # Strategy 2: simple 1:1 color mapping
         if rule is None:
@@ -322,6 +344,22 @@ class GeneralizeOperator(Operator):
             rule = {"type": "identity", "confidence": 0.0}
 
         wm.s1["active-rules"] = [rule]
+
+    # ---- recognition: delegate to the condition-matcher registry ---------
+
+    @staticmethod
+    def _matches_constant_output(patterns):
+        """True iff the registered `constant_output` matcher fires on the
+        extracted patterns. Thin wrapper so the matcher (agent/conditions) stays
+        the single source of truth for the recognition — GeneralizeOperator does
+        not re-implement the predicate, it consults the registry."""
+        from agent.conditions import match as match_condition
+        try:
+            return match_condition(
+                "constant_output", patterns, {"min_evidence": 2}
+            )
+        except KeyError:
+            return False
 
     # ---- strategy: sequential recoloring --------------------------------
 
@@ -462,6 +500,16 @@ class PredictOperator(Operator):
         rule = active_rules[0]
         predictions = dict(wm.s1.get("predictions") or {})
 
+        # R0 COMM-copy path: a constant-output rule predicts the common example
+        # output (surfaced by ExtractPatternOperator), reconstructed from the two
+        # frozen DSL primitives rather than read from a stored literal. This keeps
+        # the prediction value-agnostic: the same rule, run on a different
+        # constant-output task, yields *that* task's common output.
+        common_grid = None
+        if rule.get("type") == "constant_output":
+            invariant = (wm.s1.get("patterns") or {}).get("output_invariant") or {}
+            common_grid = invariant.get("common_output")
+
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
             if key in predictions:
@@ -469,11 +517,49 @@ class PredictOperator(Operator):
             g0 = test_pair.input_grid
             if g0 is None:
                 continue
-            predicted = self._apply_rule(rule, g0)
+            if rule.get("type") == "constant_output":
+                predicted = (
+                    self._render_common_output(common_grid)
+                    if common_grid is not None
+                    else None
+                )
+            else:
+                predicted = self._apply_rule(rule, g0)
             if predicted is not None:
                 predictions[key] = predicted
 
         wm.s1["predictions"] = predictions
+
+    # ---- COMM-copy rendering via the two frozen DSL primitives -----------
+
+    @staticmethod
+    def _render_common_output(common_grid):
+        """Reconstruct `common_grid` from make_grid + coloring (CLAUDE.md §6.2):
+        a make_grid canvas filled with the background (most-frequent) colour,
+        then one coloring call per non-background cell. No literal grid is stored
+        on the rule, so the constant-output rule stays value-agnostic (R0)."""
+        from procedural_memory.DSL.apply import apply_DSL
+
+        h = len(common_grid)
+        w = len(common_grid[0]) if h else 0
+        if h == 0 or w == 0:
+            return [row[:] for row in common_grid]
+
+        counts = {}
+        for row in common_grid:
+            for v in row:
+                counts[v] = counts.get(v, 0) + 1
+        background = max(counts, key=counts.get)
+
+        out = apply_DSL("make_grid", height=h, width=w, color=background)
+        for r in range(h):
+            for c in range(w):
+                if common_grid[r][c] != background:
+                    out = apply_DSL(
+                        "coloring", out,
+                        selection=(r, c), color=common_grid[r][c],
+                    )
+        return out
 
     # ---- rule application dispatchers ------------------------------------
 
