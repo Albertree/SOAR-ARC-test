@@ -3966,3 +3966,6 @@ each needs a per-cell neighbourhood/projection selector (the first genuinely new
 *recognition* vocabulary, would move P5), not another whole-grid macro schema.
 Also worth a cheap fix: the `save_rule_to_ltm` `len+1` id collision on a deleted
 rule.
+
+## Iter 36 [CLEAN] — 20260614_212340 — branch test33
+- Probe: [21:23:58] Correct:     0 / 3  (0.0%)
