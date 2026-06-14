@@ -4581,3 +4581,6 @@ is data + composition, no operator-line growth, no new matcher).
 obstacles) nor the *histogram/count* family (878187ab — count objects per colour
 and draw bars). A non-bouncing single ray (fill the straight segment from a
 source cell to a target marker) is the smallest defensible next sub-step there.
+
+## Iter 41 [CLEAN] — 20260614_223226 — branch test33
+- Probe: [22:32:46] Correct:     0 / 3  (0.0%)
