@@ -3969,3 +3969,121 @@ rule.
 
 ## Iter 36 [CLEAN] — 20260614_212340 — branch test33
 - Probe: [21:23:58] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 21:50
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_215040.log
+
+---
+## Learning Loop -- 2026-06-14 21:50
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_215043.log
+
+---
+## Learning Loop -- 2026-06-14 21:50
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_215052.log
+
+---
+## Learning Loop -- 2026-06-14 21:55
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 9s
+- Log: logs/learn_20260614_215451.log
+
+---
+## Learning Loop -- 2026-06-14 21:55
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 9s
+- Log: logs/learn_20260614_215503.log
+
+---
+## Learning Loop -- 2026-06-14 21:56
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_215615.log
+
+---
+## Learning Loop -- 2026-06-14 21:56
+
+- Split: None, Tasks: 24
+- Correct: 24 / 24 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 9s
+- Log: logs/learn_20260614_215618.log
+
+## Iter 37 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; probe's 3 sampled tasks are all hard same-size
+*conditional* transforms (diagonal gravity-with-obstacles c9680e90, ray
+projection e5790162/878187ab) — no *small* gap there. The standing nameable gap
+in the object-motion family was the absence of the canonical **gravity / fall**
+target: an object sliding flush against one grid *edge* along a single axis
+(keeping its free coordinate). `fit_target` had `bottom_right` (corner, both
+axes), `offset`, `constant`, `to_anchor` — but no single-axis edge attraction, so
+a task where objects fall from varying rows to the bottom edge keeping their
+column was unsolved (defeats bottom_right/offset/constant; no anchor object).
+
+**Change**:
+- `agent/dsl_expr/motion.py` — added the `to_edge` target *expression* (the §2.5
+  argument-vocabulary growth, in `agent/`, NOT the frozen DSL — no F3). `fit_target`
+  now fits `{"kind":"to_edge","edge":bottom|top|left|right}` when every pair's dst
+  is flush against that edge with the free coordinate kept; tried after the
+  structural corner/translation/constant readings and before relational
+  `to_anchor`, with an `any(...moved)` guard so a static set is never claimed a
+  fall. `target_position` resolves the four edges. Fully contained in motion.py —
+  no `active_operators.py` edit (F8 N/A), no `_try_*` (F2), no new transformation
+  primitive (F3).
+- `data/ARC_madeup/mo_gravity_bottom.json` — authored the minimal task that
+  exposes the gap (single 2×2 object, varying start row+col, falls to bottom edge
+  keeping column; the §2.2.2 sanctioned escalation when a training probe yields no
+  small gap). It folds into the existing `object_motion` rule_002 via stored hit —
+  **covers 20→21, no new rule minted** (the §2.5-3 win: a new capability lifts the
+  family's coverage instead of accreting a covers=1 detector).
+- `tests/test_object_motion.py` — 5 new tests for to_edge (four edges, corner
+  precedence, static-decline, round-trip). 197 pass.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 23/23; 10 rules; rule_002
+covers 20; P1=7.0, P2=7.0.
+**Probe after** : easy_a 9/9, madeup **24/24** (gravity task added & solved via
+object_motion); 10 rules (no new file); rule_002 covers 20→**21**; P1 7.0→**7.1**,
+P2 7.0→**7.1**.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1
++0.1, P2 +0.1**; the object-motion family now expresses single-axis edge gravity
+value-agnostically (re-fitted per task, never stored as a literal).
+
+**Next gap (note for future iter)**: edge-gravity is still *single-object* (the
+fast path selects one object). The probe's real misses (c9680e90/e5790162) are
+*multi-object* gravity/ray — each object independently mapped — which needs the
+place_object machinery generalized from select-one to map-all (a multi-object
+apply), the genuinely new structural step. Also still open: the latent
+`save_rule_to_ltm` `len+1` id-collision on a deleted rule (iter-36 note).

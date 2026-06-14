@@ -89,6 +89,53 @@ def test_target_position_roundtrip():
     assert target_position({"kind": "constant", "pos": [0, 2]}, (3, 3), obj) == (0, 2)
 
 
+# --- edge target (to_edge): the canonical gravity / fall pattern --------------
+
+def test_fit_to_edge_bottom():
+    # objects fall to the bottom edge keeping their column; start rows and columns
+    # vary so neither bottom_right (column not snapped to W-ow), offset (fall
+    # distance differs) nor constant (destinations differ) can explain it.
+    desc = fit_target([
+        _m((0, 1), (4, 1), oh=2, ow=2),
+        _m((1, 3), (4, 3), oh=2, ow=2),
+        _m((0, 0), (4, 0), oh=2, ow=2),
+    ])
+    assert desc == {"kind": "to_edge", "edge": "bottom"}
+
+
+def test_fit_to_edge_each_axis():
+    assert fit_target([_m((1, 2), (0, 2)), _m((3, 4), (0, 4))]) == \
+        {"kind": "to_edge", "edge": "top"}
+    assert fit_target([_m((1, 2), (1, 0)), _m((3, 4), (3, 0))]) == \
+        {"kind": "to_edge", "edge": "left"}
+    # right edge: free row kept, column flush to W-ow (=5 for ow=1, W=6)
+    assert fit_target([_m((1, 2), (1, 5)), _m((3, 4), (3, 5))]) == \
+        {"kind": "to_edge", "edge": "right"}
+
+
+def test_fit_to_edge_loses_to_simpler_corner():
+    # when the object also lands flush bottom-right, the corner reading wins:
+    # to_edge is tried only after bottom_right (more structural, both axes).
+    desc = fit_target([_m((1, 1), (5, 5)), _m((1, 4), (5, 5))])
+    assert desc == {"kind": "bottom_right"}
+
+
+def test_fit_to_edge_declines_static():
+    # an unmoved object already at the bottom must not be claimed as a *fall*:
+    # the `any(... moved)` guard keeps to_edge out, so the static set falls
+    # through to the trivial offset reading (delta 0,0), never to_edge.
+    desc = fit_target([_m((4, 1), (4, 1), oh=2, ow=2)])
+    assert desc.get("kind") != "to_edge"
+
+
+def test_target_position_to_edge():
+    obj = unique_object(objects_of([[0, 0, 0], [0, 5, 0], [0, 0, 0]]))  # bbox (1,1)
+    assert target_position({"kind": "to_edge", "edge": "bottom"}, (3, 3), obj) == (2, 1)
+    assert target_position({"kind": "to_edge", "edge": "top"}, (3, 3), obj) == (0, 1)
+    assert target_position({"kind": "to_edge", "edge": "left"}, (3, 3), obj) == (1, 0)
+    assert target_position({"kind": "to_edge", "edge": "right"}, (3, 3), obj) == (1, 2)
+
+
 # --- relational target (to_anchor): the destination is another object's position --
 
 def _pix(r, c, color=4):

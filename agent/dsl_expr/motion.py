@@ -103,6 +103,25 @@ def fit_target(motions):
         r, c = next(iter(dsts))
         return {"kind": "constant", "pos": [r, c]}
 
+    # to_edge: the object slides flush against one grid *edge* along a single
+    # axis, keeping its other coordinate (the canonical gravity / fall / attraction
+    # pattern). The free coordinate equals the source's, so it is a pure attraction
+    # toward that edge across varying start positions and varying fall distances —
+    # which is exactly what defeats `bottom_right` (a *corner*, both axes snapped),
+    # `offset` (one fixed delta) and `constant` (one fixed destination). It is a
+    # grid relation, so it is tried after those structural readings but before the
+    # object-relational `to_anchor`. The `any(... moved)` guard keeps it from
+    # claiming a static (no-move) set as a degenerate "already at the edge" fall.
+    if any(m["src"] != m["dst"] for m in motions):
+        for edge, dst_of in (
+            ("bottom", lambda m: (m["H"] - m["oh"], m["src"][1])),
+            ("top",    lambda m: (0,                m["src"][1])),
+            ("left",   lambda m: (m["src"][0],       0)),
+            ("right",  lambda m: (m["src"][0],        m["W"] - m["ow"])),
+        ):
+            if all(m["dst"] == dst_of(m) for m in motions):
+                return {"kind": "to_edge", "edge": edge}
+
     # to_anchor: the object lands on *another object*'s position — the relational
     # target (§2.5-1). The destination is named by a fitted *selector* over the
     # other (unselected) objects (§2.5-2b), so the anchor is identified even when
@@ -271,6 +290,18 @@ def target_position(descriptor, grid_dims, obj, objects=None):
     if kind == "constant":
         r, c = descriptor["pos"]
         return (r, c)
+    if kind == "to_edge":
+        # fall flush against one grid edge along one axis, free coordinate kept.
+        edge = descriptor["edge"]
+        if edge == "bottom":
+            return (h - oh, c0)
+        if edge == "top":
+            return (0, c0)
+        if edge == "left":
+            return (r0, 0)
+        if edge == "right":
+            return (r0, w - ow)
+        return None
     if kind == "to_anchor":
         if not objects:
             return None
