@@ -186,9 +186,10 @@ def test_output_shape_object_count_needs_count():
 
 # --- matcher ---------------------------------------------------------------
 
-def _motion(n=2, target=None, out_shape=None, selector=None, **overrides):
+def _motion(n=2, target=None, out_shape=None, selector=None, scene="drop",
+            **overrides):
     pair = {
-        "single_out": True, "selected_ok": True,
+        "scene": scene, "selected_ok": True,
         "color_preserved": True, "size_preserved": True,
         "grid_size_preserved": True,
     }
@@ -199,6 +200,7 @@ def _motion(n=2, target=None, out_shape=None, selector=None, **overrides):
         "selector": selector if selector is not None else {"kind": "unique"},
         "target": target if target is not None else {"kind": "bottom_right"},
         "out_shape": out_shape if out_shape is not None else {"kind": "same"},
+        "scene": scene,
     }}
 
 
@@ -232,6 +234,18 @@ def test_matcher_declines_without_selector():
     p = _motion(2)
     p["object_motion"]["selector"] = None
     assert match_condition("object_motion", p) is False
+
+
+def test_matcher_declines_without_scene():
+    # absent a fitted scene (drop/preserve), the fate of the unselected objects is
+    # undetermined, so the matcher declines rather than guessing a single-object drop
+    p = _motion(2)
+    p["object_motion"]["scene"] = None
+    assert match_condition("object_motion", p) is False
+
+
+def test_matcher_fires_for_preserve_scene():
+    assert match_condition("object_motion", _motion(2, scene="preserve")) is True
 
 
 def test_matcher_rejects_unidentified_object():
@@ -536,6 +550,68 @@ def test_pipeline_solves_multi_object_odd_color():
     ro = _check_solved(MULTI_ODD_COLOR, "multi_odd_color").s1["active-rules"][0]
     rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
     assert ro == rc
+
+
+# multi-object OUTPUT: two objects in, the LARGEST moves to the bottom-right
+# corner while the *other* object is preserved unchanged. The output therefore
+# holds TWO objects (not one) — the §2.1 multi-object-output concept. Solving it
+# the intended way needs the fitted `scene = preserve` expression, not a literal.
+# Mirrors data/ARC_madeup/mo_preserve_others.json.
+MULTI_PRESERVE = {
+    "train": [
+        ([[3, 3, 0, 0, 4], [3, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 4], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 3, 3], [0, 0, 0, 3, 0]]),
+        ([[0, 0, 0, 0, 0], [0, 2, 2, 0, 0], [0, 2, 2, 0, 0],
+          [0, 0, 0, 0, 0], [7, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 2, 2], [7, 0, 0, 2, 2]]),
+    ],
+    "test": [
+        ([[0, 0, 0, 0, 8], [0, 0, 0, 0, 0], [6, 6, 0, 0, 0],
+          [6, 0, 0, 0, 0], [0, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 8], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 6, 6], [0, 0, 0, 6, 0]]),
+    ],
+}
+
+
+def test_identify_move_drop():
+    # a lone output object matched back to its input object -> drop scene
+    objs_in = objects_of([[3, 3, 0, 0, 0], [3, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+                          [0, 0, 0, 4, 0], [0, 0, 0, 0, 0]])
+    objs_out = objects_of([[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+                           [0, 0, 0, 3, 3], [0, 0, 0, 3, 0]])
+    sel, obj_out, scene = ExtractPatternOperator._identify_move(objs_in, objs_out)
+    assert scene == "drop"
+    assert color_of(objs_in[sel]) == 3   # the larger blob moved; the pixel dropped
+
+
+def test_identify_move_preserve():
+    # two objects in, two out: one moved (colour 3), the other (colour 4) unchanged
+    objs_in = objects_of(MULTI_PRESERVE["train"][0][0])
+    objs_out = objects_of(MULTI_PRESERVE["train"][0][1])
+    sel, obj_out, scene = ExtractPatternOperator._identify_move(objs_in, objs_out)
+    assert scene == "preserve"
+    assert color_of(objs_in[sel]) == 3   # the blob is the one that moved
+    assert color_of(obj_out) == 3
+
+
+def test_identify_move_declines_on_ambiguous_preserve():
+    # if NO object stays put (both moved), the preserve match is ambiguous -> decline
+    objs_in = objects_of([[2, 0, 0], [0, 0, 0], [0, 0, 3]])
+    objs_out = objects_of([[0, 0, 3], [0, 0, 0], [2, 0, 0]])
+    sel, obj_out, scene = ExtractPatternOperator._identify_move(objs_in, objs_out)
+    assert (sel, obj_out, scene) == (None, None, None)
+
+
+def test_pipeline_solves_multi_object_preserve():
+    # the multi-object-output (preserve) task solves end-to-end, and via the SAME
+    # rule object as the single-object move family (no accretion; §2.5-3).
+    rp = _check_solved(MULTI_PRESERVE, "multi_preserve").s1["active-rules"][0]
+    rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
+    assert rp == rc
 
 
 def _solve(spec, name="t"):

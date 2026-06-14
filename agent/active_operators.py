@@ -224,6 +224,7 @@ class ExtractPatternOperator(Operator):
         motions = []     # geometry feeding fit_target, only for clean pairs
         shapes = []      # in/out grid dims feeding fit_output_shape (same pairs)
         selections = []  # (objects, selected idx) feeding fit_selector
+        scenes = []      # per-pair scene ("drop"/"preserve"), clean pairs only
         for pair in task.example_pairs:
             g0, g1 = pair.input_grid, pair.output_grid
             if g0 is None or g1 is None:
@@ -232,21 +233,16 @@ class ExtractPatternOperator(Operator):
             objs_in = objects_of(g0.raw)
             objs_out = objects_of(g1.raw)
 
-            # The output is a single object — the one the move acted on. Identify
-            # *which* input object it is by matching colour-set + size (both
-            # preserved by a move), so a multi-object input can name which object
-            # moved without a literal index (§2.5-2b). An absent / ambiguous match
-            # leaves the selection undefined and the pair declines.
-            obj_out = objs_out[0] if len(objs_out) == 1 else None
-            sel_idx = None
-            if obj_out is not None:
-                key = (tuple(obj_out["color_set"]), obj_out["size"])
-                cands = [
-                    i for i, o in enumerate(objs_in)
-                    if (tuple(o["color_set"]), o["size"]) == key
-                ]
-                if len(cands) == 1:
-                    sel_idx = cands[0]
+            # Identify *which* input object moved and what becomes of the
+            # *unselected* objects — both read from the example comparison, never a
+            # literal index (§2.5-2b / §2.1 multi-object selection + output). The
+            # moved object is matched by colour-set + size (both preserved by a
+            # move); `scene` names whether the others are dropped (output holds only
+            # the moved object) or preserved (they survive unchanged). An absent /
+            # ambiguous match leaves the selection undefined and the pair declines.
+            sel_idx, obj_out, scene = ExtractPatternOperator._identify_move(
+                objs_in, objs_out
+            )
             obj_in = objs_in[sel_idx] if sel_idx is not None else None
 
             color_preserved = (
@@ -261,7 +257,7 @@ class ExtractPatternOperator(Operator):
             grid_size_preserved = g0.height == g1.height and g0.width == g1.width
 
             entry = {
-                "single_out": obj_out is not None,
+                "scene": scene,
                 "selected_ok": obj_in is not None,
                 "color_preserved": color_preserved,
                 "size_preserved": size_preserved,
@@ -302,19 +298,22 @@ class ExtractPatternOperator(Operator):
                     "count": len(objs_in),
                 })
                 selections.append({"objects": objs_in, "selected": sel_idx})
+                scenes.append(scene)
 
             pairs.append(entry)
 
-        # Fit selector + target + output-shape expressions only if every recorded
-        # pair is clean (so a task with any dirty pair declines rather than
+        # Fit selector + target + output-shape + scene expressions only if every
+        # recorded pair is clean (so a task with any dirty pair declines rather than
         # over-generalising). Each is an independent value-agnostic argument
-        # expression — which object moves (selector), where it lands (target),
-        # and the output shape — letting one rule cover the single- and
-        # multi-object move families alike.
+        # expression — which object moves (selector), where it lands (target), the
+        # output shape, and whether the unselected objects survive (scene) — letting
+        # one rule cover the single- and multi-object move families alike. `scene`
+        # fits only when every clean pair agrees (drop *or* preserve, never a mix).
         clean = bool(motions) and len(motions) == len(pairs)
         target = fit_target(motions) if clean else None
         out_shape = fit_output_shape(shapes) if clean else None
         selector = fit_selector(selections) if clean else None
+        scene = scenes[0] if (clean and len(set(scenes)) == 1) else None
 
         return {
             "evidence_count": len(pairs),
@@ -322,7 +321,65 @@ class ExtractPatternOperator(Operator):
             "target": target,
             "out_shape": out_shape,
             "selector": selector,
+            "scene": scene,
         }
+
+    @staticmethod
+    def _identify_move(objs_in, objs_out):
+        """Identify which input object the move acted on and what becomes of the
+        *unselected* objects, reading both from the input→output comparison (P3/P4)
+        rather than a literal. Returns ``(selected_index, output_object, scene)``
+        where ``scene`` is:
+
+          * ``"drop"``     — the output holds only the moved object; every other
+            input object vanishes (easy000c–i and the size/position/colour-selected
+            multi-object tasks).
+          * ``"preserve"`` — the output keeps every *other* input object unchanged
+            (same pixels at the same place) and exactly one object moved (the
+            §2.1 multi-object-*output* concept).
+
+        Returns ``(None, None, None)`` when the pair is not a clean single-object
+        move, so the pair declines rather than guessing."""
+        # drop: a lone output object, matched back to one input object by the
+        # colour-set + size a move preserves.
+        if len(objs_out) == 1:
+            obj_out = objs_out[0]
+            key = (tuple(obj_out["color_set"]), obj_out["size"])
+            cands = [
+                i for i, o in enumerate(objs_in)
+                if (tuple(o["color_set"]), o["size"]) == key
+            ]
+            if len(cands) == 1:
+                return cands[0], obj_out, "drop"
+            return None, None, None
+
+        # preserve: same object count in and out; every object but one is
+        # byte-identical (same pixels at the same coordinates → it did not move),
+        # and exactly one input object has no in-place twin (it moved) and reappears
+        # as the one unmatched output object with the same colour-set + size. That
+        # unmatched input object is the selected one; the rest survive untouched.
+        if len(objs_in) == len(objs_out) and len(objs_in) >= 2:
+            used_out = set()
+            moved_in = []
+            for i, oi in enumerate(objs_in):
+                twin = next(
+                    (j for j, oj in enumerate(objs_out)
+                     if j not in used_out and oj["pixels"] == oi["pixels"]),
+                    None,
+                )
+                if twin is None:
+                    moved_in.append(i)
+                else:
+                    used_out.add(twin)
+            moved_out = [j for j in range(len(objs_out)) if j not in used_out]
+            if len(moved_in) == 1 and len(moved_out) == 1:
+                oi = objs_in[moved_in[0]]
+                oj = objs_out[moved_out[0]]
+                if ((tuple(oi["color_set"]), oi["size"])
+                        == (tuple(oj["color_set"]), oj["size"])):
+                    return moved_in[0], oj, "preserve"
+
+        return None, None, None
 
     # ---- internal helpers ------------------------------------------------
 
@@ -691,6 +748,7 @@ class PredictOperator(Operator):
             motion_target = motion.get("target")
             motion_out_shape = motion.get("out_shape")
             motion_selector = motion.get("selector")
+            motion_scene = motion.get("scene")
 
         for i, test_pair in enumerate(task.test_pairs):
             key = f"test_{i}"
@@ -707,7 +765,8 @@ class PredictOperator(Operator):
                 )
             elif rule.get("type") == "object_motion":
                 predicted = self._render_object_motion(
-                    g0, motion_target, motion_out_shape, motion_selector
+                    g0, motion_target, motion_out_shape, motion_selector,
+                    motion_scene,
                 )
             else:
                 predicted = self._apply_rule(rule, g0)
@@ -770,20 +829,24 @@ class PredictOperator(Operator):
 
     @staticmethod
     def _render_object_motion(input_grid, target_desc, out_shape_desc=None,
-                              selector_desc=None):
+                              selector_desc=None, scene_desc=None):
         """Place the object named by `selector_desc` (the selector expression
         fitted from this task's example comparison — unique / largest / smallest)
         at the destination named by `target_desc` (corner / constant / translation),
         on an output canvas whose shape is named by `out_shape_desc` (same /
-        input+delta / constant — defaults to the input shape when absent). Built
-        only from make_grid + coloring (CLAUDE.md §6.2): start a fresh background
-        canvas at the output shape (which also drops every *unselected* object) and
-        repaint each selected-object cell, translated so its bbox top-left lands at
-        the resolved destination. No literal coordinate, grid size, or object index
-        lives on the rule — all are expressions resolved per input from G0 alone
-        (P5) — so one rule serves every grid size, move variant, resize, and
-        object count. Declines (returns None) if the selector picks no object or
-        the move would push the object off the output grid."""
+        input+delta / constant — defaults to the input shape when absent). The fitted
+        `scene_desc` fixes the fate of the *unselected* objects: ``"drop"`` (the
+        default / legacy behaviour — the canvas holds only the moved object) or
+        ``"preserve"`` (every other object is repainted at its original place, the
+        §2.1 multi-object-output concept). Built only from make_grid + coloring
+        (CLAUDE.md §6.2): a fresh background canvas at the output shape, the
+        preserved objects (if any) repainted in place, then each selected-object
+        cell repainted translated so its bbox top-left lands at the resolved
+        destination. No literal coordinate, grid size, or object index lives on the
+        rule — all are expressions resolved per input from G0 alone (P5) — so one
+        rule serves every grid size, move variant, resize, object count, and the
+        drop/preserve scene. Declines (returns None) if the selector picks no object
+        or any painted cell would fall off the output grid."""
         from procedural_memory.DSL.apply import apply_DSL
         from agent.dsl_expr import (
             objects_of, select_object, background_of, target_position,
@@ -833,6 +896,18 @@ class PredictOperator(Operator):
         dr, dc = dst[0] - r0, dst[1] - c0
 
         out = apply_DSL("make_grid", height=out_h, width=out_w, color=bg)
+
+        # preserve scene: repaint every *unselected* object at its original place
+        # (read from G0, P5) before the moved object lands on top.
+        if scene_desc == "preserve":
+            for other in objs:
+                if other is obj:
+                    continue
+                for (r, c), color in other["pixels"].items():
+                    if not (0 <= r < out_h and 0 <= c < out_w):
+                        return None  # preserved object falls off the output → decline
+                    out = apply_DSL("coloring", out, selection=(r, c), color=color)
+
         for (r, c), color in obj["pixels"].items():
             nr, nc = r + dr, c + dc
             if not (0 <= nr < out_h and 0 <= nc < out_w):

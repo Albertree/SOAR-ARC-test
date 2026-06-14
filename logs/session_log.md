@@ -1,6 +1,61 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 12 — 2026-06-14 — branch test33
+
+**Diagnosis**: In `madeup` (authored 6/7) every §2.1 concept the object-motion
+family reads is a *scalar* (target / output-shape / selector), and all produce a
+*single-object* output — the iter-11 next-gap flagged the untouched structural
+frontier: a task whose output **keeps the unselected objects** (output cardinality
+> 1). `_object_motion` identified the moved object only when `len(objs_out) == 1`,
+so any multi-object output declined → fell to identity. Smallest defensible step:
+add the fitted **scene** expression (drop vs preserve) so the same one rule names
+what becomes of the *other* objects, exposed by one authored task.
+
+**Change**:
+- `agent/active_operators.py` — new `ExtractPatternOperator._identify_move(objs_in,
+  objs_out)` returns `(sel_idx, obj_out, scene)`: the existing single-output match
+  is `scene="drop"`; a new branch recognises `scene="preserve"` (same object count
+  in/out, every object but one byte-identical in place, exactly one moved). A fitted
+  `scene` (all clean pairs must agree) joins target/out_shape/selector in the motion
+  dict. `_render_object_motion` gains a `scene_desc` param: on `"preserve"` it
+  repaints every unselected object at its G0 position (P5) before the moved object
+  lands, declining if any cell falls off-grid. Rule dict unchanged
+  (`place_object`, `args={}`) so it MERGES — no new family.
+- `agent/conditions/object_motion.py` — matcher gate drops the per-pair `single_out`
+  requirement (multi-object outputs are now valid) and adds a motion-level
+  `scene is not None` requirement (the fate of the others must be named, not
+  guessed). Docstring updated. (F8 pairing for the active_operators edit.)
+- `data/ARC_madeup/mo_preserve_others.json` (NEW, F1-exempt) — 2 objects in, the
+  `largest` moves to the bottom-right corner, the other is preserved unchanged;
+  colours differ per pair (value-agnostic). Confirmed it failed → identity before
+  the fix (declined: 2 output objects).
+- `tests/test_object_motion.py` — `_motion` helper carries `scene`; +6 tests
+  (matcher needs scene / fires for preserve; `_identify_move` drop/preserve/ambiguous;
+  end-to-end preserve solves via the SAME rule object as easy000c).
+
+**Probe before**: madeup 6/6; easy_a 9/9; rules=2; rule_002 covers=13; P1=P2=7.5;
+71 tests.
+**Probe after** : madeup 7/7 (mo_preserve_others *merged* into object_motion);
+easy_a 9/9; rules=2 (no accretion); rule_002 covers=14; P1=P2=8.0; 77 tests pass.
+
+**Invariants**: forbidden=none (check_invariants CLEAN); positives=P1 +0.5
+(7.5→8.0), P2 +0.5 (7.5→8.0), P3/P4/P5 ±0, P6 +75 lines (identify + preserve
+render; net add, no new matcher or primitive). F8 satisfied (active_operators
+paired with conditions/object_motion.py).
+
+**Next gap (note for future iter)**: object_motion now reads selector
+(size∪position∪colour), target, output-shape (same/delta/constant/extent/count)
+and scene (drop/preserve) — a broad spread, 7 authored madeup tasks, graduation
+gate met pending the K=5 clean streak. The preserve render still assumes the
+*other* objects are stationary; a task where >1 object moves, or where the
+unselected ones transform too, is untouched. The standing big-ticket frontier is
+unchanged: **R3** (P3=0.0 — `unify()` implemented but `save_rule_to_ltm` merges by
+exact equality, args={} everywhere ⇒ no divergent skeleton to lift; needs a
+Slow-path synthesizer) and **R5** (object_motion declines the fast path, stored
+hits 0).
+
+---
 ## Iter 11 — 2026-06-14 — branch test33
 
 **Diagnosis**: In the `madeup` phase (authored 5/7) the remaining §2.1 concept
@@ -906,3 +961,66 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 11 [CLEAN] — 20260614_162915 — branch test33
 - Probe: madeup: [16:29:21] Correct:     5 / 5  (100.0%) | easy_a: [16:29:18] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 16:37
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_163657.log
+
+---
+## Learning Loop -- 2026-06-14 16:37
+
+- Split: None, Tasks: 6
+- Correct: 6 / 6 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_163700.log
+
+---
+## Learning Loop -- 2026-06-14 16:45
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_164516.log
+
+---
+## Learning Loop -- 2026-06-14 16:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_164519.log
+
+---
+## Learning Loop -- 2026-06-14 16:45
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_164527.log
+
+---
+## Learning Loop -- 2026-06-14 16:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_164530.log
+
+## Iter 12 [CLEAN] — 20260614_163657 — branch test33
+- Probe: madeup: [16:37:03] Correct:     6 / 6  (100.0%) | easy_a: [16:37:00] Correct:     9 / 9  (100.0%)

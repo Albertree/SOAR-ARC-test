@@ -22,7 +22,7 @@ Reads the `object_motion` signal surfaced by ExtractPatternOperator::
     patterns["object_motion"] = {
         "evidence_count": int,
         "pairs": [ {
-            "single_out":  bool,  # exactly one object in G1 (the moved one)
+            "scene":       "drop" | "preserve" | None,  # fate of the *other* objects
             "selected_ok": bool,  # the moved object was identified in G0
             "color_preserved": bool,
             "size_preserved":  bool,
@@ -32,7 +32,15 @@ Reads the `object_motion` signal surfaced by ExtractPatternOperator::
         "selector":  {"kind": ...} | None,  # fitted selector expression, or None
         "target":    {"kind": ...} | None,  # fitted target expression, or None
         "out_shape": {"kind": ...} | None,  # fitted output-shape expr, or None
+        "scene":     "drop" | "preserve" | None,  # fitted output-scene, or None
     }
+
+The output need not be a single object: a *move with the other objects preserved*
+(the §2.1 multi-object-output concept) keeps every unselected object unchanged and
+moves one. Which objects survive is itself a fitted, value-agnostic expression
+(`scene`: drop the others, or preserve them) read from the example comparison, so
+the same one matcher covers the drop family (output = the moved object alone) and
+the preserve family (output = the moved object atop the untouched rest).
 
 The grid size need not be preserved: a resizing move (easy000i, 6×6 → 5×5) is
 still one object_motion as long as the output shape is itself describable by a
@@ -75,18 +83,20 @@ def object_motion(patterns: dict, params: dict | None = None) -> bool:
         if not isinstance(p, dict):
             return False
         if not (
-            p.get("single_out")
-            and p.get("selected_ok")
+            p.get("selected_ok")
             and p.get("color_preserved")
             and p.get("size_preserved")
         ):
             return False
 
-    # A selector, a target, and an output-shape expression must all have been
-    # fitted across the pairs; absent any, the move is not value-agnostically
-    # describable and we decline rather than guess.
+    # A selector, a target, an output-shape AND a scene expression must all have
+    # been fitted across the pairs; absent any, the move is not value-agnostically
+    # describable and we decline rather than guess. The scene fixes the fate of the
+    # unselected objects (drop vs preserve) — required so the multi-object-output
+    # case is named explicitly rather than mis-rendered as a single-object drop.
     return (
         motion.get("selector") is not None
         and motion.get("target") is not None
         and motion.get("out_shape") is not None
+        and motion.get("scene") is not None
     )
