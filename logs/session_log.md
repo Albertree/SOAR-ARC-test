@@ -6958,3 +6958,103 @@ a real Q-B3-blocked gap), so NO `_LOOP_COMPLETE.md`.
 
 ## Iter 63 [NEUTRAL] — 20260615_060201 — branch test33
 - Probe: [06:02:22] Correct:     0 / 3  (0.0%)
+
+> STAGNATION at iter 63 — 5 consecutive neutral iters.
+
+---
+## Learning Loop -- 2026-06-15 06:18
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_061821.log
+
+---
+## Learning Loop -- 2026-06-15 06:18
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_061825.log
+
+---
+## Learning Loop -- 2026-06-15 06:18
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 24 -> 24 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_061835.log
+
+## Iter 64 — 2026-06-15 — branch test33 — no defensible step found (analysis only)
+
+**Diagnosis**: Training probe 0/3 (c9680e90/878187ab/e5790162 — hard, expected);
+easy_a 9/9 + madeup 27/27 regression guards hold. 6th consecutive neutral. iter63's
+next-gap nominated two non-open-question levers worth a swing: compose **panel-SELECT**
+(pick the odd-one-out / content-distinguished panel of a separator-split grid — distinct
+from iter62's REFUTED panel-*split* fixed-half) and **largest-single-colour-rectangle**
+extraction. I attacked both, plus a fresh failing-task profile to check for any untapped
+general mass.
+
+**What I tested (fresh, read-only, full 1000-task scan + held-out test)**:
+- `scripts/probe_panel_select.py` (NEW, kept): panel-SELECT as a compose stage-1 — split
+  the input into equal panels along uniform single-colour separator lines, then SELECT one
+  panel by 5 value-agnostic selectors {odd_one_out, densest, sparsest, most_colours,
+  fewest_colours}; accept only if (selected panel == output) OR a single-step stage-2
+  re-fits, AND the same program reproduces held-out test. Result: split *applies* to 43
+  tasks (odd_one_out) but **0** currently-failing folds across ALL 5 selectors, 0 held-out.
+  **panel-SELECT REFUTED** (same verdict as iter62's panel-split).
+- Largest-rectangle extraction: read the crop schema — `_CROP_SELECTORS = (content,
+  largest, smallest, odd_color, unique_size)` already covers "largest same-colour object
+  bbox" and is ALSO already a compose stage-1 reduction (`_STAGE1_REDUCTIONS`). So this
+  lever is **already in the system**; no distinct ≥2 slice to add.
+- `scripts/probe_window_select.py` (NEW, kept): the cleaner generalization — among failing
+  tasks whose output is a contiguous *window* of the input, try NEW value-agnostic
+  block selectors {odd_block, common_block, tile_unit} that split into equal blocks
+  WITHOUT requiring separators (so panel-select missed them). Result: **0** folds, 0
+  held-out across all three. REFUTED.
+- `scripts/probe_fail_profile.py` (NEW, kept): profiled the 871 currently-failing tasks.
+  same-dims 625 (add-only bg→colour superset **226**; pure-recolour footprint-fixed
+  **184**); smaller 183; larger 49; varies 11; output-is-a-subgrid-of-input **39**.
+
+**Why no ≥2 slice exists (root cause)**: the remaining failing mass decomposes into
+(a) **184 pure-recolour** = the object-correspondence corpus, established Q-B3-blocked
+iter63 (per-task matching-key invention = the design's sole 本질적 open question; must NOT
+invent — `BACKLOG_LOOP.md §5`); (b) **226 add-only fill** — iter59 already probed 5 fresh
+fill families to FULL-reproduction 0; (c) **39 output-is-a-subgrid** — crop's 5 selectors
++ the 3 new block selectors all miss them, so the window is named per-task heterogeneously
+(drifts into the same correspondence/Q-B3 territory); (d) 183 smaller / 49 larger are
+mostly multi-step or correspondence. No fixed (selector/mechanism) folds ≥2 of these with
+held-out transfer. The two iter63-nominated compose widenings are now both closed
+(panel-SELECT refuted; rectangle ≈ existing crop).
+
+**Change**: none to the system. Kept three read-only diagnostics under `scripts/`
+(`probe_panel_select.py`, `probe_window_select.py`, `probe_fail_profile.py`) so iter65+
+does not re-scan these refuted hypotheses and has a standing failing-task profiler.
+
+**Probe before**: training 0/3, 24 rules, sum-covers 147, P3 0.833.
+**Probe after** : unchanged (no commit to the system).
+
+**Invariants**: forbidden=none (no system code touched; only read-only scripts/ added),
+positives=no deltas (intentional no-op; checker verdict NEUTRAL).
+
+**Next gap (note for future iter)**: the compose-stage1 / single-step / block-selector
+frontier is now PROBED-EXHAUSTED (crop/dihedral/dedup built; block_reduce/trim_border/
+panel-split/panel-select/odd_block/common_block/tile_unit all refuted at 0 held-out folds).
+The remaining failing mass is overwhelmingly **Q-B3 object-correspondence** (184 recolour +
+the heterogeneous 39 subgrid + much of smaller/larger) — design-blocked, must not invent —
+or add-only fill already probed-exhausted (226, iter59). Convergence is now NEAR: the one
+thing left to rule out before a defensible `_LOOP_COMPLETE` is whether the **226 add-only
+fill** cluster hides any ≥2-fold mechanism beyond the 5 iter59 families (e.g. recurrence/
+denoise that is add-only) — iter65 should probe that cluster directly; if it too folds 0,
+the honest-termination criteria (`BACKLOG_LOOP.md §7`: remaining = open-question-blocked)
+are met and `_LOOP_COMPLETE.md` becomes defensible. Not writing it this iter — that last
+cluster is untested.
+
+## Iter 64 [NEUTRAL] — 20260615_061821 — branch test33
+- Probe: [06:18:41] Correct:     0 / 3  (0.0%)
