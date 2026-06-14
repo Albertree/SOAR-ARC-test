@@ -259,6 +259,53 @@ def test_fit_selector_none_when_inconsistent():
                          {"objects": objs, "selected": small_idx}]) is None
 
 
+def test_select_object_positional_edges():
+    # one pixel in each corner-ish position; bbox edge extremes name each one
+    grid = [[0, 4, 0],
+            [2, 0, 3],
+            [0, 5, 0]]
+    objs = objects_of(grid)
+    assert color_of(select_object(objs, {"kind": "topmost"})) == 4      # min row
+    assert color_of(select_object(objs, {"kind": "bottommost"})) == 5   # max row
+    assert color_of(select_object(objs, {"kind": "leftmost"})) == 2     # min col
+    assert color_of(select_object(objs, {"kind": "rightmost"})) == 3    # max col
+
+
+def test_select_object_positional_declines_on_tie():
+    # two pixels share the top row -> topmost is ambiguous, so it declines
+    grid = [[2, 0, 3], [0, 0, 0], [0, 5, 0]]
+    objs = objects_of(grid)
+    assert select_object(objs, {"kind": "topmost"}) is None
+
+
+def test_fit_selector_topmost_when_size_fails():
+    # The moved object is the topmost on every pair but NOT a size extreme: in the
+    # first pair it is the smallest, in the second the largest, so neither size
+    # criterion fits and only `topmost` survives -- the exact gap the size-only
+    # vocabulary left (mirrors data/ARC_madeup/mo_select_topmost.json).
+    p1 = objects_of([[4, 0, 0],        # size-1 pixel, top row 0
+                     [0, 0, 0],
+                     [2, 2, 2]])       # size-3 blob, top row 2
+    p2 = objects_of([[5, 5, 5],        # size-3 blob, top row 0
+                     [0, 0, 0],
+                     [0, 0, 6]])       # size-1 pixel, top row 2
+    top1 = min(range(len(p1)), key=lambda i: p1[i]["bbox"][0])
+    top2 = min(range(len(p2)), key=lambda i: p2[i]["bbox"][0])
+    sel = fit_selector([{"objects": p1, "selected": top1},
+                        {"objects": p2, "selected": top2}])
+    assert sel == {"kind": "topmost"}
+
+
+def test_fit_selector_prefers_size_over_position():
+    # when the moved object IS a size extreme on every pair, the size criterion is
+    # tried first (more structural) so position never claims a size-describable move
+    objs = objects_of([[5, 5, 0], [5, 0, 0], [0, 0, 1]])
+    big_idx = max(range(len(objs)), key=lambda i: objs[i]["size"])
+    sel = fit_selector([{"objects": objs, "selected": big_idx},
+                        {"objects": objs, "selected": big_idx}])
+    assert sel == {"kind": "largest"}
+
+
 # --- end-to-end via the real pipeline operators ----------------------------
 
 class _Grid:

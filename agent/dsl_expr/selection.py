@@ -103,10 +103,30 @@ def unique_object(objects):
 # itself an *argument expression*, fitted from the example comparison and computed
 # at test time from G0 alone (P5) — never a stored literal index. The vocabulary
 # below is the smallest set of input-only criteria that can name the acted-on
-# object: the sole one (`unique`) or a size extreme (`largest` / `smallest`).
-# New criteria are added here (the growing LHS), never as transformations (F3).
+# object: the sole one (`unique`), a size extreme (`largest` / `smallest`), or a
+# *position* extreme (`topmost` / `bottommost` / `leftmost` / `rightmost`). Size
+# and position are orthogonal selection dimensions — a task whose acted-on object
+# is neither the largest nor the smallest (e.g. several equal-sized blobs, the top
+# one moves) can only be named positionally, which is exactly the gap the size
+# selectors leave. New criteria are added here (the growing LHS), never as
+# transformations (F3).
 
-_SELECTOR_KINDS = ("unique", "largest", "smallest")
+_SELECTOR_KINDS = (
+    "unique",
+    "largest", "smallest",
+    "topmost", "bottommost", "leftmost", "rightmost",
+)
+
+# Each position selector reads one edge of an object's bounding box; the extreme
+# of that edge across the objects names the picked one. topmost/leftmost take the
+# minimum (closest to the origin), bottommost/rightmost the maximum.
+#   bbox = (row_min, col_min, row_max, col_max)
+_POSITION_EDGE = {
+    "topmost":    (0, False),  # min row_min
+    "bottommost": (2, True),   # max row_max
+    "leftmost":   (1, False),  # min col_min
+    "rightmost":  (3, True),   # max col_max
+}
 
 
 def _argextreme_index(objects, want_max):
@@ -123,6 +143,19 @@ def _argextreme_index(objects, want_max):
     return idxs[0] if len(idxs) == 1 else None
 
 
+def _position_index(objects, edge, want_max):
+    """Index of the *unique* object whose bbox `edge` is extremal, or None on a
+    tie / no objects. Like `_argextreme_index` but over a bbox coordinate rather
+    than size, so it declines (rather than guesses) when two objects share the
+    extreme — keeping the positional selector unambiguous and value-agnostic."""
+    if not objects:
+        return None
+    coords = [o["bbox"][edge] for o in objects]
+    target = max(coords) if want_max else min(coords)
+    idxs = [i for i, v in enumerate(coords) if v == target]
+    return idxs[0] if len(idxs) == 1 else None
+
+
 def _selection_index(objects, kind):
     """Index the criterion `kind` picks from `objects`, or None if it declines."""
     if kind == "unique":
@@ -131,6 +164,9 @@ def _selection_index(objects, kind):
         return _argextreme_index(objects, want_max=True)
     if kind == "smallest":
         return _argextreme_index(objects, want_max=False)
+    if kind in _POSITION_EDGE:
+        edge, want_max = _POSITION_EDGE[kind]
+        return _position_index(objects, edge, want_max)
     return None
 
 
@@ -140,8 +176,10 @@ def select_object(objects, descriptor):
     object, so callers decline rather than guess — keeping the choice value-agnostic
     and computable from G0 alone at test time (P5).
 
-    Kinds (mirrors `_SELECTOR_KINDS`): ``unique`` (the sole object), ``largest``
-    (the unique size-maximal object), ``smallest`` (the unique size-minimal one).
+    Kinds (mirrors `_SELECTOR_KINDS`): ``unique`` (the sole object), ``largest`` /
+    ``smallest`` (the unique size extremal object), and the position extremes
+    ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost`` (the unique object
+    whose bounding box reaches furthest to that edge).
     """
     if not descriptor or not isinstance(objects, list) or not objects:
         return None
@@ -160,9 +198,15 @@ def fit_selector(selections):
     rather than guessing).
 
     Tried most-structural first — ``unique`` (every pair has a sole object), then
-    the size extremes ``largest`` / ``smallest`` — mirroring `fit_target`'s ordering
-    so the degenerate single-object case reads as ``unique`` rather than an
-    accidental size criterion.
+    the size extremes ``largest`` / ``smallest``, then the position extremes
+    ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost`` — mirroring
+    `fit_target`'s ordering so the degenerate single-object case reads as ``unique``
+    rather than an accidental size or position criterion, and a size-describable
+    selection is preferred over a positional one. A task whose acted-on object is a
+    size extreme on every pair still fits ``largest`` / ``smallest`` first; only a
+    selection that *no* size criterion explains (equal-sized objects, or the moved
+    one alternating between largest and smallest across pairs) falls through to a
+    position selector.
     """
     if not selections:
         return None

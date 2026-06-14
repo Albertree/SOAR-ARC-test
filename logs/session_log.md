@@ -560,3 +560,77 @@ argument-expression programs for AU to actually lift.
 
 ## Iter 7 [CLEAN] — 20260614_155401 — branch test33
 - Probe: easy_a: [15:54:04] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 16:05
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_160537.log
+
+---
+## Learning Loop -- 2026-06-14 16:10
+
+- Split: None, Tasks: 4
+- Correct: 4 / 4 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_161046.log
+
+---
+## Learning Loop -- 2026-06-14 16:11
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_161148.log
+
+---
+## Iter 8 — 2026-06-14 — branch test33
+
+**Diagnosis**: easy_a is mastered (9/9) and the move family resolves to one
+value-agnostic `object_motion` rule, but the *selector* vocabulary in
+`agent/dsl_expr/selection.py` only knew `unique`/`largest`/`smallest` — a
+size-only dimension. A multi-object task whose acted-on object is named by
+*position* (not size) could not be expressed, the named gap from
+`test33_rung_progress` ("richer selectors by position untouched"). This is the
+§2.1 multi-object-selection concept (BACKLOG_LOOP R1, §2.5-2b "lift the
+selection"): grow the LHS argument vocabulary, not a detector.
+
+**Change**:
+- `agent/dsl_expr/selection.py`: added position selectors `topmost` /
+  `bottommost` / `leftmost` / `rightmost` to `_SELECTOR_KINDS` via a new
+  `_position_index` helper (unique bbox-edge extreme, declines on tie). Ordered
+  AFTER the size extremes so a size-describable selection is still preferred
+  (zero regression). No transformation primitive added (F3-clean); the fit/render
+  paths in `active_operators.py` route through `select_object`/`_selection_index`
+  generically, so no operator edit was needed (F8 not engaged).
+- `data/ARC_madeup/mo_select_topmost.json` (F1-exempt corner): a 3-object move
+  where the moved object is the smallest in pair 1 and the largest in pair 2, so
+  every size selector declines and only `topmost` fits both pairs — the task
+  fails without the new vocabulary and merges into rule_002 with it.
+- `tests/test_object_motion.py`: +4 tests (positional select, tie-decline,
+  topmost-fits-when-size-fails, size-preferred-over-position).
+
+**Probe before**: easy_a 9/9; rules=2; rule_002 covers=10; P1/P2=6.0
+**Probe after** : easy_a 9/9, madeup 4/4; rules=2 (no accretion); rule_002
+covers=11 (mo_select_topmost merged); P1/P2=6.5
+
+**Invariants**: forbidden=none; positives=P1 +0.5 (6.0→6.5), P2 +0.5 (6.0→6.5),
+P3/P4/P5/P6 unchanged. 46 tests pass (was 42).
+
+**Next gap (note for future iter)**: P3 (au_traced_frac) is still 0.0 — every
+generalization so far is *within* one matcher's fitter; `anti_unification.unify()`
+has never lifted across two rules with a shared arg-expr skeleton, and
+`program/anti_unification.py` remains unimplemented stubs (`program/__init__.py`
+imports a non-existent `anti_unify`). Remaining §2.1 concept untouched: grid size
+as a function of object *count* (vs extent, done iter7).
+
+## Iter 8 [CLEAN] — 20260614_160536 — branch test33
+- Probe: easy_a: [16:05:39] Correct:     9 / 9  (100.0%)
