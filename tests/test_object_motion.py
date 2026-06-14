@@ -306,6 +306,40 @@ def test_fit_selector_prefers_size_over_position():
     assert sel == {"kind": "largest"}
 
 
+def test_select_object_odd_color():
+    # three equal-size pixels, two share colour 2, one is colour 3 -> odd-one-out
+    grid = [[2, 0, 0], [0, 3, 0], [2, 0, 0]]
+    objs = objects_of(grid)
+    assert color_of(select_object(objs, {"kind": "odd_color"})) == 3
+
+
+def test_select_object_odd_color_declines_when_all_distinct():
+    # every object has its own colour -> no single odd-one-out, so it declines
+    grid = [[2, 0, 0], [0, 3, 0], [0, 0, 4]]
+    objs = objects_of(grid)
+    assert select_object(objs, {"kind": "odd_color"}) is None
+    # ...and declines when no colour is unique (two of each) rather than guessing
+    grid2 = [[2, 0, 3, 0], [0, 0, 0, 0], [2, 0, 0, 3]]
+    objs2 = objects_of(grid2)
+    assert select_object(objs2, {"kind": "odd_color"}) is None
+
+
+def test_fit_selector_odd_color_when_size_and_position_fail():
+    # The moved object is the colour odd-one-out on every pair but is equal in size
+    # to the others and never at a position extreme, and its colour varies across
+    # pairs -- so no size, position, or literal-colour criterion fits; only
+    # `odd_color` survives (mirrors data/ARC_madeup/mo_select_odd_color.json).
+    p1 = objects_of([[2, 0, 0, 0, 2], [0, 0, 0, 0, 0], [0, 0, 3, 0, 0],
+                     [0, 0, 0, 0, 0], [2, 0, 0, 0, 0]])
+    p2 = objects_of([[8, 0, 0, 0, 8], [0, 0, 0, 0, 0], [0, 0, 5, 0, 0],
+                     [0, 0, 0, 0, 0], [0, 0, 0, 0, 8]])
+    odd1 = next(i for i, o in enumerate(p1) if color_of(o) == 3)
+    odd2 = next(i for i, o in enumerate(p2) if color_of(o) == 5)
+    sel = fit_selector([{"objects": p1, "selected": odd1},
+                        {"objects": p2, "selected": odd2}])
+    assert sel == {"kind": "odd_color"}
+
+
 # --- end-to-end via the real pipeline operators ----------------------------
 
 class _Grid:
@@ -436,6 +470,39 @@ def test_pipeline_solves_multi_object_largest():
     rm = _check_solved(MULTI_LARGEST, "multi_largest").s1["active-rules"][0]
     rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
     assert rm == rc
+
+
+# multi-object selection by COLOUR identity: several equal-size objects, none at a
+# position extreme, and the colour-unique one (the odd-one-out) moves to the
+# bottom-right corner. Neither size, position, nor a literal colour names it — only
+# the `odd_color` selector does (the §2.1 multi-object-selection concept on the
+# colour dimension; mirrors data/ARC_madeup/mo_select_odd_color.json).
+MULTI_ODD_COLOR = {
+    "train": [
+        ([[2, 0, 0, 0, 2], [0, 0, 0, 0, 0], [0, 0, 3, 0, 0],
+          [0, 0, 0, 0, 0], [2, 0, 0, 0, 0]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 3]]),
+        ([[8, 0, 0, 0, 8], [0, 0, 0, 0, 0], [0, 0, 5, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 8]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 5]]),
+    ],
+    "test": [
+        ([[0, 0, 0, 0, 1], [0, 4, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0], [1, 0, 0, 0, 1]],
+         [[0, 0, 0, 0, 0], [0, 0, 0, 0, 0], [0, 0, 0, 0, 0],
+          [0, 0, 0, 0, 0], [0, 0, 0, 0, 4]]),
+    ],
+}
+
+
+def test_pipeline_solves_multi_object_odd_color():
+    # colour-selected multi-object move solves end-to-end via the SAME rule object
+    # as the rest of the move family (no accretion; §2.5-3).
+    ro = _check_solved(MULTI_ODD_COLOR, "multi_odd_color").s1["active-rules"][0]
+    rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
+    assert ro == rc
 
 
 def _solve(spec, name="t"):

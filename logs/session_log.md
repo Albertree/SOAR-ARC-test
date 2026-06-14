@@ -699,3 +699,97 @@ as a function of object *count* (vs extent, done iter7).
 
 ## Iter 9 [NEUTRAL] — 20260614_161323 — branch test33
 - Probe: easy_a: [16:13:26] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 16:20
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_162050.log
+
+> **PHASE GRADUATION** at iter 10 — easy_a → madeup.
+> All of data/ARC_easy_a solved 100% for 5 consecutive iters (K=5).
+> The loop now authors its own beginner tasks under data/ARC_madeup/ (§2.2)
+> and must solve them via the structure, unaided, before attempting ARC training.
+
+---
+## Learning Loop -- 2026-06-14 16:25
+
+- Split: None, Tasks: 5
+- Correct: 4 / 5 (80.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_162536.log
+
+---
+## Learning Loop -- 2026-06-14 16:26
+
+- Split: None, Tasks: 5
+- Correct: 5 / 5 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_162624.log
+
+---
+## Learning Loop -- 2026-06-14 16:26
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_162632.log
+
+---
+## Iter 10 — 2026-06-14 — branch test33
+
+**Diagnosis**: Iter 10 is the first `madeup`-phase iter (easy_a graduated at K=5).
+The selection vocabulary (`agent/dsl_expr/selection.py`) could name the acted-on
+object by *size* (largest/smallest, iters ≤6) and *position* (topmost/…, iter8),
+but had no *colour-identity* criterion. So the §2.1 multi-object-selection concept
+on its third orthogonal dimension — several equal-size blobs, none at a position
+extreme, the colour odd-one-out moves — was unexpressible. Confirmed by authoring
+`mo_select_odd_color` and watching the structure fall back to `rule=identity`.
+
+**Change**:
+- `agent/dsl_expr/selection.py`: added the `odd_color` selector — `_odd_color_index`
+  picks the object whose single colour is unique among the objects (declines on a
+  tie / all-distinct / no-singleton, like the size & position selectors). Appended
+  last in `_SELECTOR_KINDS` and wired into `_selection_index`, so `fit_selector`,
+  `select_object` and the predict renderer all route through it generically — no
+  edit to `active_operators.py` (F8 not engaged), no new transformation (F3-clean),
+  no `_try_*`/matcher (F2-clean). Keys on within-grid colour *uniqueness*, never a
+  literal colour value, so it stays value-agnostic / G0-only (P5).
+- `data/ARC_madeup/mo_select_odd_color.json` (F1-exempt corner): 2-pair move where
+  the moved object is equal-size to the others, never a position extreme, and its
+  colour differs per pair (3, then 5) — so every size/position/literal-colour
+  criterion declines and only `odd_color` fits both pairs; merges into rule_002.
+- `tests/test_object_motion.py`: +4 tests (odd_color select, decline-on-all-distinct
+  / no-singleton, fit when size+position fail, end-to-end same-rule-object).
+
+**Probe before**: easy_a 9/9; madeup 4/5 (odd_color INCORRECT→identity); rules=2;
+rule_002 covers=11; P1/P2=6.5
+**Probe after** : easy_a 9/9 (regression guard holds); madeup 5/5, all via the
+*same* `object_motion` rule (module uniformity); rules=2 (no accretion);
+rule_002 covers=12; P1/P2=7.0. 67 tests pass (was 46).
+
+**Invariants**: forbidden=none (checker CLEAN, exit 0); positives=P1 +0.5
+(6.5→7.0), P2 +0.5 (6.5→7.0), P3/P4/P5/P6 flat. P6 lines unchanged confirms F8
+not engaged.
+
+**Next gap (note for future iter)**: P3 (au_traced_frac) is still 0.0 — the move
+family unifies by *exact rule equality* in `save_rule_to_ltm` (args always `{}`),
+so `anti_unification.unify()` (fully implemented, but only reachable via a
+non-existent `save_rule()`) has nothing to lift; wiring it now would be inert
+until a Slow-path synthesizer emits per-pair programs with *divergent* args. The
+selection dimensions (size/position/colour) are now covered; remaining §2.1
+concept untouched is grid size as a function of object *count* (vs extent), which
+is a non-move family and likely needs its own fitted output-shape reading.
+
+## Iter 10 [CLEAN] — 20260614_162050 — branch test33
+- Probe: easy_a: [16:20:53] Correct:     9 / 9  (100.0%)

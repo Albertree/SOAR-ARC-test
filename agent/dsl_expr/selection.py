@@ -111,10 +111,16 @@ def unique_object(objects):
 # selectors leave. New criteria are added here (the growing LHS), never as
 # transformations (F3).
 
+# `odd_color` (appended last) is a *property*-based selector, orthogonal to the
+# size and position dimensions above: it names the object whose colour is unique
+# among the objects (the odd-one-out), the only criterion that picks the acted-on
+# object when several blobs are equal in size and none reaches a position extreme,
+# differing only by colour.
 _SELECTOR_KINDS = (
     "unique",
     "largest", "smallest",
     "topmost", "bottommost", "leftmost", "rightmost",
+    "odd_color",
 )
 
 # Each position selector reads one edge of an object's bounding box; the extreme
@@ -156,6 +162,31 @@ def _position_index(objects, edge, want_max):
     return idxs[0] if len(idxs) == 1 else None
 
 
+def _odd_color_index(objects):
+    """Index of the object whose single colour is *unique among the objects* — it
+    appears in no other object — or None when zero or several objects have a colour
+    of their own (so it declines rather than guesses, like the size/position
+    selectors). A multi-coloured object (no single colour) is never the odd-one-out.
+
+    This is a property-based criterion (colour identity), orthogonal to size and
+    position: it names the acted-on object when several blobs are equal in size and
+    none at a position extreme, differing only by colour (§2.1 multi-object
+    selection). The choice keys on within-grid colour *uniqueness*, never a literal
+    colour value, so it stays value-agnostic and computable from G0 alone (P5)."""
+    if not objects:
+        return None
+    colors = [color_of(o) for o in objects]  # single colour, or None if multi-coloured
+    counts = {}
+    for col in colors:
+        if col is not None:
+            counts[col] = counts.get(col, 0) + 1
+    singletons = [
+        i for i, col in enumerate(colors)
+        if col is not None and counts[col] == 1
+    ]
+    return singletons[0] if len(singletons) == 1 else None
+
+
 def _selection_index(objects, kind):
     """Index the criterion `kind` picks from `objects`, or None if it declines."""
     if kind == "unique":
@@ -167,6 +198,8 @@ def _selection_index(objects, kind):
     if kind in _POSITION_EDGE:
         edge, want_max = _POSITION_EDGE[kind]
         return _position_index(objects, edge, want_max)
+    if kind == "odd_color":
+        return _odd_color_index(objects)
     return None
 
 
@@ -177,9 +210,10 @@ def select_object(objects, descriptor):
     and computable from G0 alone at test time (P5).
 
     Kinds (mirrors `_SELECTOR_KINDS`): ``unique`` (the sole object), ``largest`` /
-    ``smallest`` (the unique size extremal object), and the position extremes
+    ``smallest`` (the unique size extremal object), the position extremes
     ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost`` (the unique object
-    whose bounding box reaches furthest to that edge).
+    whose bounding box reaches furthest to that edge), and ``odd_color`` (the
+    object whose colour is unique among the objects — the odd-one-out).
     """
     if not descriptor or not isinstance(objects, list) or not objects:
         return None
@@ -199,14 +233,14 @@ def fit_selector(selections):
 
     Tried most-structural first — ``unique`` (every pair has a sole object), then
     the size extremes ``largest`` / ``smallest``, then the position extremes
-    ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost`` — mirroring
-    `fit_target`'s ordering so the degenerate single-object case reads as ``unique``
-    rather than an accidental size or position criterion, and a size-describable
-    selection is preferred over a positional one. A task whose acted-on object is a
-    size extreme on every pair still fits ``largest`` / ``smallest`` first; only a
-    selection that *no* size criterion explains (equal-sized objects, or the moved
-    one alternating between largest and smallest across pairs) falls through to a
-    position selector.
+    ``topmost`` / ``bottommost`` / ``leftmost`` / ``rightmost``, and finally the
+    colour odd-one-out ``odd_color`` — mirroring `fit_target`'s ordering so the
+    degenerate single-object case reads as ``unique`` rather than an accidental
+    size/position/colour criterion, and a size-describable selection is preferred
+    over a positional or colour one. A task whose acted-on object is a size extreme
+    on every pair still fits ``largest`` / ``smallest`` first; only a selection that
+    *no* size or position criterion explains (equal-sized blobs, none at a position
+    extreme, differing only by colour) falls through to ``odd_color``.
     """
     if not selections:
         return None
