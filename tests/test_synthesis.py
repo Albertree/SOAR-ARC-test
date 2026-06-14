@@ -681,3 +681,80 @@ def test_connect_tasks_share_one_skeleton():
     assert same[0][0] == "connect" and fixed[0][0] == "connect"
     assert same[0][1] != fixed[0][1]  # different line-colour leaves
     assert _program_skeleton(same) == _program_skeleton(fixed)
+
+
+def test_crop_content_bounding_box():
+    # The output is the bounding box of all non-background content, discovered by
+    # the value-agnostic `content` selector — and the same selector crops a
+    # held-out input unchanged (P5).
+    pairs = [
+        {"input":  [[0, 0, 0, 0],
+                    [0, 3, 3, 0],
+                    [0, 3, 3, 0],
+                    [0, 0, 0, 0]],
+         "output": [[3, 3], [3, 3]]},
+        {"input":  [[0, 0, 0],
+                    [0, 7, 0],
+                    [0, 0, 0]],
+         "output": [[7]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog == [("crop", ("const", "content"))]
+    held = [[0, 0, 0, 0, 0],
+            [0, 0, 5, 5, 0],
+            [0, 0, 0, 0, 0]]
+    assert run_program(prog, held) == [[5, 5]]
+
+
+def test_crop_to_largest_colour_aware_object():
+    # Two same-colour regions of different size; the output is the bounding box of
+    # the LARGER one. The selector reads colour-aware objects (`same_color`), so a
+    # 2x2 red block beats a single blue cell — value-agnostic, never a literal box.
+    pairs = [
+        {"input":  [[2, 0, 0, 0],
+                    [0, 0, 4, 4],
+                    [0, 0, 4, 4]],
+         "output": [[4, 4], [4, 4]]},
+        {"input":  [[0, 0, 8],
+                    [3, 3, 0],
+                    [3, 3, 0]],
+         "output": [[3, 3], [3, 3]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog == [("crop", ("const", "largest"))]
+
+
+def test_crop_declines_when_output_not_a_subgrid():
+    # An output that is not any bounding-box crop of the input → the crop schema
+    # declines (the search reports an honest miss, never a literal fit).
+    pairs = [
+        {"input":  [[1, 2], [3, 4]],
+         "output": [[9, 9], [9, 9]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is None or prog[0][0] != "crop"
+
+
+def test_crop_selectors_share_one_skeleton():
+    # A content-crop and an object-selected crop produce the SAME one-step
+    # skeleton (only the const selector leaf differs), so save_rule lifts them into
+    # ONE covers>1 rule rather than a family per selector (R3).
+    from agent.memory import _program_skeleton
+    content = synthesize_task([
+        {"input": [[0, 0, 0], [0, 6, 0], [0, 0, 0]], "output": [[6]]},
+        {"input": [[0, 0], [0, 9]], "output": [[9]]},
+    ])
+    largest = synthesize_task([
+        {"input":  [[2, 0, 0, 0],
+                    [0, 0, 4, 4],
+                    [0, 0, 4, 4]],
+         "output": [[4, 4], [4, 4]]},
+        {"input":  [[0, 0, 8],
+                    [3, 3, 0],
+                    [3, 3, 0]],
+         "output": [[3, 3], [3, 3]]},
+    ])
+    assert content is not None and largest is not None
+    assert content[0][0] == "crop" and largest[0][0] == "crop"
+    assert content[0][1] != largest[0][1]  # different selector leaves
+    assert _program_skeleton(content) == _program_skeleton(largest)

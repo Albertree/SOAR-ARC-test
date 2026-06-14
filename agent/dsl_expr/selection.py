@@ -31,7 +31,7 @@ def cells_of(grid, bg: int = 0):
     return out
 
 
-def objects_of(grid, bg: int = 0) -> list:
+def objects_of(grid, bg: int = 0, same_color: bool = False) -> list:
     """4-connected components of non-background cells.
 
     Returns a list of objects, each a dict:
@@ -42,9 +42,14 @@ def objects_of(grid, bg: int = 0) -> list:
           "size":      cell count,
           "bbox":      (row_min, col_min, row_max, col_max),
         }
-    Cells of differing colour are grouped together if 4-adjacent (a "blob"); the
-    move tasks this seeds are single-colour, but grouping stays colour-agnostic
-    so the same vocabulary serves multi-colour objects later.
+    With the default ``same_color=False`` cells of differing colour are grouped
+    together if 4-adjacent (a "blob") — colour-agnostic, so the same vocabulary
+    serves multi-colour objects. With ``same_color=True`` a component only grows
+    across cells of the *same* colour, so two adjacent regions of different colour
+    are distinct objects (the orthogonal colour-aware reading). The flag is an
+    additive selection dimension — callers that name "the largest *same-coloured*
+    region" pass ``same_color=True``; the default behaviour is unchanged (zero
+    regression).
     """
     pixels = {(r, c): v for (r, c, v) in cells_of(grid, bg)}
     visited = set()
@@ -64,7 +69,8 @@ def objects_of(grid, bg: int = 0) -> list:
             r, c = p
             for dr, dc in ((-1, 0), (1, 0), (0, -1), (0, 1)):
                 nb = (r + dr, c + dc)
-                if nb in pixels and nb not in visited:
+                if (nb in pixels and nb not in visited
+                        and (not same_color or pixels[nb] == pixels[p])):
                     queue.append(nb)
 
         comp_pixels = {p: pixels[p] for p in comp}
@@ -136,6 +142,16 @@ def unique_object(objects):
 # LAST so every extreme / position / odd-one-out selector still wins when it
 # applies (zero regression); a ranked pick only claims a selection nothing earlier
 # explains.
+# `unique_size` (appended last) is a *size*-identity odd-one-out, orthogonal to
+# the size *extremes* (`largest`/`smallest`) and to the colour / shape odd-one-out:
+# it names the object whose cell count is unique among the objects — appears in no
+# other object — the only criterion that picks the acted-on object when several
+# blobs share sizes and exactly one stands alone by size, yet it is neither the
+# biggest nor the smallest (e.g. two size-3 blobs, two size-5 blobs, one size-4).
+# Keys on within-grid size *uniqueness*, never a literal size, so it stays
+# value-agnostic and computable from G0 alone (P5). Appended last so every
+# extreme / position / colour / shape selector still wins when it applies (zero
+# regression).
 _SELECTOR_KINDS = (
     "unique",
     "largest", "smallest",
@@ -144,6 +160,7 @@ _SELECTOR_KINDS = (
     "odd_shape",
     "second_largest",
     "second_smallest",
+    "unique_size",
 )
 
 # Each position selector reads one edge of an object's bounding box; the extreme
@@ -275,6 +292,21 @@ def _odd_shape_index(objects):
     return singletons[0] if len(singletons) == 1 else None
 
 
+def _unique_size_index(objects):
+    """Index of the object whose *size* (cell count) is unique among the objects —
+    no other object has that size — or None when zero or several objects have a
+    size of their own (so it declines rather than guesses, like the colour / shape
+    odd-one-out). Keys on within-grid size uniqueness, never a literal size, so it
+    stays value-agnostic and computable from G0 alone (P5)."""
+    if not objects:
+        return None
+    counts = {}
+    for o in objects:
+        counts[o["size"]] = counts.get(o["size"], 0) + 1
+    singletons = [i for i, o in enumerate(objects) if counts[o["size"]] == 1]
+    return singletons[0] if len(singletons) == 1 else None
+
+
 def _selection_index(objects, kind):
     """Index the criterion `kind` picks from `objects`, or None if it declines."""
     if kind == "unique":
@@ -294,6 +326,8 @@ def _selection_index(objects, kind):
         return _nth_size_index(objects, 2, from_top=True)
     if kind == "second_smallest":
         return _nth_size_index(objects, 2, from_top=False)
+    if kind == "unique_size":
+        return _unique_size_index(objects)
     return None
 
 

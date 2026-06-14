@@ -43,11 +43,15 @@
     "mo_gravity_bottom",
     "mo_gravity_multi",
     "mo_gravity_identical",
-    "mo_gravity_stack"
+    "mo_gravity_stack",
+    "1cf80156",
+    "1f85a75f",
+    "358ba94e",
+    "be94b721"
   ],
   "source_task": "easy000c",
   "created_at": "2026-06-14T17:00:49.944031",
-  "times_reused": 928,
+  "times_reused": 970,
   "condition": {
     "type": "object_motion",
     "params": {

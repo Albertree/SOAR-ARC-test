@@ -4709,3 +4709,132 @@ bounded 2-step search reusing the existing fitters.
 
 ## Iter 42 [CLEAN] — 20260614_224723 — branch test33
 - Probe: [22:47:43] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 23:01
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 12 -> 12 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_230109.log
+
+---
+## Learning Loop -- 2026-06-14 23:01
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 12 -> 12 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_230113.log
+
+---
+## Learning Loop -- 2026-06-14 23:01
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 12 -> 12 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_230123.log
+
+---
+## Learning Loop -- 2026-06-14 23:13
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 12 -> 13 (+1 learned)
+- Stored rule hits: 4
+- Time: 23s
+- Log: logs/learn_20260614_231312.log
+
+---
+## Learning Loop -- 2026-06-14 23:15
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_231500.log
+
+---
+## Learning Loop -- 2026-06-14 23:15
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_231504.log
+
+## Iter 43 — 2026-06-14T23:15:34 — branch test33
+
+**Diagnosis**: Training phase, synthesizer frontier. Measured the held-out
+synthesizer baseline (71/1000) and categorised the misses: the largest *clean*
+structural family left is **crop** — output is a contiguous sub-rectangle of the
+input (51 of the 269 diff-dims misses). The per-task content is the *selector*
+(which region to keep) — exactly the R1/§2.5-2b "selection is the real content"
+frontier the loop flagged. The bottleneck wasn't the crop transform but the
+selection vocabulary: with the system's colour-*blind* `objects_of` only 3 fold;
+with colour-*aware* objects + a unique-size selector, 7 fold (all selectors are
+pure functions of the input, so they transfer to the held-out test exactly).
+
+**Change**:
+- `agent/dsl_expr/selection.py` — (a) `objects_of` gains a `same_color=False`
+  param: the orthogonal colour-aware reading (a component only grows across
+  same-colour cells), additive, default unchanged (zero regression). (b) New
+  `unique_size` selector kind (`_unique_size_index`): the object whose cell count
+  is unique among the objects — a size-identity odd-one-out, orthogonal to the
+  size extremes and to odd_color/odd_shape. Both are general R1 LHS vocabulary
+  grown in `agent/` (§2.5-1), not transformations (F3-safe).
+- `program/synthesis.py` — new **Schema 12 `crop`**. `_crop_bbox`/`_crop_region`
+  (bounding box of a region named by a value-agnostic selector: `content` = all
+  non-bg, or the colour-aware object `select_object` picks — largest/smallest/
+  odd_color/unique_size), a `crop` step in `run_program` composing ONLY
+  `make_grid` (cropped-size canvas) + `coloring` (paint each non-bg region cell at
+  its translated position — reads the FIXED input, P5), and `_fit_crop` (intersect
+  reproducing selectors across pairs, decline if it never shrinks, pick
+  most-structural first). Carried as ONE const leaf so divergent-selector crops
+  share `[("crop", ("const", ?v))]` and lift via `unify()` (R3). Yielded last. No
+  new transformation primitive (F3-safe), no `_try_*` (F2-safe).
+- `procedural_memory/rule_013.json` — the learned rule: ran the learner over the
+  7 crop tasks; 4 were already solved by the existing `object_motion`/place_object
+  rule (a more general mechanism — fine, no double-counting), and the **3** that
+  weren't (23b5c85d, c909285e, cd3c21df) folded into ONE rule_013, program lifted
+  to `[["crop",["const","?v"]]]` with an `anti_unification_trace` — 3 divergent
+  per-task selectors → one argument-parameterised rule, not 3 detectors (§2.5-3).
+- `tests/test_synthesis.py` — 4 crop tests (content-crop w/ held-out transfer,
+  colour-aware largest-object crop, declines on non-subgrid output, two divergent
+  selectors share one skeleton). 227 pass.
+
+**Probe before**: training 0/3 (sample); easy_a 9/9, madeup 27/27; 12 rules;
+synthesizer held-out solves 71/1000; P1=8.333, P2=8.333, P3=0.9167.
+**Probe after** : crop slice 7/7 in isolation (3 net-new in the full agent, 4
+pre-covered by object_motion); easy_a 9/9, madeup 27/27; 13 rules (rule_013
+covers=3); synthesizer held-out solves 78/1000; P1 8.333→8.231, P2 8.333→8.231,
+P3 0.9167→**0.9231**.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P3
++0.0064** (au-traced fraction up — new lifted rule with trace). P1/P2 dipped
+−0.10 — the documented averaging artifact (psignal_saturation_arithmetic /
+test33 instrumentation trap): a new family whose covers (3) is below the current
+mean (8.3) lowers the mean even though **absolute coverage rose +3 and rule count
+rose +1 together** (the §2.5-4 litmus's real intent is met — coverage up with
+rule count, lifted with a trace, not detector accretion). P5/P6 unchanged
+(generic `synthesized_program` matcher; data + composition + general LHS
+vocabulary only, no operator-line growth).
+
+**Next gap (note for future iter)**: the crop family is unlocked but capped at 7
+in isolation / 3 net by the selector vocabulary — richer crops need finer
+selectors (e.g. "the object that differs across panels", "the framed region", a
+grid-line-split panel selector), each a value-agnostic addition under
+`agent/dsl_expr/`. The two larger structural frontiers remain unmoved: (a)
+**multi-step composition** (a measured dihedral+stage2 sweep folded 0, so the
+useful compositions are crop-then-X / scale-then-tile, not geometric-then-recolor)
+and (b) **object-level recolor-by-property** — recolor each object by a fitted
+size/shape→colour map folds ~10-15 on *train* but only ~4 transfer to held-out
+test (the lookup doesn't generalise to unseen keys), so it needs a property the
+test objects are guaranteed to share, not a raw size table.

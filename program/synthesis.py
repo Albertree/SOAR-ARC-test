@@ -44,7 +44,8 @@ not hand-wave a literal per-pair fit, so a miss is reported honestly.
 """
 
 from procedural_memory.DSL.apply import apply_DSL
-from agent.dsl_expr.selection import objects_of, background_of, color_of
+from agent.dsl_expr.selection import (
+    objects_of, background_of, color_of, select_object)
 
 
 # ======================================================================
@@ -730,6 +731,40 @@ def run_program(program, input_grid):
                         if seg:
                             cur = apply_DSL(
                                 "coloring", cur, selection=seg, color=line)
+        elif kind == "crop":
+            # Crop to a sub-rectangle: the output is the bounding box of a region
+            # *named by a value-agnostic selector* — the whole non-background
+            # content, or the colour-aware object the selector picks (the largest /
+            # smallest / unique-colour / unique-size region). The selector is a pure
+            # function of the FIXED input (``env``), never a per-pair literal
+            # coordinate, so a selector fitted on the train pairs crops the test
+            # input unchanged (P5) — this is the §2.5-2b discipline: which region to
+            # keep is named by a structural selector grounded in the comparison
+            # (COMM/DIFF), not a stored box. Composes ONLY the two frozen primitives
+            # — it makes the cropped-size canvas (``make_grid``) and paints each
+            # non-background cell of the region at its translated position
+            # (``coloring``) — so it adds no transformation vocabulary (§2.5-1,
+            # F3-safe). Carried as ONE ``const`` leaf, two crop tasks with divergent
+            # selectors share the SAME one-step skeleton ``[("crop", ("const",
+            # ?v))]`` and lift via ``unify()`` into one ``covers>1`` rule (R3 —
+            # P1·P2·P3 rise together).
+            _, sel_expr = step
+            selector = _eval(sel_expr, env)
+            grid = env["grid"]
+            bg = env["bg"]
+            box = _crop_bbox(grid, bg, selector)
+            if box is None:
+                raise _Unevaluable(
+                    f"crop selector {selector!r} names no region on this input")
+            r0, c0, r1, c1 = box
+            cur = apply_DSL(
+                "make_grid", height=r1 - r0 + 1, width=c1 - c0 + 1, color=bg)
+            for r in range(r0, r1 + 1):
+                for c in range(c0, c1 + 1):
+                    v = grid[r][c]
+                    if v != bg:
+                        cur = apply_DSL(
+                            "coloring", cur, selection=(r - r0, c - c0), color=v)
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -937,6 +972,26 @@ def _candidate_programs(pairs):
     connect = _fit_connect(pairs)
     if connect is not None:
         yield connect
+
+    # --- Schema 12: crop to a selected sub-region --------------------------
+    # The output is a contiguous sub-rectangle of the input — the bounding box of
+    # a region *named by a value-agnostic selector*: all non-background content, or
+    # the colour-aware object the selector picks (largest / smallest / unique-colour
+    # / unique-size). The recurring ARC "extract the relevant part" family
+    # (1cf80156 content-crop; 39a8645d / a87f7484 / be94b721 pick-an-object). The
+    # reason — P3/P4 — is a COMM/DIFF result naming *which* region the output keeps;
+    # ``_fit_crop`` resolves the shared selector directly (the selector is a pure
+    # function of the input, so it transfers to the test input unchanged, P5) and
+    # declines when none reproduces every pair. This is the §2.5-2b "selection is
+    # the real content" step: the per-task content lives in the selector, reusing
+    # the R1 object-selection vocabulary, not in a stored coordinate box. Being a
+    # pure ``[("crop", ("const", ?v))]`` skeleton, two crop tasks with divergent
+    # selectors lift via ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise
+    # together). Yielded last so a same-dims schema wins when a task somehow fits
+    # both.
+    crop = _fit_crop(pairs)
+    if crop is not None:
+        yield crop
 
 
 def _is_fractal_dims(pairs):
@@ -1232,6 +1287,94 @@ def _fit_connect(pairs):
 
     spec = sorted(inter, key=_rank)[0]
     return [("connect", ("const", spec))]
+
+
+# ======================================================================
+# Crop to a selected sub-region (object-level selection — R1 / §2.5-2b)
+# ======================================================================
+#
+# A "crop" output is a contiguous sub-rectangle of the input: the bounding box of
+# a region *named by a value-agnostic selector*. The per-task content is the
+# selector — which region to keep — exactly the §2.5-2b "selection is the real
+# content" frontier: the choice is grounded in the example comparison, computed
+# from the input alone (P5), never a stored coordinate box. The selector
+# vocabulary reuses the object-level selection vocabulary already grown for R1
+# (``agent/dsl_expr/selection.select_object``): on the *colour-aware* objects
+# (``same_color=True`` — each maximal same-colour region a distinct object), the
+# largest / smallest / unique-colour (``odd_color``) / unique-size region; plus
+# ``content``, the bounding box of *all* non-background cells (no object model).
+# All are pure functions of the input, so a selector fitted on the train pairs
+# transfers unchanged to the test input.
+
+_CROP_SELECTORS = ("content", "largest", "smallest", "odd_color", "unique_size")
+
+
+def _crop_bbox(grid, bg, selector):
+    """Bounding box ``(r0, c0, r1, c1)`` of the region ``selector`` names on
+    ``grid``, or ``None`` when it does not resolve (empty grid, or a selector that
+    declines — e.g. a tied size extreme). ``content`` is the box of all
+    non-background cells; every other selector is an object-selection ``kind``
+    resolved over the colour-aware objects (``select_object``)."""
+    if selector == "content":
+        cells = [(r, c) for r, row in enumerate(grid)
+                 for c, v in enumerate(row) if v != bg]
+        if not cells:
+            return None
+        rs = [r for r, _c in cells]
+        cs = [c for _r, c in cells]
+        return (min(rs), min(cs), max(rs), max(cs))
+    objs = objects_of(grid, bg, same_color=True)
+    obj = select_object(objs, {"kind": selector})
+    if obj is None:
+        return None
+    return obj["bbox"]
+
+
+def _crop_region(grid, bg, selector):
+    """The cropped sub-grid ``selector`` names on ``grid`` (a fresh grid), or
+    ``None`` when the selector does not resolve. Used by the fitter to test
+    reproduction; ``run_program``'s ``crop`` step renders the same region from the
+    two frozen primitives."""
+    box = _crop_bbox(grid, bg, selector)
+    if box is None:
+        return None
+    r0, c0, r1, c1 = box
+    return [row[c0:c1 + 1] for row in grid[r0:r1 + 1]]
+
+
+def _fit_crop(pairs):
+    """Return a one-step ``crop`` program if every pair's output is the input
+    cropped to one shared, value-agnostic selector's bounding box, else ``None``.
+
+    The task selector is the *intersection* across pairs of the selectors that
+    reproduce that output exactly. A selector is accepted only if it actually crops
+    (the region is smaller than the input on at least one pair — a whole-grid crop
+    is the identity schema, already yielded). Carried as ONE ``const`` leaf so two
+    crop tasks with divergent selectors share the SAME one-step skeleton and lift
+    via ``unify()`` into one ``covers>1`` rule (§2.5-3). The selectors are tried
+    most-structural first (``content``, then the size extremes, then the
+    odd-one-out criteria), mirroring the other fitters."""
+    inter = None
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        bg = background_of(gin)
+        local = {s for s in _CROP_SELECTORS
+                 if _crop_region(gin, bg, s) == gout}
+        inter = local if inter is None else (inter & local)
+        if not inter:
+            return None
+    # Require the fit to actually shrink at least one input (else it's identity).
+    changed = False
+    for p in pairs:
+        gin = p["input"]
+        bg = background_of(gin)
+        if any(_crop_region(gin, bg, s) != gin for s in inter):
+            changed = True
+            break
+    if not changed:
+        return None
+    selector = sorted(inter, key=_CROP_SELECTORS.index)[0]
+    return [("crop", ("const", selector))]
 
 
 def synthesize_task(pairs):
