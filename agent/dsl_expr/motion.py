@@ -216,13 +216,120 @@ def fit_uniform_target(motions):
     return None
 
 
+def _settle_order(objs, edge):
+    """Indices of `objs` ordered so the object nearest the target `edge` settles
+    first (it reaches the floor / wall before anything can pile on top of it). The
+    settle order is what makes stacking deterministic — a later object rests on the
+    cells an earlier one already claimed."""
+    def key(i):
+        r0, c0, r1, c1 = objs[i]["bbox"]
+        if edge == "bottom":
+            return -r1   # largest bottom row settles first
+        if edge == "top":
+            return r0    # smallest top row settles first
+        if edge == "left":
+            return c0    # smallest left col settles first
+        if edge == "right":
+            return -c1   # largest right col settles first
+        return 0
+    return sorted(range(len(objs)), key=key)
+
+
+def simulate_gravity_settle(objs, H, W, edge):
+    """Settle every object under gravity toward one grid `edge`, stacking on
+    whatever has already come to rest — the *collision* generalisation of the
+    independent ``to_edge`` fall. Each object slides straight along the fall axis
+    (its free coordinate kept) as far as it can without leaving the grid or
+    overlapping an already-settled cell; objects nearest the edge settle first
+    (`_settle_order`). Returns a list of resolved bbox top-lefts aligned with the
+    *input* `objs` order (so callers can `zip(objs, dsts)`), or ``None`` for an
+    unknown edge. Unlike `target_position`, an object's destination here is **not**
+    resolvable in isolation — it depends on the ones already piled below it — which
+    is exactly why map-all gravity with stacking needs a joint simulation rather
+    than one per-object expression."""
+    dirs = {"bottom": (1, 0), "top": (-1, 0), "left": (0, -1), "right": (0, 1)}
+    if edge not in dirs:
+        return None
+    dr, dc = dirs[edge]
+    occupied = set()
+    dsts = [None] * len(objs)
+    for i in _settle_order(objs, edge):
+        cells = list(objs[i]["pixels"].keys())
+        off_r, off_c = 0, 0
+        while True:
+            nr, nc = off_r + dr, off_c + dc
+            if all(
+                0 <= r + nr < H and 0 <= c + nc < W and (r + nr, c + nc) not in occupied
+                for (r, c) in cells
+            ):
+                off_r, off_c = nr, nc
+            else:
+                break
+        for (r, c) in cells:
+            occupied.add((r + off_r, c + off_c))
+        r0, c0, _r1, _c1 = objs[i]["bbox"]
+        dsts[i] = (r0 + off_r, c0 + off_c)
+    return dsts
+
+
+def _colored_cells(objs, offsets):
+    """The ``{(row, col): colour}`` map of `objs` each shifted by its bbox-top-left
+    delta to a resolved destination in `offsets` (aligned with `objs`)."""
+    cells = {}
+    for obj, dst in zip(objs, offsets):
+        r0, c0, _r1, _c1 = obj["bbox"]
+        dr, dc = dst[0] - r0, dst[1] - c0
+        for (r, c), col in obj["pixels"].items():
+            cells[(r + dr, c + dc)] = col
+    return cells
+
+
+def fit_gravity_settle(per_pair):
+    """Fit a value-agnostic map-all **gravity-with-stacking** target — every object
+    falls toward one grid edge and *piles up* on whatever settled before it
+    (BACKLOG_LOOP R1 "next gap": the stacking case `fit_uniform_target` declines,
+    because two objects in one column cannot both reach the floor). For each of the
+    four edges, `simulate_gravity_settle` settles the input objects and the result's
+    coloured-cell map is checked against the output's *exactly*; the first edge that
+    reproduces **every** pair wins. The match is on coloured cells, not an
+    object bijection, so it is robust to objects *merging* when they come to rest
+    adjacent (two falling cells becoming one output blob) — the very case that
+    breaks the equal-count bijection path. Returns ``{"kind": "gravity_settle",
+    "edge": ...}`` or ``None`` (decline). Tried only as `fit_map_all_target`'s last
+    resort, so a plain (non-colliding) fall is still read as the simpler ``to_edge``.
+    """
+    if not per_pair:
+        return None
+    for edge in ("bottom", "top", "left", "right"):
+        ok = True
+        moved_any = False
+        for (H, W, objs_in, objs_out) in per_pair:
+            dsts = simulate_gravity_settle(objs_in, H, W, edge)
+            if dsts is None:
+                ok = False
+                break
+            if any(
+                (o["bbox"][0], o["bbox"][1]) != d for o, d in zip(objs_in, dsts)
+            ):
+                moved_any = True
+            predicted = _colored_cells(objs_in, dsts)
+            actual = {(r, c): col for o in objs_out for (r, c), col in o["pixels"].items()}
+            if predicted != actual:
+                ok = False
+                break
+        if ok and moved_any:
+            return {"kind": "gravity_settle", "edge": edge}
+    return None
+
+
 def fit_map_all_target(per_pair):
     """Fit ONE uniform map-all displacement target across pre-gathered example
     pairs — the multi-object gravity / "all objects fall" reading, the
     select-one→map-all generalisation of the single-object move (§2.5-2b,
     BACKLOG_LOOP R1 "next gap"). `per_pair` is a list of ``(H, W, objs_in,
     objs_out)`` tuples, one per example pair; the caller guarantees each pair is
-    size-preserving with ≥2 colour-objects and equal in/out counts.
+    size-preserving with ≥2 colour-objects (in/out counts may differ — see the
+    gravity-settle fallback below).
 
     The input→output object **bijection** is fitted most-constrained-first by
     `selection.motion_bijection`: ``identity`` (by the colour-set + size + shape a
@@ -232,8 +339,13 @@ def fit_map_all_target(per_pair):
     whose per-object motions are colour-preserving on every pair AND fit one uniform
     `fit_uniform_target` wins — so distinct-object gravity reads exactly as before
     (zero regression) and identical-object gravity, previously declined, is resolved
-    by the preserved axis. Returns ``{"target", "evidence_count", "clean"}`` or
-    ``None`` (decline) so the caller never guesses which object fell where.
+    by the preserved axis. When *no* bijection-based uniform target fits — the
+    canonical case being objects that **stack** (two can't both reach the floor, and
+    a pile may merge distinct input objects into one output blob, breaking the
+    equal-count bijection) — `fit_gravity_settle` is tried last: a joint settle
+    simulation matched on coloured cells. Returns ``{"target", "evidence_count",
+    "clean"}`` or ``None`` (decline) so the caller never guesses which object fell
+    where.
     """
     from agent.dsl_expr.selection import (
         motion_bijection, MOTION_BIJECTION_STRATEGIES, position_of, color_of,
@@ -276,6 +388,13 @@ def fit_map_all_target(per_pair):
                 "evidence_count": len(per_pair),
                 "clean": True,
             }
+
+    # Last resort: gravity with *stacking* (objects pile up, defeating the
+    # per-object `to_edge` fall and possibly merging objects so no equal-count
+    # bijection exists). Matched on coloured cells by a joint settle simulation.
+    settle = fit_gravity_settle(per_pair)
+    if settle is not None:
+        return {"target": settle, "evidence_count": len(per_pair), "clean": True}
     return None
 
 
@@ -381,6 +500,27 @@ def output_shape(descriptor, in_dims, obj=None, count=None):
             return None
         return (count, count)
     return None
+
+
+def map_all_destinations(target_desc, H, W, objs):
+    """Resolve a *map-all* target descriptor to a per-object destination bbox
+    top-left list, aligned with `objs`. For the independent readings
+    (``offset`` / ``to_edge``) each object resolves on its own via
+    `target_position`; for ``gravity_settle`` the whole scene is settled jointly
+    (`simulate_gravity_settle`), because a stacking object's resting place depends
+    on the ones already piled below it. Returns ``None`` (decline) when any
+    object's destination is undetermined — so the renderer never guesses."""
+    if not target_desc:
+        return None
+    if target_desc.get("kind") == "gravity_settle":
+        return simulate_gravity_settle(objs, H, W, target_desc.get("edge"))
+    dsts = []
+    for obj in objs:
+        dst = target_position(target_desc, (H, W), obj, objs)
+        if dst is None:
+            return None
+        dsts.append(dst)
+    return dsts
 
 
 def target_position(descriptor, grid_dims, obj, objects=None):

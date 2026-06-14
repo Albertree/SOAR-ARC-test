@@ -4350,3 +4350,120 @@ projection (objects *grow* toward a target), a separate non-rigid family.
 
 ## Iter 39 [CLEAN] — 20260614_221048 — branch test33
 - Probe: [22:11:07] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 22:20
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_222039.log
+
+---
+## Learning Loop -- 2026-06-14 22:20
+
+- Split: None, Tasks: 26
+- Correct: 26 / 26 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_222043.log
+
+---
+## Learning Loop -- 2026-06-14 22:20
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_222053.log
+
+---
+## Learning Loop -- 2026-06-14 22:28
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260614_222751.log
+
+---
+## Learning Loop -- 2026-06-14 22:29
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_222933.log
+
+---
+## Learning Loop -- 2026-06-14 22:29
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_222936.log
+
+## Iter 40 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase, R1 motion frontier. Iter-39's named next gap was the
+*stacking* case: objects in one column that both fall toward an edge can't both reach
+the floor — the map-all `to_edge` reading (each object resolves its destination
+*independently*) cannot say the upper one rests on top of the lower. `fit_uniform_target`
+honestly declined; the bijection path also breaks because a settled pile *merges*
+distinct input objects into one output blob (unequal in/out object counts). This is
+the smallest defensible structural step: a joint gravity-settle simulation that
+pile-stacks — the collision generalisation of the independent fall.
+
+**Change**:
+- `agent/dsl_expr/motion.py` — new `simulate_gravity_settle(objs, H, W, edge)`:
+  settles every object toward one edge, each sliding straight (free coordinate kept)
+  until blocked by the grid or an already-settled cell; objects nearest the edge
+  settle first (`_settle_order`), so stacking is deterministic. Returns per-object
+  destinations aligned with input order. New `fit_gravity_settle(per_pair)`: for each
+  edge, settles the inputs and checks the **coloured-cell map** reproduces every
+  output exactly (cell-set match, not an object bijection — robust to the pile merging
+  objects). New `map_all_destinations(...)`: the one resolver the renderer calls —
+  per-object `target_position` for offset/to_edge, joint settle for `gravity_settle`.
+  `fit_map_all_target` now falls back to `fit_gravity_settle` after the bijection
+  strategies decline, so a plain (non-colliding) fall still reads as the simpler
+  `to_edge` and gravity_settle only claims a genuine stacking scene (tried last,
+  full reproduction-gated).
+- `agent/active_operators.py` — `_fit_map_all` no longer requires equal in/out object
+  counts (the settle fallback *wants* unequal counts; the bijection path declines on
+  its own when they differ). `_render_map_all_motion` slimmed to call
+  `map_all_destinations` once instead of looping `target_position`. Net **0 lines**
+  (8/8) — no F8 trip, no `_try_*`.
+- `agent/dsl_expr/__init__.py` — export the three new functions.
+- `data/ARC_madeup/mo_gravity_stack.json` — authored the minimal stacking task (2–3
+  single cells per column falling and piling at the bottom; in/out counts differ as
+  cells merge). Solves via `object_motion` and **folds into rule_002** (no new rule —
+  §2.5-3 win).
+- `tests/test_object_motion.py` — the prior "declines stacked identical" test (whose
+  own comment said stacking is "a later capability") now asserts it *resolves* via
+  gravity_settle; added 5 focused unit tests (settle stacks a column, independent
+  columns reach the floor, fit picks the unique edge, fit declines a non-gravity
+  scene, end-to-end render round-trip). 215 pass.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 26/26; 10 rules; rule_002
+covers 24; P1=7.3, P2=7.3.
+**Probe after** : easy_a 9/9, madeup **27/27**; 10 rules (no new file); rule_002
+covers 24→**25**; P1 7.3→**7.4**, P2 7.3→**7.4**.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1 +0.1,
+P2 +0.1**; P6 net 0 (active_operators size unchanged). Map-all gravity now covers the
+*stacking* case value-agnostically (joint settle matched on coloured cells), folded
+into the same move rule — no new detector, no new rule.
+
+**Next gap (note for future iter)**: gravity with a *barrier* — the probe's c9680e90
+has a fixed 9-line that objects settle against from both sides (plus colour-specific
+behaviour beyond rigid fall), which `simulate_gravity_settle` (edge only, no interior
+obstacle) doesn't model. The probe's e5790162/878187ab are ray projection (objects
+*grow* toward a target), a separate non-rigid family still unaddressed.

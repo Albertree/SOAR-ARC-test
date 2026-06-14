@@ -1174,15 +1174,65 @@ def test_fit_map_all_resolves_identical_by_column():
     assert mapall["clean"] is True
 
 
-def test_fit_map_all_declines_stacked_identical():
-    # two identical objects in the *same column* (stacked) -> neither the identity
-    # key nor the column / row a fall preserves can say which fell where, so map_all
-    # honestly declines rather than guessing. (Stacked gravity needs per-object
-    # ordering, a later capability.)
+def test_fit_map_all_resolves_stacked_identical_by_settle():
+    # two identical objects in the *same column* both fall and pile up — neither the
+    # identity key nor the preserved-axis bijection can say which fell where (and the
+    # pile merges them into one output blob, breaking the equal-count bijection). The
+    # joint gravity-settle fallback resolves it on coloured cells: the lower object
+    # reaches the floor, the upper one rests on top of it.
     spec_in = _g({(0, 2): 3, (2, 2): 3})
     spec_out = _g({(4, 2): 3, (5, 2): 3})  # they stack at the bottom
     task = _Task([(spec_in, spec_out)], [(spec_in, spec_out)], name="stacked")
-    assert ExtractPatternOperator._fit_map_all(task) is None
+    mapall = ExtractPatternOperator._fit_map_all(task)
+    assert mapall is not None
+    assert mapall["target"] == {"kind": "gravity_settle", "edge": "bottom"}
+    assert mapall["clean"] is True
+
+
+def test_simulate_gravity_settle_stacks_in_column():
+    # three single cells in one column fall to the bottom and pile up in order:
+    # the lowest reaches the floor, the others rest on top, each keeping its column.
+    from agent.dsl_expr import objects_of, simulate_gravity_settle
+    objs = objects_of(_g({(0, 2): 8, (2, 2): 2, (4, 2): 5}, h=6, w=6))
+    dsts = simulate_gravity_settle(objs, 6, 6, "bottom")
+    # objs are top-left-sorted: 8@(0,2), 2@(2,2), 5@(4,2)
+    assert dsts == [(3, 2), (4, 2), (5, 2)]
+
+
+def test_simulate_gravity_settle_independent_columns_reach_floor():
+    # objects in different columns don't collide -> each reaches the floor (settle
+    # reduces to the plain to_edge fall when there is no stacking).
+    from agent.dsl_expr import objects_of, simulate_gravity_settle
+    objs = objects_of(_g({(0, 0): 4, (1, 3): 7}, h=5, w=5))
+    dsts = simulate_gravity_settle(objs, 5, 5, "bottom")
+    assert dsts == [(4, 0), (4, 3)]
+
+
+def test_fit_gravity_settle_picks_unique_edge():
+    from agent.dsl_expr import objects_of, fit_gravity_settle
+    in1 = objects_of(_g({(0, 1): 2, (2, 1): 3}))
+    out1 = objects_of(_g({(3, 1): 2, (4, 1): 3}))
+    per_pair = [(5, 5, in1, out1)]
+    assert fit_gravity_settle(per_pair) == {"kind": "gravity_settle", "edge": "bottom"}
+
+
+def test_fit_gravity_settle_declines_non_gravity():
+    # a scene whose output is *not* any edge-settling of the input -> decline.
+    from agent.dsl_expr import objects_of, fit_gravity_settle
+    in1 = objects_of(_g({(0, 0): 2, (0, 4): 3}))
+    out1 = objects_of(_g({(2, 2): 2, (3, 3): 3}))  # arbitrary, not a fall
+    assert fit_gravity_settle([(5, 5, in1, out1)]) is None
+
+
+def test_render_map_all_gravity_settle_roundtrip():
+    # the renderer reproduces a stacking fall end-to-end via map_all_destinations.
+    from agent.active_operators import PredictOperator
+    g0 = _Grid(_g({(1, 3): 2, (3, 3): 4}, h=5, w=5))
+    out = PredictOperator._render_map_all_motion(
+        g0, {"kind": "gravity_settle", "edge": "bottom"}
+    )
+    assert out is not None
+    assert out == _g({(3, 3): 2, (4, 3): 4}, h=5, w=5)
 
 
 def test_motion_bijection_identity_distinct():

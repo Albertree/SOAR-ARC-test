@@ -436,7 +436,9 @@ class ExtractPatternOperator(Operator):
                 return None  # map_all is size-preserving
             objs_in = objects_of(g0.raw)
             objs_out = objects_of(g1.raw)
-            if len(objs_in) < 2 or len(objs_in) != len(objs_out):
+            # ≥2 input objects is the only floor; the gravity-settle fallback *wants*
+            # unequal in/out counts (a stacking pile merges distinct objects).
+            if len(objs_in) < 2:
                 return None
             per_pair.append((g1.height, g1.width, objs_in, objs_out))
         return fit_map_all_target(per_pair)
@@ -1301,9 +1303,7 @@ class PredictOperator(Operator):
         gravity family. Declines (returns None) if the target resolves to nothing for
         any object or any painted cell would fall off the grid."""
         from procedural_memory.DSL.apply import apply_DSL
-        from agent.dsl_expr import (
-            objects_of, background_of, target_position,
-        )
+        from agent.dsl_expr import objects_of, background_of, map_all_destinations
 
         if target_desc is None:
             return None
@@ -1318,11 +1318,11 @@ class PredictOperator(Operator):
         if len(objs) < 2:
             return None
 
+        dsts = map_all_destinations(target_desc, h, w, objs)
+        if dsts is None:
+            return None
         out = apply_DSL("make_grid", height=h, width=w, color=bg)
-        for obj in objs:
-            dst = target_position(target_desc, (h, w), obj, objs)
-            if dst is None:
-                return None
+        for obj, dst in zip(objs, dsts):
             r0, c0, _r1, _c1 = obj["bbox"]
             dr, dc = dst[0] - r0, dst[1] - c0
             for (r, c), color in obj["pixels"].items():
