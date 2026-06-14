@@ -292,6 +292,10 @@ class ExtractPatternOperator(Operator):
                 shapes.append({
                     "in": (g0.height, g0.width),
                     "out": (g1.height, g1.width),
+                    # object's own bbox extent — lets fit_output_shape recognise
+                    # an output whose size is a function of an object property
+                    # (the `object_extent` reading, §2.1 / §2.5-2b).
+                    "obj": (oh, ow),
                 })
                 selections.append({"objects": objs_in, "selected": sel_idx})
 
@@ -804,7 +808,7 @@ class PredictOperator(Operator):
         # Output grid shape: a fitted expression over the input shape, defaulting
         # to the input shape itself when no descriptor is supplied (in-place move).
         out_dims = (
-            output_shape(out_shape_desc, (in_h, in_w))
+            output_shape(out_shape_desc, (in_h, in_w), obj)
             if out_shape_desc is not None
             else (in_h, in_w)
         )

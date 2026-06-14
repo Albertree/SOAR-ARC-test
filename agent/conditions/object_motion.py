@@ -36,7 +36,11 @@ Reads the `object_motion` signal surfaced by ExtractPatternOperator::
 
 The grid size need not be preserved: a resizing move (easy000i, 6×6 → 5×5) is
 still one object_motion as long as the output shape is itself describable by a
-value-agnostic expression (`out_shape`). In-place moves fit `out_shape == same`.
+value-agnostic expression (`out_shape`). In-place moves fit `out_shape == same`;
+an input-relative resize fits `delta`/`constant`; and a *crop to the object*,
+whose output size is the selected object's own bbox extent (the §2.1 "grid size
+is a function of an object's feature" concept), fits `object_extent` — all the
+same one matcher, the destination and the shape both fitted argument expressions.
 """
 
 from agent.conditions import register

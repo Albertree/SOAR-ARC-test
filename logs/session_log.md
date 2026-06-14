@@ -473,3 +473,90 @@ remain the two standing big-ticket unfired rungs.
 
 ## Iter 6 [CLEAN] — 20260614_154322 — branch test33
 - Probe: easy_a: [15:43:25] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 15:54
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_155401.log
+
+---
+## Learning Loop -- 2026-06-14 16:01
+
+- Split: None, Tasks: 3
+- Correct: 2 / 3 (66.7%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_160152.log
+
+---
+## Learning Loop -- 2026-06-14 16:03
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_160259.log
+
+---
+## Learning Loop -- 2026-06-14 16:03
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_160300.log
+
+---
+## Iter 7 — 2026-06-14 — branch test33
+
+**Diagnosis**: easy_a is mastered (9/9), so per PROMPT.md §2.2/§5 the iter
+escalated by authoring a `data/ARC_madeup/` task exposing the next unhandled
+§2.1 concept — *the output grid size is a function of an object's property*.
+`fit_output_shape` only knew input-relative readings (same / input+delta /
+absolute constant), so a crop whose object differs in size across pairs fits
+none of them: the new `crop_to_object` task fell to `identity` (confirmed by
+running the madeup probe first). This is the §2.5-2b "lift a property
+expression into the argument" gap, not a missing detector.
+
+**Change**:
+- `agent/dsl_expr/motion.py` — added an `object_extent` output-shape *argument
+  expression* (output size = the selected object's own bbox extent), fitted last
+  so it never overrides an input-relative reading; `output_shape()` resolves it
+  from the object (declines, doesn't crash, when no object is supplied).
+- `agent/active_operators.py` — ExtractPattern now carries each pair's object
+  extent on the `shapes` entry; the render threads the selected object into
+  `output_shape()`. No new `_try_/_apply_`, no new transformation primitive.
+- `agent/conditions/object_motion.py` — docstring updated to document the new
+  `object_extent` reading (recognition contract stays accurate; the matcher
+  already required `out_shape is not None`, so no logic change).
+- `data/ARC_madeup/crop_to_object.json` — the authored task (exempt corner).
+- `tests/test_object_motion.py` — 3 new tests for the fitter + resolver.
+
+**Probe before**: easy_a 9/9; madeup 2/3 (crop_to_object INCORRECT=identity);
+rule_count=2, P1=P2=5.5.
+**Probe after** : easy_a 9/9 (regression guard holds); madeup 3/3, all via the
+*same* `object_motion` rule (module uniformity); rule_count still 2,
+rule_002.covers 9→10, P1=P2=6.0.
+
+**Invariants**: forbidden=none (checker CLEAN, exit 0); positives=P1 +0.5,
+P2 +0.5 (P3/P4/P5 flat). F8 satisfied — active_operators.py change paired with
+an agent/conditions/ touch.
+
+**Next gap (note for future iter)**: the crop solves the intended way but still
+merges by *exact rule equality*, not by anti-unification — R3 remains unfired
+(P3=0). `program/anti_unification.py` is still unimplemented stubs and
+`program/__init__.py` imports a non-existent `anti_unify` (ImportError). The
+remaining §2.1 concepts are "example pairs ≠ 2" and grid-size driven by object
+*count* (vs extent); but the larger frontier is producing pair-specific
+argument-expression programs for AU to actually lift.
+
+## Iter 7 [CLEAN] — 20260614_155401 — branch test33
+- Probe: easy_a: [15:54:04] Correct:     9 / 9  (100.0%)

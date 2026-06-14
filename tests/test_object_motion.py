@@ -123,6 +123,34 @@ def test_output_shape_roundtrip():
     assert output_shape({"kind": "constant", "dims": [5, 5]}, (7, 7)) == (5, 5)
 
 
+def _so(in_dims, out_dims, obj_dims):
+    return {"in": in_dims, "out": out_dims, "obj": obj_dims}
+
+
+def test_fit_output_shape_object_extent():
+    # A crop whose object differs in size across pairs: delta and constant both
+    # fail, so the output size is read as the object's own bbox extent (§2.1
+    # "grid size is a function of an object's feature").
+    assert fit_output_shape([
+        _so((5, 5), (2, 3), (2, 3)),
+        _so((5, 5), (3, 2), (3, 2)),
+    ]) == {"kind": "object_extent"}
+
+
+def test_object_extent_loses_to_input_relative_readings():
+    # When an input-relative reading also fits, it wins (most-structural-first):
+    # object_extent is the last resort, never overriding `same`/`delta`/`constant`.
+    same = [_so((4, 4), (4, 4), (4, 4)), _so((6, 6), (6, 6), (6, 6))]
+    assert fit_output_shape(same) == {"kind": "same"}
+
+
+def test_output_shape_object_extent_needs_obj():
+    obj = {"bbox": (1, 1, 2, 3)}  # 2 rows × 3 cols
+    assert output_shape({"kind": "object_extent"}, (5, 5), obj) == (2, 3)
+    # No object supplied → decline rather than crash.
+    assert output_shape({"kind": "object_extent"}, (5, 5)) is None
+
+
 # --- matcher ---------------------------------------------------------------
 
 def _motion(n=2, target=None, out_shape=None, selector=None, **overrides):
