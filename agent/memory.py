@@ -100,6 +100,118 @@ def save_rule_to_ltm(rule: dict, task_hex: str,
     return path
 
 
+def save_rule(rule: dict, task_hex: str,
+              procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT,
+              episodic_memory_root: str = "episodic_memory") -> str:
+    """Sanctioned save + anti-unification entry point (``CLAUDE.md §8``).
+
+    This is the **only** function permitted to call
+    ``program.anti_unification.unify()``.
+
+    A *canonical* rule carries a ``{condition, action}`` skeleton — the pair
+    ``(condition.type, action.dsl)``. When a newly-learned canonical rule shares
+    its skeleton with an already-stored rule, the two are folded into that single
+    rule instead of accreting a second file:
+
+    * **identical argument expressions** → a plain ``covers`` merge (same rule,
+      another task);
+    * **divergent argument expressions** (e.g. a move family whose ``target`` is
+      a corner in one task and a constant in another) → :func:`unify` lifts the
+      divergent position to a ``?v`` variable, writes a forensic
+      ``anti_unification_trace``, and the stored rule is rewritten as the one
+      more-general rule with ``covers`` unioned.
+
+    This is the mechanism by which task-specific programs converge to
+    ``covers > 1`` abstractions (P1·P2·P3 rising together — ``BACKLOG_LOOP.md
+    §2.5-3/4``) rather than one detector per variant (the 168-rule failure).
+
+    Legacy rules without a canonical skeleton (e.g. ``color_mapping``) fall back
+    to :func:`save_rule_to_ltm`'s exact-equivalence covers-merge unchanged.
+
+    Returns the file path of the saved (or updated) rule.
+    """
+    skeleton = _rule_skeleton(rule)
+    if skeleton is None:
+        return save_rule_to_ltm(rule, task_hex, procedural_memory_root)
+
+    os.makedirs(procedural_memory_root, exist_ok=True)
+    existing = sorted(
+        f for f in os.listdir(procedural_memory_root)
+        if f.startswith("rule_") and f.endswith(".json")
+    )
+    for fname in existing:
+        path = os.path.join(procedural_memory_root, fname)
+        try:
+            with open(path, "r") as fh:
+                stored = json.load(fh)
+        except (json.JSONDecodeError, IOError):
+            continue
+        if _rule_skeleton(stored) != skeleton:
+            continue
+        return _absorb_or_lift(
+            path, stored, rule, task_hex, episodic_memory_root
+        )
+
+    # No same-skeleton rule yet — store as a fresh canonical rule.
+    return save_rule_to_ltm(rule, task_hex, procedural_memory_root)
+
+
+def _absorb_or_lift(path: str, stored: dict, rule: dict, task_hex: str,
+                    episodic_memory_root: str) -> str:
+    """Fold `rule` (a new same-skeleton rule for `task_hex`) into the `stored`
+    entry at `path` — by covers-merge or by anti-unification — and persist."""
+    covers = stored.get("covers", [stored.get("source_task", "")])
+
+    # Already-generalised: the divergent positions are ``?v`` variables, so a new
+    # same-skeleton task is simply absorbed into covers. No re-lift, no new trace
+    # — keeps the operation idempotent across re-runs (one trace per family).
+    if stored.get("anti_unification_trace"):
+        if task_hex and task_hex not in covers:
+            covers.append(task_hex)
+            stored["covers"] = covers
+            _write_json(path, stored)
+        return path
+
+    stored_view = _entry_to_view(stored)
+    new_view = _rule_to_view(rule, task_hex)
+
+    same_params = (
+        stored_view["condition"].get("params", {})
+        == new_view["condition"].get("params", {})
+    )
+    same_args = (
+        stored_view["action"].get("args", {})
+        == new_view["action"].get("args", {})
+    )
+    if same_params and same_args:
+        # Concrete rule, identical argument expressions → plain covers merge.
+        if task_hex and task_hex not in covers:
+            covers.append(task_hex)
+            stored["covers"] = covers
+            _write_json(path, stored)
+        return path
+
+    # Genuine divergence → anti-unify the two concrete rules into one whose
+    # divergent argument positions become ``?v`` variables (R3). unify() is the
+    # single sanctioned generalization mechanism (CLAUDE.md §8); it writes the
+    # forensic trace and returns the union of covers.
+    from program.anti_unification import unify
+
+    res = unify([stored_view, new_view],
+                episodic_memory_root=episodic_memory_root)
+    abstract = res.abstract_rule
+    stored["condition"] = abstract["condition"]
+    stored["action"] = abstract["action"]
+    stored["covers"] = abstract["covers"]
+    stored["anti_unification_trace"] = abstract.get("anti_unification_trace")
+    inner = stored.get("rule")
+    if isinstance(inner, dict):
+        inner["condition"] = abstract["condition"]
+        inner["action"] = abstract["action"]
+    _write_json(path, stored)
+    return path
+
+
 def load_all_rules(procedural_memory_root: str = PROCEDURAL_MEMORY_ROOT) -> list:
     """
     Load all stored rules. Returns list of entry dicts sorted by
@@ -177,6 +289,54 @@ def chunk_from_substate(substate: dict) -> dict:
 # ======================================================================
 # Internal helpers
 # ======================================================================
+
+def _write_json(path: str, data: dict) -> None:
+    """Persist `data` as indented JSON to `path`."""
+    with open(path, "w") as fh:
+        json.dump(data, fh, indent=2)
+
+
+def _rule_skeleton(rule_or_entry: dict):
+    """Return the canonical skeleton ``(condition.type, action.dsl)`` for a
+    ``{condition, action}`` rule/entry, or ``None`` if it lacks one (legacy
+    rules such as ``color_mapping`` that carry no top-level condition/action)."""
+    if not isinstance(rule_or_entry, dict):
+        return None
+    cond = rule_or_entry.get("condition")
+    act = rule_or_entry.get("action")
+    if isinstance(cond, dict) and isinstance(act, dict):
+        ctype = cond.get("type")
+        dsl = act.get("dsl")
+        if ctype is not None and dsl is not None:
+            return (ctype, dsl)
+    return None
+
+
+def _entry_to_view(entry: dict) -> dict:
+    """Project a stored entry onto the dict shape :func:`unify` consumes."""
+    return {
+        "id": entry.get("id"),
+        "concept": entry.get("concept", ""),
+        "category": entry.get("category", ""),
+        "condition": entry.get("condition") or {},
+        "action": entry.get("action") or {},
+        "covers": entry.get("covers", [entry.get("source_task", "")]),
+        "source_task": entry.get("source_task", ""),
+    }
+
+
+def _rule_to_view(rule: dict, task_hex: str) -> dict:
+    """Project a freshly-learned rule (for `task_hex`) onto the unify() shape."""
+    return {
+        "id": None,
+        "concept": _infer_concept(rule),
+        "category": _infer_category(rule),
+        "condition": rule.get("condition") or {},
+        "action": rule.get("action") or {},
+        "covers": [task_hex],
+        "source_task": task_hex,
+    }
+
 
 def _rules_equivalent(a: dict, b: dict) -> bool:
     """

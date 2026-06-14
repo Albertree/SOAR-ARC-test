@@ -10,6 +10,7 @@ Tests for R1's object-level move capability (BACKLOG_LOOP.md R1, §2.5-2b):
     ONE value-agnostic rule, built only from make_grid + coloring.
 """
 
+import json
 import os
 import sys
 
@@ -628,7 +629,13 @@ def _check_solved(spec, name):
     rule = wm.s1["active-rules"][0]
     assert rule["type"] == "object_motion", name
     assert "condition" in rule and "action" in rule
-    assert rule["action"]["args"] == {}, "rule must carry no literal target"
+    # The rule carries the fitted *target expression* (corner/constant/offset),
+    # a value-agnostic argument (a `{"kind": ...}` expression, never a baked
+    # output grid) — recorded so save_rule can anti-unify divergent targets into
+    # one covers>1 rule (R3 / §2.5-2). Predict still re-derives the concrete
+    # destination from the example comparison, so solving is unchanged.
+    target = rule["action"]["args"].get("target")
+    assert isinstance(target, dict) and "kind" in target, name
     pred = wm.s1["predictions"]["test_0"]
     assert pred == task.test_pairs[0].output_grid.raw, name
     return wm
@@ -652,16 +659,29 @@ def test_pipeline_solves_resize_i():
     _check_solved(EASY_I, "i")
 
 
-def test_one_rule_covers_the_whole_family():
-    # corner, constant, translation AND resize tasks all resolve to the SAME rule
-    # object — the covers>1 invariant (one module for the whole move family,
-    # not one detector per variant; §2.5-3).
-    rc = _check_solved(EASY_C, "c").s1["active-rules"][0]
-    rd = _check_solved(EASY_D, "d").s1["active-rules"][0]
-    re = _check_solved(EASY_E, "e").s1["active-rules"][0]
-    rg = _check_solved(EASY_G, "g").s1["active-rules"][0]
-    ri = _check_solved(EASY_I, "i").s1["active-rules"][0]
-    assert rc == rd == re == rg == ri
+def test_one_rule_covers_the_whole_family(tmp_path):
+    # corner, constant, translation AND resize tasks now carry *divergent* fitted
+    # target expressions in WM (that divergence is exactly what anti-unification
+    # lifts). The covers>1 invariant therefore holds at the STORAGE level: saving
+    # them through the sanctioned save_rule converges them to ONE rule whose
+    # target is a ?v variable, covers all five, and carries an
+    # anti_unification_trace — not one detector per variant (R3 / §2.5-3/4).
+    from agent.memory import save_rule
+
+    pm = str(tmp_path / "pm")
+    em = str(tmp_path / "em")
+    for spec, name in [(EASY_C, "c"), (EASY_D, "d"), (EASY_E, "e"),
+                       (EASY_G, "g"), (EASY_I, "i")]:
+        rule = _check_solved(spec, name).s1["active-rules"][0]
+        save_rule(rule, name, procedural_memory_root=pm, episodic_memory_root=em)
+
+    files = [f for f in os.listdir(pm) if f.startswith("rule_")]
+    assert len(files) == 1, "the whole move family must converge to one rule"
+    with open(os.path.join(pm, files[0])) as fh:
+        entry = json.load(fh)
+    assert set(entry["covers"]) == {"c", "d", "e", "g", "i"}
+    assert str(entry["action"]["args"]["target"]).startswith("?v")
+    assert entry["anti_unification_trace"]
 
 
 if __name__ == "__main__":

@@ -532,6 +532,8 @@ class GeneralizeOperator(Operator):
         # not one detector per variant (§2.5-3). Recognition stays in the
         # registry matcher (`object_motion`), not re-implemented here.
         if rule is None and self._matches_object_motion(patterns):
+            motion = patterns.get("object_motion") or {}
+            target_expr = motion.get("target")
             rule = {
                 "type": "object_motion",
                 "condition": {
@@ -539,7 +541,23 @@ class GeneralizeOperator(Operator):
                     "params": {"min_evidence": 2},
                     "min_evidence": 2,
                 },
-                "action": {"dsl": "place_object", "args": {}},
+                # The fitted *target expression* (corner / constant / translation
+                # — `agent/dsl_expr.fit_target`) is the principal argument of
+                # place_object. It is recorded here so two move tasks whose
+                # targets diverge become anti-unifiable: `agent/memory.save_rule`
+                # lifts the divergent target to a `?v` variable via
+                # `anti_unification.unify()` (R3 / BACKLOG_LOOP §2.5-2), converging
+                # the family to ONE rule with covers>1 + an anti_unification_trace
+                # instead of one detector per target kind (P1·P2·P3 together,
+                # §2.5-4). This does NOT change solving: PredictOperator re-derives
+                # the concrete target from each task's own example comparison (it
+                # reads `wm.s1["patterns"]`, never these args), so the recorded
+                # expression is for generalization/coverage only.
+                "action": {
+                    "dsl": "place_object",
+                    "args": ({"target": target_expr}
+                             if target_expr is not None else {}),
+                },
                 "confidence": 1.0,
             }
 

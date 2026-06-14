@@ -1,6 +1,67 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 13 — 2026-06-14 — branch test33
+
+**Diagnosis**: Iters 5–12 climbed R1 by adding one more *fitted-expression
+dimension* to the object_motion family each iter — every §2.1 concept is now
+covered, but the work grew `active_operators.py` (P6 the wrong way) while the
+lowest **unproven** rung, **R3 (anti-unification)**, stayed at **P3=0.0** for the
+entire branch. The architectural blocker (iter10 correction): the save path never
+called `unify()`, *and* every rule stored `action.args={}`, so no two rules ever
+diverged for AU to lift. Smallest defensible R3 step: record the fitted *target
+expression* (place_object's principal argument) on the rule and add the
+sanctioned `save_rule()` that anti-unifies same-skeleton rules whose target
+diverges — making `unify()` fire on real data for the first time. Safe because
+`PredictOperator` re-derives the concrete target from WM patterns (never from
+`args`), so recording the expression cannot change solving.
+
+**Change**:
+- `agent/memory.py` — new `save_rule()` (the CLAUDE.md §8 sanctioned save +
+  the **only** `unify()` caller) + helpers `_rule_skeleton`, `_entry_to_view`,
+  `_rule_to_view`, `_absorb_or_lift`, `_write_json`. Canonical
+  `{condition, action}` rules sharing a skeleton `(condition.type, action.dsl)`
+  are folded into ONE stored rule: identical args → plain covers-merge; divergent
+  args → `unify()` lifts the divergent position to `?v`, writes the trace, unions
+  covers. Already-abstract rules absorb new tasks without re-lift (idempotent —
+  one trace per family). Legacy rules (no skeleton) fall back to `save_rule_to_ltm`.
+- `agent/active_operators.py` — `GeneralizeOperator` records the fitted `target`
+  expression in the object_motion rule's `action.args` (was `{}`). This is the
+  argument expression AU lifts (§2.5-2); predict is unaffected.
+- `agent/active_agent.py` — slow-path save now routes through `save_rule`
+  (was `save_rule_to_ltm`). (F8 pairing for the active_operators edit.)
+- `procedural_memory/rule_002.json` — regenerated: now the AU-abstract rule
+  (`action.args.target = "?v1"`, `anti_unification_trace` set, covers all 14
+  move tasks) instead of `args={}`. rule_001 unchanged.
+- `tests/test_save_rule_au.py` (NEW, +5) — divergent-target lift, identical-args
+  merge, abstract-absorb idempotency, skeleton-mismatch isolation, legacy fallback.
+- `tests/test_object_motion.py` — updated to the new contract: WM rule carries a
+  value-agnostic `{"kind":...}` target *expression* (not `args=={}`); the
+  "one rule covers the family" invariant now asserted at the **storage** level
+  (save all five → one rule, target `?v`, covers union, trace set).
+
+**Probe before**: easy_a 9/9; madeup 7/7; rules=2; rule_002 covers=14, args={};
+P1=P2=8.0; P3=0.0; 77 tests.
+**Probe after** : easy_a 9/9; madeup 7/7; rules=2 (no accretion); rule_002 covers=14,
+target lifted to `?v1` + `anti_unification_trace`; P1=P2=8.0; **P3=0.5**; 82 tests.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P3
++0.5 (0.0→0.5)** — first AU lift on this branch; P1/P2 held 8.0 (covers preserved
+via union, no accretion — §2.5-4 litmus satisfied: P3 up, P1/P2 not down);
+P4/P5 ±0; P6 +18 lines (the recorded-arg comment + save_rule wiring; F8 satisfied
+by the memory.py pairing).
+
+**Next gap (note for future iter)**: AU now fires but lifts only **one** field
+(`target`). The other fitted argument expressions (`out_shape`, `selector`,
+`scene`) are still re-derived per task and NOT recorded on the rule, so they are
+not yet anti-unified — recording them would deepen the abstraction (more lifted
+positions, P3-structure) the same value-agnostic way. The bigger standing
+frontier is unchanged: **R5** (object_motion still declines the fast path because
+predict needs the example comparison; stored hits 0) and a true **Slow-path
+synthesizer** that emits per-pair programs whose divergent args AU lifts across
+*different families* (rule_001 ↔ rule_002 share no skeleton yet).
+
+---
 ## Iter 12 — 2026-06-14 — branch test33
 
 **Diagnosis**: In `madeup` (authored 6/7) every §2.1 concept the object-motion
@@ -1024,3 +1085,66 @@ is a non-move family and likely needs its own fitted output-shape reading.
 
 ## Iter 12 [CLEAN] — 20260614_163657 — branch test33
 - Probe: madeup: [16:37:03] Correct:     6 / 6  (100.0%) | easy_a: [16:37:00] Correct:     9 / 9  (100.0%)
+
+---
+## Learning Loop -- 2026-06-14 16:47
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_164729.log
+
+---
+## Learning Loop -- 2026-06-14 16:47
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_164732.log
+
+---
+## Learning Loop -- 2026-06-14 17:00
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 1 -> 2 (+1 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_170048.log
+
+---
+## Learning Loop -- 2026-06-14 17:00
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_170052.log
+
+---
+## Learning Loop -- 2026-06-14 17:01
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 3s
+- Log: logs/learn_20260614_170101.log
+
+---
+## Learning Loop -- 2026-06-14 17:01
+
+- Split: None, Tasks: 7
+- Correct: 7 / 7 (100.0%)
+- Rules: 2 -> 2 (+0 learned)
+- Stored rule hits: 0
+- Time: 2s
+- Log: logs/learn_20260614_170104.log
+
+## Iter 13 [CLEAN] — 20260614_164729 — branch test33
+- Probe: madeup: [16:47:34] Correct:     7 / 7  (100.0%) | easy_a: [16:47:32] Correct:     9 / 9  (100.0%)

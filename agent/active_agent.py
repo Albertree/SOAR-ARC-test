@@ -16,7 +16,7 @@ from agent.rules import build_proposer
 from agent.io import inject_arc_task
 from agent.active_operators import PredictOperator
 from agent.memory import (
-    load_all_rules, save_rule_to_ltm, increment_reuse_count, record_cover,
+    load_all_rules, save_rule, save_rule_to_ltm, increment_reuse_count, record_cover,
 )
 from agent.wm_logger import reset_wm_snapshot
 
@@ -109,7 +109,11 @@ class ActiveSoarAgent:
 
         # --- Learn: save new rule if pipeline discovered one ---
         if active_rules and rule_type != "identity":
-            save_rule_to_ltm(
+            # Sanctioned save path: canonical {condition, action} rules sharing a
+            # skeleton are anti-unified into one covers>1 rule (CLAUDE.md §8 /
+            # BACKLOG_LOOP R3); legacy rules fall back to the exact-equivalence
+            # covers-merge inside save_rule.
+            save_rule(
                 active_rules[0], task.task_hex,
                 self.procedural_memory_root,
             )

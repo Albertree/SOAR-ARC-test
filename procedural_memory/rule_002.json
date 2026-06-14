@@ -13,7 +13,9 @@
     },
     "action": {
       "dsl": "place_object",
-      "args": {}
+      "args": {
+        "target": "?v1"
+      }
     },
     "confidence": 1.0
   },
@@ -25,16 +27,16 @@
     "easy000g",
     "easy000h",
     "easy000i",
-    "mo_select_largest",
-    "mo_select_smallest",
     "crop_to_object",
-    "mo_select_topmost",
+    "mo_preserve_others",
+    "mo_select_largest",
     "mo_select_odd_color",
-    "mo_size_by_count",
-    "mo_preserve_others"
+    "mo_select_smallest",
+    "mo_select_topmost",
+    "mo_size_by_count"
   ],
   "source_task": "easy000c",
-  "created_at": "2026-06-14T15:33:44.260545",
+  "created_at": "2026-06-14T17:00:49.944031",
   "times_reused": 0,
   "condition": {
     "type": "object_motion",
@@ -45,6 +47,9 @@
   },
   "action": {
     "dsl": "place_object",
-    "args": {}
-  }
+    "args": {
+      "target": "?v1"
+    }
+  },
+  "anti_unification_trace": "episodic_memory/easy000d/anti_unification/au_001.json"
 }
