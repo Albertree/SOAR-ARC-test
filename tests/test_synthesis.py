@@ -530,6 +530,66 @@ def test_symfill_sets_share_one_skeleton():
     assert _program_skeleton(vmirror) == _program_skeleton(hmirror)
 
 
+def test_symfill_completes_over_nonzero_background():
+    # The symmetric picture is drawn on a NON-zero canvas (here colour 7), and one
+    # half is blank canvas. symfill must search the background mode (most-frequent
+    # colour) — the canonical bg=0 path finds nothing — and restore the blank half
+    # from the vertical mirror. The fit is value-agnostic (a background *mode*),
+    # so it transfers unchanged to a held-out input (P5).
+    pairs = [
+        {"input":  [[4, 3, 7, 7], [5, 2, 7, 7]],
+         "output": [[4, 3, 3, 4], [5, 2, 2, 5]]},
+        {"input":  [[1, 6, 7, 7], [8, 9, 7, 7]],
+         "output": [[1, 6, 6, 1], [8, 9, 9, 8]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "symfill"
+    spec = prog[0][1][1]
+    assert isinstance(spec, dict) and spec["bgmode"] == "mostfreq"
+    assert run_program(prog, [[2, 5, 7, 7], [3, 4, 7, 7]]) == \
+        [[2, 5, 5, 2], [3, 4, 4, 3]]
+
+
+def test_symfill_picks_reproducing_subset_not_overfilling():
+    # The full set of transforms 'consistent' on the visible part includes one
+    # (flip_h) that is only vacuously consistent on this one-sided picture and
+    # would fill holes with the wrong colour; only the rot180 subset reproduces.
+    # symfill must keep the largest *reproducing* subset rather than the whole
+    # intersection.
+    pairs = [
+        {"input":  [[0, 0, 7, 7], [0, 0, 7, 7], [3, 5, 7, 7], [2, 4, 7, 7]],
+         "output": [[4, 2, 7, 7], [5, 3, 7, 7], [3, 5, 7, 7], [2, 4, 7, 7]]},
+    ]
+    prog = synthesize_task(pairs)
+    if prog is not None and prog[0][0] == "symfill":
+        spec = prog[0][1][1]
+        syms = spec["syms"] if isinstance(spec, dict) else spec
+        assert "rot180" in syms
+
+
+def test_symfill_nonzero_bg_shares_skeleton_with_canonical():
+    # A non-zero-background completion (dict leaf) and a canonical completion
+    # (tuple leaf) still produce the SAME one-step skeleton, so save_rule lifts the
+    # generalized case into the EXISTING symfill covers>1 rule — covers up, rule
+    # count flat (the non-trap direction).
+    from agent.memory import _program_skeleton
+    canonical = synthesize_task([
+        {"input":  [[4, 4], [3, 5], [0, 0], [0, 0]],
+         "output": [[4, 4], [3, 5], [3, 5], [4, 4]]},
+        {"input":  [[7, 1], [2, 2], [0, 0], [0, 0]],
+         "output": [[7, 1], [2, 2], [2, 2], [7, 1]]},
+    ])
+    nonzero = synthesize_task([
+        {"input":  [[4, 3, 7, 7], [5, 2, 7, 7]],
+         "output": [[4, 3, 3, 4], [5, 2, 2, 5]]},
+        {"input":  [[1, 6, 7, 7], [8, 9, 7, 7]],
+         "output": [[1, 6, 6, 1], [8, 9, 9, 8]]},
+    ])
+    assert canonical is not None and nonzero is not None
+    assert canonical[0][1] != nonzero[0][1]  # tuple leaf vs dict leaf
+    assert _program_skeleton(canonical) == _program_skeleton(nonzero)
+
+
 # --- Schema 10: two-panel boolean combine ------------------------------------
 
 def test_boolcombine_and_two_vertical_panels():

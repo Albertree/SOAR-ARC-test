@@ -1,6 +1,56 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 54 — 2026-06-15 — branch test33
+
+**Diagnosis**: iter53's nominated next gap (symmetry_repair with a *background*
+occluder) was a confirmed DEAD END — a fresh 1000-task scan of a region/leave-
+unchanged repair netted **0** new tasks, the third consecutive iter whose nominated
+gap evaporated under scanning. Re-diagnosing from a fresh failure scan (160-sample:
+25 solved; same-dims failures dominate), the one *clean, general, covers-positive*
+gap that surfaced was in the existing **symfill** schema, not a new family: it hard-
+assumes the hole/background colour is the canonical 0 and uses the *full* consistent-
+symmetry intersection with first-match fill. So a symmetric picture drawn on a non-0
+canvas with one blank half (e729b7be — vertical rot180 mirror, background colour 7)
+is missed, and a transform that is only *vacuously* consistent on a one-sided picture
+over-fills.
+
+**Change**:
+- `program/synthesis.py`: generalized `_fit_symfill` along two value-agnostic,
+  reproduction-gated axes that keep the SAME `[("symfill", ("const", ?v))]`
+  skeleton: (1) the background is *searched* over {canonical 0, the grid's
+  most-frequent colour} (new `_most_frequent_color` selector — util/selection, lives
+  in `program/` not `DSL/`, F3-safe); (2) the generative symmetry is the *largest
+  reproducing subset* of the consistent transforms, not the whole intersection. The
+  canonical path is tried first and returns the **unchanged tuple leaf**, so the 3
+  existing symfill tasks keep a byte-identical fit (zero regression). The generalized
+  case returns a `{"bgmode","syms"}` dict leaf; the `symfill` dispatch in
+  `run_program` now handles both leaf shapes (tuple ⇒ bg=0; dict ⇒ re-resolve bg per
+  grid, so it transfers to the test input, P5).
+- `tests/test_synthesis.py`: +3 tests (non-zero-background completion + held-out
+  transfer, reproducing-subset-not-overfilling, dict-leaf shares skeleton with
+  tuple-leaf so it lifts into the same rule).
+- `procedural_memory/rule_010.json`: e729b7be folded into the EXISTING symfill rule
+  via the live solve/save `unify()` path — covers **3 → 4**, rule count flat at 20.
+  This is the non-trap direction (covers/P1/P2 up *without* a new diluting skeleton),
+  the opposite of the mean-dilution every recent schema-adding iter incurred.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=20, P1/P2=6.85, P3=0.95
+**Probe after** : same hard probe unchanged; rules=20 (flat), P1/P2 6.85→6.9,
+P3=0.95; easy_a 9/9 + madeup 27/27 hold; 271 tests pass (+3); 160-sample training
+solve set unchanged (zero regression), e729b7be newly solved (train+held-out test).
+
+**Invariants**: forbidden=none (CLEAN), positives=P1 +0.05, P2 +0.05 (P3–P6 flat)
+
+**Next gap (note for future iter)**: the synthesizer's *single-step clean-family*
+frontier is saturated — five distinct fresh hypotheses this iter each netted 0–1
+tasks. The same-dims failures that remain (recolor-by-context, object-move,
+recurrence-keyed denoise) need *object-correspondence* reasoning, not another const-
+leaf schema; the historically higher-yield lever is the general **compose** amplifier
+(iter46 +10) — consider widening stage-1 reductions (panel-extract, downscale) rather
+than adding family #19.
+
+---
 ## Iter 53 — 2026-06-15 — branch test33
 
 **Diagnosis**: iter52's nominated next gap (an *ordinal pocket key* — size-`rank`
@@ -6034,3 +6084,66 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 53 [CLEAN] — 20260615_013313 — branch test33
 - Probe: [01:33:34] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 01:48
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_014829.log
+
+---
+## Learning Loop -- 2026-06-15 01:48
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_014833.log
+
+---
+## Learning Loop -- 2026-06-15 01:48
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_014843.log
+
+---
+## Learning Loop -- 2026-06-15 02:10
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_021035.log
+
+---
+## Learning Loop -- 2026-06-15 02:10
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260615_021039.log
+
+---
+## Learning Loop -- 2026-06-15 02:11
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_021146.log
+
+## Iter 54 [CLEAN] — 20260615_014829 — branch test33
+- Probe: [01:48:49] Correct:     0 / 3  (0.0%)

@@ -43,6 +43,8 @@ pairs (the task program), or ``None`` when the bounded search finds none — it 
 not hand-wave a literal per-pair fit, so a miss is reported honestly.
 """
 
+import itertools
+
 from procedural_memory.DSL.apply import apply_DSL
 from agent.dsl_expr.selection import (
     objects_of, background_of, color_of, select_object)
@@ -162,6 +164,23 @@ def _consistent_syms(grid, bg):
         if ok:
             out.append(name)
     return tuple(sorted(out))
+
+
+def _most_frequent_color(grid):
+    """The single most-frequent colour of ``grid`` (ties broken by smallest
+    colour), or ``None`` for an empty grid. A value-agnostic *selector* (it reads
+    the grid's own frequencies, never a literal), used by ``symfill`` to name the
+    'hole'/background colour when it is not the canonical 0 — e.g. a symmetric
+    picture drawn on a non-zero canvas with one blank half. (util/selection
+    vocabulary, lives in ``program/`` not ``DSL/`` — F3-safe, §2.5-1.)"""
+    counts = {}
+    for row in grid:
+        for v in row:
+            counts[v] = counts.get(v, 0) + 1
+    if not counts:
+        return None
+    best = max(counts.values())
+    return min(c for c, n in counts.items() if n == best)
 
 
 def _symfill_grid(grid, bg, syms):
@@ -686,9 +705,20 @@ def run_program(program, input_grid):
             # skeleton ``[("symfill", ("const", ?v))]`` and lift via ``unify()``
             # into one ``covers>1`` rule (R3).
             _, syms_expr = step
-            syms = _eval(syms_expr, env)
+            spec = _eval(syms_expr, env)
             grid = env["grid"]
-            bg = env["bg"]
+            # Two leaf shapes share this skeleton: the canonical tuple/list of
+            # transform names (bg = canonical 0, ``env["bg"]``), and the
+            # generalized dict ``{"bgmode", "syms"}`` whose background mode
+            # re-resolves the hole colour per grid (value-agnostic — transfers to
+            # the test input unchanged, P5).
+            if isinstance(spec, dict):
+                bg = (0 if spec.get("bgmode") == "zero"
+                      else _most_frequent_color(grid))
+                syms = spec["syms"]
+            else:
+                bg = env["bg"]
+                syms = spec
             filled = _symfill_grid(grid, bg, syms)
             for r, row in enumerate(grid):
                 for c, v in enumerate(row):
@@ -1482,8 +1512,24 @@ def _fit_symfill(pairs):
     output *and* actually changes at least one input (an all-identity fill is the
     identity schema, already yielded). The const symmetry set is the per-task
     leaf, so two completion tasks with divergent sets lift via ``unify()`` into one
-    ``covers>1`` rule (§2.5-3)."""
-    inter = None
+    ``covers>1`` rule (§2.5-3).
+
+    Two generalizations beyond the canonical case let one more real ARC family
+    fold into the SAME ``[("symfill", ("const", ?v))]`` skeleton (so it lifts into
+    the existing ``covers>1`` symfill rule rather than spawning a new one):
+
+      * the 'hole'/background colour is *searched* over {canonical 0, the grid's
+        most-frequent colour} — a symmetric picture may be drawn on a non-zero
+        canvas (e.g. a blank half painted in colour 7);
+      * the generative symmetry is the *subset* of the consistent transforms that
+        actually reproduces the pairs — a transform can be vacuously 'consistent'
+        on a one-sided picture yet fill holes with the wrong colour, so the full
+        intersection over-fills; the largest reproducing subset is kept.
+
+    Both choices are value-agnostic (a background *mode* and a structural subset,
+    read from the grids, never a literal) and gated by exact reproduction. The
+    canonical path is tried first and returns the *unchanged* tuple leaf, so the
+    existing symfill tasks keep a byte-identical fit (zero regression)."""
     for p in pairs:
         gin, gout = p["input"], p["output"]
         if len(gin) != len(gout):
@@ -1492,24 +1538,59 @@ def _fit_symfill(pairs):
         iw = len(gin[0]) if gin else 0
         if ih == 0 or iw == 0 or len(gout[0]) != iw:
             return None
-        bg = background_of(gin)
-        cs = set(_consistent_syms(gin, bg))
+
+    # --- canonical path (unchanged leaf): bg = 0, full consistent intersection.
+    inter = None
+    for p in pairs:
+        cs = set(_consistent_syms(p["input"], background_of(p["input"])))
         inter = cs if inter is None else (inter & cs)
         if not inter:
-            return None
-    syms = tuple(sorted(inter))
-    changed = False
-    for p in pairs:
-        gin = p["input"]
-        bg = background_of(gin)
-        filled = _symfill_grid(gin, bg, syms)
-        if filled != p["output"]:
-            return None
-        if filled != gin:
-            changed = True
-    if not changed:
-        return None
-    return [("symfill", ("const", syms))]
+            break
+    if inter:
+        syms = tuple(sorted(inter))
+        changed = False
+        ok = True
+        for p in pairs:
+            gin = p["input"]
+            filled = _symfill_grid(gin, background_of(gin), syms)
+            if filled != p["output"]:
+                ok = False
+                break
+            if filled != gin:
+                changed = True
+        if ok and changed:
+            return [("symfill", ("const", syms))]
+
+    # --- generalized path: search background mode × reproducing symmetry subset.
+    for bgmode in ("zero", "mostfreq"):
+        def _bg(g, _m=bgmode):
+            return 0 if _m == "zero" else _most_frequent_color(g)
+        inter = None
+        for p in pairs:
+            cs = set(_consistent_syms(p["input"], _bg(p["input"])))
+            inter = cs if inter is None else (inter & cs)
+            if not inter:
+                break
+        if not inter:
+            continue
+        syms_all = sorted(inter)
+        # largest subset first — prefer the most complete generative symmetry.
+        for k in range(len(syms_all), 0, -1):
+            for combo in itertools.combinations(syms_all, k):
+                changed = False
+                ok = True
+                for p in pairs:
+                    gin = p["input"]
+                    filled = _symfill_grid(gin, _bg(gin), list(combo))
+                    if filled != p["output"]:
+                        ok = False
+                        break
+                    if filled != gin:
+                        changed = True
+                if ok and changed:
+                    spec = {"bgmode": bgmode, "syms": list(combo)}
+                    return [("symfill", ("const", spec))]
+    return None
 
 
 def _fit_color_map(pairs):
