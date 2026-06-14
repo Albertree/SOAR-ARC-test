@@ -3335,3 +3335,6 @@ grid of tiles, each tile = a copy of the input iff input[R][C] satisfies a
 condition). That needs a per-macro-cell *selection/condition* keyed on the input
 cell value — the §2.5-2b "fill the variable by a selector grounded in COMM/DIFF"
 machinery, a genuine new capability rather than another whole-grid coordinate map.
+
+## Iter 31 [CLEAN] — 20260614_203328 — branch test33
+- Probe: [20:33:46] Correct:     0 / 3  (0.0%)
