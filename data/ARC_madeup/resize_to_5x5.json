@@ -1,0 +1,49 @@
+{
+  "_comment": "Second multi-object grid resize with NO mover: 3x3 canvas grows to a fixed 5x5, every object kept at its own cell, padded with background. Like resize_keep_objects (which grows to 6x6) no family recognises it (object_motion declines: zero moved; constant_output declines: outputs differ; object_recolor declines: nothing recoloured), so the general Slow-path synthesizer solves it by SEARCH (schema 3: make_grid(fitted dims, bg) then paint every input object). The point of this task is the AU lift it grounds: its synthesized program shares the make_grid+paint_objects skeleton with resize_keep_objects but DIVERGES only in the fitted output dim (5 vs 6), so unify() descends into the program's step args and lifts just that leaf to a variable, folding both tasks into ONE covers=2 synthesizer rule with a trace (P1/P2/P3 rise together) instead of accreting a second rule file.",
+  "train": [
+    {
+      "input": [
+        [1, 0, 0],
+        [0, 0, 2],
+        [0, 0, 0]
+      ],
+      "output": [
+        [1, 0, 0, 0, 0],
+        [0, 0, 2, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ]
+    },
+    {
+      "input": [
+        [0, 3, 0],
+        [0, 0, 0],
+        [4, 0, 5]
+      ],
+      "output": [
+        [0, 3, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [4, 0, 5, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ]
+    }
+  ],
+  "test": [
+    {
+      "input": [
+        [0, 0, 6],
+        [0, 7, 0],
+        [8, 0, 0]
+      ],
+      "output": [
+        [0, 0, 6, 0, 0],
+        [0, 7, 0, 0, 0],
+        [8, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0]
+      ]
+    }
+  ]
+}

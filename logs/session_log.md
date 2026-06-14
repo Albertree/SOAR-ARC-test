@@ -1,6 +1,72 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 27 — 2026-06-14 — branch test33
+
+**Diagnosis**: iter26 wired the Slow-path synthesizer live but paid an honest
+P1/P2/P3 cost — its rule_004 was covers=1 with **no anti_unification_trace**, and
+iter26's named next gap was *program-level AU*: two synthesizer tasks sharing a
+program skeleton but diverging in a leaf should lift via `unify()`, except
+`_anti_unify_fields` lifted the whole `program` field to one opaque `?v`
+(degenerate, uninstantiable) because it only handled the **leaf case** (`==` or
+lift-whole). The smallest defensible step: make `unify()` *descend into nested
+sequence terms* so the shared skeleton is preserved and only divergent leaves lift
+— the genuine R3-via-synthesizer prize, recovering the iter26 cost the principled
+way (covers↑ + trace, no accretion).
+
+**Change**:
+- `program/anti_unification.py` — added `_anti_unify_value` (recursive descent into
+  equal-length sequences; dicts / ragged seqs / scalars still lift whole) + `_fresh_var`
+  + `_normalize` (tuple↔list round-trip insensitivity, since synthesized programs are
+  tuples in memory but lists once JSON-stored); rewrote `_anti_unify_fields` to route
+  every key's values through `_anti_unify_value`. Descent is **sequence-only** — the
+  `object_motion` `target` *dict* still lifts whole, so rule_002/rule_003 abstractions
+  are untouched. Updated the module docstring.
+- `program/synthesis.py` — added `contains_variable()` + a guard in `run_program` that
+  raises `_Unevaluable` on a program still carrying `?vN` holes. An abstract synthesizer
+  rule is re-synthesized per task on the Slow path, so the fast path / matcher must
+  *decline* (not crash) on the lifted program — both already catch `_Unevaluable`.
+- `data/ARC_madeup/resize_to_5x5.json` (NEW, F1-exempt) — a second no-mover resize
+  (3x3 -> fixed 5x5) whose synthesized program shares the make_grid+paint_objects
+  skeleton with resize_keep_objects (-> 6x6) but **diverges only in the fitted dim**
+  (5 vs 6), grounding the structural lift. All families decline (same path as
+  resize_keep_objects); only the synthesizer solves it.
+- `tests/test_anti_unification.py` (+4) — nested-sequence leaf lift keeps skeleton +
+  path-suffixed substitutions; tuple-vs-list identical programs -> no lift/no trace;
+  dict-valued `target` still lifts whole; unequal-length seqs lift whole.
+- `tests/test_synthesis_wired.py` (+2) — two divergent-dim resize tasks fold into ONE
+  rule (covers=2, trace, structured `?v`-holed program); abstract program declines
+  `run_program`/`_render_synthesized_program` rather than crashing.
+- `docs/ANTI_UNIFICATION.md` — recursion-into-sequence-terms now in scope (was "out of
+  scope for this iter").
+
+**Probe before**: training 0/3 (microscope); easy_a 9/9, madeup 17/17; rules 4,
+rule_004 covers=1 no-trace; P1=P2=6.5, P3=0.5, P5=4, P6=1314; 153 tests.
+**Probe after** : training 0/3 (unchanged - synthesizer still returns None on real
+ARC, no pollution); easy_a 9/9, **madeup 18/18** (resize_to_5x5 CORRECT via
+synthesized_program -> folds into rule_004); rules still 4 (no accretion); **rule_004
+covers 1->2 (resize_keep_objects + resize_to_5x5), anti_unification_trace set,
+structured abstract program** `[make_grid([const,?v],[const,?v],[bg]),paint_objects([all_objects])]`;
+P1=P2=6.75, P3=0.75; 159 tests (+6). Verified on a fresh run that both resize tasks
+re-solve via slow-path re-synthesis (abstract rule declines the fast path by design).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P1 +0.25
+(6.5->6.75), P2 +0.25, P3 +0.25 (0.5->0.75) - all three rising together** = the §2.5-4
+litmus for genuine generalization (principled recovery of iter26's new-capability
+cost: covers + trace, not a new rule file). P4/P5/P6 flat. **No active_operators.py
+edit (F8 not engaged)** - all logic in program/. F3 clean (no DSL primitive added). F4
+clean (rule_004 keeps condition+action).
+
+**Next gap (note for future iter)**: the synthesizer grammar is still 3 fixed schemas
+(identity / constant-common / object-reconstruction-onto-fitted-canvas) -> 0/40 on real
+ARC-AGI-2. Program-level AU now works structurally, but it can only lift *what the
+search produces*, and the search produces nothing for multi-STEP / object-relational
+real tasks. The training frontier (per [[synthesizer_frontier]] iter-29 finding) is
+**object-level synthesis**: emit selection as `cells_of(select(objects,predicate))`
+rather than flat cells, so the synthesizer composes a *sequence* of transforms - a
+large step, but the only one that moves real ARC.
+
+---
 ## Iter 26 — 2026-06-14 — branch test33
 
 **Diagnosis**: The Slow-path synthesizer substrate (`program/synthesis.py`, built
@@ -2727,3 +2793,63 @@ general mechanism that should eventually let `_try_*`/family matchers be *delete
 
 ## Iter 26 [CLEAN] — 20260614_191840 — branch test33
 - Probe: [19:18:56] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 19:34
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_193449.log
+
+---
+## Learning Loop -- 2026-06-14 19:34
+
+- Split: None, Tasks: 17
+- Correct: 17 / 17 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 15
+- Time: 6s
+- Log: logs/learn_20260614_193453.log
+
+---
+## Learning Loop -- 2026-06-14 19:35
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_193500.log
+
+---
+## Learning Loop -- 2026-06-14 19:44
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 15
+- Time: 7s
+- Log: logs/learn_20260614_194446.log
+
+---
+## Learning Loop -- 2026-06-14 19:45
+
+- Split: None, Tasks: 18
+- Correct: 18 / 18 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_194511.log
+
+---
+## Learning Loop -- 2026-06-14 19:45
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 4 -> 4 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_194518.log

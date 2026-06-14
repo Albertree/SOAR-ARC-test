@@ -128,6 +128,74 @@ def test_variables_number_sequentially_across_field_groups(tmp_path):
 
 
 # ----------------------------------------------------------------------
+# Recursive descent into nested sequence terms (synthesized programs)
+# ----------------------------------------------------------------------
+
+def test_nested_sequence_term_lifts_only_the_divergent_leaf(tmp_path):
+    # Two synthesizer programs (lists of step tuples) that share the
+    # make_grid+paint_objects skeleton but differ only in the fitted output dim.
+    # unify() must descend and lift just the divergent leaves — preserving the
+    # skeleton — not collapse the whole program to one opaque ?v.
+    progA = [("make_grid", ("const", 6), ("const", 6), ("bg",)),
+             ("paint_objects", ("all_objects",))]
+    progB = [("make_grid", ("const", 5), ("const", 5), ("bg",)),
+             ("paint_objects", ("all_objects",))]
+    a = _rule(1, cond_type="synthesized_program", dsl="run_program",
+              args={"program": progA})
+    b = _rule(2, cond_type="synthesized_program", dsl="run_program",
+              args={"program": progB})
+    res = unify([a, b], episodic_memory_root=str(tmp_path))
+
+    assert res.is_more_general()
+    abstract = res.abstract_rule["action"]["args"]["program"]
+    # Skeleton preserved; only the two dim leaves became variables.
+    assert abstract == [
+        ["make_grid", ["const", "?v1"], ["const", "?v2"], ["bg"]],
+        ["paint_objects", ["all_objects"]],
+    ]
+    # Substitution paths point at the exact divergent leaves.
+    assert res.substitutions == {
+        "action.args.program[0][1][1]": "?v1",
+        "action.args.program[0][2][1]": "?v2",
+    }
+
+
+def test_identical_nested_sequence_terms_are_not_more_general(tmp_path):
+    # Same program written with tuples (in-memory) vs lists (JSON round-trip)
+    # must compare equal: a plain covers merge, no lift, no trace.
+    prog_tuples = [("make_grid", ("const", 4), ("const", 4), ("bg",)),
+                   ("paint_objects", ("all_objects",))]
+    prog_lists = [["make_grid", ["const", 4], ["const", 4], ["bg"]],
+                  ["paint_objects", ["all_objects"]]]
+    a = _rule(1, cond_type="synthesized_program", dsl="run_program",
+              args={"program": prog_tuples})
+    b = _rule(2, cond_type="synthesized_program", dsl="run_program",
+              args={"program": prog_lists})
+    res = unify([a, b], episodic_memory_root=str(tmp_path))
+    assert not res.is_more_general()
+    assert res.trace_path is None
+
+
+def test_dict_valued_position_still_lifts_whole(tmp_path):
+    # Descent is sequence-only: a dict-valued descriptor (object_motion's target)
+    # that differs is lifted whole to a single ?v, NOT descended key-wise — the
+    # family rules' abstractions are unchanged by this iter's program-term descent.
+    a = _rule(1, args={"target": {"kind": "bottom_right"}})
+    b = _rule(2, args={"target": {"kind": "constant", "pos": [5, 5]}})
+    res = unify([a, b], episodic_memory_root=str(tmp_path))
+    assert res.abstract_rule["action"]["args"]["target"] == "?v1"
+    assert res.substitutions == {"action.args.target": "?v1"}
+
+
+def test_unequal_length_sequences_lift_whole(tmp_path):
+    # Ragged sequences have no shared skeleton to descend into → lift whole.
+    a = _rule(1, args={"target": ["corner"]})
+    b = _rule(2, args={"target": ["const", 5, 5]})
+    res = unify([a, b], episodic_memory_root=str(tmp_path))
+    assert res.abstract_rule["action"]["args"]["target"] == "?v1"
+
+
+# ----------------------------------------------------------------------
 # Skeleton + bookkeeping fields
 # ----------------------------------------------------------------------
 

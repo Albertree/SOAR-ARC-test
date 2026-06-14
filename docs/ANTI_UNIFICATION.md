@@ -124,11 +124,23 @@ input rules:
    produced.
 
 This implementation handles the leaf case — anti-unifying value positions
-that compare via `==`. Recursive anti-unification of nested terms
-(`coloring(coloring(grid, …), …)` style compositions, term-tree alignment
-DP) is **out of scope for this iter**. When the inputs' `action.args`
-contain nested containers and the containers compare equal everywhere,
-they are preserved; when they differ they are lifted as a single variable.
+that compare via `==` — **and recursive descent into nested sequence
+terms** (test33 iter 27). A position whose inputs are all sequences of the
+same non-zero length is anti-unified element-wise, so the shared skeleton
+is preserved and only the disagreeing *leaves* become `?vN` variables
+(substitution paths gain `[i]` suffixes, e.g.
+`action.args.program[0][1][1]`). This is what lets two synthesized programs
+(`program/synthesis.py`, modules F/G — a program is a list of step tuples
+`(primitive, *expr)`) that differ only in, say, the fitted output dim lift
+to one structured abstract program rather than collapsing the whole
+`program` field to a single opaque variable.
+
+Positions that are **dicts**, sequences of **unequal length**, or scalars
+are still lifted whole (a single variable). In particular the descent is
+deliberately *sequence-only*: the `object_motion` `target` descriptor (a
+dict) keeps lifting as one variable, so the hand-picked family rules'
+abstractions are unchanged. Full term-tree alignment DP across ragged or
+heterogeneous compositions remains out of scope.
 
 ---
 

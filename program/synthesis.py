@@ -97,13 +97,41 @@ def _eval(expr, env):
 # Program evaluation
 # ======================================================================
 
+def contains_variable(obj) -> bool:
+    """True iff ``obj`` carries an anti-unification variable (a ``?vN`` string)
+    anywhere in its term tree.
+
+    A program lifted by :func:`program.anti_unification.unify` (two synthesizer
+    tasks whose programs share a skeleton but differ in a leaf — e.g. the fitted
+    output dim) holds ``?vN`` holes at the divergent positions. Such an *abstract*
+    program is not directly runnable: the holes are re-filled per task by
+    re-synthesizing on that task's own pairs (the Slow path), so a stored abstract
+    synthesizer rule must *decline* the fast path rather than try to execute a hole
+    (memory: runtime_resolvable_speculative_apply — renderers decline, not crash).
+    """
+    if isinstance(obj, str):
+        return obj.startswith("?v")
+    if isinstance(obj, (list, tuple)):
+        return any(contains_variable(e) for e in obj)
+    if isinstance(obj, dict):
+        return any(contains_variable(e) for e in obj.values())
+    return False
+
+
 def run_program(program, input_grid):
     """Evaluate ``program`` (a list of steps) against ``input_grid``.
 
     Steps run in order, each producing the next working canvas. An empty program
     is the identity. Returns the produced grid, or raises ``_Unevaluable`` if a
-    step's argument expression does not resolve against this input.
+    step's argument expression does not resolve against this input — including the
+    case of an *abstract* program still carrying ``?vN`` variables (see
+    :func:`contains_variable`).
     """
+    if contains_variable(program):
+        raise _Unevaluable(
+            "program carries unbound anti-unification variables (?v) — an abstract "
+            "rule, re-synthesized per task on the Slow path, not directly runnable"
+        )
     env = {
         "grid": input_grid,
         "objs": objects_of(input_grid),

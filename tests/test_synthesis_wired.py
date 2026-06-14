@@ -190,3 +190,69 @@ def test_two_same_program_tasks_merge(tmp_path):
     with open(os.path.join(pm, files[0])) as fh:
         stored = json.load(fh)
     assert sorted(stored["covers"]) == ["r1", "r2"]
+
+
+# --- AU via the synthesizer: divergent programs lift structurally ------------
+
+def test_two_divergent_resize_tasks_lift_to_one_rule(tmp_path):
+    # Two resize tasks whose synthesized programs share the make_grid+paint_objects
+    # skeleton but DIVERGE in the fitted output dim (3x3 -> 5x5 vs 3x3 -> 6x6).
+    # save_rule must fold them into ONE rule via unify(): covers == 2, an
+    # anti_unification_trace set, and a *structured* abstract program (the skeleton
+    # kept, only the dim leaves lifted to ?v) — the R3-via-synthesizer prize that
+    # recovers the new-capability P1/P2/P3 cost the principled way (§2.5-3/4).
+    pm = str(tmp_path / "pm")
+    em = str(tmp_path / "em")
+
+    a = [[3, 0, 0], [0, 0, 0], [0, 0, 4]]
+    b = [[0, 0, 2], [0, 0, 0], [5, 0, 0]]
+
+    def pad(g3, side):
+        return [[(g3[r][c] if r < 3 and c < 3 else 0) for c in range(side)]
+                for r in range(side)]
+
+    t5 = _Task(train=[(a, pad(a, 5)), (b, pad(b, 5))],
+               test=[([[0, 5, 0], [0, 0, 0], [9, 0, 0]], None)], name="r5")
+    t6 = _Task(train=[(a, pad(a, 6)), (b, pad(b, 6))],
+               test=[([[2, 0, 0], [0, 0, 0], [0, 0, 3]], None)], name="r6")
+    r5, _ = _run_pipeline(t5)
+    r6, _ = _run_pipeline(t6)
+    assert r5["type"] == r6["type"] == "synthesized_program"
+    # The programs genuinely diverge (different fitted dim).
+    assert r5["action"]["args"]["program"] != r6["action"]["args"]["program"]
+
+    save_rule(r5, t5.task_hex, pm, episodic_memory_root=em)
+    save_rule(r6, t6.task_hex, pm, episodic_memory_root=em)
+
+    files = [f for f in os.listdir(pm) if f.startswith("rule_") and f.endswith(".json")]
+    assert len(files) == 1  # folded, not accreted
+    with open(os.path.join(pm, files[0])) as fh:
+        stored = json.load(fh)
+    assert sorted(stored["covers"]) == ["r5", "r6"]
+    assert stored["anti_unification_trace"]
+    prog = stored["action"]["args"]["program"]
+    # Skeleton preserved (make_grid + paint_objects), the dims lifted to variables.
+    assert prog[0][0] == "make_grid" and prog[1][0] == "paint_objects"
+    from program.synthesis import contains_variable
+    assert contains_variable(prog)
+
+
+def test_abstract_synthesizer_program_declines_run(tmp_path):
+    # An abstract synthesized program (carrying ?v holes) must decline — not
+    # crash — when the fast path tries to run it; the Slow path re-synthesizes a
+    # concrete program per task instead.
+    from program.synthesis import run_program, _Unevaluable
+    abstract = [["make_grid", ["const", "?v1"], ["const", "?v2"], ["bg"]],
+                ["paint_objects", ["all_objects"]]]
+    try:
+        run_program(abstract, [[1, 0], [0, 2]])
+        assert False, "abstract program should not run"
+    except _Unevaluable:
+        pass
+
+    # And the render path returns None rather than raising.
+    class _G:
+        def __init__(self, raw):
+            self.raw = raw
+    rule = {"action": {"dsl": "run_program", "args": {"program": abstract}}}
+    assert PredictOperator._render_synthesized_program(rule, _G([[1, 0], [0, 2]])) is None

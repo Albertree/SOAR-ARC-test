@@ -7,10 +7,18 @@ This is the **only** mechanism in ARBOR by which transformational vocabulary
 may grow (the hand-coded DSL is frozen at ``coloring`` / ``make_grid`` — see
 ``CLAUDE.md §6.2`` and ``docs/INVARIANTS.md §1 F3``). The public contract is
 specified in full in ``docs/ANTI_UNIFICATION.md``; this module implements the
-**leaf case** of that spec (§2): value positions that compare via ``==``.
-Recursive anti-unification of nested term trees (``coloring(coloring(…), …)``
-compositions, term-tree alignment DP) is intentionally out of scope here — when
-two inputs' container args differ they are lifted as a single variable.
+**leaf case** of that spec (§2) plus a **recursive descent into nested sequence
+terms**. A value position whose inputs are *sequences of equal length* (the
+synthesized-program term trees of modules F/G — a program is a list of step
+tuples, each ``(primitive, *expr)``) is anti-unified element-wise so that only the
+leaf positions where the inputs disagree become ``?vN`` variables and the shared
+skeleton is preserved (e.g. two object-reconstruction resizes that differ only in
+the fitted output dim lift to ``[make_grid([const, ?v1], [const, ?v2], [bg]),
+paint_objects([all_objects])]``, not to a single opaque ``?v`` over the whole
+program). Positions that are *dicts*, sequences of unequal length, or scalars are
+still lifted whole — recursive descent into dict-valued descriptors (object_motion
+``target`` dicts) is intentionally kept at the leaf grain so the family rules'
+abstractions are unchanged.
 
 Call site: ``CLAUDE.md §8`` names ``agent/memory.py:save_rule()`` as the *only*
 permitted caller of :func:`unify`.
@@ -153,11 +161,11 @@ anti_unify = unify
 def _anti_unify_fields(dicts, prefix, var_counter, substitutions) -> dict:
     """Field-wise anti-unification over a list of same-role dicts.
 
-    Keys are unioned in first-seen order. A key whose value is equal across
-    *all* inputs keeps that value (deep-copied so no aliasing leaks between
-    rules); any other key — differing values, or present in only some inputs —
-    is lifted to a fresh ``?vN`` variable recorded in ``substitutions`` under
-    ``<prefix>.<key>``.
+    Keys are unioned in first-seen order. Each key's values across the inputs are
+    handed to :func:`_anti_unify_value`, which keeps a position the inputs agree
+    on, descends into nested sequence terms, and lifts genuine leaf disagreements
+    to a fresh ``?vN`` variable recorded in ``substitutions`` under the position
+    path (``<prefix>.<key>`` for a leaf, ``…[i]`` deeper for sequence elements).
     """
     out: dict = {}
     keys = []
@@ -168,16 +176,65 @@ def _anti_unify_fields(dicts, prefix, var_counter, substitutions) -> dict:
 
     for key in keys:
         values = [(d or {}).get(key, _MISSING) for d in dicts]
-        first = values[0]
-        agree = first is not _MISSING and all(v == first for v in values[1:])
-        if agree:
-            out[key] = copy.deepcopy(first)
-        else:
-            var_counter[0] += 1
-            var = f"?v{var_counter[0]}"
-            out[key] = var
-            substitutions[f"{prefix}.{key}"] = var
+        out[key] = _anti_unify_value(
+            values, f"{prefix}.{key}", var_counter, substitutions
+        )
     return out
+
+
+def _anti_unify_value(values, prefix, var_counter, substitutions):
+    """Anti-unify one structural position (a list of same-position values across
+    the input rules) into either a kept concrete value, a nested list with ``?vN``
+    holes, or a single ``?vN`` variable.
+
+    * A position absent from some input (``_MISSING``) is lifted whole.
+    * A position the inputs *agree* on (list/tuple round-trip insensitive) keeps a
+      deep copy of the value — no aliasing leaks between rules.
+    * A position whose inputs are all sequences of *equal, non-zero length* is
+      descended into element-wise, preserving the shared skeleton and lifting only
+      the disagreeing leaves (the synthesized-program term-tree case).
+    * Anything else (scalars, dicts, ragged/short sequences) is lifted whole.
+    """
+    if any(v is _MISSING for v in values):
+        return _fresh_var(prefix, var_counter, substitutions)
+
+    norm_first = _normalize(values[0])
+    if all(_normalize(v) == norm_first for v in values[1:]):
+        return copy.deepcopy(norm_first)
+
+    if (all(isinstance(v, (list, tuple)) for v in values)
+            and len({len(v) for v in values}) == 1
+            and len(values[0]) > 0):
+        n = len(values[0])
+        return [
+            _anti_unify_value(
+                [v[i] for v in values], f"{prefix}[{i}]",
+                var_counter, substitutions,
+            )
+            for i in range(n)
+        ]
+
+    return _fresh_var(prefix, var_counter, substitutions)
+
+
+def _fresh_var(prefix, var_counter, substitutions) -> str:
+    """Mint the next ``?vN`` variable, record it under ``prefix``, and return it."""
+    var_counter[0] += 1
+    var = f"?v{var_counter[0]}"
+    substitutions[prefix] = var
+    return var
+
+
+def _normalize(v):
+    """Recursively render tuples as lists (and copy dicts) so a value that was a
+    tuple in memory compares equal to the same value once JSON round-tripped it to
+    a list — synthesized programs are tuples when first built, lists when reloaded
+    from a stored rule."""
+    if isinstance(v, dict):
+        return {k: _normalize(x) for k, x in v.items()}
+    if isinstance(v, (list, tuple)):
+        return [_normalize(e) for e in v]
+    return v
 
 
 def _union_preserve_order(lists) -> list:
