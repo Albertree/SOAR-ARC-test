@@ -1,7 +1,74 @@
 # SOAR-ARC Session Log
 
 ---
-## Iter 59 — 2026-06-15 — branch test33 — NO-OP (5-family single-step frontier probe, all empty)
+## Iter 61 — 2026-06-15 — branch test33 — compose stage-1 `dedup` reduction (folds 6 real tasks, +6 sum-covers)
+
+**Diagnosis**: iters 59/60 established the *single-step* clean-family frontier is
+probed-exhausted, leaving two named levers: object-correspondence (large,
+multi-iter) and **widening the `compose` stage-1 reductions** (iter 46's lever,
+which netted +10). I took the second — the smaller, defensible step. A read-only
+probe (`scripts/probe_compose_stage1.py`) tested three candidate new stage-1
+reductions across all 1000 training tasks (skip already-solved, **strict
+full-output** reproduction of the composed program): `dedup` (collapse adjacent
+duplicate rows/cols) folds **6** currently-failing tasks with *diverse* stage-2
+schemas (make_grid×4, crop, tile); `block_reduce` and `trim_border` fold **0**.
+So the gap is real, single, and general: the existing compose mechanism was blind
+to the recurring "the grid is drawn at integer scale / has repeated separator
+lines — compress to its distinct-line skeleton, then transform" family.
+
+**Change**:
+- `program/synthesis.py`: added **`dedup`** as a third compose stage-1 reduction
+  (alongside `crop`/`dihedral`). New value-agnostic helpers `_dedup_lines`
+  (surviving row/col indices after collapsing adjacent-identical runs) and
+  `_dedup_grid`; a `dedup` branch in `run_program` that **composes only the two
+  frozen `make_grid`+`coloring` primitives** (F3-safe — it makes the reduced-size
+  canvas and paints each surviving non-bg cell at its compressed position) and
+  *declines* (`_Unevaluable`) when nothing collapses. Registered `[("dedup",)]` in
+  `_STAGE1_REDUCTIONS`. dedup is reachable ONLY via the compose fallback, so it
+  cannot displace any single-step solve (**zero regression**), and the reduction
+  is a pure function of the fixed input so it transfers to the test input (P5).
+- `tests/test_synthesis.py`: +6 tests (line/grid helpers, frozen-primitive render
+  + decline-on-no-collapse, fallback-only guard, end-to-end on the 4 make_grid
+  real tasks incl. held-out test, diverse stage-2 on crop/tile tasks). 283 pass.
+- `procedural_memory/rule_022/023/024.json` (new): minted via the live
+  solve→`save_rule`→`unify()` path on the 6 tasks. **rule_022 covers=4**
+  (746b3537/ce8d95cc/e1baa8a4/eb5a1d5d — all four reproduced by the *identical*
+  value-agnostic program `dedup → make_grid → paint_objects`, i.e. output = the
+  compressed grid; covers grew verbatim, **3 of 4 via fast-path `stored(746b3537)`
+  → R5 reuse fired**). rule_023 (90c28cc7, dedup→crop) and rule_024 (e9afcf9a,
+  dedup→tile) are honest distinct-skeleton singletons of the same new capability.
+  All 6 tasks also reproduce the **held-out test** output, not just train.
+- `scripts/probe_compose_stage1.py` (new): the read-only diagnostic, kept as
+  reproducible evidence.
+
+**Probe before**: training probe 0/3 (hard multi-step, unchanged); rules=21,
+sum-covers(distinct)=141, P1/P2=6.714, P3=0.952.
+**Probe after** : same hard probe unchanged; rules=24, **sum-covers=147 (+6)**,
+P1/P2=6.125, P3=0.833; easy_a 9/9 + madeup 27/27 hold; 283 tests pass (+6).
+
+**Invariants**: forbidden=none (check_invariants verdict **NEUTRAL**); positives=
+**P1/P2 −0.589, P3 −0.119, P4–P6 flat** — the documented §2.5-4 *instrumentation
+trap*, here in a sharper form: the generalization was **verbatim-cover** (ONE
+identical program covers 4 tasks, no divergence to lift), so it honestly produces
+**no `anti_unification_trace`** — and P3 structurally *rewards* needing a variable,
+penalizing the cleaner trace-less cover. Every rule addition also dilutes the
+coverage *means* even as sum-covers *rises*. This is NOT spinning (cf. iters
+59/60 no-ops): it closes a real, named gap — a new general compose reduction that
+folds 6 previously-unsolved real ARC tasks (6/6 on held-out test) with a covers=4
+rule and R5 reuse. The true progress signal `_solved_count` rose 141→147 but is
+not one of the six verdict keys, so the iter reads NEUTRAL. (rule_001/002/003 are
+benign `times_reused` bumps from the guard/mint runs.)
+
+**Next gap (note for future iter)**: the compose lever still has reachable
+single-reduction headroom — but the two probed extras (`block_reduce`,
+`trim_border`) fold 0, so the *next* widening is likely **a stage-1 that selects
+one panel of a multi-panel input** (split on a separator line, feed each half to
+the single-step search) rather than another whole-grid reduction. The larger
+standing frontier is unchanged: **object-correspondence** (value-agnostic
+input↔output object pairing → relational recolour/move) for the same-dims recolor
+cluster — only land it in an iter where the slice folds ≥2 real tasks. NB: P1/P2/P3
+will keep reading the instrumentation trap on any verbatim-cover capability;
+`_solved_count` is the honest gauge for those.
 
 **Diagnosis**: After iter 58's `periodic_fill` fold, the next-gap note nominated
 two add-only sub-families (ray/line extension, dihedral-OR overlay) and, longer-
@@ -6645,3 +6712,66 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 60 [NEUTRAL] — 20260615_051438 — branch test33
 - Probe: [05:14:58] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 05:22
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_052244.log
+
+---
+## Learning Loop -- 2026-06-15 05:22
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_052248.log
+
+---
+## Learning Loop -- 2026-06-15 05:23
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_052258.log
+
+---
+## Learning Loop -- 2026-06-15 05:30
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_053003.log
+
+---
+## Learning Loop -- 2026-06-15 05:30
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 21 -> 21 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_053006.log
+
+---
+## Learning Loop -- 2026-06-15 05:30
+
+- Split: None, Tasks: 6
+- Correct: 6 / 6 (100.0%)
+- Rules: 21 -> 24 (+3 learned)
+- Stored rule hits: 3
+- Time: 14s
+- Log: logs/learn_20260615_053027.log
+
+## Iter 61 [NEUTRAL] — 20260615_052244 — branch test33
+- Probe: [05:23:04] Correct:     0 / 3  (0.0%)

@@ -276,6 +276,37 @@ def _periodic_fill_grid(grid, bg, pv, ph):
     return out
 
 
+def _dedup_lines(grid):
+    """The row/column indices that survive collapsing runs of *adjacent
+    identical* rows and columns to one each — the ARC "compress duplicated
+    lines" reduction. Returns ``(keep_rows, keep_cols)`` index lists. Purely
+    structural (a coordinate selection on the fixed input, value-agnostic), so
+    it carries no literal."""
+    if not grid or not grid[0]:
+        return ([], [])
+    keep_rows = [0]
+    for r in range(1, len(grid)):
+        if grid[r] != grid[keep_rows[-1]]:
+            keep_rows.append(r)
+    W = len(grid[0])
+    keep_cols = [0]
+    for c in range(1, W):
+        prev = keep_cols[-1]
+        if any(grid[r][c] != grid[r][prev] for r in range(len(grid))):
+            keep_cols.append(c)
+    return (keep_rows, keep_cols)
+
+
+def _dedup_grid(grid):
+    """``grid`` with adjacent duplicate rows and columns collapsed (one per run),
+    or ``None`` when nothing collapses (the reduction would be the identity, which
+    is owned by the bare schema, not this composition stage)."""
+    keep_rows, keep_cols = _dedup_lines(grid)
+    if len(keep_rows) == len(grid) and len(keep_cols) == len(grid[0]):
+        return None
+    return [[grid[r][c] for c in keep_cols] for r in keep_rows]
+
+
 # ======================================================================
 # Fractal self-tile conditions (the per-macro-cell selector)
 # ======================================================================
@@ -986,6 +1017,37 @@ def run_program(program, input_grid):
                     if v != bg:
                         cur = apply_DSL(
                             "coloring", cur, selection=(r - r0, c - c0), color=v)
+        elif kind == "dedup":
+            # Compress duplicated lines: collapse runs of adjacent identical rows
+            # and columns to one each — the recurring ARC "the grid is a coarse
+            # pattern drawn at integer scale (or with repeated separator lines);
+            # reduce it to its distinct-line skeleton" reduction. Used only as a
+            # compose stage-1 step (it has no parameter — a single structural
+            # selection, value-agnostic), so it never displaces a single-step
+            # solve. Composes ONLY the two frozen primitives — it makes the
+            # reduced-size canvas (``make_grid``) and paints each surviving
+            # non-background cell at its compressed position (``coloring``) — so it
+            # adds no transformation vocabulary (§2.5-1, F3-safe). The kept indices
+            # are a pure function of the FIXED input (``env``), so the reduction
+            # transfers unchanged to the test input (P5). Declines
+            # (``_Unevaluable``) when nothing collapses, so a composed program
+            # always does genuine work in this stage.
+            grid = env["grid"]
+            bg = env["bg"]
+            keep_rows, keep_cols = _dedup_lines(grid)
+            if (len(keep_rows) == len(grid)
+                    and grid and len(keep_cols) == len(grid[0])):
+                raise _Unevaluable(
+                    "dedup: no adjacent duplicate row/column to collapse")
+            cur = apply_DSL(
+                "make_grid", height=len(keep_rows), width=len(keep_cols),
+                color=bg)
+            for ri, r in enumerate(keep_rows):
+                for ci, c in enumerate(keep_cols):
+                    v = grid[r][c]
+                    if v != bg:
+                        cur = apply_DSL(
+                            "coloring", cur, selection=(ri, ci), color=v)
         elif kind == "recolor_objects":
             # Object-level recolour by a value-agnostic *property → colour* map: each
             # input object is repainted (its cells kept fixed) in the colour the map
@@ -2514,15 +2576,17 @@ def _reproduces(prog, pairs):
     return True
 
 
-# The stage-1 reductions a composition may prepend: crop to a selected region, or
-# a dihedral re-orientation. Each is an existing single-step schema (so it is
-# value-agnostic and already composes only the two frozen primitives); used here
-# as a *preprocessing* stage whose intermediate grid is re-fitted by the
-# single-step search. Bounded and small (so the composed search stays cheap), and
-# every entry is a structural input transform, never a per-pair literal.
+# The stage-1 reductions a composition may prepend: crop to a selected region, a
+# dihedral re-orientation, or a dedup (collapse adjacent duplicate rows/columns).
+# Each is a value-agnostic structural transform that already composes only the two
+# frozen primitives; used here as a *preprocessing* stage whose intermediate grid
+# is re-fitted by the single-step search. Bounded and small (so the composed
+# search stays cheap), and every entry is a structural input transform, never a
+# per-pair literal.
 _STAGE1_REDUCTIONS = (
     tuple([("crop", ("const", s))] for s in _CROP_SELECTORS)
     + tuple([("dihedral", ("const", n))] for n in _DIHEDRAL)
+    + ([("dedup",)],)
 )
 
 

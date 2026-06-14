@@ -1009,3 +1009,76 @@ def test_periodic_fill_solves_real_arc_task_end_to_end():
     assert prog is not None and prog[0][0] == "periodic_fill"
     for tp in task["test"]:
         assert run_program(prog, tp["input"]) == tp["output"]
+
+
+# --- dedup compose stage-1 reduction (collapse duplicated rows/columns) ------
+# These pin the new `dedup` stage-1 reduction: a value-agnostic structural
+# compression that, prepended to the single-step search, unlocks the recurring
+# "the grid is drawn at integer scale / with repeated separator lines; reduce it
+# to its distinct-line skeleton, then transform" family. dedup is reachable ONLY
+# through the compose fallback, so it never displaces a single-step solve.
+
+def test_dedup_lines_collapses_runs():
+    from program.synthesis import _dedup_lines, _dedup_grid
+    # rows 0,1 identical; cols 0,1 identical -> keep one of each run.
+    grid = [[3, 3, 4],
+            [3, 3, 4],
+            [5, 5, 6]]
+    keep_rows, keep_cols = _dedup_lines(grid)
+    assert keep_rows == [0, 2]
+    assert keep_cols == [0, 2]
+    assert _dedup_grid(grid) == [[3, 4], [5, 6]]
+
+
+def test_dedup_grid_declines_when_nothing_collapses():
+    from program.synthesis import _dedup_grid
+    # No adjacent duplicate row or column -> identity, owned by the bare schema.
+    assert _dedup_grid([[1, 2], [3, 4]]) is None
+
+
+def test_dedup_step_renders_from_frozen_primitives_and_declines():
+    import pytest
+    from program.synthesis import _Unevaluable
+    grid = [[7, 7, 2],
+            [7, 7, 2],
+            [1, 1, 8]]
+    assert run_program([("dedup",)], grid) == [[7, 2], [1, 8]]
+    # declines (does not guess) when there is nothing to compress
+    with pytest.raises(_Unevaluable):
+        run_program([("dedup",)], [[1, 2], [3, 4]])
+
+
+def test_dedup_compose_is_fallback_only():
+    # A task a single-step schema already reproduces must NOT be claimed by the
+    # composed dedup path (zero regression: compose is reached only on miss).
+    g_in = [[0, 1], [2, 0]]
+    pairs = [{"input": g_in, "output": g_in}]  # identity, single-step
+    prog = synthesize_task(pairs)
+    assert prog == [] or prog[0][0] != "compose"
+
+
+def test_dedup_compose_solves_real_arc_tasks_end_to_end():
+    # Four real ARC tasks whose output is the input with duplicated rows/columns
+    # compressed away (output = the distinct-line skeleton). The SAME value-
+    # agnostic program reproduces all four AND the held-out test input (P5).
+    for tid in ("746b3537", "ce8d95cc", "e1baa8a4", "eb5a1d5d"):
+        task = _load(f"data/ARC_AGI/training/{tid}.json")
+        pairs = [{"input": p["input"], "output": p["output"]}
+                 for p in task["train"]]
+        prog = synthesize_task(pairs)
+        assert prog is not None and prog[0] == ("compose", [("dedup",)]), tid
+        for tp in task["test"]:
+            assert run_program(prog, tp["input"]) == tp["output"], tid
+
+
+def test_dedup_compose_feeds_diverse_stage2_schemas():
+    # dedup composes with DIFFERENT stage-2 schemas on different tasks (crop on
+    # 90c28cc7, tile on e9afcf9a) — the reduction amplifies the whole single-step
+    # grammar, it is not glued to one schema.
+    for tid, stage2 in (("90c28cc7", "crop"), ("e9afcf9a", "tile")):
+        task = _load(f"data/ARC_AGI/training/{tid}.json")
+        pairs = [{"input": p["input"], "output": p["output"]}
+                 for p in task["train"]]
+        prog = synthesize_task(pairs)
+        assert prog is not None and prog[0] == ("compose", [("dedup",)]), tid
+        assert prog[1][0] == stage2, (tid, prog)

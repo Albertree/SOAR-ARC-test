@@ -1,0 +1,107 @@
+{
+  "id": 23,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "dedup"
+              ]
+            ]
+          ],
+          [
+            "crop",
+            [
+              "const",
+              "content"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "dedup"
+              ]
+            ]
+          ],
+          [
+            "crop",
+            [
+              "const",
+              "content"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "90c28cc7"
+  ],
+  "source_task": "90c28cc7",
+  "created_at": "2026-06-15T05:30:33.256721",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "dedup"
+            ]
+          ]
+        ],
+        [
+          "crop",
+          [
+            "const",
+            "content"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "dedup"
+            ]
+          ]
+        ],
+        [
+          "crop",
+          [
+            "const",
+            "content"
+          ]
+        ]
+      ]
+    }
+  }
+}

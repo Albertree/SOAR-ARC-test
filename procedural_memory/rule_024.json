@@ -1,0 +1,175 @@
+{
+  "id": 24,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "dedup"
+              ]
+            ]
+          ],
+          [
+            "tile",
+            [
+              "const",
+              1
+            ],
+            [
+              "const",
+              6
+            ],
+            [
+              "const",
+              [
+                [
+                  "flip_h",
+                  "flip_v",
+                  "flip_h",
+                  "flip_v",
+                  "flip_h",
+                  "flip_v"
+                ]
+              ]
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "dedup"
+              ]
+            ]
+          ],
+          [
+            "tile",
+            [
+              "const",
+              1
+            ],
+            [
+              "const",
+              6
+            ],
+            [
+              "const",
+              [
+                [
+                  "flip_h",
+                  "flip_v",
+                  "flip_h",
+                  "flip_v",
+                  "flip_h",
+                  "flip_v"
+                ]
+              ]
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "e9afcf9a"
+  ],
+  "source_task": "e9afcf9a",
+  "created_at": "2026-06-15T05:30:37.786465",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "dedup"
+            ]
+          ]
+        ],
+        [
+          "tile",
+          [
+            "const",
+            1
+          ],
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            [
+              [
+                "flip_h",
+                "flip_v",
+                "flip_h",
+                "flip_v",
+                "flip_h",
+                "flip_v"
+              ]
+            ]
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "dedup"
+            ]
+          ]
+        ],
+        [
+          "tile",
+          [
+            "const",
+            1
+          ],
+          [
+            "const",
+            6
+          ],
+          [
+            "const",
+            [
+              [
+                "flip_h",
+                "flip_v",
+                "flip_h",
+                "flip_v",
+                "flip_h",
+                "flip_v"
+              ]
+            ]
+          ]
+        ]
+      ]
+    }
+  }
+}
