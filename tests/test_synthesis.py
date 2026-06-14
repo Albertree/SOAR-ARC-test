@@ -598,6 +598,32 @@ def test_boolcombine_colour_preserving_merge():
     assert run_program(prog, held) == [[2, 8], [5, 3]]
 
 
+def test_boolcombine_auto_axis_varies_across_pairs():
+    # A task whose split orientation VARIES across pairs (duplicated panels
+    # side-by-side in one pair, stacked in another): no single shared axis exists,
+    # so the axis is lifted to the structural selector "auto" — resolved per input
+    # — and only the (op, colour) pair is shared. Models 7b7f7511. The fitter is
+    # exercised directly because such "duplicated panels" grids are also reachable
+    # by earlier object-based schemas; the point under test is that _fit_boolcombine
+    # still fits via the auto axis when the per-pair axes diverge.
+    from program.synthesis import _fit_boolcombine
+    pairs = [
+        # 2x4, two identical 2x2 panels side-by-side -> keep one (v split)
+        {"input":  [[1, 2, 1, 2], [3, 4, 3, 4]],
+         "output": [[1, 2], [3, 4]]},
+        # 4x2, two identical 2x2 panels stacked -> keep one (h split)
+        {"input":  [[5, 6], [7, 8], [5, 6], [7, 8]],
+         "output": [[5, 6], [7, 8]]},
+    ]
+    prog = _fit_boolcombine(pairs)
+    assert prog is not None and prog[0][0] == "boolcombine"
+    axis, op, color = prog[0][1][1]
+    assert axis == "auto"
+    # held-out: a stacked-panel input is split structurally along the right axis
+    held = [[9, 1], [2, 3], [9, 1], [2, 3]]
+    assert run_program(prog, held) == [[9, 1], [2, 3]]
+
+
 def test_boolcombine_tasks_share_one_skeleton():
     # Two combine tasks with DIFFERENT (axis, op, colour) triples produce the same
     # one-step skeleton (only the const triple leaf differs), so save_rule lifts

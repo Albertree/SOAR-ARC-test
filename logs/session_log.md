@@ -4971,3 +4971,125 @@ a schema whose parameter varies *within* a task can still fit.
 
 ## Iter 44 [CLEAN] — 20260614_231648 — branch test33
 - Probe: [23:17:08] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 23:34
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_233441.log
+
+---
+## Learning Loop -- 2026-06-14 23:34
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_233445.log
+
+---
+## Learning Loop -- 2026-06-14 23:35
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_233455.log
+
+---
+## Learning Loop -- 2026-06-14 23:39
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_233958.log
+
+---
+## Learning Loop -- 2026-06-14 23:41
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_234056.log
+
+---
+## Learning Loop -- 2026-06-14 23:41
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_234100.log
+
+## Iter 45 — 2026-06-14T23:41:00 — branch test33
+
+**Diagnosis**: Training phase, synthesizer frontier. Iter 44's "Next gap" named a
+concrete reachable target: task **7b7f7511** — two-panel duplicated-halves task —
+blocked because the boolcombine schema carried the split *axis* as a fixed const
+that must be shared across all pairs, but this task's panels split vertically in
+two pairs (4×8→4×4, 3×6→3×3) and horizontally in the other (6×2→3×2) and the test
+(8×3→4×3), so the shared-axis intersection empties. The split axis is *not*
+per-task content — it is recoverable structurally from each input — so it belongs
+lifted to a selector, exactly the §2.5-2b "lift the selection" frontier.
+
+**Change**:
+- `program/synthesis.py` — lifted the boolcombine split axis from a fixed literal
+  to the structural selector **`"auto"`**. New `_auto_split_axis(grid)` (input-only,
+  value-agnostic, P5): the unique axis that admits an equal-panel split wins; when
+  both even-split, prefer a uniform-separator axis, then the axis whose two halves
+  are *identical*; decline if still ambiguous. `_has_separator` helper + `"auto"`
+  handling in `_split_for_axis` (resolves structurally, then recurses). Refactored
+  `_fit_boolcombine` into two passes: **Pass 1** = the original single-shared-axis
+  fit (byte-for-byte preserves all 21 existing covers, zero regression); **Pass 2**
+  = fallback when the per-pair axes diverge — selects the axis structurally per
+  input and shares only the `(op, colour)` pair, carrying `("auto", op, colour)` in
+  the same one const leaf so it still shares the `[("boolcombine", ("const", ?v))]`
+  skeleton and lifts via `unify()`. Extracted the per-axis op-fitting into a local
+  `_axis_candidates` helper (no behaviour change). No new transformation primitive
+  (F3-safe), no `_try_*` (F2-safe), no operator-line growth.
+- `procedural_memory/rule_011.json` — ran the learner over 7b7f7511; it discovered
+  the boolcombine program `[("boolcombine", ("const", ("auto","A_over_B",None)))]`
+  and save_rule folded it into rule_011 (covers **21→22**, AU trace retained) —
+  coverage up *with* rule count flat, the §2.5-4 ideal.
+- `tests/test_synthesis.py` — `test_boolcombine_auto_axis_varies_across_pairs`
+  (exercises `_fit_boolcombine` directly since duplicated-panel grids are also
+  reachable by object schemas; asserts axis=="auto" + held-out transfer along the
+  structurally-selected axis). 229 pass.
+
+**Probe before**: training 0/3 (sample); easy_a 9/9, madeup 27/27; 13 rules;
+synthesizer held-out solves 79/1000; P1=8.308, P2=8.308, P3=0.9231.
+**Probe after** : easy_a 9/9, madeup 27/27; 13 rules (rule_011 covers 21→22);
+synthesizer held-out solves **80/1000**; P1 8.308→**8.385**, P2 8.308→**8.385**,
+P3 0.9231 (unchanged — rule_011 already traced).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives=**P1
++0.077, P2 +0.077** — again the non-instrumentation-trap direction: folding a new
+task into a high-covers rule (22 > mean) raises the mean, the §2.5-4 ideal
+(coverage up + mean up together by generalizing a capability — lifting a literal
+to a selector — not accreting a detector). P3/P4/P5/P6 unchanged.
+
+**Next gap (note for future iter)**: the boolcombine family is now axis-agnostic;
+the remaining two-panel reach is limited by the *op/selector* vocabulary, not the
+axis (no fresh duplicated-halves task in the 1000 beyond 7b7f7511 from this lift's
++1). The two larger structural frontiers stay unmoved and are the real next
+levers: (a) **multi-step composition** (crop-then-X / scale-then-tile — measured
+0-fold for geometric-then-recolor, so the useful compositions are spatial-then-
+spatial) and (b) **object-level recolor-by-property** (recolor each object by a
+property the *test* objects are guaranteed to share, not a raw size→colour table
+that fails to transfer to unseen keys). Both need a new mechanism, not a single
+new schema — the single-schema clean frontier remains empirically picked clean
+(best fresh family ~2 tasks).
+
+## Iter 45 [CLEAN] — 20260614_233441 — branch test33
+- Probe: [23:35:01] Correct:     0 / 3  (0.0%)

@@ -322,7 +322,16 @@ def _split_for_axis(grid, axis):
     For an *odd*-length axis the middle row/column must be a uniform separator
     line (excluded from both panels); for an *even*-length axis the grid is split
     at the midpoint (no separator). Purely structural — never inspects a colour —
-    so the same split is recovered on the test input (P5)."""
+    so the same split is recovered on the test input (P5).
+
+    ``axis == "auto"`` resolves the orientation *structurally per grid* via
+    ``_auto_split_axis`` (the split axis is selected, not carried as a literal),
+    so a task whose split axis varies across pairs still applies one program."""
+    if axis == "auto":
+        resolved = _auto_split_axis(grid)
+        if resolved is None:
+            return None
+        return _split_for_axis(grid, resolved)
     H = len(grid)
     W = len(grid[0]) if grid else 0
     if axis == "v":
@@ -343,6 +352,45 @@ def _split_for_axis(grid, axis):
         if H >= 2:
             return (grid[:H // 2], grid[H // 2:])
         return None
+    return None
+
+
+def _has_separator(grid, axis):
+    """True iff ``grid`` splits along ``axis`` *because of* a uniform separator
+    line (the odd-length case) — a strong structural cue for which orientation a
+    two-panel grid is divided along."""
+    H = len(grid)
+    W = len(grid[0]) if grid else 0
+    if axis == "v":
+        return W % 2 == 1 and _split_for_axis(grid, "v") is not None
+    if axis == "h":
+        return H % 2 == 1 and _split_for_axis(grid, "h") is not None
+    return False
+
+
+def _auto_split_axis(grid):
+    """Structurally select the split orientation of a two-panel grid, reading
+    only the input's shape/content (value-agnostic, P5).
+
+    The unique axis that admits an equal-panel split wins outright. When *both*
+    axes admit an even-midpoint split (an ambiguous square-ish grid), prefer the
+    axis carrying a uniform separator line, then the axis whose two halves are
+    *identical* to each other (the recurring "duplicated panels" structure);
+    decline (``None``) if still ambiguous. This lets a boolcombine whose split
+    axis *varies across pairs* fit with the axis lifted to the ``"auto"``
+    selector instead of a per-task literal."""
+    cands = [ax for ax in ("v", "h") if _split_for_axis(grid, ax) is not None]
+    if not cands:
+        return None
+    if len(cands) == 1:
+        return cands[0]
+    sep = [ax for ax in cands if _has_separator(grid, ax)]
+    if len(sep) == 1:
+        return sep[0]
+    eq = [ax for ax in cands
+          if (lambda ab: ab[0] == ab[1])(_split_for_axis(grid, ax))]
+    if len(eq) == 1:
+        return eq[0]
     return None
 
 
@@ -1207,66 +1255,84 @@ def _fit_boolcombine(pairs):
     paint) has no combine to fit. Because the whole triple lives in ONE const
     leaf, two combine tasks with divergent triples share the SAME one-step
     skeleton ``[("boolcombine", ("const", ?v))]`` and lift via ``unify()`` into
-    one ``covers>1`` rule (R3 — §2.5-3)."""
-    inter = None
-    for p in pairs:
-        gin, gout = p["input"], p["output"]
+    one ``covers>1`` rule (R3 — §2.5-3).
+
+    Two passes. Pass 1 fits a *single shared* axis (the original behaviour —
+    preserves every existing solve). Pass 2 is the fallback for a task whose
+    split orientation *varies across pairs* (e.g. duplicated panels stacked
+    vertically in one pair, side-by-side in another): the axis is lifted to the
+    structural selector ``"auto"`` (resolved per input by ``_auto_split_axis``),
+    so only the ``(op, colour)`` pair must be shared. Both passes carry the whole
+    triple in ONE const leaf, so divergent fits still share the boolcombine
+    skeleton and lift via ``unify()``."""
+
+    def _axis_candidates(gin, gout, axis):
+        """The ``(axis, op, colour)`` triples that reproduce ``gout`` exactly by
+        combining ``gin``'s two ``axis`` panels — empty if the axis does not
+        split or the panel size mismatches the output."""
         bg = background_of(gin)
         oh = len(gout)
         ow = len(gout[0]) if gout else 0
-        local = set()
-        for axis in ("v", "h"):
-            panels = _split_for_axis(gin, axis)
-            if panels is None:
-                continue
-            A, B = panels
-            h = len(A)
-            w = len(A[0]) if A else 0
-            if (h, w) != (oh, ow) or (len(B), len(B[0]) if B else 0) != (h, w):
-                continue
-            out_colors = {gout[r][c] for r in range(h) for c in range(w)
-                          if gout[r][c] != bg}
-            # Boolean ops require a single output paint colour (the binarised
-            # predicate is value-agnostic; the colour is read from the comparison).
-            if len(out_colors) == 1:
-                (color,) = tuple(out_colors)
-                for op, pred in _BOOL_OPS.items():
-                    ok = True
-                    for r in range(h):
-                        for c in range(w):
-                            want = (color if pred(A[r][c] != bg, B[r][c] != bg)
-                                    else bg)
-                            if gout[r][c] != want:
-                                ok = False
-                                break
-                        if not ok:
-                            break
-                    if ok:
-                        local.add((axis, op, color))
-            # Colour-preserving merges read the panels' own colours (output may be
-            # multi-colour). ``color`` is unused for a merge op, carried as ``None``
-            # so the spec stays a 3-tuple sharing the boolcombine skeleton.
-            for op, fn in _MERGE_OPS.items():
-                ok = True
-                for r in range(h):
-                    for c in range(w):
-                        if gout[r][c] != fn(A[r][c], B[r][c], bg):
-                            ok = False
-                            break
-                    if not ok:
-                        break
-                if ok:
-                    local.add((axis, op, None))
+        panels = _split_for_axis(gin, axis)
+        if panels is None:
+            return set()
+        A, B = panels
+        h = len(A)
+        w = len(A[0]) if A else 0
+        if (h, w) != (oh, ow) or (len(B), len(B[0]) if B else 0) != (h, w):
+            return set()
+        found = set()
+        out_colors = {gout[r][c] for r in range(h) for c in range(w)
+                      if gout[r][c] != bg}
+        # Boolean ops require a single output paint colour (the binarised
+        # predicate is value-agnostic; the colour is read from the comparison).
+        if len(out_colors) == 1:
+            (color,) = tuple(out_colors)
+            for op, pred in _BOOL_OPS.items():
+                if all(gout[r][c] == (color if pred(A[r][c] != bg, B[r][c] != bg)
+                                      else bg)
+                       for r in range(h) for c in range(w)):
+                    found.add((axis, op, color))
+        # Colour-preserving merges read the panels' own colours (output may be
+        # multi-colour). ``color`` is unused for a merge op, carried as ``None``
+        # so the spec stays a 3-tuple sharing the boolcombine skeleton.
+        for op, fn in _MERGE_OPS.items():
+            if all(gout[r][c] == fn(A[r][c], B[r][c], bg)
+                   for r in range(h) for c in range(w)):
+                found.add((axis, op, None))
+        return found
+
+    # Pass 1 — single shared axis (original behaviour).
+    inter = None
+    for p in pairs:
+        local = (_axis_candidates(p["input"], p["output"], "v")
+                 | _axis_candidates(p["input"], p["output"], "h"))
         inter = local if inter is None else (inter & local)
         if not inter:
+            break
+    if inter:
+        # ``color`` is ``None`` for merge ops, so sort with a None-safe key (a
+        # merge op and a boolean op never both reproduce the same
+        # multi/single-colour output, so this only orders ties within one
+        # family; the lift is skeleton-identical either way).
+        axis, op, color = sorted(
+            inter, key=lambda t: (t[0], t[1], -1 if t[2] is None else t[2]))[0]
+        return [("boolcombine", ("const", (axis, op, color)))]
+
+    # Pass 2 — varying axis: select it structurally per input, share only (op, colour).
+    inter2 = None
+    for p in pairs:
+        ax = _auto_split_axis(p["input"])
+        if ax is None:
             return None
-    # ``color`` is ``None`` for merge ops, so sort with a None-safe key (a merge
-    # op and a boolean op never both reproduce the same multi/single-colour output,
-    # so this only orders ties within one family; the lift is skeleton-identical
-    # either way).
-    axis, op, color = sorted(
-        inter, key=lambda t: (t[0], t[1], -1 if t[2] is None else t[2]))[0]
-    return [("boolcombine", ("const", (axis, op, color)))]
+        local = {(op, color) for (_, op, color)
+                 in _axis_candidates(p["input"], p["output"], ax)}
+        inter2 = local if inter2 is None else (inter2 & local)
+        if not inter2:
+            return None
+    op, color = sorted(
+        inter2, key=lambda t: (t[0], -1 if t[1] is None else t[1]))[0]
+    return [("boolcombine", ("const", ("auto", op, color)))]
 
 
 def _connect_grid(grid, bg, spec):
