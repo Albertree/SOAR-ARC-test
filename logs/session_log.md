@@ -2576,3 +2576,6 @@ honest-miss case in `test_honest_miss_on_object_move` becomes a hit — at which
 two such task programs can be lifted by `unify()` (R3, P3↑). The synthesizer is the
 general mechanism that should eventually let `_try_*`/family matchers be *deleted*
 (P6), replacing recognition-by-shape with search.
+
+## Iter 25 [NEUTRAL] — 20260614_190841 — branch test33
+- Probe: [19:08:57] Correct:     0 / 3  (0.0%)
