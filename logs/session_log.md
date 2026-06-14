@@ -5444,3 +5444,118 @@ probe keeps surfacing remain the other open lever.
 
 ## Iter 48 [CLEAN] — 20260615_001759 — branch test33
 - Probe: [00:18:21] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 00:42
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_004249.log
+
+---
+## Learning Loop -- 2026-06-15 00:43
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_004253.log
+
+---
+## Learning Loop -- 2026-06-15 00:43
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_004303.log
+
+---
+## Learning Loop -- 2026-06-15 00:50
+
+- Split: None, Tasks: 1
+- Correct: 1 / 1 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260615_005033.log
+
+---
+## Learning Loop -- 2026-06-15 00:51
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_005140.log
+
+---
+## Learning Loop -- 2026-06-15 00:51
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 16 -> 16 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_005143.log
+
+## Iter 49 — 2026-06-15T00:52 — branch test33
+
+**Diagnosis**: iter48 added Schema 14 (`recolor_objects`) keyed on *literal*
+properties (`size`, `shape`) and its own "Next gap" named the fix: those literal
+keys decline on a test object whose absolute size/shape was never seen in train —
+the non-transfer that cost iter48 11/15 candidate covers and that *cannot* fold the
+canonical 08ed6ac7 (where the same bar height carries different colours across
+pairs, so `size` is non-deterministic and declines outright). The smallest
+defensible step is one new *ordinal* property in the same schema's search list —
+not a per-task detector — so the recolour map keys on a relative `rank` that
+re-derives per grid and transfers to unseen sizes (BACKLOG_LOOP §2.5-2b: lift the
+literal selector into a relative one).
+
+**Change**:
+- `program/synthesis.py` — added **`rank`** to `_RECOLOR_PROPS` (now
+  `("size", "shape", "rank")`) and a new `_obj_keys(objs, prop)` helper that
+  computes per-grid keys: `size`/`shape` delegate to `_obj_key` per object, while
+  `rank` reads the whole object set to assign each object its dense size-rank
+  within its own grid (largest → 1). `_fit_recolor_objects` and the `run_program`
+  `recolor_objects` branch both now key via `_obj_keys`. Rank is tried **last**, so
+  it only takes a task the literal keys cannot fit deterministically — *zero*
+  regression to the size/shape fits. Same one-step skeleton
+  `[("recolor_objects",("const",?v))]`, so a rank task lifts via `unify()` into the
+  existing rule_016 exactly like size/shape (R3), never a rule per property.
+- `tests/test_synthesis_recolor_objects.py` — +2 tests (rank fits where size/shape
+  are non-deterministic *and* transfers to a test object of an unseen size; rank is
+  only a fall-through so deterministic size fits never regress).
+- Persisted **08ed6ac7** into **rule_016** via the LIVE solve/save path
+  (`run_learn.py --task-dir` on a scratch copy, deleted after — no further code
+  edit): the agent solves it via `synthesized_program` (rank `recolor_objects`) and
+  `save_rule` merges it into the existing covers>1 rule (covers 4→5, rule count held
+  at 16). A full 1000-task scan found 08ed6ac7 is the *only* task rank newly fits
+  with an honest held-out test pass — so the fold is exactly one real task, not a
+  literal-key dump.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=16, P1/P2=7.8125, P3=0.9375
+**Probe after** : same probe unchanged; rules=16, P1/P2=7.875, P3=0.9375;
+easy_a 9/9 + madeup 27/27 hold; 240 tests pass (+2).
+
+**Invariants**: forbidden=none (F3 clean — recolour composes only `coloring`, no new
+DSL `def`/`@register`; F2 clean — no new `_try_*`; active_operators.py untouched so
+F8 N/A). positives=P1 +0.0625, P2 +0.0625 (covers 4→5 on rule_016, distinct-solved
+125→126, denominator unchanged — a *non-trap* rise: the fold lands a real new task on
+an existing lifted rule rather than minting a below-mean family).
+
+**Next gap (note for future iter)**: rank only resolves the size-ordinal case;
+the natural sibling is a **position/ordinal-by-coordinate** property (top-to-bottom
+or left-to-right object order → colour) which would fold the row/column-indexed
+recolour tasks the same way (same skeleton → rule_016), and is the next selector to
+lift. The standing multi-step conditional families (gravity-with-obstacles /
+ray-growth) the training probe keeps surfacing remain the other open lever.
+
+## Iter 49 [CLEAN] — 20260615_004249 — branch test33
+- Probe: [00:43:10] Correct:     0 / 3  (0.0%)

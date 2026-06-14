@@ -854,12 +854,14 @@ def run_program(program, input_grid):
         elif kind == "recolor_objects":
             # Object-level recolour by a value-agnostic *property → colour* map: each
             # input object is repainted (its cells kept fixed) in the colour the map
-            # assigns to that object's structural property — its cell-count (`size`)
-            # or its translation-normalised cell signature (`shape`). The reason —
-            # P3/P4 — is the COMM "an object with this property always becomes this
-            # colour"; `_fit_recolor_objects` reads the property and the map off the
-            # train pairs (the property chosen by SEARCH, size before shape) and
-            # declines when none reproduces every pair. The WHOLE map is ONE
+            # assigns to that object's structural property — its cell-count (`size`),
+            # its translation-normalised cell signature (`shape`), or its dense
+            # size-`rank` within the grid (the ordinal that transfers to test sizes
+            # unseen in train). The reason — P3/P4 — is the COMM "an object with this
+            # property always becomes this colour"; `_fit_recolor_objects` reads the
+            # property and the map off the train pairs (the property chosen by
+            # SEARCH: size, then shape, then rank) and declines when none reproduces
+            # every pair. The WHOLE map is ONE
             # structure-agnostic const leaf (a list of ``[key, colour]`` pairs),
             # exactly the way ``recolor_map`` carries its colour map — so a task
             # keyed on size and a task keyed on shape (or differing in arity) share
@@ -881,8 +883,8 @@ def run_program(program, input_grid):
             cmap = {_canon_key(k): v for k, v in spec["map"]}
             grid = env["grid"]
             bg = env["bg"]
-            for obj in objects_of(grid, bg):
-                k = _obj_key(obj, prop)
+            objs = objects_of(grid, bg)
+            for obj, k in zip(objs, _obj_keys(objs, prop)):
                 if k not in cmap:
                     raise _Unevaluable(
                         f"recolor_objects: object property {k!r} not in fitted map")
@@ -1586,13 +1588,22 @@ def _fit_crop(pairs):
     return [("crop", ("const", selector))]
 
 
-# The object properties an object-level recolour may key on, tried most-general
-# first: ``size`` (cell count — one key per distinct size, so it transfers to any
-# test object whose size was seen in train) before ``shape`` (the finer
-# translation-normalised cell signature — used only when same-size objects must
-# take different colours, which size alone cannot express). Both are pure
-# functions of an input object (the R1 vocabulary), never a literal.
-_RECOLOR_PROPS = ("size", "shape")
+# The object properties an object-level recolour may key on, tried in order:
+# ``size`` (cell count — one key per distinct size) and ``shape`` (the finer
+# translation-normalised cell signature, used when same-size objects must take
+# different colours), both *literal per-object* keys, before ``rank`` — the
+# object's dense size-rank within its own grid (largest = 1). Rank is an *ordinal*
+# selector: where a literal size/shape key declines on a test object whose
+# absolute value was never seen in train (the literal-key non-transfer that costs
+# most object-recolour covers), a rank key still resolves because ranks are small
+# relative integers re-derived per grid (BACKLOG_LOOP §2.5-2b — lift the literal
+# selector into a relative one that transfers to unseen keys). Tried *last* so it
+# only takes a task the literal keys cannot fit deterministically (zero regression
+# to the size/shape fits); the canonical 08ed6ac7 — where the same literal bar
+# height carries different colours across pairs, so size is non-deterministic — is
+# fit by rank. All three are pure functions of the input objects (the R1
+# vocabulary), never a stored coordinate.
+_RECOLOR_PROPS = ("size", "shape", "rank")
 
 
 def _obj_key(obj, prop):
@@ -1612,6 +1623,24 @@ def _obj_key(obj, prop):
     return None
 
 
+def _obj_keys(objs, prop):
+    """The property keys for a whole object set, returned aligned with ``objs``.
+
+    ``size`` and ``shape`` are *per-object* (delegated to `_obj_key`), so each key
+    depends only on its own object. ``rank`` is *relative* — an object's dense
+    size-rank within its own grid (largest object → 1, next distinct size → 2, …,
+    ties sharing a rank) — which is why it is computed for the set at once: it reads
+    every object's size. Rank is an ordinal selector that transfers to a test grid
+    whose absolute sizes were never seen in train (BACKLOG_LOOP §2.5-2b), where a
+    literal `size`/`shape` key would decline. Returns ``None`` entries for an
+    unknown property name (mirroring `_obj_key`)."""
+    if prop == "rank":
+        sizes = sorted({obj["size"] for obj in objs}, reverse=True)
+        rank_of = {s: i + 1 for i, s in enumerate(sizes)}
+        return [rank_of[obj["size"]] for obj in objs]
+    return [_obj_key(obj, prop) for obj in objs]
+
+
 def _canon_key(k):
     """Canonicalise a stored map key to the same hashable form `_obj_key`
     produces, so a key serialised through JSON (tuples become lists) still matches
@@ -1625,7 +1654,8 @@ def _canon_key(k):
 def _fit_recolor_objects(pairs):
     """Fit an object-level recolour: every object is repainted in the colour a
     value-agnostic *property → colour* map assigns to it. Tries each property in
-    `_RECOLOR_PROPS` (size before shape), building the map across all pairs and
+    `_RECOLOR_PROPS` (literal size, then shape, then the ordinal `rank`), building
+    the map across all pairs and
     requiring it to be deterministic (no key → two colours) and every object to be
     recoloured *uniformly* (a single output colour over its cells); declines (tries
     the next property, then ``None``) otherwise. The map is carried as ONE const
@@ -1651,13 +1681,13 @@ def _fit_recolor_objects(pairs):
             if not objs:
                 ok = False
                 break
-            for obj in objs:
+            keys = _obj_keys(objs, prop)
+            for obj, k in zip(objs, keys):
                 cols = {gout[r][c] for (r, c) in obj["cells"]}
                 if len(cols) != 1:
                     ok = False
                     break
                 newc = next(iter(cols))
-                k = _obj_key(obj, prop)
                 if k in mapping and mapping[k] != newc:
                     ok = False
                     break

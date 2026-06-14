@@ -104,6 +104,47 @@ def test_size_and_shape_tasks_share_skeleton():
     assert _program_skeleton(a) == _program_skeleton(b)
 
 
+# --- rank-keyed recolour transfers to a test object of an UNSEEN size --------
+
+def test_fit_recolor_by_rank_transfers_to_unseen_size():
+    # Each grid has two same-colour bars; the *larger* one becomes 2, the smaller
+    # becomes 3 — regardless of their absolute sizes. A literal `size` key cannot
+    # express this: a 2-cell bar is the larger one in pair 0 (-> 2) but the smaller
+    # one in pair 1 (-> 3), so size (and shape, the same bars) is non-deterministic
+    # and the fitter falls through to the ordinal `rank`.
+    pairs = [
+        # pair 0 sizes {2, 1}: col-0 bar = 2 cells (rank-1 -> 2), col-2 = 1 (rank-2 -> 3)
+        {"input":  [[5, 0, 5], [5, 0, 0], [0, 0, 0]],
+         "output": [[2, 0, 3], [2, 0, 0], [0, 0, 0]]},
+        # pair 1 sizes {3, 2}: col-0 bar = 3 cells (rank-1 -> 2), col-2 = 2 (rank-2 -> 3)
+        {"input":  [[5, 0, 5], [5, 0, 5], [5, 0, 0]],
+         "output": [[2, 0, 3], [2, 0, 3], [2, 0, 0]]},
+    ]
+    prog = _fit_recolor_objects(pairs)
+    assert prog is not None
+    assert prog[0][1][1]["prop"] == "rank"
+    for p in pairs:
+        assert run_program(prog, p["input"]) == p["output"]
+    # Transfer: a test grid whose bar sizes (4 and 1) were NEVER seen in train still
+    # resolves, because rank is re-derived per grid (largest -> 2, smaller -> 3).
+    test_in = [[5, 0, 5], [5, 0, 0], [5, 0, 0], [5, 0, 0]]
+    assert run_program(prog, test_in) == [[2, 0, 3], [2, 0, 0], [2, 0, 0], [2, 0, 0]]
+
+
+def test_rank_tried_after_literal_props():
+    # When size already reproduces the pairs deterministically, the literal key is
+    # kept (rank is only a fall-through), so existing size/shape fits never regress.
+    pairs = [
+        {"input":  [[5, 0, 0], [0, 0, 6], [0, 6, 6]],
+         "output": [[3, 0, 0], [0, 0, 4], [0, 4, 4]]},
+        {"input":  [[0, 0, 7], [8, 8, 0], [8, 0, 0]],
+         "output": [[0, 0, 3], [4, 4, 0], [4, 0, 0]]},
+    ]
+    prog = _fit_recolor_objects(pairs)
+    assert prog is not None
+    assert prog[0][1][1]["prop"] == "size"
+
+
 # --- a recolour task is reachable through the full search --------------------
 
 def test_synthesize_task_finds_recolour():
