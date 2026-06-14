@@ -5673,3 +5673,120 @@ ray-growth) that the hard probe tasks keep needing.
 
 ## Iter 50 [CLEAN] — 20260615_005609 — branch test33
 - Probe: [00:56:31] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 01:06
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 17 -> 17 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_010637.log
+
+---
+## Learning Loop -- 2026-06-15 01:06
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 17 -> 17 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_010641.log
+
+---
+## Learning Loop -- 2026-06-15 01:06
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 17 -> 17 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_010651.log
+
+---
+## Learning Loop -- 2026-06-15 01:14
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 17 -> 18 (+1 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_011356.log
+
+---
+## Learning Loop -- 2026-06-15 01:14
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_011422.log
+
+---
+## Learning Loop -- 2026-06-15 01:14
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_011425.log
+
+## Iter 51 — 2026-06-15T01:15 — branch test33
+
+**Diagnosis**: iter50's "Next gap" named *object* gravity, but a 1000-task scan
+refuted it as a lever — pure object-gravity (rigid blobs fall & stack, with/without
+a static obstacle colour) fits only **1** real ARC task the synthesizer fails
+(d282b262), a covers=1 accretion the §2.5-3/4 litmus forbids. Pivoted by scanning
+sibling capabilities for a ≥2-task fold: **enclosed-region fill** (paint the interior
+pockets of closed shapes) folds **2** real tasks the synthesizer fails (00d62c1b
+fill=yellow, a5313dff fill=blue), both held-out-test-passing and differing only in
+*fill colour* — so they lift via `unify()` into ONE covers=2 rule (the R3 prize),
+not a rule per colour.
+
+**Change**:
+- `program/synthesis.py` — added **Schema 16 `enclosed_fill`**: `_enclosed_cells(grid,
+  bg)` (a pure *selection* — border-seeded 4-conn flood over background marks the
+  *outside*; the enclosed cells are the background cells the flood never reaches, i.e.
+  interior pockets), `_fit_enclosed_fill(pairs)` (SEARCHes the output colours for the
+  single interior fill colour that reproduces every pair; requires same dims, ≥1
+  changed pair, and ≥1 pair with a real pocket so a hole-less grid stays owned by
+  identity), and a `run_program` `enclosed_fill` branch that paints the selected
+  pocket cells via the frozen `coloring` primitive (no new DSL `def`/`@register` —
+  F3-safe; selection reads the FIXED input so the program fills the test pockets
+  unchanged, P5). Yielded last in `_candidate_programs` so a simpler same-dims schema
+  wins when a task fits both. The fill colour is the whole per-task content in ONE
+  const leaf, so divergent colours share `[("enclosed_fill", ("const", ?v))]` and
+  lift into one covers>1 rule.
+- `tests/test_synthesis_enclosed_fill.py` — +6 tests (interior-only selection, open
+  shape has no pocket, basic fit with wall≠fill colour, hole-less task declines, two
+  divergent fill colours share one skeleton, full-search reachability via a
+  closed-box + open-C pair that `connect` cannot satisfy).
+- Persisted **00d62c1b** + **a5313dff** into **NEW rule_018** via the LIVE solve/save
+  path (`run_learn.py --task-dir` on a scratch copy, deleted after — no further code
+  edit): both solve via `synthesized_program`, and `save_rule`'s `unify()` lifts the
+  two divergent-fill programs into one abstract rule (`?v2`, covers=2,
+  `anti_unification_trace` → `episodic_memory/a5313dff/anti_unification/au_001.json`)
+  — the R3 prize, not a rule per colour.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=17, P1/P2=7.529, P3=0.9412, distinct-solved=128
+**Probe after** : same hard probe unchanged; rules=17→18, P1/P2=7.222, P3=0.9444,
+distinct-solved 128→130; easy_a 9/9 + madeup 27/27 hold; 252 tests pass (+6).
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN; F3 clean —
+enclosed_fill composes only `coloring`; F2 clean — no new `_try_*`;
+active_operators.py untouched so F8 N/A). positives=P3 +0.0033 (16/17→17/18 traced);
+P1/P2 −0.307 — the documented §2.5-4 instrumentation trap: a NEW-skeleton covers=2
+family lands 2 real new tasks via R3 (distinct-solved +2) but sits below the 7.529
+mean, so it dilutes the average even though it is real progress (P3 up, coverage
+breadth up, both folded into one lifted rule).
+
+**Next gap (note for future iter)**: enclosed_fill paints every pocket one fixed
+colour; the natural sibling is **per-region fill keyed on the enclosing object's
+property** (fill colour = a function of which shape encloses it, e.g. its wall colour
+or size) — same pocket-selection, but the fill becomes a property→colour map like
+Schema 14's `recolor_objects`, folding the "colour each enclosed region by its host"
+tasks. Object gravity (d282b262) remains a real but covers=1 task best deferred until
+a second object-gravity task surfaces to lift against.

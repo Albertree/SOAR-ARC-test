@@ -932,6 +932,33 @@ def run_program(program, input_grid):
                         cur = apply_DSL("coloring", cur, selection=(r, c), color=v)
             else:
                 raise _Unevaluable(f"unknown gravity direction: {direction!r}")
+        elif kind == "enclosed_fill":
+            # Fill every *enclosed* background region with one colour: the cells
+            # that are background yet cannot reach the grid border through other
+            # background cells (4-connected) — i.e. the interior holes of closed
+            # shapes. The recurring ARC "colour the inside of every closed loop"
+            # family. The reason — P3/P4 — is the COMM observation that the cells
+            # that change are exactly the background pocket sealed off by an
+            # object's wall, never the outside; ``_fit_enclosed_fill`` reads which
+            # single colour the interior becomes (chosen by SEARCH over the output
+            # colours) and declines when no colour reproduces every pair, or when a
+            # pair has no enclosed pocket at all (so a hole-less grid is owned by
+            # the simpler identity schema, not mis-claimed here). The fill colour is
+            # the WHOLE per-task content, carried as ONE const leaf — so a
+            # fill-yellow task and a fill-blue task share the SAME one-step skeleton
+            # ``[("enclosed_fill", ("const", ?v))]`` and lift via ``unify()`` into
+            # one ``covers>1`` rule (R3 — P1·P2·P3 rise together), never a rule per
+            # colour (§2.5-3/4). The enclosed cells are a *selection* (a util/LHS
+            # computation on the input, §2.5-1), painted by the frozen ``coloring``
+            # primitive, so it adds no transformation vocabulary (F3-safe). The
+            # selection reads the FIXED input (``env``), so the same program fills
+            # the test input's pockets unchanged (P5).
+            _, color_expr = step
+            fill = _eval(color_expr, env)
+            grid = env["grid"]
+            bg = env["bg"]
+            for (r, c) in _enclosed_cells(grid, bg):
+                cur = apply_DSL("coloring", cur, selection=(r, c), color=fill)
         elif kind == "compose":
             # Two-stage composition: run a *stage-1* sub-program (a structural
             # reduction of the input — crop to a selected region, or a dihedral
@@ -1223,6 +1250,24 @@ def _candidate_programs(pairs):
     gravity = _fit_gravity(pairs)
     if gravity is not None:
         yield gravity
+
+    # --- Schema 16: enclosed-region fill -----------------------------------
+    # Same-dims output that is the input with every *enclosed* background pocket
+    # (a background region sealed off from the grid border by an object wall)
+    # repainted one colour — the recurring ARC "fill the inside of each closed
+    # shape" family. The reason — P3/P4 — is the COMM that the changed cells are
+    # exactly the interior holes, never the outside background; `_fit_enclosed_fill`
+    # reads the single interior colour by SEARCH over the output colours and
+    # declines when none reproduces every pair (or a pair has no pocket). The fill
+    # colour is the whole per-task content carried as ONE const leaf, so a
+    # fill-yellow task and a fill-blue task share the pure ``[("enclosed_fill",
+    # ("const", ?v))]`` skeleton and lift via ``unify()`` into one ``covers>1`` rule
+    # (R3 — P1·P2·P3 rise together), never a rule per colour (§2.5-3/4). Yielded
+    # last so a simpler same-dims schema wins when a task fits both (a hole-less
+    # grid stays owned by identity).
+    enclosed = _fit_enclosed_fill(pairs)
+    if enclosed is not None:
+        yield enclosed
 
 
 def _is_fractal_dims(pairs):
@@ -1804,6 +1849,71 @@ def _fit_gravity(pairs):
         if not (ok and changed):
             continue
         prog = [("gravity", ("const", direction))]
+        if _reproduces(prog, pairs):
+            return prog
+    return None
+
+
+def _enclosed_cells(grid, bg):
+    """The set of background cells that cannot reach the grid border through
+    other background cells (4-connected) — the interior pockets of closed shapes.
+
+    A border-seeded flood over background cells marks every *outside* background
+    cell; the enclosed cells are the background cells the flood never reaches.
+    Pure selection on the input (a util/LHS computation, §2.5-1): it names *which*
+    cells to paint, leaving the painting to the frozen ``coloring`` primitive."""
+    H = len(grid)
+    W = len(grid[0]) if H else 0
+    outside = set()
+    stack = []
+    for r in range(H):
+        for c in (0, W - 1):
+            if W and grid[r][c] == bg:
+                stack.append((r, c))
+    for c in range(W):
+        for r in (0, H - 1):
+            if grid[r][c] == bg:
+                stack.append((r, c))
+    while stack:
+        r, c = stack.pop()
+        if (r, c) in outside:
+            continue
+        if not (0 <= r < H and 0 <= c < W) or grid[r][c] != bg:
+            continue
+        outside.add((r, c))
+        stack.extend([(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)])
+    return {(r, c) for r in range(H) for c in range(W)
+            if grid[r][c] == bg and (r, c) not in outside}
+
+
+def _fit_enclosed_fill(pairs):
+    """Fit an enclosed-region fill: every interior background pocket repainted one
+    colour. Searches the colours present in the outputs and returns the one-step
+    program ``[("enclosed_fill", ("const", colour))]`` for the first colour that
+    reproduces **every** pair exactly, or ``None``.
+
+    Requires same input/output dims, at least one pair that changes, and at least
+    one pair with a non-empty enclosed pocket (so a hole-less task is not
+    mis-claimed — the simpler identity schema owns that). The fill colour is the
+    whole per-task content carried as ONE const leaf, so divergent fill colours
+    lift via ``unify()`` into one ``covers>1`` rule (R3), never a rule per colour
+    (§2.5-3/4). The final ``_reproduces`` gate keeps the fit honest — a colour that
+    does not reproduce a pair exactly is rejected, not approximated."""
+    has_pocket = False
+    out_colors = set()
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout) or (
+                gin and len(gin[0]) != len(gout[0] if gout else [])):
+            return None
+        if _enclosed_cells(gin, background_of(gin)):
+            has_pocket = True
+        for row in gout:
+            out_colors.update(row)
+    if not has_pocket:
+        return None
+    for fill in sorted(out_colors):
+        prog = [("enclosed_fill", ("const", fill))]
         if _reproduces(prog, pairs):
             return prog
     return None
