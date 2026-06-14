@@ -851,6 +851,34 @@ def run_program(program, input_grid):
                     if v != bg:
                         cur = apply_DSL(
                             "coloring", cur, selection=(r - r0, c - c0), color=v)
+        elif kind == "compose":
+            # Two-stage composition: run a *stage-1* sub-program (a structural
+            # reduction of the input — crop to a selected region, or a dihedral
+            # re-orientation) to produce an intermediate grid, then **re-root the
+            # environment to that intermediate** so the remaining steps treat it
+            # as their input. This is the only step that re-roots ``env``; every
+            # other step reads the original input (P5), which is exactly why a
+            # genuine spatial-then-spatial composition (crop-then-tile,
+            # rotate-then-X) needs this wrapper rather than threading ``cur``.
+            #
+            # The intermediate is itself produced by ``run_program`` from the two
+            # frozen primitives (the stage-1 sub-program is a ``crop``/``dihedral``
+            # step), so composition adds NO transformation vocabulary (§2.5-1,
+            # F3-safe). Because the stage-1 reduction is a pure, value-agnostic
+            # function of the input, the re-rooted environment is reproduced
+            # unchanged on the test input (P5). Carried as the head step with the
+            # stage-1 sub-program in its leaf, two tasks sharing the same
+            # (stage-1-shape, stage-2-schema) skeleton lift via ``unify()`` into one
+            # ``covers>1`` rule (R3 — ``agent/memory.py:_program_skeleton`` collapses
+            # the fitted const leaves on both stages).
+            _, pre = step
+            inter = run_program(pre, env["grid"])
+            env = {
+                "grid": inter,
+                "objs": objects_of(inter),
+                "bg": background_of(inter),
+            }
+            cur = [row[:] for row in inter]
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -1502,6 +1530,58 @@ def _fit_crop(pairs):
     return [("crop", ("const", selector))]
 
 
+def _reproduces(prog, pairs):
+    """True iff ``prog`` reproduces every pair's output from its input (declining
+    — not crashing — on an input where a step does not resolve)."""
+    for p in pairs:
+        try:
+            if run_program(prog, p["input"]) != p["output"]:
+                return False
+        except _Unevaluable:
+            return False
+    return True
+
+
+# The stage-1 reductions a composition may prepend: crop to a selected region, or
+# a dihedral re-orientation. Each is an existing single-step schema (so it is
+# value-agnostic and already composes only the two frozen primitives); used here
+# as a *preprocessing* stage whose intermediate grid is re-fitted by the
+# single-step search. Bounded and small (so the composed search stays cheap), and
+# every entry is a structural input transform, never a per-pair literal.
+_STAGE1_REDUCTIONS = (
+    tuple([("crop", ("const", s))] for s in _CROP_SELECTORS)
+    + tuple([("dihedral", ("const", n))] for n in _DIHEDRAL)
+)
+
+
+def _synthesize_composed(pairs):
+    """Two-step fallback: when no single-step schema reproduces the task, try a
+    *structural stage-1 reduction* (crop / dihedral) followed by a re-fit of the
+    single-step search on the transformed pairs (``[("compose", pre)] + post``).
+
+    This is the spatial-then-spatial composition lever: it amplifies every
+    existing schema by letting it apply after the input is cropped to its content
+    (or a selected object) or re-oriented — the recurring ARC "find the relevant
+    sub-grid, then transform it" family. Only reached as a fallback, so it cannot
+    change any single-step solve (zero regression). The identity stage-2 is
+    skipped (stage-1-alone is already its own ``crop``/``dihedral`` schema), so a
+    composed program always does genuine work in *both* stages."""
+    for pre in _STAGE1_REDUCTIONS:
+        try:
+            inter = [run_program(pre, p["input"]) for p in pairs]
+        except _Unevaluable:
+            continue
+        pairs2 = [{"input": inter[i], "output": pairs[i]["output"]}
+                  for i in range(len(pairs))]
+        for post in _candidate_programs(pairs2):
+            if not post:
+                continue  # identity stage-2 ⇒ stage-1 alone, already a schema
+            composed = [("compose", pre)] + list(post)
+            if _reproduces(composed, pairs):
+                return composed
+    return None
+
+
 def synthesize_task(pairs):
     """Search for one program reproducing **every** train pair's output from its
     input. Returns the program (a list of steps) or ``None``.
@@ -1511,19 +1591,14 @@ def synthesize_task(pairs):
     argument resolves from an input grid), so it applies unchanged to the test
     input. A ``None`` result is honest: the bounded search found no general
     program — it never falls back to a literal per-pair fit.
+
+    A single-step schema is tried first; only when none fits does the bounded
+    two-step composition fallback run (``_synthesize_composed``), so the
+    composition can never displace a simpler single-step solve.
     """
     if not pairs:
         return None
     for prog in _candidate_programs(pairs):
-        ok = True
-        for p in pairs:
-            try:
-                if run_program(prog, p["input"]) != p["output"]:
-                    ok = False
-                    break
-            except _Unevaluable:
-                ok = False
-                break
-        if ok:
+        if _reproduces(prog, pairs):
             return prog
-    return None
+    return _synthesize_composed(pairs)

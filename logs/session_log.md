@@ -5093,3 +5093,128 @@ new schema — the single-schema clean frontier remains empirically picked clean
 
 ## Iter 45 [CLEAN] — 20260614_233441 — branch test33
 - Probe: [23:35:01] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 23:43
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_234318.log
+
+---
+## Learning Loop -- 2026-06-14 23:43
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_234322.log
+
+---
+## Learning Loop -- 2026-06-14 23:43
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 13 -> 13 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260614_234332.log
+
+---
+## Learning Loop -- 2026-06-14 23:56
+
+- Split: None, Tasks: 2
+- Correct: 2 / 2 (100.0%)
+- Rules: 13 -> 14 (+1 learned)
+- Stored rule hits: 0
+- Time: 1s
+- Log: logs/learn_20260614_235630.log
+
+---
+## Learning Loop -- 2026-06-14 23:56
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_235643.log
+
+---
+## Learning Loop -- 2026-06-14 23:56
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 14 -> 14 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260614_235647.log
+
+## Iter 46 — 2026-06-14T14:58:02Z — branch test33
+
+**Diagnosis**: Training phase. Iter 45's "Next gap" named the real frontier:
+single-step schemas are empirically picked clean (best fresh family ~2 tasks),
+and the two genuine next levers are **multi-step (spatial-then-spatial)
+composition** and object-level recolor-by-property — "a new mechanism, not a
+single new schema." I measured both on the 918 currently-unsolved training tasks:
+2-step composition (a structural stage-1 reduction → re-fit the single-step
+search) newly train-fits **8–10** tasks (all transfer held-out), vs
+recolor-by-size-rank's 3. Composition is both higher-yield *and* more general — it
+amplifies every one of the 12 existing schemas rather than adding a 13th. Picked
+composition.
+
+**Change**:
+- `program/synthesis.py` — new **`compose` step** in `run_program`: runs a stage-1
+  sub-program (a `crop`/`dihedral` reduction) to produce an intermediate grid, then
+  **re-roots `env`** to it so the remaining steps treat the intermediate as their
+  input. This is the only step that re-roots env (every other reads the original
+  input, P5) — exactly why genuine spatial-then-spatial composition needs a wrapper
+  rather than threading `cur`. Composes only the two frozen primitives via the
+  recursive `run_program` (F3-safe). New `_synthesize_composed` fallback (reached
+  **only when no single-step schema fits** → zero regression) tries each stage-1
+  reduction in `_STAGE1_REDUCTIONS` (the 5 crop selectors + 7 dihedral maps),
+  transforms the inputs, and re-fits via the single-step `_candidate_programs`;
+  identity stage-2 is skipped (stage-1-alone is already its own schema). Extracted
+  `_reproduces` helper; `synthesize_task` now tries single-step first, then the
+  composed fallback. No new transformation primitive (F3), no `_try_*` (F2), no
+  `active_operators.py` edit.
+- `procedural_memory/rule_014.json` (+ `episodic_memory/f25ffba3/anti_unification/
+  au_001.json`) — ran the learner over the two crop-then-tile tasks (28bf18c6,
+  f25ffba3); the synthesizer discovered `[("compose",[("crop",…)]),("tile",…)]` for
+  each and `save_rule`→`unify()` **lifted the divergent (k,m,pattern) leaves to
+  `?v`**, folding both into ONE composed rule **covers=2 + AU trace** — a genuine
+  R3 lift of the *new* composition mechanism (the training-phase prize).
+- `tests/test_synthesis.py` — 3 composition tests (crop-then-dihedral with a
+  repeated colour so no recolour fits; fallback-only / no-regression; two
+  divergent-leaf composed tasks share one skeleton → lift). 232 pass.
+
+**Probe before**: training 0/3 (sample); easy_a 9/9, madeup 27/27; 13 rules;
+synthesizer held-out solves **80/1000**; P1=8.385, P2=8.385, P3=0.9231.
+**Probe after** : easy_a 9/9, madeup 27/27; 14 rules (rule_014 covers=2, AU-traced);
+synthesizer held-out solves **90/1000** (+10 via composition, 10 train-fit; zero
+prior solve lost — composition is fallback-only); P1 8.385→7.929, P2 8.385→7.929,
+P3 0.9231→**0.9286**.
+
+**Invariants**: forbidden=**none** (check_invariants CLEAN, exit 0). positives=**P3
++0.0055** (the new composed rule is itself an AU lift, raising the AU-traced
+fraction). **P1/P2 −0.456 is the documented instrumentation trap** (psignal_
+saturation / synthesizer_frontier memories): a covers=2 family is far below the
+current mean (8.385), so introducing *any* genuinely-new capability — which by
+construction has a new skeleton and cannot fold into an existing high-covers rule
+— lowers the average. The real, metric-invisible progress is held-out training
+solves **80→90** through a mechanism that reuses 5 distinct stage-2 schemas
+(make_grid/tile/dihedral/fractal/scale) after a crop/rotate. P4/P5/P6 unchanged.
+
+**Next gap (note for future iter)**: composition is now wired but only one stage-1
+family (crop) and one stage-2 fold (crop-tile) is persisted; a future iter can (a)
+persist the other folding composition pairs (crop-makegrid is a second covers=2
+fold sitting in the 1000) to thicken the composition families, and (b) attack the
+*second* named lever — **object-level recolor-by-property** (recolor each object by
+an ordinal/relational property like size-rank, which transfers to unseen keys,
+rather than a raw colour table). Composition could also deepen to 3 stages, but the
+single-2-step yield (+10) already dwarfs the single-schema frontier, so breadth of
+stage-1 reductions (e.g. extract-one-panel) is the cheaper next probe.

@@ -1,0 +1,157 @@
+{
+  "id": 14,
+  "concept": "synthesized program",
+  "category": "other",
+  "rule": {
+    "type": "synthesized_program",
+    "condition": {
+      "type": "synthesized_program",
+      "params": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "crop",
+                [
+                  "const",
+                  "content"
+                ]
+              ]
+            ]
+          ],
+          [
+            "tile",
+            [
+              "const",
+              "?v1"
+            ],
+            [
+              "const",
+              "?v2"
+            ],
+            [
+              "const",
+              "?v3"
+            ]
+          ]
+        ],
+        "min_evidence": 1
+      },
+      "min_evidence": 1
+    },
+    "action": {
+      "dsl": "run_program",
+      "args": {
+        "program": [
+          [
+            "compose",
+            [
+              [
+                "crop",
+                [
+                  "const",
+                  "content"
+                ]
+              ]
+            ]
+          ],
+          [
+            "tile",
+            [
+              "const",
+              "?v4"
+            ],
+            [
+              "const",
+              "?v5"
+            ],
+            [
+              "const",
+              "?v6"
+            ]
+          ]
+        ]
+      }
+    },
+    "confidence": 1.0
+  },
+  "covers": [
+    "28bf18c6",
+    "f25ffba3"
+  ],
+  "source_task": "28bf18c6",
+  "created_at": "2026-06-14T23:56:31.196439",
+  "times_reused": 0,
+  "condition": {
+    "type": "synthesized_program",
+    "params": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "crop",
+              [
+                "const",
+                "content"
+              ]
+            ]
+          ]
+        ],
+        [
+          "tile",
+          [
+            "const",
+            "?v1"
+          ],
+          [
+            "const",
+            "?v2"
+          ],
+          [
+            "const",
+            "?v3"
+          ]
+        ]
+      ],
+      "min_evidence": 1
+    },
+    "min_evidence": 1
+  },
+  "action": {
+    "dsl": "run_program",
+    "args": {
+      "program": [
+        [
+          "compose",
+          [
+            [
+              "crop",
+              [
+                "const",
+                "content"
+              ]
+            ]
+          ]
+        ],
+        [
+          "tile",
+          [
+            "const",
+            "?v4"
+          ],
+          [
+            "const",
+            "?v5"
+          ],
+          [
+            "const",
+            "?v6"
+          ]
+        ]
+      ]
+    }
+  },
+  "anti_unification_trace": "episodic_memory/f25ffba3/anti_unification/au_001.json"
+}

@@ -804,3 +804,69 @@ def test_crop_selectors_share_one_skeleton():
     assert content[0][0] == "crop" and largest[0][0] == "crop"
     assert content[0][1] != largest[0][1]  # different selector leaves
     assert _program_skeleton(content) == _program_skeleton(largest)
+
+
+# --- two-step composition: stage-1 reduction then re-fit (Schema 13) ----------
+
+def test_composition_crop_then_dihedral():
+    # The output is the input's content region, re-oriented — a genuine
+    # spatial-then-spatial composition no single-step schema fits: crop to the
+    # non-background box, then flip it horizontally. The content carries a
+    # *repeated* colour so no colour map reproduces the move (forcing the
+    # geometric flip, not a recolour). The synthesizer falls back to the two-step
+    # search and returns ``[("compose", <crop>), <dihedral>]``.
+    pairs = [
+        {"input":  [[0, 0, 0, 0, 0],
+                    [0, 1, 1, 2, 0],
+                    [0, 0, 0, 0, 0]],
+         "output": [[2, 1, 1]]},
+        {"input":  [[0, 0, 0, 0],
+                    [0, 3, 4, 4],
+                    [0, 0, 0, 0]],
+         "output": [[4, 4, 3]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None
+    assert prog[0][0] == "compose"
+    assert prog[0][1][0][0] == "crop"        # stage-1 = crop to content
+    assert prog[1][0] == "dihedral"          # stage-2 = horizontal flip
+    # transfers unchanged to an unseen held-out input (P5)
+    held = [[0, 0, 0, 0, 0],
+            [0, 7, 8, 8, 0],
+            [0, 0, 0, 0, 0]]
+    assert run_program(prog, held) == [[8, 8, 7]]
+
+
+def test_composition_is_fallback_only_no_regression():
+    # A task a single-step schema already solves (plain horizontal flip) must NOT
+    # be re-expressed as a composition — the two-step search is reached only when
+    # no single-step program fits, so it can never displace a simpler solve.
+    pairs = [
+        {"input": [[1, 1, 0, 2]], "output": [[2, 0, 1, 1]]},
+        {"input": [[5, 0, 0, 6]], "output": [[6, 0, 0, 5]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None
+    assert prog[0][0] != "compose"           # stayed single-step
+
+
+def test_composition_skeletons_lift_across_tasks():
+    # Two crop-then-dihedral tasks whose fitted leaves differ (flip vs vertical
+    # flip) share the SAME composed skeleton, so save_rule lifts them into ONE
+    # covers>1 rule (R3) rather than a rule per task.
+    from agent.memory import _program_skeleton
+    a = synthesize_task([
+        {"input":  [[0, 0, 0, 0, 0], [0, 1, 1, 2, 0], [0, 0, 0, 0, 0]],
+         "output": [[2, 1, 1]]},
+        {"input":  [[0, 0, 0, 0], [0, 3, 4, 4], [0, 0, 0, 0]],
+         "output": [[4, 4, 3]]},
+    ])
+    b = synthesize_task([
+        {"input":  [[0, 0, 0], [0, 1, 0], [0, 1, 0], [0, 2, 0], [0, 0, 0]],
+         "output": [[2], [1], [1]]},
+        {"input":  [[0, 0], [3, 0], [4, 0], [4, 0]],
+         "output": [[4], [4], [3]]},
+    ])
+    assert a is not None and b is not None
+    assert a[0][0] == "compose" and b[0][0] == "compose"
+    assert _program_skeleton(a) == _program_skeleton(b)

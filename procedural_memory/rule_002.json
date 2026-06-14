@@ -51,7 +51,7 @@
   ],
   "source_task": "easy000c",
   "created_at": "2026-06-14T17:00:49.944031",
-  "times_reused": 1046,
+  "times_reused": 1084,
   "condition": {
     "type": "object_motion",
     "params": {
