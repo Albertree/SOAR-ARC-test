@@ -302,6 +302,12 @@ class ExtractPatternOperator(Operator):
                         position_of(o)
                         for j, o in enumerate(objs_in) if j != sel_idx
                     ],
+                    # the full *unselected* object dicts — fed to fit_target's
+                    # anchor *selector* so `to_anchor` names *which* of several
+                    # other objects is the anchor (§2.5-2b), not just the lone one.
+                    "other_objs": [
+                        o for j, o in enumerate(objs_in) if j != sel_idx
+                    ],
                 })
                 shapes.append({
                     "in": (g0.height, g0.width),

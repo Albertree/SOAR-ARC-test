@@ -5,7 +5,11 @@ Fires when every example pair moves *a selected foreground object* to a
 destination describable by one value-agnostic *target expression* — a corner
 relation, a constant absolute position, a constant translation, or a *relational*
 target naming another object's position (``to_anchor``, the gravity / attraction
-pattern) — with the object (colour + shape) preserved. Which object moves is itself a fitted
+pattern). The relational anchor is itself named by a fitted *selector* over the
+*other* objects (`fit_target`'s ``anchor`` sub-expression: unique / largest /
+odd-one-out / …), so the destination is identified even when several other objects
+are present — the selector says *which* one is the anchor — not only in the lone
+single-other case. With the object (colour + shape) preserved. Which object moves is itself a fitted
 *selector expression* (`agent/dsl_expr/selection.fit_selector`: unique / largest
 / smallest), so a multi-object input can name which object the rule acts on
 without a literal index — the §2.1 multi-object-selection concept. The

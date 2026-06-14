@@ -37,11 +37,12 @@
     "mo_select_odd_shape",
     "mo_one_pair",
     "mo_second_largest",
-    "mo_to_anchor"
+    "mo_to_anchor",
+    "mo_anchor_select"
   ],
   "source_task": "easy000c",
   "created_at": "2026-06-14T17:00:49.944031",
-  "times_reused": 136,
+  "times_reused": 181,
   "condition": {
     "type": "object_motion",
     "params": {

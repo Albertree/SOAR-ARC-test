@@ -91,17 +91,50 @@ def test_target_position_roundtrip():
 
 # --- relational target (to_anchor): the destination is another object's position --
 
+def _pix(r, c, color=4):
+    # minimal single-pixel object dict — enough for position_of / the selectors
+    return {"bbox": (r, c, r, c), "size": 1, "color_set": [color],
+            "cells": frozenset([(r, c)]), "pixels": {(r, c): color}}
+
+
+def _blob(r0, c0, h, w, color=2):
+    # minimal h x w rectangular object dict at (r0, c0) — a larger anchor candidate
+    cells = frozenset((r0 + dr, c0 + dc) for dr in range(h) for dc in range(w))
+    return {"bbox": (r0, c0, r0 + h - 1, c0 + w - 1), "size": h * w,
+            "color_set": [color], "cells": cells,
+            "pixels": {p: color for p in cells}}
+
+
 def test_fit_to_anchor():
     # Both the mover and its single anchor sit at varying positions, so neither
     # bottom_right, offset nor constant fits; the destination equals the anchor's
-    # position on every pair -> the relational `to_anchor` target (§2.5-1).
+    # position on every pair -> the relational `to_anchor` target (§2.5-1). With a
+    # single other object the fitted anchor selector is the degenerate `unique`.
     motions = [
         {"src": (0, 0), "dst": (3, 4), "H": 6, "W": 6, "oh": 2, "ow": 2,
-         "others": [(3, 4)]},
+         "others": [(3, 4)], "other_objs": [_pix(3, 4)]},
         {"src": (4, 4), "dst": (1, 1), "H": 6, "W": 6, "oh": 2, "ow": 2,
-         "others": [(1, 1)]},
+         "others": [(1, 1)], "other_objs": [_pix(1, 1)]},
     ]
-    assert fit_target(motions) == {"kind": "to_anchor"}
+    assert fit_target(motions) == {"kind": "to_anchor",
+                                   "anchor": {"kind": "unique"}}
+
+
+def test_fit_to_anchor_selects_among_several_others():
+    # §2.5-2b lift: several other objects per pair, so naming the anchor needs a
+    # *selector* over them. Here the anchor is the LARGEST other (a blob) and the
+    # distractor is a single pixel; the destination equals the blob's top-left on
+    # every pair, so the fitted anchor selector is `largest`.
+    motions = [
+        {"src": (0, 0), "dst": (3, 4), "H": 8, "W": 8, "oh": 2, "ow": 2,
+         "others": [(3, 4), (7, 7)],
+         "other_objs": [_blob(3, 4, 1, 3), _pix(7, 7)]},
+        {"src": (6, 6), "dst": (1, 1), "H": 8, "W": 8, "oh": 2, "ow": 2,
+         "others": [(1, 1), (5, 7)],
+         "other_objs": [_blob(1, 1, 1, 3), _pix(5, 7)]},
+    ]
+    assert fit_target(motions) == {"kind": "to_anchor",
+                                   "anchor": {"kind": "largest"}}
 
 
 def test_fit_to_anchor_loses_to_simpler_readings():
@@ -116,15 +149,27 @@ def test_fit_to_anchor_loses_to_simpler_readings():
     assert fit_target(motions) == {"kind": "constant", "pos": [1, 1]}
 
 
-def test_fit_to_anchor_declines_without_single_other():
-    # zero or multiple anchor candidates -> no value-agnostic single anchor, so it
-    # declines (a future iter lifts a fitted anchor selector past the two-object
-    # case); here every pair has two other objects.
+def test_fit_to_anchor_declines_without_object_material():
+    # the anchor selector needs the full other-object dicts (`other_objs`) to run
+    # the selection vocabulary; with only positions (`others`) and no `other_objs`
+    # it cannot fit a selector and declines rather than guessing.
     motions = [
         {"src": (0, 0), "dst": (3, 4), "H": 6, "W": 6, "oh": 2, "ow": 2,
          "others": [(3, 4), (5, 5)]},
         {"src": (4, 4), "dst": (1, 1), "H": 6, "W": 6, "oh": 2, "ow": 2,
          "others": [(1, 1), (0, 0)]},
+    ]
+    assert fit_target(motions) is None
+
+
+def test_fit_to_anchor_declines_when_dst_matches_no_other():
+    # the destination sits on no other object on some pair -> there is no anchor to
+    # name, so to_anchor declines (and so does every earlier reading).
+    motions = [
+        {"src": (0, 0), "dst": (3, 4), "H": 8, "W": 8, "oh": 2, "ow": 2,
+         "others": [(7, 7)], "other_objs": [_pix(7, 7)]},
+        {"src": (6, 6), "dst": (1, 1), "H": 8, "W": 8, "oh": 2, "ow": 2,
+         "others": [(5, 5)], "other_objs": [_pix(5, 5)]},
     ]
     assert fit_target(motions) is None
 
@@ -899,11 +944,24 @@ def test_one_rule_covers_the_whole_family(tmp_path):
 
 def test_pipeline_solves_to_anchor():
     # the relational-target task solves end-to-end via an object_motion rule whose
-    # fitted target is the new `to_anchor` expression (§2.5-1). Loaded from the
+    # fitted target is the `to_anchor` expression (§2.5-1). Its single other object
+    # makes the fitted anchor selector the degenerate `unique`. Loaded from the
     # on-disk madeup task so the test and the probe exercise identical data.
     spec = _load_madeup("mo_to_anchor.json")
     rule = _check_solved(spec, "to_anchor").s1["active-rules"][0]
-    assert rule["action"]["args"]["target"] == {"kind": "to_anchor"}
+    assert rule["action"]["args"]["target"] == {
+        "kind": "to_anchor", "anchor": {"kind": "unique"}}
+
+
+def test_pipeline_solves_anchor_selection():
+    # §2.5-2b lift: a relational-target task with a DISTRACTOR object, so the anchor
+    # must be named by a selector over the others (here the LARGEST). It solves
+    # end-to-end via the same object_motion rule whose fitted target carries the
+    # fitted anchor selector — naming *which* of several others is the anchor.
+    spec = _load_madeup("mo_anchor_select.json")
+    rule = _check_solved(spec, "anchor_select").s1["active-rules"][0]
+    assert rule["action"]["args"]["target"] == {
+        "kind": "to_anchor", "anchor": {"kind": "largest"}}
 
 
 def test_to_anchor_converges_with_corner_family(tmp_path):

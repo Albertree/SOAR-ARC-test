@@ -104,17 +104,45 @@ def fit_target(motions):
         return {"kind": "constant", "pos": [r, c]}
 
     # to_anchor: the object lands on *another object*'s position — the relational
-    # target (§2.5-1). The minimal value-agnostic anchor is "the single other
-    # object": fits only when every pair has exactly one unselected object AND the
-    # moved object's destination equals that object's position. Tried LAST so it
-    # only claims a task no grid-relative or constant reading explains.
-    if all(
-        len(m.get("others") or []) == 1 and m["dst"] == m["others"][0]
-        for m in motions
-    ):
-        return {"kind": "to_anchor"}
+    # target (§2.5-1). The destination is named by a fitted *selector* over the
+    # other (unselected) objects (§2.5-2b), so the anchor is identified even when
+    # several other objects are present: the selector says *which* one is the
+    # anchor. Tried LAST so it only claims a task no grid-relative or constant
+    # reading explains. For each pair the anchor is the other object sitting at the
+    # moved object's destination; `fit_selector` then finds one input-only
+    # criterion (unique / largest / odd-one-out / …) that names that anchor in
+    # *every* pair, falling back to None (decline) when none does. The degenerate
+    # exactly-one-other case fits the `unique` criterion, so the prior
+    # single-other behaviour is preserved as a special case of the general lift.
+    anchor = _fit_anchor(motions)
+    if anchor is not None:
+        return {"kind": "to_anchor", "anchor": anchor}
 
     return None
+
+
+def _fit_anchor(motions):
+    """Fit a value-agnostic *selector* over the other (unselected) objects that
+    names the anchor — the object whose bbox top-left equals the moved object's
+    destination — in every pair. Returns the selector descriptor, or None when no
+    single criterion explains every pair (so `fit_target` declines `to_anchor`).
+
+    Needs the full other-object dicts per pair (carried on each motion as
+    ``other_objs``) to run the selection vocabulary; absent them it declines."""
+    from agent.dsl_expr.selection import fit_selector, position_of
+
+    anchor_selections = []
+    for m in motions:
+        others = m.get("other_objs")
+        if not others:
+            return None
+        anchor_idxs = [
+            i for i, o in enumerate(others) if position_of(o) == m["dst"]
+        ]
+        if len(anchor_idxs) != 1:
+            return None
+        anchor_selections.append({"objects": others, "selected": anchor_idxs[0]})
+    return fit_selector(anchor_selections)
 
 
 def fit_output_shape(shapes):
@@ -246,10 +274,23 @@ def target_position(descriptor, grid_dims, obj, objects=None):
     if kind == "to_anchor":
         if not objects:
             return None
-        # The anchor is the single *other* object (identity-based, never ==), the
-        # value-agnostic minimal relation fitted by `fit_target`. Declines unless
-        # exactly one other object exists, mirroring the fit-side gate.
+        # The anchor is named by a fitted selector over the *other* objects
+        # (identity-based exclusion, never ==), the value-agnostic relation fitted
+        # by `fit_target`. `descriptor["anchor"]` is that selector descriptor;
+        # resolve it over the others (the `unique` criterion covers the
+        # single-other case). Declines (None) when the selector picks no other
+        # object, mirroring the fit-side gate. Falls back to the single-other
+        # reading when no anchor selector is recorded (legacy descriptor).
+        from agent.dsl_expr.selection import select_object
+
         others = [o for o in objects if o is not obj]
+        anchor_sel = descriptor.get("anchor")
+        if anchor_sel is not None:
+            anchor = select_object(others, anchor_sel)
+            if anchor is None:
+                return None
+            (ar, ac), _extent = obj_origin_extent(anchor)
+            return (ar, ac)
         if len(others) != 1:
             return None
         (ar, ac), _extent = obj_origin_extent(others[0])

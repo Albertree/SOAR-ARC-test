@@ -2210,3 +2210,134 @@ edge ranking) which remains open-question-blocked.
 
 ## Iter 22 [CLEAN] — 20260614_183528 — branch test33
 - Probe: [18:35:42] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 18:46
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_184603.log
+
+---
+## Learning Loop -- 2026-06-14 18:46
+
+- Split: None, Tasks: 14
+- Correct: 14 / 14 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 13
+- Time: 5s
+- Log: logs/learn_20260614_184606.log
+
+---
+## Learning Loop -- 2026-06-14 18:46
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_184612.log
+
+---
+## Learning Loop -- 2026-06-14 18:49
+
+- Split: None, Tasks: 15
+- Correct: 14 / 15 (93.3%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 13
+- Time: 6s
+- Log: logs/learn_20260614_184929.log
+
+---
+## Learning Loop -- 2026-06-14 18:50
+
+- Split: None, Tasks: 15
+- Correct: 15 / 15 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 14
+- Time: 6s
+- Log: logs/learn_20260614_185034.log
+
+---
+## Learning Loop -- 2026-06-14 18:51
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_185059.log
+
+---
+## Learning Loop -- 2026-06-14 18:52
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 3 -> 3 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_185238.log
+
+---
+## Iter 23 — 2026-06-14 — branch test33
+
+**Diagnosis**: Iter 22 added the relational `to_anchor` target but hard-gated the
+anchor to "the single other object" — it declines the moment a grid holds a
+distractor. That was iter 22's own flagged next gap: lift the anchor to a fitted
+*selector over the others* (§2.5-2b), so `to_anchor` names *which* of several
+objects is the anchor. The smallest defensible step is to reuse the existing
+selection vocabulary (`fit_selector`/`select_object`) for the anchor rather than
+build new machinery, exercised on a madeup task that adds a distractor object.
+
+**Change**:
+- `agent/dsl_expr/motion.py` — `fit_target`'s `to_anchor` branch now fits an
+  anchor *selector* over the other objects (new `_fit_anchor`): for each pair the
+  anchor is the other object at the mover's destination, and `fit_selector` finds
+  one input-only criterion (unique/largest/odd-one-out/…) naming it in every pair.
+  Returns `{"kind":"to_anchor","anchor":<selector>}`. The single-other case fits
+  `unique`, so prior behaviour is a special case of the general lift.
+  `target_position` resolves the anchor via `select_object` over the others (with a
+  legacy single-other fallback when no anchor selector is recorded). Module docstring
+  updated.
+- `agent/active_operators.py` — `_object_motion` now records each pair's full
+  unselected object dicts (`other_objs`) alongside the positions (`others`), so
+  `fit_target` can run the selection vocabulary over them (+6 lines; F8 satisfied
+  by the co-touch to `agent/conditions/`).
+- `agent/conditions/object_motion.py` — matcher docstring now describes the
+  fitted anchor selector inside the relational target.
+- `data/ARC_madeup/mo_anchor_select.json` (NEW, F1-exempt) — a 2×2 mover, a
+  size-3 anchor bar, and a single-pixel distractor, all at varying positions; the
+  mover lands on the anchor bar (the LARGEST other). Authored to **fail** iter 22's
+  exactly-one-other gate: with two others the anchor needs a selector. The mover is
+  the size extreme so the existing selector names which object moves; the new
+  content is the anchor selection.
+- `tests/test_object_motion.py` — updated the two iter-22 `to_anchor` tests to the
+  new descriptor shape (`anchor` sub-expr); added `_pix`/`_blob` builders, a
+  multi-other fit test (`largest`), a dst-matches-no-other decline test, and a
+  pipeline test that solves `mo_anchor_select` with `anchor={"kind":"largest"}`.
+
+**Probe before**: training 0/3; easy_a 9/9, madeup 14/14; rules 3, rule_002 covers
+18, P1=P2=7.667, P3=0.667. 130 tests.
+**Probe after** : easy_a 9/9, madeup **15/15** (mo_anchor_select CORRECT via
+object_motion, folded into rule_002 covers 18→19, **no new rule**, solved through
+the R5 stored fast path — the anchor selector re-resolves on the abstract rule).
+training 0/3 (0 errors — no crash regression). 133 tests pass (130+3).
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0); positives=**P1
++0.333 (7.667→8.0), P2 +0.333 (7.667→8.0)** via covers union (rule count flat —
+§2.5-4 litmus satisfied); P3/P4/P5 ±0; P6 −6 (active_operators grew by the
+other_objs plumbing, the cost of feeding the selector its material — all real
+fitting logic lives in `agent/dsl_expr/motion.py`). The anchor selector grows the
+LHS argument vocabulary under `agent/` by *reusing* the existing selection
+vocabulary; no new `_try_*`, no new transformation primitive.
+
+**Next gap (note for future iter)**: the relational target's anchor now spans the
+full selector vocabulary (unique/size/position/odd-one-out/ranked). The standing
+frontier is unchanged and larger: a general multi-step Slow-path *synthesizer*
+(modules F/G) is what the training 0/3 actually needs — every easy/madeup win is a
+single fitted argument expression, but real ARC-AGI-2 tasks chain several
+transformations, which no current path composes. R4 (2nd-order edge ranking)
+remains open-question-blocked.
