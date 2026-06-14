@@ -6031,3 +6031,6 @@ a second object-gravity task surfaces to lift against.
 - Stored rule hits: 15
 - Time: 10s
 - Log: logs/learn_20260615_014548.log
+
+## Iter 53 [CLEAN] — 20260615_013313 — branch test33
+- Probe: [01:33:34] Correct:     0 / 3  (0.0%)
