@@ -959,6 +959,39 @@ def run_program(program, input_grid):
             bg = env["bg"]
             for (r, c) in _enclosed_cells(grid, bg):
                 cur = apply_DSL("coloring", cur, selection=(r, c), color=fill)
+        elif kind == "enclosed_fill_by":
+            # Property-keyed enclosed-region fill: each interior pocket is repainted
+            # in the colour a value-agnostic *size → colour* map assigns to it (its
+            # cell-count). This generalises ``enclosed_fill`` the way
+            # ``recolor_objects`` generalises a flat recolour — for the ARC family
+            # where pockets of different sizes take *different* fill colours (e.g. a
+            # closed shape's small holes go one colour, large holes another). The
+            # reason — P3/P4 — is the COMM "a pocket of this size always becomes this
+            # colour"; ``_fit_enclosed_fill_by`` reads the size→colour map off the
+            # train pairs and declines when it is not deterministic or does not
+            # reproduce a pair. The WHOLE map is ONE structure-agnostic const leaf (a
+            # list of ``[size, colour]`` pairs), exactly as ``recolor_objects`` carries
+            # its property map — so two size-keyed-fill tasks with different maps share
+            # the SAME one-step skeleton ``[("enclosed_fill_by", ("const", ?v))]`` and
+            # lift via ``unify()`` into one ``covers>1`` rule (R3 — P1·P2·P3 rise
+            # together), never a rule per task (§2.5-3/4). The pockets are a *selection*
+            # (a util/LHS computation on the input, §2.5-1), painted only by the frozen
+            # ``coloring`` primitive (F3-safe). Reads the FIXED input (``env``), so it
+            # transfers to the test input unchanged (P5); a pocket whose size is absent
+            # from the fitted map makes the step *decline* (``_Unevaluable``) rather
+            # than guess (memory: runtime_resolvable_speculative_apply — renderers
+            # decline, not crash).
+            _, spec_expr = step
+            spec = _eval(spec_expr, env)
+            cmap = {k: v for k, v in spec["map"]}
+            grid = env["grid"]
+            bg = env["bg"]
+            for comp in _pocket_components(grid, bg):
+                size = len(comp)
+                if size not in cmap:
+                    raise _Unevaluable(
+                        f"enclosed_fill_by: pocket size {size!r} not in fitted map")
+                cur = apply_DSL("coloring", cur, selection=comp, color=cmap[size])
         elif kind == "compose":
             # Two-stage composition: run a *stage-1* sub-program (a structural
             # reduction of the input — crop to a selected region, or a dihedral
@@ -1268,6 +1301,21 @@ def _candidate_programs(pairs):
     enclosed = _fit_enclosed_fill(pairs)
     if enclosed is not None:
         yield enclosed
+
+    # --- Schema 17: property-keyed enclosed-region fill --------------------
+    # The size-keyed generalisation of Schema 16: each interior pocket is filled
+    # with the colour a value-agnostic ``size → colour`` map assigns to it, for the
+    # ARC family where pockets of different sizes take *different* colours (which the
+    # single-colour ``enclosed_fill`` cannot express). The map is the whole per-task
+    # content carried as ONE const leaf, so size-keyed-fill tasks with divergent maps
+    # share the pure ``[("enclosed_fill_by", ("const", ?v))]`` skeleton and lift via
+    # ``unify()`` into one ``covers>1`` rule (R3). Yielded *after* the single-colour
+    # ``enclosed_fill`` and gated on ≥2 distinct fill colours, so a one-colour task
+    # stays owned by the simpler schema and only genuinely multi-colour pocket fills
+    # reach here (no overlap, clean lift).
+    enclosed_by = _fit_enclosed_fill_by(pairs)
+    if enclosed_by is not None:
+        yield enclosed_by
 
 
 def _is_fractal_dims(pairs):
@@ -1916,6 +1964,85 @@ def _fit_enclosed_fill(pairs):
         prog = [("enclosed_fill", ("const", fill))]
         if _reproduces(prog, pairs):
             return prog
+    return None
+
+
+def _pocket_components(grid, bg):
+    """The enclosed background pockets of ``grid`` grouped into 4-connected
+    components, each returned as a sorted list of cells. Builds on
+    `_enclosed_cells` (the interior-hole selection) and just partitions that cell
+    set into the individual pockets, so a closed shape with several separate
+    interior holes yields one component per hole — the unit a property-keyed fill
+    colours independently."""
+    pockets = _enclosed_cells(grid, bg)
+    seen = set()
+    comps = []
+    for cell in pockets:
+        if cell in seen:
+            continue
+        stack = [cell]
+        comp = []
+        while stack:
+            x = stack.pop()
+            if x in seen or x not in pockets:
+                continue
+            seen.add(x)
+            comp.append(x)
+            r, c = x
+            stack.extend([(r + 1, c), (r - 1, c), (r, c + 1), (r, c - 1)])
+        comps.append(sorted(comp))
+    return comps
+
+
+def _fit_enclosed_fill_by(pairs):
+    """Fit a *property-keyed* enclosed-region fill: each interior pocket is
+    repainted in the colour a value-agnostic *size → colour* map assigns to it
+    (its cell-count). This is to ``enclosed_fill`` what ``recolor_objects`` is to a
+    flat recolour — the generalisation for tasks where pockets of different sizes
+    take *different* fill colours (e.g. ``{1:6, 4:7, 9:8}``), which the single-colour
+    ``_fit_enclosed_fill`` cannot express.
+
+    Builds the size→colour map across all train pairs as the per-task content,
+    carried as ONE const leaf ``{"prop": "size", "map": [[size, colour], …]}`` — so
+    two size-keyed-fill tasks with *different* maps share the SAME one-step skeleton
+    ``[("enclosed_fill_by", ("const", ?v))]`` and lift via ``unify()`` into one
+    ``covers>1`` rule (R3 — P1·P2·P3 rise together), never a rule per task
+    (§2.5-3/4). Requires the map to be deterministic (no size → two colours), every
+    pocket to be filled uniformly, at least one pocket, and **≥2 distinct fill
+    colours** (so a single-colour task stays owned by the simpler ``enclosed_fill``
+    yielded before it). The pockets are a *selection* (a util/LHS computation on the
+    input, §2.5-1), painted by the frozen ``coloring`` primitive (F3-safe). The
+    final `_reproduces` gate keeps the fit honest — a map that does not reproduce a
+    pair exactly is rejected, not approximated.
+
+    Returns the one-step program, or ``None``."""
+    mapping = {}
+    any_pocket = False
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout) or (
+                gin and len(gin[0]) != len(gout[0] if gout else [])):
+            return None
+        bg = background_of(gin)
+        for comp in _pocket_components(gin, bg):
+            any_pocket = True
+            cols = {gout[r][c] for (r, c) in comp}
+            if len(cols) != 1:
+                return None
+            newc = next(iter(cols))
+            size = len(comp)
+            if size in mapping and mapping[size] != newc:
+                return None
+            mapping[size] = newc
+    if not any_pocket or len(set(mapping.values())) < 2:
+        return None
+    spec = {
+        "prop": "size",
+        "map": [[k, v] for k, v in sorted(mapping.items())],
+    }
+    prog = [("enclosed_fill_by", ("const", spec))]
+    if _reproduces(prog, pairs):
+        return prog
     return None
 
 

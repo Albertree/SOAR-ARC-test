@@ -1,6 +1,63 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 52 — 2026-06-15 — branch test33
+
+**Diagnosis**: iter51's nominated next gap (per-region fill keyed on the enclosing
+object's *colour*) turned out a dead end — a scan showed it fits only the same 2
+tasks `enclosed_fill` already covers (covers≤2 accretion on solved tasks, §2.5-3
+forbids). Re-diagnosing from a fresh scan (synthesizer solves 112/1000 train), the
+real gap surfaced in the enclosed-fill family: tasks where interior pockets of
+**different sizes take different fill colours** (e.g. `c0f76784` {1:6,4:7,9:8},
+`00dbd492` {8:8,24:4,48:3}), which the single-colour `enclosed_fill` cannot express.
+This is exactly the `recolor_objects`-style generalization of a flat fill into a
+property→colour map — a *general* mechanism, not a per-task detector.
+
+**Change**:
+- `program/synthesis.py`: added **Schema 17 `enclosed_fill_by`** — a property-keyed
+  enclosed-region fill. New `_fit_enclosed_fill_by` builds a value-agnostic
+  `size → colour` map across all train pairs (one const-leaf spec
+  `{"prop":"size","map":[[size,colour],…]}`), gated on ≥2 distinct fill colours so
+  the simpler `enclosed_fill` (yielded first) keeps owning single-colour tasks (no
+  overlap, rule_018's covers=2 const lift preserved). New `_pocket_components` helper
+  partitions `_enclosed_cells` into per-hole components. Dispatch composes ONLY the
+  frozen `coloring` primitive (F3-safe) and *declines* (`_Unevaluable`) on a test
+  pocket size unseen in train rather than guessing (memory:
+  runtime_resolvable_speculative_apply). Mirrors `recolor_objects` exactly.
+- `tests/test_synthesis_enclosed_fill_by.py`: +8 tests (component split, map fit,
+  single-colour→const-owns-it, non-deterministic-map decline, two divergent maps
+  share one skeleton → lift, unseen-size declines-not-crashes, full-search reach).
+- `procedural_memory/rule_019.json` (+ `episodic_memory/44d8ac46/anti_unification/`):
+  persisted **5 real ARC tasks** (00dbd492/44d8ac46/84f2aca1/868de0fa/c0f76784) via
+  the LIVE solve/save path (`run_learn --task-dir` on a deleted scratch copy — no
+  further edit): all 5 discover the `enclosed_fill_by` program and `save_rule`'s
+  `unify()` lifts their 5 divergent size-maps into ONE abstract rule
+  (`[["enclosed_fill_by",["const","?v2"]]]`, covers=5, `anti_unification_trace` set)
+  — the R3 prize, one rule abstracting 5 tasks, not a rule per task.
+
+**Probe before**: training probe 0/3 (hard multi-step); rules=18, P1/P2=7.222, P3=0.9444, distinct-solved=130
+**Probe after** : same hard probe unchanged; rules=18→19, P1/P2=7.105, P3=0.9474,
+distinct-solved 130→135; easy_a 9/9 + madeup 27/27 hold; 260 tests pass (+8).
+
+**Invariants**: forbidden=none (check_invariants verdict CLEAN; F3 clean —
+`enclosed_fill_by` composes only `coloring`; F2 clean — no new `_try_*`;
+active_operators.py untouched so F8 N/A). positives=P3 +0.0029 (17/18→18/19 traced);
+P1/P2 −0.117 — the documented §2.5-4 averaging trap: a NEW-skeleton covers=5 family
+lands 5 real new tasks via R3 (distinct-solved +5) but sits below the 7.222 mean, so
+it dilutes the average even though it is real progress (P3 up, coverage breadth up,
+all five folded into one lifted rule). 3/5 also solve the held-out test; the other 2
+honestly decline on a test pocket size unseen in train (literal-`size` transfer
+limit, same as `recolor_objects`).
+
+**Next gap (note for future iter)**: `enclosed_fill_by` keys on literal pocket
+`size`, which declines when the test grid has a pocket size unseen in train (2 of the
+5 tasks). The natural transfer fix is an **ordinal pocket key** (size-`rank` among
+the grid's pockets, the way `recolor_objects` added `rank` for objects) so a
+size-monotone fill (e.g. `c0f76784`'s smallest→6, mid→7, largest→8) transfers to
+unseen absolute sizes — fold it into the SAME `enclosed_fill_by` skeleton as a second
+`prop`, not a new schema.
+
+---
 ## Iter 28 — 2026-06-14 — branch test33
 
 **Diagnosis**: iter27's next gap named the synthesizer grammar as the training
@@ -5793,3 +5850,63 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 51 [CLEAN] — 20260615_010637 — branch test33
 - Probe: [01:06:57] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 01:16
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_011655.log
+
+---
+## Learning Loop -- 2026-06-15 01:17
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_011659.log
+
+---
+## Learning Loop -- 2026-06-15 01:17
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 18 -> 18 (+0 learned)
+- Stored rule hits: 0
+- Time: 6s
+- Log: logs/learn_20260615_011709.log
+
+---
+## Learning Loop -- 2026-06-15 01:30
+
+- Split: None, Tasks: 5
+- Correct: 3 / 5 (60.0%)
+- Rules: 18 -> 19 (+1 learned)
+- Stored rule hits: 0
+- Time: 18s
+- Log: logs/learn_20260615_012950.log
+
+---
+## Learning Loop -- 2026-06-15 01:30
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_013024.log
+
+---
+## Learning Loop -- 2026-06-15 01:30
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 19 -> 19 (+0 learned)
+- Stored rule hits: 15
+- Time: 10s
+- Log: logs/learn_20260615_013027.log
