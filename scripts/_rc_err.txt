@@ -1,0 +1,12 @@
+[0/12] solved=0
+[1/12] solved=1
+[2/12] solved=1
+[3/12] solved=1
+[4/12] solved=1
+[5/12] solved=1
+[6/12] solved=1
+[7/12] solved=1
+[8/12] solved=1
+[9/12] solved=1
+[10/12] solved=2
+[11/12] solved=2

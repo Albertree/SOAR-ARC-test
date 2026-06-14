@@ -1,6 +1,72 @@
 # SOAR-ARC Session Log
 
 ---
+## Iter 57 — 2026-06-15 — branch test33 — NO-OP (live-pipeline scan; no defensible fold)
+
+**Diagnosis**: Iter 55's standing next-gap note was a methodology fix, not a code
+gap: *do a **live-pipeline** failure scan (families + synthesizer), not a
+`synthesize_task`-only scan, before nominating a gap* — every prior scan used
+`synthesize_task` in isolation and so kept nominating gaps the legacy family
+matchers already cover. I executed that scan this iter (the outstanding step), then
+diagnosed against its fresh, true-live failure set.
+
+**What I did (no code committed)**:
+- Ran the **live solver** (`run_learn --split training --limit 250 --shuffle
+  --seed 7`) — a fresh, previously-unseen sample. It completed 90 tasks before the
+  process died: **9 CORRECT / 81 INCORRECT** (~10% live, consistent with the ~11%
+  historical estimate — confirming the synthesize_task-only estimate was *not*
+  optimistic; the families add little net breadth on unseen tasks).
+- Categorised the 81 live failures: **52 same-dims**, **25 smaller-out**
+  (extraction/crop), **4 larger-out**. Sub-buckets:
+  - same-dims: **29 recolor/mix**, **21 add-only (0→colour, e.g. ray/line/pattern
+    completion)**, **2 denoise(→0)**;
+  - smaller-out: heterogeneous — panel-select, dedup/downscale, symmetric-extract,
+    quadrant-overlay, band-select; **no single mechanism dominates**.
+- Tested the historically-nominated lever directly: **panel-extract (select one
+  separator-delimited panel verbatim)** across the 8 clearest smaller-out
+  candidates. Only **1** task (2dc579da) yields output == a verbatim panel for
+  every train pair; the rest transform/combine panels (not a verbatim crop). So a
+  panel-extract stage-1/crop generalisation folds **1** task, not ≥2 — accretion,
+  not a covers-raising fold (§2.5-4 forbids).
+- **No clean ≥2-task fold via a small generalisation of an existing schema
+  surfaced** — the iter-54 (symfill) shape, which is the only non-trap covers
+  direction, has no candidate in this live sample.
+
+**Why no commit**: the live scan **confirms** the iters 53–55 frontier diagnosis
+with first-class data: the single-step clean-family frontier is saturated. The
+remaining failure mass needs *large* mechanisms — **object-correspondence** (the 29
+recolor + 21 add-only same-dims tasks: which input object/region maps to which
+output change) and **panel comparison/combine** (the smaller-out cluster) — neither
+is a smallest-defensible single-commit step, and the legacy-family-retirement lever
+(iter 55) regresses rule_002's 28 covers unless the synthesizer first grows an
+object-placement schema. Manufacturing another covers=2 const-leaf schema would be
+the documented mean-dilution trap (§2.5-4); committing it is worse than a no-op.
+
+**Scan hygiene note (for future iters)**: `run_learn --split training` **saves
+rules as a side effect** — my scan minted rule_021 (covers=['d9fac9be']) and
+rule_022 (covers=['be03b35f']), both **covers=1, no AU trace** (exactly the
+forbidden overfit accretion), and grew rule_002/rule_016 covers from tasks in the
+sample. **All reverted** (rules deleted, rule_001/002/003/016 restored to HEAD);
+working tree back to 20 rules. *A live scan must be treated as read-only — revert
+any rule files it touches, or use a throwaway checkout.*
+
+**Probe before/after**: training probe 0/3 unchanged; rules=20 flat; P1/P2=6.9,
+P3=0.95, P4=932, P5=4, P6=1433 — all unchanged; easy_a 9/9 + madeup 27/27 hold.
+
+**Invariants**: forbidden=none (check_invariants verdict NEUTRAL); positives=**none
+moved** (deliberate no-op). Not converged — nameable gaps remain
+(object-correspondence, panel-combine, family-retirement) — so `_LOOP_COMPLETE` is
+*not* warranted; these are large multi-iter pieces, not this iter's smallest step.
+
+**Next gap (note for future iter)**: the highest-value lever is now an
+**object-correspondence** primitive (util/LHS, lives in `agent/` not `DSL/`) that
+matches input objects/regions to output changes — it is the shared precondition for
+the 29 recolor + 21 add-only same-dims failures *and* for retiring the legacy
+`object_motion` family (which mis-fires, iter 55, because it lacks principled
+correspondence). Smallest first slice: a `correspondence` selector that pairs
+same-shape objects across in/out by position, exposed to the recolor_objects schema.
+
+---
 ## Iter 55 — 2026-06-15 — branch test33 — NO-OP (no defensible signal-moving step)
 
 **Diagnosis**: iter54's nominated gap (background-occluder symmetry_repair) was
@@ -6275,3 +6341,46 @@ a second object-gravity task surfaces to lift against.
 
 ## Iter 56 [NEUTRAL] — 20260615_030914 — branch test33
 - Probe: [03:09:33] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-15 03:51
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260615_035148.log
+
+---
+## Learning Loop -- 2026-06-15 03:52
+
+- Split: None, Tasks: 27
+- Correct: 27 / 27 (100.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 15
+- Time: 11s
+- Log: logs/learn_20260615_035152.log
+
+---
+## Learning Loop -- 2026-06-15 03:52
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 0
+- Time: 7s
+- Log: logs/learn_20260615_035203.log
+
+---
+## Learning Loop -- 2026-06-15 04:09
+
+- Split: training, Tasks: 250
+- Correct: 25 / 250 (10.0%)
+- Rules: 20 -> 20 (+0 learned)
+- Stored rule hits: 2
+- Time: 848s
+- Log: logs/learn_20260615_035452.log
+
+## Iter 57 [NEUTRAL] — 20260615_035147 — branch test33
+- Probe: [03:52:10] Correct:     0 / 3  (0.0%)

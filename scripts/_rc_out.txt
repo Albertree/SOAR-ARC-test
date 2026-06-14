@@ -1,0 +1,26 @@
+pure in-place recolour cluster: 12 / 150 tasks
+cluster: 6e82a1ae ce039d91 09629e4f 33b52de3 845d6e51 1acc24af d94c3b52 e76a88a6 8dae5dfc ea32f347 4ff4c9da 575b1a71
+  6e82a1ae: SOLVED recolor_objects
+  ce039d91: missed
+  09629e4f: missed
+  33b52de3: missed
+  845d6e51: missed
+  1acc24af: missed
+  d94c3b52: missed
+  e76a88a6: missed
+  8dae5dfc: missed
+  ea32f347: SOLVED recolor_objects
+  4ff4c9da: missed
+  575b1a71: missed
+  synthesizer (single-step) reproduces train: 2
+  MISSED (candidates for a relational recolour): 10
+    ce039d91
+    09629e4f
+    33b52de3
+    845d6e51
+    1acc24af
+    d94c3b52
+    e76a88a6
+    8dae5dfc
+    4ff4c9da
+    575b1a71
