@@ -469,3 +469,62 @@ def test_tile_arrangements_share_one_skeleton():
     assert mirror[0][0] == "tile" and plain[0][0] == "tile"
     assert mirror[0][3][1] != plain[0][3][1]  # different arrangements
     assert _program_skeleton(mirror) == _program_skeleton(plain)
+
+
+# --- Schema 9: symmetry completion -------------------------------------------
+
+def test_symfill_restores_vertical_mirror_hole():
+    # Same-dims output = the input with its background holes filled from the
+    # grid's own symmetry. Here the visible top is mirrored to fill the bg bottom
+    # (vertical symmetry). The symmetry set is read from the grid, not hand-coded.
+    pairs = [
+        {"input":  [[4, 4], [3, 5], [0, 0], [0, 0]],
+         "output": [[4, 4], [3, 5], [3, 5], [4, 4]]},
+        {"input":  [[7, 1], [2, 2], [0, 0], [0, 0]],
+         "output": [[7, 1], [2, 2], [2, 2], [7, 1]]},
+    ]
+    prog = synthesize_task(pairs)
+    assert prog is not None and prog[0][0] == "symfill"
+    assert "flip_v" in prog[0][1][1]
+    # transfers unchanged to a held-out input (P5)
+    assert run_program(prog, [[9, 8], [6, 6], [0, 0], [0, 0]]) == \
+        [[9, 8], [6, 6], [6, 6], [9, 8]]
+
+
+def test_symfill_declines_when_not_symmetry_completion():
+    # A same-dims edit that is NOT a symmetry completion (an arbitrary recolour of
+    # a cell) must not be read as symfill — the fitted symmetry set would not
+    # reproduce the output, so the schema declines (and a colour-map schema may
+    # claim it instead).
+    pairs = [
+        {"input":  [[1, 2], [3, 4]],
+         "output": [[1, 2], [3, 9]]},
+        {"input":  [[5, 6], [7, 8]],
+         "output": [[5, 6], [7, 9]]},
+    ]
+    prog = synthesize_task(pairs)
+    if prog is not None:
+        assert prog[0][0] != "symfill"
+
+
+def test_symfill_sets_share_one_skeleton():
+    # Two completion tasks with DIFFERENT symmetry sets produce the same one-step
+    # skeleton (only the const set leaf differs), so save_rule lifts them into ONE
+    # covers>1 rule rather than two families (R3 — P1·P2·P3 rise together).
+    from agent.memory import _program_skeleton
+    vmirror = synthesize_task([
+        {"input":  [[4, 4], [3, 5], [0, 0], [0, 0]],
+         "output": [[4, 4], [3, 5], [3, 5], [4, 4]]},
+        {"input":  [[7, 1], [2, 2], [0, 0], [0, 0]],
+         "output": [[7, 1], [2, 2], [2, 2], [7, 1]]},
+    ])
+    hmirror = synthesize_task([
+        {"input":  [[4, 3, 0, 0], [5, 2, 0, 0]],
+         "output": [[4, 3, 3, 4], [5, 2, 2, 5]]},
+        {"input":  [[7, 1, 0, 0], [8, 6, 0, 0]],
+         "output": [[7, 1, 1, 7], [8, 6, 6, 8]]},
+    ])
+    assert vmirror is not None and hmirror is not None
+    assert vmirror[0][0] == "symfill" and hmirror[0][0] == "symfill"
+    assert vmirror[0][1] != hmirror[0][1]  # different symmetry sets
+    assert _program_skeleton(vmirror) == _program_skeleton(hmirror)

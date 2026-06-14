@@ -106,6 +106,83 @@ def _dihedral_grid(name, grid):
 
 
 # ======================================================================
+# Symmetry completion (fill background holes from the grid's own symmetry)
+# ======================================================================
+#
+# A "symmetry completion" output has the *same dims* as the input and equals the
+# input with its background cells filled in from the grid's own dihedral
+# symmetries — the classic ARC "the picture is symmetric but part of it is
+# missing (a background hole); restore it" task (496994bd / 9ddd00f0 / 5751f35e).
+#
+# The *reason* (P3/P4) is a COMM result: the visible (non-background) part of the
+# grid already obeys a set of dihedral symmetries — for every transform ``S`` in
+# the set, ``S(grid)`` agrees with ``grid`` on every cell where *both* are
+# non-background (background cells are unknown holes, exempt from the check). A
+# hole is then filled with the colour its symmetric counterpart shows. This
+# composes ONLY the two frozen primitives: it copies the input and paints each
+# resolved hole in its counterpart's colour (``coloring``); it never invents a
+# value (§2.5-1, F3-safe). The transform is value-agnostic — the symmetry set is
+# *read from the grid's structure*, never a literal — so it is the §2.5-2b case
+# where the AU "hole" is a selector grounded in the comparison.
+#
+# The fitted symmetry set is a per-task structural constant (a ``const`` leaf, the
+# intersection of the per-pair consistent sets), so two completion tasks with
+# *different* symmetry sets share the ONE skeleton ``[("symfill", ("const", ?v))]``
+# and lift via ``unify()`` into a single ``covers>1`` rule (R3 — P1·P2·P3 rise
+# together). It reads the fixed input throughout, so a set fitted on the train
+# pairs restores the test input unchanged (P5).
+
+_SYM_NAMES = ("flip_h", "flip_v", "rot180",
+              "transpose", "rot90", "rot270", "antitranspose")
+
+
+def _consistent_syms(grid, bg):
+    """The dihedral transforms whose image has the *same dims* as ``grid`` and
+    agrees with it on every cell where both are non-background — i.e. the
+    symmetries the *visible* part of the grid already obeys (background cells are
+    unknown holes, exempt). Value-agnostic: derived from the grid, never a
+    literal. Returns a sorted tuple of transform names."""
+    ih = len(grid)
+    iw = len(grid[0]) if grid else 0
+    out = []
+    for name in _SYM_NAMES:
+        im = _dihedral_grid(name, grid)
+        if im is None or len(im) != ih or (im and len(im[0]) != iw):
+            continue  # a dims-swapping map on a non-square grid cannot align
+        ok = True
+        for r in range(ih):
+            for c in range(iw):
+                a, b = grid[r][c], im[r][c]
+                if a != bg and b != bg and a != b:
+                    ok = False
+                    break
+            if not ok:
+                break
+        if ok:
+            out.append(name)
+    return tuple(sorted(out))
+
+
+def _symfill_grid(grid, bg, syms):
+    """Return a fresh grid: ``grid`` with each background cell filled from the
+    first transform in ``syms`` whose image holds a non-background value there
+    (symmetry completion). Cells with no symmetric counterpart stay background."""
+    ih = len(grid)
+    iw = len(grid[0]) if grid else 0
+    images = [_dihedral_grid(n, grid) for n in syms]
+    out = [row[:] for row in grid]
+    for r in range(ih):
+        for c in range(iw):
+            if out[r][c] != bg:
+                continue
+            for im in images:
+                if im is not None and im[r][c] != bg:
+                    out[r][c] = im[r][c]
+                    break
+    return out
+
+
+# ======================================================================
 # Fractal self-tile conditions (the per-macro-cell selector)
 # ======================================================================
 #
@@ -450,6 +527,31 @@ def run_program(program, input_grid):
                             cur = apply_DSL(
                                 "coloring", cur,
                                 selection=(i * ih + r, j * iw + c), color=v)
+        elif kind == "symfill":
+            # Symmetry completion: copy the input and fill each background hole
+            # from the colour its symmetric counterpart shows, under the carried
+            # set of dihedral symmetries (a value-agnostic structural const,
+            # ``("flip_h", "rot180", …)``). Composes ONLY the two frozen
+            # primitives — ``cur`` is already a copy of the input, and each
+            # resolved hole is painted via ``coloring`` in its counterpart's own
+            # colour (never a literal: §2.5-1, F3-safe). The symmetry set is read
+            # from the grid's structure (the COMM "the visible part obeys S"), so
+            # the rule says *why* a hole takes its value (P3/P4), and a set fitted
+            # on the train pairs restores the test input unchanged (P5). Two
+            # completion tasks with divergent symmetry sets share the one-step
+            # skeleton ``[("symfill", ("const", ?v))]`` and lift via ``unify()``
+            # into one ``covers>1`` rule (R3).
+            _, syms_expr = step
+            syms = _eval(syms_expr, env)
+            grid = env["grid"]
+            bg = env["bg"]
+            filled = _symfill_grid(grid, bg, syms)
+            for r, row in enumerate(grid):
+                for c, v in enumerate(row):
+                    if filled[r][c] != v:
+                        cur = apply_DSL(
+                            "coloring", cur,
+                            selection=(r, c), color=filled[r][c])
         else:
             raise _Unevaluable(f"unknown step kind: {kind!r}")
     return cur
@@ -607,6 +709,20 @@ def _candidate_programs(pairs):
     if tile is not None:
         yield tile
 
+    # --- Schema 9: symmetry completion -------------------------------------
+    # Same-dims output that is the input with its background holes restored from
+    # the grid's own dihedral symmetry (496994bd / 9ddd00f0 / 5751f35e). The
+    # reason — P3/P4 — is the COMM "the visible part obeys symmetry set S";
+    # ``_fit_symfill`` reads S off the train inputs (the intersection of the
+    # per-pair consistent sets) as a value-agnostic structural const, never a
+    # literal. Being a pure ``[("symfill", ("const", ?v))]`` skeleton, two
+    # completion tasks with divergent symmetry sets lift via ``unify()`` into one
+    # ``covers>1`` rule (R3). Yielded last so a simpler same-dims schema (identity,
+    # colour-map) wins when a task fits both.
+    symfill = _fit_symfill(pairs)
+    if symfill is not None:
+        yield symfill
+
 
 def _is_fractal_dims(pairs):
     """True iff every pair's output dims are exactly ``(ih·ih, iw·iw)`` — the
@@ -695,6 +811,48 @@ def _fit_tile(pairs):
     pattern = tuple(
         tuple(sorted(valid[i][j])[0] for j in range(m)) for i in range(k))
     return [("tile", ("const", k), ("const", m), ("const", pattern))]
+
+
+def _fit_symfill(pairs):
+    """Return a one-step ``symfill`` program if every pair's output is the input
+    with its background holes restored from a shared dihedral symmetry set, else
+    ``None``.
+
+    Each pair must be same-dims. The task symmetry set is the *intersection*
+    across pairs of each input's consistent transforms (``_consistent_syms``) — a
+    value-agnostic structural const read from the grids, never a literal. The set
+    is accepted only if completing every input under it reproduces that pair's
+    output *and* actually changes at least one input (an all-identity fill is the
+    identity schema, already yielded). The const symmetry set is the per-task
+    leaf, so two completion tasks with divergent sets lift via ``unify()`` into one
+    ``covers>1`` rule (§2.5-3)."""
+    inter = None
+    for p in pairs:
+        gin, gout = p["input"], p["output"]
+        if len(gin) != len(gout):
+            return None
+        ih = len(gin)
+        iw = len(gin[0]) if gin else 0
+        if ih == 0 or iw == 0 or len(gout[0]) != iw:
+            return None
+        bg = background_of(gin)
+        cs = set(_consistent_syms(gin, bg))
+        inter = cs if inter is None else (inter & cs)
+        if not inter:
+            return None
+    syms = tuple(sorted(inter))
+    changed = False
+    for p in pairs:
+        gin = p["input"]
+        bg = background_of(gin)
+        filled = _symfill_grid(gin, bg, syms)
+        if filled != p["output"]:
+            return None
+        if filled != gin:
+            changed = True
+    if not changed:
+        return None
+    return [("symfill", ("const", syms))]
 
 
 def _fit_color_map(pairs):

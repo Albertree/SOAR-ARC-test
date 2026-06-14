@@ -3715,3 +3715,118 @@ occlusion — the probe's 3) need a neighbourhood/alignment selector (R4-adjacen
 
 ## Iter 34 [CLEAN] — 20260614_210050 — branch test33
 - Probe: [21:01:08] Correct:     0 / 3  (0.0%)
+
+---
+## Learning Loop -- 2026-06-14 21:10
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_211056.log
+
+---
+## Learning Loop -- 2026-06-14 21:11
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_211059.log
+
+---
+## Learning Loop -- 2026-06-14 21:11
+
+- Split: training, Tasks: 3
+- Correct: 0 / 3 (0.0%)
+- Rules: 9 -> 9 (+0 learned)
+- Stored rule hits: 0
+- Time: 5s
+- Log: logs/learn_20260614_211108.log
+
+---
+## Learning Loop -- 2026-06-14 21:21
+
+- Split: None, Tasks: 3
+- Correct: 3 / 3 (100.0%)
+- Rules: 9 -> 10 (+1 learned)
+- Stored rule hits: 0
+- Time: 4s
+- Log: logs/learn_20260614_212146.log
+
+---
+## Learning Loop -- 2026-06-14 21:22
+
+- Split: None, Tasks: 9
+- Correct: 9 / 9 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 9
+- Time: 3s
+- Log: logs/learn_20260614_212201.log
+
+---
+## Learning Loop -- 2026-06-14 21:22
+
+- Split: None, Tasks: 23
+- Correct: 23 / 23 (100.0%)
+- Rules: 10 -> 10 (+0 learned)
+- Stored rule hits: 14
+- Time: 8s
+- Log: logs/learn_20260614_212204.log
+
+## Iter 35 — 2026-06-14 — branch test33
+
+**Diagnosis**: Training phase; probe 0/3 (same-size conditional transforms — R4
+neighbourhood machinery, deferred). Iter 34's "next gap" (22 leftover k×m-dim
+tasks) turns out to be a *grab-bag*, not a family (verified: only 2 are even
+self-tile-shaped, and those two use disjoint gates — chasing them = accretion,
+forbidden). Scanning instead for a *coherent, value-agnostic, general* unsolved
+family surfaced **symmetry completion**: same-dims output = the input with its
+background holes restored from the grid's own dihedral symmetry (496994bd /
+9ddd00f0 / 5751f35e). This is the textbook §2.5 case — the *reason* (P3/P4) is a
+COMM ("the visible part obeys symmetry set S"), it composes only the two frozen
+primitives, and three tasks with divergent S lift into one rule.
+
+**Change**:
+- `program/synthesis.py` — added **Schema 9: symmetry completion**. New
+  `_consistent_syms` (the dihedral transforms the visible non-bg cells already
+  obey — derived from the grid, never a literal), `_symfill_grid` (fill each bg
+  hole from the first consistent image holding a non-bg value there), `_fit_symfill`
+  fitter (task symmetry set = intersection of per-pair consistent sets; accepted
+  only if it reproduces every pair *and* changes something), and a `symfill` step
+  in `run_program` that copies the input and paints each resolved hole in its
+  counterpart's own colour (`coloring`). Value-agnostic positional/colour
+  expression composing only the two frozen primitives (§2.5-1, F3-safe); yielded
+  LAST so simpler same-dims schemas (identity, colour-map) win on overlap. NO new
+  DSL primitive (F3), NO `_try_*` (F2), NO `active_operators.py` edit (F8 N/A —
+  all in `program/`).
+- `procedural_memory/rule_010.json` — created by running the agent's slow path on
+  the 3 tasks; each discovers `[("symfill", ("const", S))]`, they share the
+  collapsed-const skeleton, so `save_rule`→`unify()` lifts the divergent symmetry
+  sets to `?v2` and writes an `anti_unification_trace`. covers=3, ONE general
+  value-agnostic rule, no accretion (rules 9→10 for 3 solved tasks). Held-out
+  *test* grids of all three reproduce correctly — evidence the mechanism is
+  general, not train-overfit.
+- `tests/test_synthesis.py` (+3) — vertical-mirror hole restore (+ P5 transfer),
+  declines-when-not-a-completion, and the lift proof (two divergent symmetry sets
+  share one skeleton). 191 pass.
+
+**Probe before**: training probe 0/3; easy_a 9/9, madeup 23/23; 9 rules;
+P1=P2=7.333, P3=0.889; solved≈48.
+**Probe after** : easy_a 9/9, madeup 23/23 (guards unchanged); 10 rules; rule_010
+covers=3 (3 more real ARC-AGI-2 symmetry-completion tasks via ONE general rule);
+P3 0.889→0.900.
+
+**Invariants**: forbidden=none (check_invariants CLEAN, exit 0). positives =
+**P3 +0.011** (a genuine divergent-leaf AU lift: symmetry set carried as `?v`).
+P1/P2 dipped −0.43 — the documented *instrumentation trap* (memory
+test33_rung_progress): a covers=3 family lowers the average in a pool dominated by
+rule_009 (covers=21), even though it is real general capability. P4/P5/P6 held.
+
+**Next gap (note for future iter)**: the standing miss is unchanged — same-size
+CONDITIONAL transforms (the probe's gravity/ray/occlusion 3) need a
+neighbourhood/alignment selector (R4-adjacent: edge-of-edge / per-cell
+neighbour predicates), the first genuinely new *recognition* vocabulary (would
+move P5) rather than another positional macro-grid schema.
